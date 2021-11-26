@@ -95,12 +95,12 @@ impl SequenceFlags {
 
     fn lower(&mut self, flag: &SequenceNumber) {
         assert!(u16::from(*flag) < 0o100_u16);
-        self.flag_values = self.flag_values & !SequenceFlags::flagbit(flag);
+        self.flag_values &= !SequenceFlags::flagbit(flag);
     }
 
     fn raise(&mut self, flag: &SequenceNumber) {
         assert!(u16::from(*flag) < 0o100_u16);
-        self.flag_values = self.flag_values | SequenceFlags::flagbit(flag);
+        self.flag_values |= SequenceFlags::flagbit(flag);
     }
 
     /// Return the index of the highest-priority (lowest-numbered)

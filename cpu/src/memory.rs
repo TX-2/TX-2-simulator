@@ -102,10 +102,6 @@ impl MemoryWord {
         }
     }
 
-    fn flip_meta_bit(&mut self) {
-	self.0 ^= META_BIT
-    }
-
     /// Update the value of the word in memory without changing the
     /// meta bit.
     fn set_value(&mut self, value: &Unsigned36Bit) {
@@ -487,6 +483,7 @@ const fn standard_plugboard_internal() -> [MemoryWord; 32] {
     ]
 }
 
+#[cfg(test)]
 pub fn get_standard_plugboard() -> Vec<Unsigned36Bit> {
     standard_plugboard_internal()
         .iter()
