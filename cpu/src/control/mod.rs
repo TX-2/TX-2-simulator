@@ -23,14 +23,17 @@ use crate::exchanger::{
 };
 use crate::memory::MemoryUnit;
 use crate::memorymap::{
-    BitChange,
     ExtraBits,
     MemoryMapped,
     MemoryOpFailure,
     MetaBitChange,
-    WordChange,
     self,
 };
+
+mod op_configuration;
+mod op_index;
+mod op_jump;
+
 
 #[derive(Debug)]
 enum ProgramCounterChange {
@@ -297,6 +300,9 @@ enum SetMetabit {
     Operands,
 }
 
+
+/// ControlUnit simulates the operation of the Control Element of the TX-2 computer.
+///
 #[derive(Debug)]
 pub struct ControlUnit {
     regs: ControlRegisters,
@@ -634,42 +640,6 @@ impl ControlUnit {
         }
     }
 
-    /// Implements the SKX instruction (Opcode 012, User Handbook,
-    /// page 3-24).
-    pub fn op_skx(&mut self) -> Result<(), Alarm> {
-        let inst = &self.regs.n;
-        let j = inst.index_address();
-        // SKX does not cause an access to STUV memory; instead the
-        // operand is the full value of the operand and defer fields
-        // of the instruction.  This allows us to use SKX to mark a
-        // placeholder for use with TRAP 42.
-        let operand = inst.operand_address_and_defer_bit();
-        match u8::from(inst.configuration()) {
-            0o0 | 0o10 => {
-                if j != 0 {
-                    // Xj is fixed at 0.
-                    self.regs.set_index_register(j.into(), &operand.reinterpret_as_signed());
-                }
-                if j & 0o10 != 0 {
-                    self.regs.flags.raise(&j.into());
-                }
-                Ok(())
-            }
-	    0o1 => {
-                if j != 0 {  // Xj is fixed at 0.
-		    // Calculate -T
-		    let t_negated = Signed18Bit::ZERO.wrapping_sub(operand.reinterpret_as_signed());
-                    self.regs.set_index_register(j.into(), &t_negated);
-                }
-                Ok(())
-	    }
-            _ => Err(Alarm::ROUNDTUITAL(format!(
-                "SKX configuration {:#o} is not implemented yet",
-                inst.configuration()
-            ))),
-        }
-    }
-
     fn memory_store_without_exchange(
         &self,
         mem: &mut MemoryUnit,
@@ -814,22 +784,6 @@ impl ControlUnit {
         Ok(self.regs.q)
     }
 
-    /// Implements the DPX instruction (Opcode 016, User Handbook,
-    /// page 3-16).
-    pub fn op_dpx(&mut self, mem: &mut MemoryUnit) -> Result<(), Alarm> {
-	let j = self.regs.n.index_address();
-        let xj: Unsigned36Bit = sign_extend_index_value(&self.regs.get_index_register(j));
-        let target: Address = self.operand_address_with_optional_defer_and_index(mem)?;
-        let (dest, _meta) = self.fetch_operand_from_address(mem, &target)?;
-        self.memory_store_with_exchange(
-            mem,
-            &target,
-            &xj,
-            &dest,
-            &MetaBitChange::None,
-        )
-    }
-
     fn dismiss_unless_held(&mut self) {
 	if !self.regs.n.is_held() {
             if let Some(current_seq) = self.regs.k {
@@ -839,209 +793,4 @@ impl ControlUnit {
 	}
     }
 
-    /// Implements the JMP opcode and its variations (all of which are unconditional jumps).
-    pub fn op_jmp(&mut self) -> Result<(), Alarm> {
-        // For JMP the configuration field in the instruction controls
-        // the behaviour of the instruction, without involving
-        // a load from F-memory.
-        fn nonzero(value: Unsigned5Bit) -> bool {
-            !value.is_zero()
-        }
-        let cf = self.regs.n.configuration();
-        let dismiss = nonzero(cf & 0b10000_u8);
-        let save_q = nonzero(cf & 0b01000_u8);
-        let savep_e = nonzero(cf & 0b00100_u8);
-        let savep_ix = nonzero(cf & 0b00010_u8);
-        let indexed = nonzero(cf & 0b00001_u8);
-        let left: Unsigned18Bit = if save_q {
-            Unsigned18Bit::from(self.regs.q)
-        } else {
-            subword::left_half(self.regs.e)
-        };
-        let right: Unsigned18Bit = if savep_e {
-            Unsigned18Bit::from(self.regs.p)
-        } else {
-            subword::right_half(self.regs.e)
-        };
-        self.regs.e = subword::join_halves(left, right);
-
-        if savep_ix {
-            let j = self.regs.n.index_address();
-            if j != 0 {
-                // Xj is fixed at 0.
-                let p = self.regs.p;
-                self.regs.set_index_register_from_address(j.into(), &p);
-            }
-        }
-
-        let physical: Address = match self.regs.n.operand_address() {
-            OperandAddress::Deferred(_) => {
-                // TODO: I don't know whether this is allowed or
-                // not, but if we disallow this for now, we can
-                // use any resulting error to identify cases where
-                // this is in fact used.
-                return Err(Alarm::PSAL(
-                    u32::from(self.regs.n.operand_address_and_defer_bit()),
-                    format!(
-                        "JMP target has deferred address {:#o}",
-                        self.regs.n.operand_address()
-                    ),
-                ));
-            }
-            OperandAddress::Direct(phys) => phys,
-        };
-
-	let new_pc: Address = if indexed {
-	    physical.index_by(self.regs.n.index_address().reinterpret_as_signed())
-        } else {
-	    physical
-        };
-	self.set_program_counter(ProgramCounterChange::Jump(new_pc));
-        if dismiss {
-	    self.dismiss_unless_held();
-        }
-        Ok(())
-    }
-
-    /// Implements the JPX (jump on positive index) opcode (06).
-    pub fn op_jpx(&mut self, mem: &mut MemoryUnit) -> Result<(), Alarm> {
-	let is_positive_address = |xj: &Signed18Bit| xj.is_positive();
-	self.impl_op_jpx_jnx(is_positive_address, mem)
-    }
-
-    /// Implements the JNX (jump on positive index) opcode (07).
-    pub fn op_jnx(&mut self, mem: &mut MemoryUnit) -> Result<(), Alarm> {
-	let is_negative_address = |xj: &Signed18Bit| xj.is_negative();
-	self.impl_op_jpx_jnx(is_negative_address, mem)
-    }
-
-    // Implements JPX (opcode 06) and JNX.  Note that these opcodes
-    // handle deferred addressing in a unique way.  This is described
-    // on page 5-9 of the User Handbook:
-    //
-    // EXCEPT when the operation is JNX or JPX (codes 6 and 7), for on
-    // these two operations the right half of N is used for the sign
-    // extended index increment (18 bits).  (BUT if the JNX or JPX is
-    // deferred, the increment is not addded until PK3 so N is not
-    // changed during PK1).
-    pub fn impl_op_jpx_jnx<F: FnOnce(&Signed18Bit)->bool>(
-	&mut self,
-	predicate: F,
-	mem: &mut MemoryUnit,
-    ) -> Result<(), Alarm> {
-	let dismiss = !self.regs.n.is_held();
-	let j = self.regs.n.index_address();
-	let xj = self.regs.get_index_register(j);
-	let do_jump: bool = predicate(&xj);
-
-	// Compute the jump target (which possibly involves indexing)
-	// before modifying Xj.  See note 3 on page 3-27 of the User
-	// Handbook, which says
-	//
-	// The address of a deferred JNX or JPX is completely
-	// determined before the index register is changed.  Therefore
-	// a ⁻¹JPXₐ|ₐ S would jump to Sₐ as defined by the original
-	// contents of Xₐ - if it jumps at all.
-        let target: Address = self.resolve_operand_address(mem, Some(Unsigned6Bit::ZERO))?;
-	let cf: Signed5Bit = self.regs.n.configuration().reinterpret_as_signed();
-	let new_xj: Signed18Bit = xj.wrapping_add(Signed18Bit::from(cf));
-	self.regs.set_index_register(j, &new_xj);
-
-	if do_jump {
-            self.dismiss_unless_held();
-            self.regs.e = subword::join_halves(subword::left_half(self.regs.e),
-					       Unsigned18Bit::from(self.regs.p));
-            self.set_program_counter(ProgramCounterChange::Jump(target));
-	}
-        if dismiss {
-            if let Some(current_seq) = self.regs.k {
-                self.regs.flags.lower(&current_seq);
-		self.regs.current_sequence_is_runnable = false;
-            }
-        }
-        Ok(())
-     }
-
-    /// Implement the SKM instruction.  This has a number of
-    /// supernumerary mnemonics.  The index address field of the
-    /// instruction identifies which bit (within the target word) to
-    /// operate on, and the instruction configuration value determines
-    /// both how to manipulate that bit, and what to do on the basis
-    /// of its original value.
-    ///
-    /// The SKM instruction is documented on pages 7-34 and 7-35 of
-    /// the User Handbook.
-    pub fn op_skm(&mut self, mem: &mut MemoryUnit) -> Result<(), Alarm> {
-	let bit = index_address_to_bit_selection(self.regs.n.index_address());
-	// Determine the operand address; any initial deferred cycle
-	// must use 0 as the indexation, as the index address of the
-	// SKM instruction is used to identify the bit to operate on.
-	let target = self.resolve_operand_address(mem, Some(Unsigned6Bit::ZERO))?;
-	let cf: u8 = u8::from(self.regs.n.configuration());
-	let change: WordChange = WordChange {
-	    bit,
-	    bitop: match cf & 0b11 {
-		0b00 => None,
-		0b01 => Some(BitChange::Flip),
-		0b10 => Some(BitChange::Clear),
-		0b11 => Some(BitChange::Set),
-		_ => unreachable!(),
-	    },
-	    cycle: cf & 0b100 != 0,
-	};
-	let prev_bit_value: Option<bool> = match mem.change_bit(&target, &change) {
-	    Ok(prev) => prev,
-	    Err(MemoryOpFailure::NotMapped) => {
-		return Err(Alarm::QSAL(
-		    self.regs.n,
-		    target.into(),
-                    format!(
-			"SKM instruction attempted to access address {:o} but it is not mapped",
-			target,
-                    ),
-		));
-	    }
-	    Err(MemoryOpFailure::ReadOnly) => {
-		return Err(Alarm::QSAL(
-		    self.regs.n,
-		    target.into(),
-                    format!(
-			"SKM instruction attempted to modify (instruction configuration={:o}) a read-only location {:o}",
-			cf,
-			target,
-                    ),
-		));
-	    }
-	};
-	let skip: bool = if let Some(prevbit) = prev_bit_value {
-	    match (cf >> 3) & 3 {
-		0b00 => false,
-		0b01 => true,
-		0b10 => !prevbit,
-		0b11 => prevbit,
-		_ => unreachable!(),
-	    }
-	} else {
-	    // The index address specified a nonexistent bit
-	    // (e.g. 1.0) and so we do not perform a skip.
-	    false
-	};
-	// The location of the currently executing instruction is referred to by M4
-	// as '#'.  The next instruction would be '#+1' and that's where the P register
-	// currently points.  But "skip" means to set P=#+2.
-	if skip {
-	    self.set_program_counter(ProgramCounterChange::CounterUpdate);
-	}
-	Ok(())
-    }
-
-    pub fn op_spg(&mut self, mem: &mut MemoryUnit) -> Result<(), Alarm> {
-        let c = usize::from(self.regs.n.configuration());
-	let target = self.operand_address_with_optional_defer_and_index(mem)?;
-        let (word, _meta) = self.fetch_operand_from_address(mem, &target)?;
-	for (quarter_number, cfg_value) in subword::quarters(word).iter().enumerate() {
-	    self.regs.f_memory[c + quarter_number] = (*cfg_value).into();
-	}
-	Ok(())
-    }
 }
