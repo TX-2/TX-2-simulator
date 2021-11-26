@@ -2,5 +2,6 @@
 //! and the exchange unit.
 
 mod alarm;
+mod exchanger;
 mod memory;
 mod memorymap;
