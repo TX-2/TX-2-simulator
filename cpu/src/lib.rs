@@ -2,6 +2,7 @@
 //! and the exchange unit.
 
 mod alarm;
+mod control;
 mod exchanger;
 mod memory;
 mod memorymap;
