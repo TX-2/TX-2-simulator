@@ -5,4 +5,7 @@ members = [
 	# be shared for example between the emulator and a
 	# cross-assembler).
 	"base",
+
+	# cpu implements the cpu emulation itself.
+	"cpu",
 ]
