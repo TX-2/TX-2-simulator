@@ -8,4 +8,7 @@ members = [
 
 	# cpu implements the cpu emulation itself.
 	"cpu",
+
+	# cli provides a basic emulator suitable for running from the command-line.
+	"cli",
 ]
