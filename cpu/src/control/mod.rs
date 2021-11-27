@@ -12,6 +12,13 @@
 //! - Manage switching between sequences
 //! - Remember the setting of the TSP (Toggle Start Point) register
 
+mod op_configuration;
+mod op_index;
+mod op_io;
+mod op_jump;
+mod timing;
+mod trap;
+
 use base::instruction::{Inst, Instruction, Opcode, OperandAddress, SymbolicInstruction};
 use base::prelude::*;
 use base::subword;
@@ -30,10 +37,7 @@ use crate::memory::{
     self,
 };
 
-mod op_configuration;
-mod op_index;
-mod op_jump;
-mod timing;
+use trap::TrapCircuit;
 
 #[derive(Debug)]
 enum ProgramCounterChange {
@@ -291,26 +295,13 @@ impl ResetMode {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
-enum SetMetabit {
-    Never,
-    //ForcedNever,		// by console switch
-    Instructions,
-    DeferredAddresses,
-    Operands,
-}
-
-
 /// ControlUnit simulates the operation of the Control Element of the TX-2 computer.
 ///
 #[derive(Debug)]
 pub struct ControlUnit {
     regs: ControlRegisters,
     running: bool,
-    /// `trap_on_change_sequence` is described in Users Handbook
-    /// section 4-5 No. 42, Trapping.
-    trap_on_change_sequence: bool,
-    set_metabit_mode: SetMetabit,
+    trap: TrapCircuit,
 }
 
 fn sign_extend_index_value(index_val: &Signed18Bit) -> Unsigned36Bit {
@@ -327,9 +318,16 @@ impl ControlUnit {
         ControlUnit {
             regs: ControlRegisters::new(),
             running: false,
-            trap_on_change_sequence: false,
-            set_metabit_mode: SetMetabit::Never,
+	    trap: TrapCircuit::new(),
         }
+    }
+
+    pub fn set_metabits_disabled(&mut self, disable: bool) {
+	self.trap.set_metabits_disabled(disable);
+    }
+
+    pub fn disconnect_io_devices(&mut self) {
+	self.trap.disconnect().expect("failed to disconnect trap unit");
     }
 
     /// There are actually 9 different CODABO buttons (see page 5-18
@@ -351,9 +349,8 @@ impl ControlUnit {
         // so perhaps all the registers in V memory are cleared by
         // CODABO.
         //
-        // TODO: clear the "connected" ("C") flip-flops in the I/O
-        // system.
         println!("Starting CODABO {:?}", &reset_mode);
+	self.disconnect_io_devices();
         self.reset(reset_mode);
         self.regs.flags.lower_all();
 	self.regs.current_sequence_is_runnable = false;
@@ -396,6 +393,15 @@ impl ControlUnit {
         memory::STANDARD_PROGRAM_CLEAR_MEMORY
     }
 
+
+    fn trap_seq() -> Unsigned6Bit {
+	Unsigned6Bit::try_from(42).unwrap()
+    }
+
+    fn raise_trap(&mut self) {
+	self.regs.flags.raise(&Self::trap_seq());
+    }
+
     fn change_sequence(&mut self, prev_seq: Option<SequenceNumber>, mut next_seq: SequenceNumber) {
         // If the "Trap on Change Sequence" is enabled and the new
         // sequence is marked (bit 2.9 of its index register is set).
@@ -415,7 +421,7 @@ impl ControlUnit {
 	}
 
 	let trap_seq = Unsigned6Bit::try_from(42).unwrap();
-        let sequence_change_trap = self.trap_on_change_sequence
+        let sequence_change_trap = self.trap.trap_on_changed_sequence()
             && is_marked_placeholder(&self.regs.get_index_register(next_seq))
             && self.regs.k != Some(trap_seq)
             && next_seq > trap_seq;
@@ -543,12 +549,18 @@ impl ControlUnit {
 	self.set_program_counter(ProgramCounterChange::CounterUpdate);
 
 	// Actually fetch the instruction.
-	let meta_op = match self.set_metabit_mode {
-            SetMetabit::Instructions => MetaBitChange::Set,
-            _ => MetaBitChange::None,
+	let meta_op = if self.trap.set_metabits_of_instructions() {
+            MetaBitChange::Set
+	} else {
+	    MetaBitChange::None
         };
         let instruction_word = match mem.fetch(&p_physical_address, &meta_op) {
-            Ok((inst, _meta)) => inst,
+            Ok((inst, extra_bits)) => {
+		if extra_bits.meta && self.trap.trap_on_marked_instruction() {
+		    self.raise_trap();
+		}
+		inst
+	    }
             Err(e) => match e {
                 MemoryOpFailure::NotMapped => {
                     return Err(Alarm::PSAL(
@@ -622,6 +634,7 @@ impl ControlUnit {
 	    Opcode::Jnx => self.op_jnx(mem),
 	    Opcode::Skm => self.op_skm(mem),
 	    Opcode::Spg => self.op_spg(mem),
+	    Opcode::Ios => self.op_ios(),
             _ => Err(Alarm::ROUNDTUITAL(format!(
                 "The emulator does not yet implement opcode {}",
                 sym.opcode()
@@ -636,16 +649,22 @@ impl ControlUnit {
     }
 
     fn fetch_operand_from_address(
-        &self,
+        &mut self,
         mem: &mut MemoryUnit,
         operand_address: &Address,
     ) -> Result<(Unsigned36Bit, ExtraBits), Alarm> {
-        let meta_op: MetaBitChange = match self.set_metabit_mode {
-            SetMetabit::Operands => MetaBitChange::Set,
-            _ => MetaBitChange::None,
+        let meta_op: MetaBitChange = if self.trap.set_metabits_of_operands() {
+            MetaBitChange::Set
+	} else {
+	    MetaBitChange::None
         };
         match mem.fetch(operand_address, &meta_op) {
-            Ok((word, extra_bits)) => Ok((word, extra_bits)),
+            Ok((word, extra_bits)) => {
+		if extra_bits.meta && self.trap.trap_on_operand() {
+		    self.raise_trap();
+		}
+		Ok((word, extra_bits))
+	    }
             Err(MemoryOpFailure::NotMapped) => Err(Alarm::QSAL(
 		self.regs.n,
                 Unsigned36Bit::from(*operand_address),
@@ -705,7 +724,7 @@ impl ControlUnit {
     fn resolve_operand_address(
         self: &mut ControlUnit,
         mem: &mut MemoryUnit,
-	mut initial_index_override: Option<Unsigned6Bit>,
+	initial_index_override: Option<Unsigned6Bit>,
     ) -> Result<Address, Alarm> {
 	// The deferred addressing process may be performed more than
 	// once, in other words it is a loop.  This is explained in
@@ -728,14 +747,14 @@ impl ControlUnit {
 	    // when no deferred address cycles are called for.  When
 	    // PI¹₂, the input to the X Adder from the N₂.₉ position
 	    // is forced to appear as a ZERO.
-
             println!(
 		"deferred addressing: deferred address is {:o}",
 		&physical
             );
-            let meta_op = match self.set_metabit_mode {
-		SetMetabit::DeferredAddresses => MetaBitChange::Set,
-		_ => MetaBitChange::None,
+            let meta_op = if self.trap.set_metabits_of_deferred_addresses() {
+		MetaBitChange::Set
+	    } else {
+		MetaBitChange::None
             };
             let fetched = match mem.fetch(&physical, &meta_op) {
                 Err(e) => {
@@ -745,7 +764,11 @@ impl ControlUnit {
 			format!("address {:#o} out of range while fetching deferred address: {}", &physical, e),
 		    ));
                 }
-                Ok((word, _meta)) => {
+                Ok((word, extra)) => {
+		    if extra.meta && self.trap.trap_on_deferred_address() {
+			self.raise_trap();
+		    }
+
 		    // I think it's likely that the TX2 should perform
 		    // indexation on deferred addreses.  This idea is
 		    // based on the fact that the left subword of
@@ -782,11 +805,7 @@ impl ControlUnit {
 	// for the IndexBy trait).
 	let j = match initial_index_override {
 	    None => self.regs.n.index_address(),
-	    Some(overridden) => {
-		let j = overridden;
-		initial_index_override = None;
-		j
-	    },
+	    Some(overridden) => overridden,
 	};
 	let delta = self.regs.get_index_register(j); // this is Xj.
 
