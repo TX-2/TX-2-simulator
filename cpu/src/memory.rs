@@ -92,7 +92,8 @@ impl WordChange {
 	} else if self.bitop.is_none() {
 	    false
 	} else {
-	    // Only bit positions 1-9 (normal bits) and 10 (meta) are modifiable.
+	    // Only bit positions 1-9 (normal bits) and 10 (meta) are
+	    // modifiable.
 	    !matches!(self.bit, BitSelector { quarter: _, bitpos: 0|11|12 })
 	}
     }
