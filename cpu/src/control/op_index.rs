@@ -17,8 +17,10 @@ use crate::control::{
     sign_extend_index_value,
     ProgramCounterChange,
 };
-use crate::memory::MemoryUnit;
-use crate::memorymap::MetaBitChange;
+use crate::memory::{
+    MemoryUnit,
+    MetaBitChange,
+};
 
 /// ## "Index Register Class" opcodes
 ///

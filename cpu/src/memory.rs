@@ -23,10 +23,115 @@
 ///   Readable via the SKM instruction.  The emulator behaves as if
 ///   parity errors never occur.
 ///
-use std::fmt::{self, Debug, Formatter};
+use std::error;
+use std::fmt::{self, Debug, Display, Formatter};
 
-use crate::memorymap::*;
 use base::prelude::*;
+
+pub const S_MEMORY_START: u32 = 0o0000000;
+pub const S_MEMORY_SIZE: u32 = 1 + 0o0177777;
+pub const T_MEMORY_START: u32 = 0o0200000;
+pub const T_MEMORY_SIZE: u32 = 1 + 0o0207777 - 0o0200000;
+pub const U_MEMORY_START: u32 = 0o0210000;
+pub const U_MEMORY_SIZE: u32 = 1 + 0o0217777 - 0o0210000;
+pub const V_MEMORY_START: u32 = 0o0377600;
+pub const V_MEMORY_SIZE: u32 = 1 + 0o0377777 - 0o0377600;
+
+pub const STANDARD_PROGRAM_CLEAR_MEMORY: Address = Address::MAX.and(0o0377770_u32);
+
+#[derive(Debug)]
+pub enum MemoryOpFailure {
+    NotMapped,
+
+    // I have no idea whether the real TX-2 alarmed on writes to
+    // things that aren't really writeable (e.g. shaft encoder
+    // registers).  But by implemeting this we may be able to answer
+    // that question if some real (recovered) program writes to a
+    // location we assumed would be read-only.
+    ReadOnly,
+}
+
+impl Display for MemoryOpFailure {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        f.write_str(match self {
+            MemoryOpFailure::NotMapped => "address is not mapped to functioning memory",
+            MemoryOpFailure::ReadOnly => "address is mapped to read-only memory",
+        })
+    }
+}
+
+impl error::Error for MemoryOpFailure {}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum MetaBitChange {
+    None,
+    Set,
+}
+
+// Clear,
+// Flip,			// not used for fetch/store
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum BitChange {
+    Clear,
+    Set,
+    Flip
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct WordChange {
+    pub bit: BitSelector,
+    pub bitop: Option<BitChange>,
+    pub cycle: bool,
+}
+
+impl WordChange {
+    pub fn will_mutate_memory(&self) -> bool {
+	if self.cycle {
+	    true
+	} else if self.bitop.is_none() {
+	    false
+	} else {
+	    match self.bit {
+		BitSelector { quarter: _, bitpos: 0 } => false,
+		// bit positions 11 and 12 are parity and computed
+		// parity which we cannot change.
+		BitSelector { quarter: _, bitpos: 11|12 } => false,
+		_ => true,
+	    }
+	}
+    }
+}
+
+pub trait MemoryMapped {
+    // Fetch a word.
+    fn fetch(
+        &mut self,
+        addr: &Address,
+        meta: &MetaBitChange,
+    ) -> Result<(Unsigned36Bit, ExtraBits), MemoryOpFailure>;
+
+    // Store a word.
+    fn store(
+        &mut self,
+        addr: &Address,
+        value: &Unsigned36Bit,
+        meta: &MetaBitChange,
+    ) -> Result<(), MemoryOpFailure>;
+
+    // Mutate a bit in-place, returning its previous value.
+    fn change_bit(
+        &mut self,
+        addr: &Address,
+	op: &WordChange,
+    ) -> Result<Option<bool>, MemoryOpFailure>;
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct ExtraBits {
+    pub meta: bool,
+    pub parity: bool,
+}
 
 #[derive(Clone, Copy)]
 struct MemoryWord(u64); // Not public.

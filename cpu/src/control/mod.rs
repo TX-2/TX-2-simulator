@@ -21,10 +21,10 @@ use crate::exchanger::{
     exchanged_value,
     SystemConfiguration,
 };
-use crate::memory::MemoryUnit;
-use crate::memorymap::{
+use crate::memory::{
     ExtraBits,
     MemoryMapped,
+    MemoryUnit,
     MemoryOpFailure,
     MetaBitChange,
     self,
@@ -393,7 +393,7 @@ impl ControlUnit {
         // The operation of RESET (or CODABO) will copy this value
         // into the zeroth index register (which the program counter
         // placeholder for sequence 0).
-        memorymap::STANDARD_PROGRAM_CLEAR_MEMORY
+        memory::STANDARD_PROGRAM_CLEAR_MEMORY
     }
 
     fn change_sequence(&mut self, prev_seq: Option<SequenceNumber>, mut next_seq: SequenceNumber) {

@@ -6,10 +6,10 @@ use crate::control::{
     ControlUnit,
     ProgramCounterChange,
 };
-use crate::memory::MemoryUnit;
-use crate::memorymap::{
+use crate::memory::{
     BitChange,
     MemoryMapped,
+    MemoryUnit,
     MemoryOpFailure,
     WordChange,
 };

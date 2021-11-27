@@ -5,7 +5,6 @@ mod alarm;
 mod control;
 mod exchanger;
 mod memory;
-mod memorymap;
 
 pub use alarm::Alarm;
 pub use control::{ControlUnit, ResetMode};
