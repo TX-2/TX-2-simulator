@@ -54,7 +54,7 @@ impl ControlUnit {
             if j != 0 {
                 // Xj is fixed at 0.
                 let p = self.regs.p;
-                self.regs.set_index_register_from_address(j.into(), &p);
+                self.regs.set_index_register_from_address(j, &p);
             }
         }
 

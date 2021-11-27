@@ -200,7 +200,7 @@ macro_rules! assert_octal_eq {
 /// of the Technical Manual.
 fn permutation_source(permutation: &Permutation, target_quarter: u8) -> u8 {
     match permutation {
-        Permutation::P0 => (target_quarter + 0) % 4,
+        Permutation::P0 =>  target_quarter      % 4,
         Permutation::P1 => (target_quarter + 1) % 4,
         Permutation::P2 => (target_quarter + 2) % 4,
         Permutation::P3 => (target_quarter + 3) % 4,

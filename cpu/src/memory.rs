@@ -92,13 +92,8 @@ impl WordChange {
 	} else if self.bitop.is_none() {
 	    false
 	} else {
-	    match self.bit {
-		BitSelector { quarter: _, bitpos: 0 } => false,
-		// bit positions 11 and 12 are parity and computed
-		// parity which we cannot change.
-		BitSelector { quarter: _, bitpos: 11|12 } => false,
-		_ => true,
-	    }
+	    // Only bit positions 1-9 (normal bits) and 10 (meta) are modifiable.
+	    !matches!(self.bit, BitSelector { quarter: _, bitpos: 0|11|12 })
 	}
     }
 }
@@ -397,9 +392,7 @@ impl MemoryMapped for MemoryUnit {
             }
         }
         match self.access(&MemoryAccess::Read, addr) {
-            Err(e) => {
-                return Err(e);
-            }
+            Err(e) => Err(e),
 	    Ok(None) => unreachable!(),
             Ok(Some(mem_word)) => {
                 let result = mem_word.into();

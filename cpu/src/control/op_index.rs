@@ -64,10 +64,10 @@ impl ControlUnit {
             0o0 | 0o10 => {
                 if j != 0 {
                     // Xj is fixed at 0.
-                    self.regs.set_index_register(j.into(), &operand.reinterpret_as_signed());
+                    self.regs.set_index_register(j, &operand.reinterpret_as_signed());
                 }
                 if j & 0o10 != 0 {
-                    self.regs.flags.raise(&j.into());
+                    self.regs.flags.raise(&j);
                 }
                 Ok(())
             }
@@ -75,7 +75,7 @@ impl ControlUnit {
                 if j != 0 {  // Xj is fixed at 0.
 		    // Calculate -T
 		    let t_negated = Signed18Bit::ZERO.wrapping_sub(operand.reinterpret_as_signed());
-                    self.regs.set_index_register(j.into(), &t_negated);
+                    self.regs.set_index_register(j, &t_negated);
                 }
                 Ok(())
 	    }

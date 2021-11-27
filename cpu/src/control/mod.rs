@@ -237,7 +237,7 @@ impl ControlRegisters {
 	let n = usize::from(n);
         assert_eq!(self.index_regs[0], 0);
         assert!(n < 0o100);
-        return self.index_regs[usize::from(n)];
+        self.index_regs[n]
     }
 
     fn get_index_register_as_address(&mut self, n: Unsigned6Bit) -> Address {
@@ -793,4 +793,10 @@ impl ControlUnit {
 	}
     }
 
+}
+
+impl Default for ControlUnit {
+    fn default() -> Self {
+        Self::new()
+    }
 }
