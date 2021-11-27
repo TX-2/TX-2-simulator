@@ -33,7 +33,7 @@ use crate::memory::{
 mod op_configuration;
 mod op_index;
 mod op_jump;
-
+mod timing;
 
 #[derive(Debug)]
 enum ProgramCounterChange {
@@ -584,32 +584,50 @@ impl ControlUnit {
         )
     }
 
+    fn estimate_execute_time_ns(&self, orig_inst: &Instruction) -> u64 {
+	let inst_from: Address = self.regs.p; // this is now P+1 but likely in the same memory type.
+	let defer_from: Option<Address> = match orig_inst.operand_address() {
+	    OperandAddress::Deferred(phys) => Some(phys),
+	    OperandAddress::Direct(_) => None,
+	};
+	let operand_from = match self.regs.n.operand_address() {
+	    OperandAddress::Deferred(phys) => Some(phys),
+	    OperandAddress::Direct(_) => None,
+	};
+	timing::estimate_instruction_ns(inst_from, orig_inst.opcode_number(), defer_from, operand_from)
+    }
+
     /// Execute the instruction in the N register (i.e. the
     /// instruction just fetched by fetch_instruction().  The P
-    /// register already points to the next instruction.
-    pub fn execute_instruction(&mut self, mem: &mut MemoryUnit) -> Result<(), Alarm> {
+    /// register already points to the next instruction.  Returns the
+    /// estimated number of nanoseconds needed to execute the
+    /// instruction.
+    pub fn execute_instruction(&mut self, mem: &mut MemoryUnit) -> Result<u64, Alarm> {
         let sym = match &self.regs.n_sym {
             None => return Err(self.invalid_opcode_alarm()),
             Some(s) => s,
         };
         println!("Executing instruction {}...", sym);
-        use Opcode::*;
+	// Execution of the instruction will change self.regs.n, but
+	// we want to preserve the original value so that we know
+	// whether the original version of the instruction used
+	// deferred addressing, since this affects our estimate of the
+	// execution time.
+	let saved_inst: Instruction = self.regs.n;
         match sym.opcode() {
-            Skx => self.op_skx(),
-            Dpx => self.op_dpx(mem),
-            Jmp => self.op_jmp(),
-	    Jpx => self.op_jpx(mem),
-	    Jnx => self.op_jnx(mem),
-	    Skm => self.op_skm(mem),
-	    Spg => self.op_spg(mem),
-            _ => {
-                return Err(Alarm::ROUNDTUITAL(format!(
-                    "The emulator does not yet implement opcode {}",
-                    sym.opcode()
-                )));
-            }
+            Opcode::Skx => self.op_skx(),
+            Opcode::Dpx => self.op_dpx(mem),
+            Opcode::Jmp => self.op_jmp(),
+	    Opcode::Jpx => self.op_jpx(mem),
+	    Opcode::Jnx => self.op_jnx(mem),
+	    Opcode::Skm => self.op_skm(mem),
+	    Opcode::Spg => self.op_spg(mem),
+            _ => Err(Alarm::ROUNDTUITAL(format!(
+                "The emulator does not yet implement opcode {}",
+                sym.opcode()
+            ))),
         }
-        //Ok(())
+	.map(|()| self.estimate_execute_time_ns(&saved_inst))
     }
 
     fn get_config(&self) -> SystemConfiguration {

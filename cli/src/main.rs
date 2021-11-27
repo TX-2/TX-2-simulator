@@ -1,13 +1,23 @@
 use cpu::{Alarm, ControlUnit, MemoryConfiguration, MemoryUnit, ResetMode};
 
 fn run_until_alarm(control: &mut ControlUnit, mem: &mut MemoryUnit) -> Result<(), Alarm> {
+    let mut elapsed_ns: u64 = 0;
     loop {
         if !control.fetch_instruction(mem)? {
             break;
         }
-        control.execute_instruction(mem)?;
+        elapsed_ns += match control.execute_instruction(mem) {
+	    Err(e) => {
+		println!("Alarm raised after {}ns", elapsed_ns);
+		return Err(e);
+	    }
+	    Ok(ns) => ns
+	};
     }
-    println!("machine is in limbo, terminating since there are no I/O devices yet");
+    println!(
+	"machine is in limbo after {}ns, terminating since there are no I/O devices yet",
+	elapsed_ns
+    );
     Ok(())
 }
 
