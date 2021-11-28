@@ -12,6 +12,8 @@
 //! - Manage switching between sequences
 //! - Remember the setting of the TSP (Toggle Start Point) register
 
+use tracing::{event, Level};
+
 mod op_configuration;
 mod op_index;
 mod op_io;
@@ -349,14 +351,14 @@ impl ControlUnit {
         // so perhaps all the registers in V memory are cleared by
         // CODABO.
         //
-        println!("Starting CODABO {:?}", &reset_mode);
+	event!(Level::INFO, "Starting CODABO {:?}", &reset_mode);
 	self.disconnect_io_devices();
         self.reset(reset_mode);
         self.regs.flags.lower_all();
 	self.regs.current_sequence_is_runnable = false;
         self.startover();
         // TODO: begin issuing clock cycles.
-        println!("After CODABO, control unit contains {:#?}", &self);
+	event!(Level::DEBUG, "After CODABO, control unit contains {:#?}", &self);
     }
 
     /// There are 9 separate RESET buttons, for 8 fixed addresses and
@@ -527,7 +529,7 @@ impl ControlUnit {
 		    }
 		}
 		Some(seq) => {
-                    println!("Highest-priority sequence is {}", seq);
+		    event!(Level::TRACE, "Highest-priority sequence is {}", seq);
                     if Some(seq) == self.regs.k {
 			// just carry on.
                     } else {
@@ -571,9 +573,9 @@ impl ControlUnit {
                 MemoryOpFailure::ReadOnly => unreachable!(),
             },
         };
-        println!(
-            "Fetched instruction {:?} from physical address {:?}",
-            instruction_word, p_physical_address
+	event!(Level::TRACE,
+               "Fetched instruction {:?} from physical address {:?}",
+               instruction_word, p_physical_address
         );
 	self.update_n_register(instruction_word)?;
 	Ok(true)		// not in Limbo (i.e. a sequence should run)
@@ -619,7 +621,7 @@ impl ControlUnit {
             None => return Err(self.invalid_opcode_alarm()),
             Some(s) => s,
         };
-        println!("Executing instruction {}...", sym);
+	event!(Level::DEBUG, "Executing instruction {}...", sym);
 	// Execution of the instruction will change self.regs.n, but
 	// we want to preserve the original value so that we know
 	// whether the original version of the instruction used
@@ -684,10 +686,10 @@ impl ControlUnit {
         value: &Unsigned36Bit,
         meta_op: &MetaBitChange,
     ) -> Result<(), Alarm> {
-	println!(
-	    "memory_store_without_exchange: write @{:>06o} <- {:o}",
-	    target,
-	    value,
+	event!(Level::TRACE,
+	       "memory_store_without_exchange: write @{:>06o} <- {:o}",
+	       target,
+	       value,
 	);
         mem.store(target, value, meta_op).map_err(|e| {
             Alarm::QSAL(
@@ -747,9 +749,9 @@ impl ControlUnit {
 	    // when no deferred address cycles are called for.  When
 	    // PI¹₂, the input to the X Adder from the N₂.₉ position
 	    // is forced to appear as a ZERO.
-            println!(
-		"deferred addressing: deferred address is {:o}",
-		&physical
+	    event!(Level::TRACE,
+		   "deferred addressing: deferred address is {:o}",
+		   &physical
             );
             let meta_op = if self.trap.set_metabits_of_deferred_addresses() {
 		MetaBitChange::Set
@@ -778,9 +780,10 @@ impl ControlUnit {
 		    // is therefore non-indexable except through
 		    // deferred addressing".
 		    let (left, right) = subword::split_halves(word);
-		    println!(
-			"deferred addressing: fetched full word is {:o},,{:o}; using {:o} as the final address",
-			&left, &right, &right);
+		    event!(Level::TRACE,
+			   "deferred addressing: fetched full word is {:o},,{:o}; using {:o} as the final address",
+			   &left, &right, &right,
+		    );
 		    Address::from(right)
                 }
 	    };

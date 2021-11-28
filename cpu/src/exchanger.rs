@@ -10,9 +10,11 @@
 //!
 //! The standard set-up of the F-memory is described in Table 7-2 of
 //! the User Guide.
-use base::prelude::*;
-
 use std::fmt::{self, Display, Formatter, Octal};
+
+use tracing::{event, Level};
+
+use base::prelude::*;
 
 // QuarterActivity has a 1 where a quarter is active (unlike the sense
 // in the configuration values, which are 0 for active).  Quarters in
@@ -157,9 +159,9 @@ impl SystemConfiguration {
         // 0010 means that quarters 4, 3 and 1 are active.
         let act_field: u16 = (!(u16::from(self.0) >> 3)) & 0b1111;
         let result = QuarterActivity::new(act_field as u8);
-        println!(
-            "active_quarters: system configuration {:>03o} -> result {:?}",
-            self, result
+	event!(Level::TRACE,
+               "active_quarters: system configuration {:>03o} -> result {:?}",
+               self, result
         );
         result
     }
@@ -799,7 +801,7 @@ mod tests {
                 let index = (i * 4) + quarter;
                 let value: u64 = u64::from(*spg_word) >> (quarter * 9);
                 let value: u16 = (value & 0o777) as u16;
-                println!("F-memory index {:>03o} = {:>03o}", index, value);
+		event!(Level::TRACE, "F-memory index {:>03o} = {:>03o}", index, value);
                 result.push(value);
             }
         }
