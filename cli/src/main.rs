@@ -1,10 +1,17 @@
-use cpu::{Alarm, ControlUnit, MemoryConfiguration, MemoryUnit, ResetMode};
+use std::time::Duration;
 
 use tracing::{event, Level};
 use tracing_subscriber::prelude::*;
 
-fn run_until_alarm(control: &mut ControlUnit, mem: &mut MemoryUnit) -> Result<(), Alarm> {
+use cpu::{Alarm, BasicClock, Clock, ControlUnit, MemoryConfiguration, MemoryUnit, MinimalSleeper, ResetMode};
+
+fn run_until_alarm(
+    control: &mut ControlUnit,
+    mem: &mut MemoryUnit
+) -> Result<(), Alarm> {
     let mut elapsed_ns: u64 = 0;
+    let mut sleeper = MinimalSleeper::new(Duration::from_millis(2));
+    let mut clk = BasicClock::new(1.0).expect("reasonable clock config");
     loop {
         if !control.fetch_instruction(mem)? {
             break;
@@ -14,22 +21,28 @@ fn run_until_alarm(control: &mut ControlUnit, mem: &mut MemoryUnit) -> Result<()
 		event!(Level::INFO, "Alarm raised after {}ns", elapsed_ns);
 		return Err(e);
 	    }
-	    Ok(ns) => ns
+	    Ok(ns) => {
+		let delay = clk.consume(&Duration::from_nanos(ns));
+		sleeper.sleep(&delay);
+		ns
+	    }
 	};
     }
     event!(Level::INFO, "Stopped after {}ns", elapsed_ns);
     Ok(())
 }
 
-fn run(control: &mut ControlUnit, mem: &mut MemoryUnit) {
+fn run(control: &mut ControlUnit, mem: &mut MemoryUnit) -> i32 {
     control.codabo(&ResetMode::ResetTSP);
     if let Err(e) = run_until_alarm(control, mem) {
         event!(Level::ERROR, "Execution stopped: {}", e);
+	1
     } else {
 	event!(
 	    Level::INFO,
 	    "machine is in limbo, terminating since there are no I/O devices yet",
 	);
+	0
     }
 }
 
@@ -60,5 +73,5 @@ fn main() {
     let mut control = ControlUnit::new();
     event!(Level::DEBUG, "Initial control unit state iis {:?}", &control);
     let mut mem = MemoryUnit::new(&mem_config);
-    run(&mut control, &mut mem);
+    std::process::exit(run(&mut control, &mut mem));
 }

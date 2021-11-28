@@ -18,7 +18,7 @@ mod op_configuration;
 mod op_index;
 mod op_io;
 mod op_jump;
-mod timing;
+pub mod timing;
 mod trap;
 
 use base::instruction::{Inst, Instruction, Opcode, OperandAddress, SymbolicInstruction};
