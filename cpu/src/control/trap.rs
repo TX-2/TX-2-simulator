@@ -7,44 +7,44 @@ use crate::alarm::Alarm;
 
 #[derive(Debug)]
 pub struct TrapCircuit {
-    mode: Unsigned18Bit,
+    mode: Unsigned12Bit,
     set_metabits_disabled: bool,
 }
 
 impl TrapCircuit {
     /// When this bit is set in `mode`, fetching an instruction word
     /// whose metabit is set causes a trap to occur.
-    const TRAP_ON_MARKED_INSTRUCTION: Unsigned18Bit = Unsigned18Bit::MAX.and(0o000_001_u32);
+    const TRAP_ON_MARKED_INSTRUCTION: Unsigned12Bit = Unsigned12Bit::MAX.and(0o000_001_u16);
 
     /// When this bit is set in `mode`, an instruction cycle which
     /// uses a marked deferred address causes the TRAP flag to be
     /// raised.
-    const TRAP_ON_DEFERRED_ADDRESS: Unsigned18Bit = Unsigned18Bit::MAX.and(0o000_002_u32);
+    const TRAP_ON_DEFERRED_ADDRESS: Unsigned12Bit = Unsigned12Bit::MAX.and(0o000_002_u16);
 
     /// When this bit is set in `mode`, use of a marked operand causes
     /// the TRAP flag to be raised soon afterward (within a few
     /// instructions).
-    const TRAP_ON_OPERAND: Unsigned18Bit = Unsigned18Bit::MAX.and(0o000_004_u32);
+    const TRAP_ON_OPERAND: Unsigned12Bit = Unsigned12Bit::MAX.and(0o000_004_u16);
 
     /// When this bit is set, change of sequence number causes the
     /// TRAP flag to be raised.  Change of sequence away from sequence
     /// 0o42 (the TRAP sequence itself) does not cause the flag to be
     /// raised).
-    const TRAP_ON_CHANGED_SEQUENCE: Unsigned18Bit = Unsigned18Bit::MAX.and(0o000_010_u32);
+    const TRAP_ON_CHANGED_SEQUENCE: Unsigned12Bit = Unsigned12Bit::MAX.and(0o000_010_u16);
 
     /// When this bit is set, fetching an instruction from a memory
     /// word causes the meta bit of that word to be set.
-    const SET_METABITS_OF_INSTRUCTIONS: Unsigned18Bit = Unsigned18Bit::MAX.and(0o000_100_u32);
+    const SET_METABITS_OF_INSTRUCTIONS: Unsigned12Bit = Unsigned12Bit::MAX.and(0o000_100_u16);
 
     /// When this bit is set, the metabit of all deferred addresses used will be set.
-    const SET_METABITS_OF_DEFERRED_ADDRESSES: Unsigned18Bit = Unsigned18Bit::MAX.and(0o000_200_u32);
+    const SET_METABITS_OF_DEFERRED_ADDRESSES: Unsigned12Bit = Unsigned12Bit::MAX.and(0o000_200_u16);
 
     /// When this bit is set, the metabits of memory words containing operands will be set.
-    const SET_METABITS_OF_OPERANDS: Unsigned18Bit = Unsigned18Bit::MAX.and(0o000_400_u32);
+    const SET_METABITS_OF_OPERANDS: Unsigned12Bit = Unsigned12Bit::MAX.and(0o000_400_u16);
 
     pub const fn new() -> TrapCircuit {
 	TrapCircuit {
-	    mode: Unsigned18Bit::ZERO,
+	    mode: Unsigned12Bit::ZERO,
 	    set_metabits_disabled: false,
 	}
     }
@@ -57,7 +57,7 @@ impl TrapCircuit {
     /// Connect the TRAP unit and set the software mode (which can
     /// enable setting of metabits, assuming the hardware switch
     /// setting permits it).
-    pub fn connect(&mut self, mode: &Unsigned18Bit) -> Result<(), Alarm> {
+    pub fn connect(&mut self, mode: &Unsigned12Bit) -> Result<(), Alarm> {
 	self.mode = *mode;
 	Ok(())
     }

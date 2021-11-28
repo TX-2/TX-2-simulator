@@ -30,6 +30,9 @@ use crate::exchanger::{
     exchanged_value,
     SystemConfiguration,
 };
+use crate::io::{
+    DeviceManager
+};
 use crate::memory::{
     ExtraBits,
     MemoryMapped,
@@ -110,6 +113,11 @@ impl SequenceFlags {
     fn raise(&mut self, flag: &SequenceNumber) {
         assert!(u16::from(*flag) < 0o100_u16);
         self.flag_values |= SequenceFlags::flagbit(flag);
+    }
+
+    fn current_flag_state(&self, flag: &SequenceNumber) -> bool {
+        assert!(u16::from(*flag) < 0o100_u16);
+        self.flag_values | SequenceFlags::flagbit(flag) != 0
     }
 
     /// Return the index of the highest-priority (lowest-numbered)
@@ -304,6 +312,7 @@ pub struct ControlUnit {
     regs: ControlRegisters,
     running: bool,
     trap: TrapCircuit,
+    devices: DeviceManager,
 }
 
 fn sign_extend_index_value(index_val: &Signed18Bit) -> Unsigned36Bit {
@@ -321,6 +330,7 @@ impl ControlUnit {
             regs: ControlRegisters::new(),
             running: false,
 	    trap: TrapCircuit::new(),
+	    devices: DeviceManager::new(),
         }
     }
 
@@ -579,6 +589,48 @@ impl ControlUnit {
         );
 	self.update_n_register(instruction_word)?;
 	Ok(true)		// not in Limbo (i.e. a sequence should run)
+    }
+
+    pub fn poll_hardware(&mut self) -> Result<(), Alarm> {
+	let (mut raised_flags, alarm) = self.devices.poll();
+	// For each newly-raised flag, raise the flag in self.flags.
+	event!(
+	    Level::TRACE,
+	    "poll_hardware: there are {} new flag raises",
+	    raised_flags.count_ones(),
+	);
+	for bitpos in 0.. {
+	    if raised_flags == 0 {
+		break;
+	    }
+	    let mask = 1_u64 << bitpos;
+	    if raised_flags & mask != 0 {
+		match SequenceNumber::try_from(bitpos) {
+		    Ok(unit) => {
+			self.regs.flags.raise(&unit);
+		    }
+		    Err(_) => {
+			break;
+		    }
+		}
+	    }
+	    raised_flags &= !mask;
+	}
+
+	// If a device raised an alarm, generate that alarm now.  This
+	// alarm was not an error return from the poll() method,
+	// because we needed to ensure that all flag raised were
+	// processed.
+	if let Some(active) = alarm {
+	    event!(
+		Level::INFO,
+		"poll_hardware: an alarm is active: {:?}",
+		active
+	    );
+	    Err(active)
+	} else {
+	    Ok(())
+	}
     }
 
     fn update_n_register(&mut self, instruction_word: Unsigned36Bit) -> Result<(), Alarm> {

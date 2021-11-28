@@ -5,6 +5,7 @@
 mod alarm;
 mod control;
 mod exchanger;
+mod io;
 mod memory;
 
 pub use alarm::Alarm;

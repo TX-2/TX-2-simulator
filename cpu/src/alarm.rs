@@ -13,7 +13,10 @@ pub enum Alarm {
     QSAL(Instruction, Unsigned36Bit, String), // Q register (i.e. data fetch address) is set to illegal address
     ROUNDTUITAL(String),                      // Something is not implemented
     // I/O Alarm in IOS instruction; device broken/maintenance/nonexistent.
-    IOSAL{unit: Unsigned6Bit, operand: Unsigned18Bit, message: String},
+    IOSAL{unit: Unsigned6Bit, operand: Option<Unsigned18Bit>, message: String},
+
+    // Missed-data alarm.
+    MISAL {unit: Unsigned6Bit }, // Program too slow for I/O device.
 }
 
 impl Display for Alarm {
@@ -55,10 +58,19 @@ impl Display for Alarm {
 	    IOSAL { unit, operand, message } => {
 		write!(
 		    f,
-		    "IOSAL: I/O alarm during operation on unit {} with operand {}: {}",
+		    "IOSAL: I/O alarm during operation on unit {}",
 		    unit,
-		    operand,
-		    message,
+		)?;
+		if let Some(oper) = operand {
+		    write!(f, " with operand {}", oper)?;
+		}
+		write!(f, ": {}", message)
+	    }
+	    MISAL { unit } => {
+		write!(
+		    f,
+		    "MISAL: program too slow; missed data on unit {}",
+		    unit,
 		)
 	    }
         }
@@ -69,7 +81,6 @@ impl Error for Alarm {}
 
 // Alarm conditions we expect to use in the emulator but
 // which are not in use yet:
-// MISAL,			// Program too slow for I/O device.
 // SYAL1,                       // Sync alarm 1 (see User Handbook page 5-21)
 // SYAL2,                       // Sync alarm 2 (see User Handbook page 5-21)
 

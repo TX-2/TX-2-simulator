@@ -13,6 +13,7 @@ fn run_until_alarm(
     let mut sleeper = MinimalSleeper::new(Duration::from_millis(2));
     let mut clk = BasicClock::new(1.0).expect("reasonable clock config");
     loop {
+	control.poll_hardware()?; // check for I/O alarms, flag changes.
         if !control.fetch_instruction(mem)? {
             break;
         }

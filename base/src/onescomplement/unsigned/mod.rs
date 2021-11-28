@@ -576,6 +576,25 @@ impl From<Unsigned9Bit> for Unsigned12Bit {
     }
 }
 
+impl TryFrom<Unsigned18Bit> for Unsigned12Bit {
+    type Error = ConversionFailed;
+    fn try_from(n: Unsigned18Bit) -> Result<Self, ConversionFailed> {
+	match u16::try_from(n.bits) {
+	    Ok(n) => {
+		if n > Self::VALUE_BITS {
+		    Err(ConversionFailed::TooLarge)
+		} else {
+		    Ok(Self {
+			bits: n,
+		    })
+		}
+	    }
+	    Err(_) => Err(ConversionFailed::TooLarge),
+	}
+    }
+}
+
+
 ////////////////////////////////////////////////////////////////////////
 // Unsigned18Bit
 ////////////////////////////////////////////////////////////////////////
@@ -635,6 +654,7 @@ impl TryFrom<Unsigned36Bit> for Unsigned6Bit {
 	}
     }
 }
+
 impl From<Unsigned5Bit> for Unsigned36Bit {
     fn from(n: Unsigned5Bit) -> Self {
         Self {
@@ -643,8 +663,24 @@ impl From<Unsigned5Bit> for Unsigned36Bit {
     }
 }
 
+impl From<Unsigned6Bit> for Unsigned36Bit {
+    fn from(n: Unsigned6Bit) -> Self {
+        Self {
+            bits: n.bits.into(),
+        }
+    }
+}
+
 impl From<Unsigned9Bit> for Unsigned36Bit {
     fn from(n: Unsigned9Bit) -> Self {
+        Self {
+            bits: n.bits.into(),
+        }
+    }
+}
+
+impl From<Unsigned12Bit> for Unsigned36Bit {
+    fn from(n: Unsigned12Bit) -> Self {
         Self {
             bits: n.bits.into(),
         }
