@@ -22,3 +22,30 @@ cargo run
 ```
 
 This will build the code (if necessary) and then run it.
+
+
+### Getting More Detail on the Internals
+
+Right now the simulator doesn't have enough I/O support to be usable
+interactively, and only implements enough instructions to get part-way
+through the boot process.  So there is not much to see, yet.
+
+If you do want to see more detail, you can get it by setting the
+`RUST_LOG` environment variable when you run the code:
+
+```
+RUST_LOG=debug cargo run
+```
+
+For even more detail:
+
+```
+RUST_LOG=trace cargo run
+```
+
+Full details on how to configure the logging output are in the
+[documentation for the tracing-subscriber
+crate](https://docs.rs/tracing-subscriber/0.2.25/tracing_subscriber/filter/struct.EnvFilter.html),
+though the [analogous docmenation for
+env_logger](https://docs.rs/env_logger/0.7.1/env_logger/#enabling-logging)
+is probably more accessible.
