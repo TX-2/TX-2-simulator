@@ -1,0 +1,14 @@
+[workspace]
+
+members = [
+	# base includes a representation for instructions (which could
+	# be shared for example between the emulator and a
+	# cross-assembler).
+	"base",
+
+	# cpu implements the cpu emulation itself.
+	"cpu",
+
+	# cli provides a basic emulator suitable for running from the command-line.
+	"cli",
+]
