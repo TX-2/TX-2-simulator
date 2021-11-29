@@ -1,4 +1,8 @@
-//! Input/Output.
+//! This module simulates the CPU behaviours which relate to I/O
+//! devices (connect/disconnect, the ways the IOS and TSD instructions
+//! with devices).
+//!
+//! ## Report Word
 //!
 //! The Report word of I/O units looks like this:
 //!
@@ -7,6 +11,30 @@
 //! | 3.7-4.9            | 3.1-3.6         | 2.9   | 2.8   | 2.7    | 2.6       | 2.5   | 2.4    | 1.1-2.3 |
 //! | (12 bits)          | (6 bits)        |(1 bit)|(1 bit)|(1 bit )| (1 bit)   |(1 bit)|(1 bit) |(12 bits)|
 //!
+//!
+//! ## Sequence Number Assignments
+//! 0: Sequence which is run to start the computer (e.g. when "CODABO"
+//! or "START OVER" is pressed).
+//!
+//! 41: Handles various I/O alarm conditions.
+//! 42: Handles various trap conditions (see Users Handbook page 42).
+//! 47: Handles miscellaneous inputs
+//! 50: DATRAC (A/D converter)
+//! 51: Xerox printer
+//! 52: PETR (paper tape reader)
+//! 54: Interval timer
+//! 55: Light pen
+//! 60: Oscilloscope display
+//! 61: RNG
+//! 63: Punch
+//! 65: Lincoln Writer input
+//! 66: Lincoln Writer output
+//! 71: Lincoln Writer input
+//! 72: Lincoln Writer output
+//! 75: Misc output
+//! 76: Not for physical devices.
+//! 77: Not for physical devices.
+
 
 use std::collections::BTreeMap;
 use std::fmt::{self, Debug, Display, Formatter};

@@ -54,34 +54,15 @@ enum ProgramCounterChange {
 /// Flags represent requests to run for instruction sequences (today
 /// one might describe these as threads).  Some sequences are special:
 ///
-/// 0: Sequence which is run to start the computer (e.g. when "CODABO"
-/// or "START OVER" is pressed).
-///
-/// 41: Handles various I/O alarm conditions.
-/// 42: Handles various trap conditions (see Users Handbook page 42).
-/// 47: Handles miscellaneous inputs
-/// 50: DATRAC (A/D converter)
-/// 51: Xerox printer
-/// 52: PETR (paper tape reader)
-/// 54: Interval timer
-/// 55: Light pen
-/// 60: Oscilloscope display
-/// 61: RNG
-/// 63: Punch
-/// 65: Lincoln Writer input
-//  66: Lincoln Writer output
-/// 71: Lincoln Writer input
-/// 72: Lincoln Writer output
-/// 75: Misc output
-/// 76: Not for physical devices.
-/// 77: Not for physical devices.
+/// | Sequence Number | Description |
+/// | --------------- | ----------- |
+/// | 0   | Sequence which is run to start the computer (e.g. when "CODABO" or "START OVER" is pressed).                             |
+/// |41-75| hardware devices          |
+/// | 76  | Not for physical devices. |
+/// | 77  | Not for physical devices. |
 ///
 /// The flag for sequences 76 and 77 may only be raised/lowered by
 /// program control.
-///
-/// The standard readin program executes the program it read in from
-/// the address specified by the program.  The program executes as
-/// sequence 52 (PETR) with the PETR unit initially turned off.
 ///
 #[derive(Debug)]
 struct SequenceFlags {
@@ -343,13 +324,24 @@ impl ControlUnit {
     }
 
     /// There are actually 9 different CODABO buttons (see page 5-18
-    /// of the User Guide).  and 9 different RESET buttons.
-    /// Each RESET button has a corresponding CODABO button.
+    /// of the User Guide).  There are also 9 corresponding RESET
+    /// buttons.  Each RESET button has a corresponding CODABO button.
     /// See the `reset` method for address assignments.
     ///
     /// The CODABO operation leaves the Start Point Register set to
     /// the selected start point.  There are also 9 reset buttons
     /// which perform a similar task.
+    ///
+    /// Pressing the main CODABO button (the one which uses the Toggle
+    /// Start Point register) will result in memory being cleared,
+    /// F-memory being set up in a standard way, and then a program
+    /// being read from the paper tape reader using the standard
+    /// readin program set up on the plugboard.
+    ///
+    /// The standard readin program executes the program it read in
+    /// from the address specified by the program.  The program
+    /// executes as sequence 52 (PETR) with the PETR unit initially
+    /// turned off.
     pub fn codabo(&mut self, reset_mode: &ResetMode) {
         // TODO: clear alarms.
         // We probably don't need an equivalent of resetting the
@@ -392,7 +384,7 @@ impl ControlUnit {
         self.regs.flags.raise(&SequenceNumber::ZERO);
     }
 
-    /// Return the value in the Toggle Start Register.  It is likely
+    /// Return the value in the Toggle Start Register.  It is possible
     /// that this was memory-mapped in the real machine, but if that's
     /// the case the user guide doesn't specify where.  For now, we
     /// haven't made it configurable (i.e. have not emulated the
@@ -405,9 +397,8 @@ impl ControlUnit {
         memory::STANDARD_PROGRAM_CLEAR_MEMORY
     }
 
-
     fn trap_seq() -> Unsigned6Bit {
-	Unsigned6Bit::try_from(42).unwrap()
+	Unsigned6Bit::try_from(0o42).unwrap()
     }
 
     fn raise_trap(&mut self) {
@@ -417,11 +408,11 @@ impl ControlUnit {
     fn change_sequence(&mut self, prev_seq: Option<SequenceNumber>, mut next_seq: SequenceNumber) {
         // If the "Trap on Change Sequence" is enabled and the new
         // sequence is marked (bit 2.9 of its index register is set).
-        // Activate unit 42, unless that's the unit which is giving up
-        // control.
+        // Activate unit 0o42, unless that's the unit which is giving
+        // up control.
         //
         // I'm not sure what should happen for the alternative case,
-        // where a unit of higher priority than 42 is marked for
+        // where a unit of higher priority than 0o42 is marked for
         // trap-on-sequence-change.
         if prev_seq == Some(next_seq) {
             // TODO: log a warning event.
@@ -432,7 +423,7 @@ impl ControlUnit {
 	    index_val < &0
 	}
 
-	let trap_seq = Unsigned6Bit::try_from(42).unwrap();
+	let trap_seq = Self::trap_seq();
         let sequence_change_trap = self.trap.trap_on_changed_sequence()
             && is_marked_placeholder(&self.regs.get_index_register(next_seq))
             && self.regs.k != Some(trap_seq)

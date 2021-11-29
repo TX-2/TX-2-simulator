@@ -50,6 +50,8 @@ impl TrapCircuit {
     }
 
     /// Does nothing.
+    /// TODO: replace this and similar methods with an
+    /// implementation of the Unit trait.
     pub fn disconnect(&mut self) -> Result<(), Alarm> {
 	Ok(())
     }
