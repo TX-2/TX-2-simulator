@@ -37,10 +37,10 @@
 Is there any limit to the number of iterations of deferred address
 loads during deferred addressing?  That is, suppose memory contains
 
-	   |Address| Contents  |
-       |-------|-----------|
-       |0| 000  000 400 001|
-	   |1| 000  000 400 000|
+|Address| Contents  |
+|-------|-----------|
+|0| 000  000 400 001|
+|1| 000  000 400 000|
 
 Then, I use `[0]` (that is, address 0 in deferred mode) in an
 instruction, will the deferred adressing operation loop forever
