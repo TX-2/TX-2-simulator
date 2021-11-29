@@ -64,6 +64,10 @@
 
 1. The description of the audio system describes the existence of a
    microphone.   Can its signal be read by a program?
+2. Is there surviving documentation on the magnetic tape unit?  (It is
+   not included in the edition of the User Handbook I have).
+3. Is there surviving documentation on the plotter?  (It is
+   not included in the edition of the User Handbook I have).
 
 ## Assembly Source
 
