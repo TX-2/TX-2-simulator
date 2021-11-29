@@ -31,13 +31,23 @@
 11. Does indexation occur during the intermedia deferred addressing
     cycles?   What value is used (a value from the index register, or
     the left-hand-side of the word loaded from the deferred location)?
-12. Is there any limit to the number of iterations of deferred address
-    loads during deferred addressing?  That is, if memory contains
-		0: 000  000 400 001
-		1: 000  000 400 000
-    instruction and I use [0] in an instruction, will the deferred
-    adressing operation loop forever between addresses 0 and 1?
 
+### Deferred Addressing
+
+Is there any limit to the number of iterations of deferred address
+loads during deferred addressing?  That is, suppose memory contains
+
+	   |Address| Contents  |
+       |-------|-----------|
+       |0| 000  000 400 001|
+	   |1| 000  000 400 000|
+
+Then, I use `[0]` (that is, address 0 in deferred mode) in an
+instruction, will the deferred adressing operation loop forever
+between addresses 0 and 1?
+
+What use is made of the left halfword of the words loaded during
+deferred addressing?  Is this somehow used as an index value also?
 
 ## Instructions
 
