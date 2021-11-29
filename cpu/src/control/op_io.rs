@@ -4,6 +4,10 @@ use crate::alarm::Alarm;
 use crate::control::{
     ControlUnit,
 };
+use crate::io::{
+    FlagChange,
+    Unit,
+};
 
 impl ControlUnit {
     /// Implements the IOS opcode
@@ -64,31 +68,26 @@ impl ControlUnit {
     }
 
     fn connect_unit(&mut self, unit: Unsigned6Bit, mode: Unsigned12Bit) -> Result<(), Alarm> {
-	let result = match u8::from(unit) {
+	let maybe_flag_change: Option<FlagChange> = match u8::from(unit) {
 	    0o42 => {
-		self.trap.connect(&mode)?;
-		// I assume this is not an "output" unit so connecting
-		// it should not have the side effect of raising the
-		// flag.
-		Ok(false)	// not an input unit
+		self.trap.connect(mode);
+		None
 	    }
-	    _ => self.devices.connect(&unit, mode)
+	    _ => self.devices.connect(&unit, mode)?,
 	};
-	match result {
-	    Ok(true) => {
-		// must be an input unit.
+	match maybe_flag_change {
+	    Some(FlagChange::Raise) => {
 		self.regs.flags.raise(&unit);
-		Ok(())
 	    }
-	    Ok(false) => Ok(()),
-	    Err(e) => Err(e),
+	    None => (),
 	}
+	Ok(())
     }
 
     fn disconnect_unit(&mut self, unit: Unsigned6Bit) -> Result<(), Alarm> {
 	match u8::from(unit) {
-	    0o42 => self.trap.disconnect(),
-	    _ => Err(Alarm::ROUNDTUITAL(format!("I/O unit {} is not yet implemented.", unit))),
+	    0o42 => Ok(()),
+	    _ => self.devices.disconnect(&unit),
 	}
     }
 }

@@ -320,7 +320,7 @@ impl ControlUnit {
     }
 
     pub fn disconnect_io_devices(&mut self) {
-	self.trap.disconnect().expect("failed to disconnect trap unit");
+	self.devices.disconnect_all();
     }
 
     /// There are actually 9 different CODABO buttons (see page 5-18

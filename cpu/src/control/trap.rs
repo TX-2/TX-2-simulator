@@ -1,9 +1,13 @@
 //! Emulates the trap circuit and I/O Unit 42.  See TX-2 User Handbook
 //! Chapter 4 section 42.
-
+use std::time::Duration;
 use base::prelude::*;
 
-use crate::alarm::Alarm;
+use crate::io::{
+    TransferFailed,
+    Unit,
+    UnitStatus,
+};
 
 #[derive(Debug)]
 pub struct TrapCircuit {
@@ -47,21 +51,6 @@ impl TrapCircuit {
 	    mode: Unsigned12Bit::ZERO,
 	    set_metabits_disabled: false,
 	}
-    }
-
-    /// Does nothing.
-    /// TODO: replace this and similar methods with an
-    /// implementation of the Unit trait.
-    pub fn disconnect(&mut self) -> Result<(), Alarm> {
-	Ok(())
-    }
-
-    /// Connect the TRAP unit and set the software mode (which can
-    /// enable setting of metabits, assuming the hardware switch
-    /// setting permits it).
-    pub fn connect(&mut self, mode: &Unsigned12Bit) -> Result<(), Alarm> {
-	self.mode = *mode;
-	Ok(())
     }
 
     /// Query the hardware switch setting which would disable all
@@ -118,5 +107,43 @@ impl TrapCircuit {
     /// raised).
     pub fn trap_on_changed_sequence(&self) -> bool {
 	self.mode & Self::TRAP_ON_CHANGED_SEQUENCE != 0
+    }
+}
+
+impl Unit for TrapCircuit {
+    fn poll(&self) -> UnitStatus {
+	UnitStatus {
+	    special: Unsigned12Bit::ZERO,
+	    change_flag: None,
+	    buffer_available_to_cpu: false,
+	    inability: false,
+	    missed_data: false,
+	    mode: self.mode,
+	    // The trap circuit does not need to be polled.
+	    poll_before: Duration::from_secs(60),
+	    // In truth, I don't know whether the trap unit is an
+	    // input unit or not.
+	    is_input_unit: true,
+	}
+    }
+
+    fn connect(&mut self, mode: Unsigned12Bit) {
+	self.mode = mode;
+    }
+
+    /// I don't know whether this is supposed to behave like an input
+    /// unit or an output unit.
+    fn read(&mut self, target: &mut Unsigned36Bit) -> Result<(), TransferFailed> {
+	Ok(())
+    }
+
+    /// I don't know whether this is supposed to behave like an input
+    /// unit or an output unit.
+    fn write(&mut self, source: Unsigned36Bit) -> Result<(), TransferFailed> {
+	Ok(())
+    }
+
+    fn name(&self) -> String {
+	"trap circuit".to_string()
     }
 }

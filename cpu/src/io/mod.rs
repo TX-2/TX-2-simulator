@@ -76,7 +76,7 @@ pub const IO_MASK_SPECIAL: Unsigned36Bit = Unsigned36Bit::MAX.and(  0o_777_700_0
 
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum FlagChange {
+pub enum FlagChange {
     Raise,
 }
 
@@ -84,19 +84,19 @@ enum FlagChange {
 /// word) with this struct.
 #[derive(Debug)]
 pub struct UnitStatus {
-    special: Unsigned12Bit,
-    change_flag: Option<FlagChange>,
-    buffer_available_to_cpu: bool,
-    inability: bool,
-    missed_data: bool,
-    mode: Unsigned12Bit,
+    pub special: Unsigned12Bit,
+    pub change_flag: Option<FlagChange>,
+    pub buffer_available_to_cpu: bool,
+    pub inability: bool,
+    pub missed_data: bool,
+    pub mode: Unsigned12Bit,
 
     /// Indicates that the unit wishes to be polled for its status
     /// before the indicated (simulated) duration has elapsed.
     pub poll_before: Duration,
 
     /// True for units which are input units.  Some devices (Lincoln
-    /// Writers for example) occupy two units, one for read (input)
+    /// Writers for example) occupy two units, one for read (input)o
     /// and the other for write (output).
     pub is_input_unit: bool,
 }
@@ -185,6 +185,10 @@ impl AttachedUnit {
 	} else {
 	    Ok(())
 	}
+    }
+
+    fn is_disconnected_output_unit(&self) -> bool {
+	(!self.is_input_unit) && (!self.connected)
     }
 }
 
@@ -283,12 +287,36 @@ impl DeviceManager {
 	(raised_flags, alarm)
     }
 
-    pub fn connect(&mut self, device: &Unsigned6Bit, mode: Unsigned12Bit) -> Result<bool, Alarm> {
+    pub fn disconnect_all(&mut self) {
+	for (_, attached) in self.devices.iter_mut() {
+	    attached.connected = false;
+	}
+    }
+
+    pub fn disconnect(&mut self, device: &Unsigned6Bit) -> Result<(), Alarm> {
 	match self.devices.get_mut(device) {
 	    Some(attached) => {
-		let was_already_connected: bool = attached.connected;
+		attached.connected = false;
+		Ok(())
+	    }
+	    None => Err(Alarm::IOSAL {
+		unit: *device,
+		operand: None,
+		message: format!("Attempt to disconnect missing unit {}", device),
+	    }),
+	}
+    }
+
+    pub fn connect(&mut self, device: &Unsigned6Bit, mode: Unsigned12Bit) -> Result<Option<FlagChange>, Alarm> {
+	match self.devices.get_mut(device) {
+	    Some(attached) => {
+		let flag_change = if attached.is_disconnected_output_unit() {
+		    Some(FlagChange::Raise)
+		} else {
+		    None
+		};
 		attached.inner.connect(mode);
-		Ok(was_already_connected)
+		Ok(flag_change)
 	    }
 	    None => Err(Alarm::IOSAL {
 		unit: *device,
