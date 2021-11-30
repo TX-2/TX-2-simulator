@@ -35,7 +35,6 @@
 //! 76: Not for physical devices.
 //! 77: Not for physical devices.
 
-
 use std::collections::BTreeMap;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::ops::Shl;
@@ -43,6 +42,13 @@ use std::time::Duration;
 
 use base::prelude::*;
 use crate::alarm::Alarm;
+
+mod dev_petr;
+
+pub use dev_petr::{
+    Petr,
+    TapeIterator,
+};
 
 /// The mode with which the unit is connected; specified with IOS command 0o3X_XXX.
 pub const IO_MASK_MODE: Unsigned36Bit = Unsigned36Bit::MAX.and(     0o_000_000_007_777);
@@ -138,6 +144,7 @@ pub enum TransferFailed {
     UnitInMaintenance,
     ReadOnWriteChannel,
     WriteOnReadChannel,
+    BufferNotFree,
 }
 
 impl Display for TransferFailed {
@@ -149,6 +156,7 @@ impl Display for TransferFailed {
 		TransferFailed::UnitInMaintenance => "unit in maintenance",
 		TransferFailed::ReadOnWriteChannel => "read on write-only unit",
 		TransferFailed::WriteOnReadChannel => "write on read-only unit",
+		TransferFailed::BufferNotFree => "Unit buffer not available for use by the CPU",
 	    }
 	)
     }

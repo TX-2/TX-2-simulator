@@ -32,7 +32,8 @@ use crate::exchanger::{
     SystemConfiguration,
 };
 use crate::io::{
-    DeviceManager
+    DeviceManager,
+    Unit,
 };
 use crate::memory::{
     ExtraBits,
@@ -315,6 +316,17 @@ impl ControlUnit {
 	    devices: DeviceManager::new(),
         }
     }
+
+    pub fn attach(
+	&mut self,
+	system_time: &Duration,
+	unit_number: Unsigned6Bit,
+	in_maintenance: bool,
+	unit: Box<dyn Unit>,
+    ) {
+	self.devices.attach(system_time, unit_number, in_maintenance, unit)
+    }
+
 
     pub fn set_metabits_disabled(&mut self, disable: bool) {
 	self.trap.set_metabits_disabled(disable);
