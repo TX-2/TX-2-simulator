@@ -393,6 +393,47 @@ from_self_to_native_type!(Signed9Bit, u16, i16, i64);
 try_from_self_to_native_type!(Signed9Bit, u16, i16, u64);
 
 ////////////////////////////////////////////////////////////////////////
+// Signed12Bit
+////////////////////////////////////////////////////////////////////////
+
+/// Signed counterpart of [`Unsigned12Bit`].
+#[derive(Clone, Copy)]
+pub struct Signed12Bit {
+    pub(crate) bits: u16,
+}
+
+signed_ones_complement_impl!(Signed12Bit, 12, u16, i16, Unsigned12Bit);
+
+// i8 -> Signed12Bit
+// u8 -> Signed12Bit
+from_native_type_to_self!(Signed12Bit, u16, i16, i8 u8);
+
+// i16 -> Signed12Bit
+// u16 -> Signed12Bit
+// i32 -> Signed12Bit
+// u32 -> Signed12Bit
+// i64 -> Signed12Bit
+// u64 -> Signed12Bit
+try_from_native_type_to_self!(Signed12Bit, u16, i16, i16 u16 i32 u32 i64 u64);
+
+// Signed12Bit -> i8
+// Signed12Bit -> u8
+try_from_self_to_native_type!(Signed12Bit, u16, i16, i8 u8);
+
+// Signed12Bit -> i16
+from_self_to_native_type!(Signed12Bit, u16, i16, i16);
+// Signed12Bit -> u16
+try_from_self_to_native_type!(Signed12Bit, u16, i16, u16);
+// Signed12Bit -> i32
+from_self_to_native_type!(Signed12Bit, u16, i16, i32);
+// Signed12Bit -> u32
+try_from_self_to_native_type!(Signed12Bit, u16, i16, u32);
+// Signed12Bit -> i64
+from_self_to_native_type!(Signed12Bit, u16, i16, i64);
+// Signed12Bit -> u64
+try_from_self_to_native_type!(Signed12Bit, u16, i16, u64);
+
+////////////////////////////////////////////////////////////////////////
 // Signed18Bit
 ////////////////////////////////////////////////////////////////////////
 

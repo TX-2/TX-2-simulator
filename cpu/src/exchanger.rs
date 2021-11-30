@@ -10,9 +10,11 @@
 //!
 //! The standard set-up of the F-memory is described in Table 7-2 of
 //! the User Guide.
-use base::prelude::*;
-
 use std::fmt::{self, Display, Formatter, Octal};
+
+use tracing::{event, Level};
+
+use base::prelude::*;
 
 // QuarterActivity has a 1 where a quarter is active (unlike the sense
 // in the configuration values, which are 0 for active).  Quarters in
@@ -157,9 +159,9 @@ impl SystemConfiguration {
         // 0010 means that quarters 4, 3 and 1 are active.
         let act_field: u16 = (!(u16::from(self.0) >> 3)) & 0b1111;
         let result = QuarterActivity::new(act_field as u8);
-        println!(
-            "active_quarters: system configuration {:>03o} -> result {:?}",
-            self, result
+	event!(Level::TRACE,
+               "active_quarters: system configuration {:>03o} -> result {:?}",
+               self, result
         );
         result
     }
@@ -175,14 +177,6 @@ impl SystemConfiguration {
         }
     }
 }
-
-/// The standard configuration set of F-memory, taken from table 7-2
-/// (marked "OLD") of the TX-2 User's Guide (October 1961).
-const STANDARD_CONFIG: [u16; 32] = [
-    0o000, 0o340, 0o342, 0o760, 0o761, 0o762, 0o763, 0o410, 0o411, 0o140, 0o142, 0o160, 0o161,
-    0o162, 0o163, 0o202, 0o200, 0o230, 0o232, 0o732, 0o733, 0o730, 0o731, 0o605, 0o600, 0o750,
-    0o670, 0o320, 0o333, 0o330, 0o331, 0o604,
-];
 
 #[cfg(test)]
 macro_rules! assert_octal_eq {
@@ -200,19 +194,6 @@ macro_rules! assert_octal_eq {
     }};
 }
 
-enum QuarterSource {
-    // In all cases where we perform sign extension, the sign bit we
-    // are extendng comes from an active subword.  This means that we
-    // never need to copy a result bit from one place in the result to
-    // another, because it can always be described as coming from the
-    // source.  This is useful for cases like system configuration
-    // 0o325, which is P5, ACT1, ACT3, subword form (18,18).  Here bit
-    // 1.9 is copied from 4.9 and then sign-extended through quarter
-    // 2.
-    UseSource(i8),
-    SignExtendOrUnchanged, // depending on subword form
-}
-
 /// Compute the quarter number (starting at 0) of the source word from
 /// which the values for `target_quarter` (also starting at 0) would
 /// be taken if it were active.
@@ -221,7 +202,7 @@ enum QuarterSource {
 /// of the Technical Manual.
 fn permutation_source(permutation: &Permutation, target_quarter: u8) -> u8 {
     match permutation {
-        Permutation::P0 => (target_quarter + 0) % 4,
+        Permutation::P0 =>  target_quarter      % 4,
         Permutation::P1 => (target_quarter + 1) % 4,
         Permutation::P2 => (target_quarter + 2) % 4,
         Permutation::P3 => (target_quarter + 3) % 4,
@@ -820,7 +801,7 @@ mod tests {
                 let index = (i * 4) + quarter;
                 let value: u64 = u64::from(*spg_word) >> (quarter * 9);
                 let value: u16 = (value & 0o777) as u16;
-                println!("F-memory index {:>03o} = {:>03o}", index, value);
+		event!(Level::TRACE, "F-memory index {:>03o} = {:>03o}", index, value);
                 result.push(value);
             }
         }
@@ -829,6 +810,14 @@ mod tests {
 
     #[test]
     fn test_system_configuration_standard_config() {
+	/// The standard configuration set of F-memory, taken from table 7-2
+	/// (marked "OLD") of the TX-2 User's Guide (October 1961).
+	const STANDARD_CONFIG: [u16; 32] = [
+	    0o000, 0o340, 0o342, 0o760, 0o761, 0o762, 0o763, 0o410, 0o411, 0o140, 0o142, 0o160, 0o161,
+	    0o162, 0o163, 0o202, 0o200, 0o230, 0o232, 0o732, 0o733, 0o730, 0o731, 0o605, 0o600, 0o750,
+	    0o670, 0o320, 0o333, 0o330, 0o331, 0o604,
+	];
+
         #[derive(Debug)]
         struct Expectation {
             config: Unsigned9Bit,
@@ -1099,7 +1088,7 @@ mod tests {
             );
         }
 
-        for (index, case) in cases.iter().enumerate() {
+        for case in cases.iter() {
             let sysconfig = SystemConfiguration(case.config);
             assert_eq!(
                 sysconfig.permutation(),

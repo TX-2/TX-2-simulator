@@ -12,6 +12,15 @@
 //! - Manage switching between sequences
 //! - Remember the setting of the TSP (Toggle Start Point) register
 
+use tracing::{event, Level};
+
+mod op_configuration;
+mod op_index;
+mod op_io;
+mod op_jump;
+pub mod timing;
+mod trap;
+
 use base::instruction::{Inst, Instruction, Opcode, OperandAddress, SymbolicInstruction};
 use base::prelude::*;
 use base::subword;
@@ -21,16 +30,19 @@ use crate::exchanger::{
     exchanged_value,
     SystemConfiguration,
 };
-use crate::memory::MemoryUnit;
-use crate::memorymap::{
-    BitChange,
+use crate::io::{
+    DeviceManager
+};
+use crate::memory::{
     ExtraBits,
     MemoryMapped,
+    MemoryUnit,
     MemoryOpFailure,
     MetaBitChange,
-    WordChange,
     self,
 };
+
+use trap::TrapCircuit;
 
 #[derive(Debug)]
 enum ProgramCounterChange {
@@ -42,34 +54,15 @@ enum ProgramCounterChange {
 /// Flags represent requests to run for instruction sequences (today
 /// one might describe these as threads).  Some sequences are special:
 ///
-/// 0: Sequence which is run to start the computer (e.g. when "CODABO"
-/// or "START OVER" is pressed).
-///
-/// 41: Handles various I/O alarm conditions.
-/// 42: Handles various trap conditions (see Users Handbook page 42).
-/// 47: Handles miscellaneous inputs
-/// 50: DATRAC (A/D converter)
-/// 51: Xerox printer
-/// 52: PETR (paper tape reader)
-/// 54: Interval timer
-/// 55: Light pen
-/// 60: Oscilloscope display
-/// 61: RNG
-/// 63: Punch
-/// 65: Lincoln Writer input
-//  66: Lincoln Writer output
-/// 71: Lincoln Writer input
-/// 72: Lincoln Writer output
-/// 75: Misc output
-/// 76: Not for physical devices.
-/// 77: Not for physical devices.
+/// | Sequence Number | Description |
+/// | --------------- | ----------- |
+/// | 0   | Sequence which is run to start the computer (e.g. when "CODABO" or "START OVER" is pressed).                             |
+/// |41-75| hardware devices          |
+/// | 76  | Not for physical devices. |
+/// | 77  | Not for physical devices. |
 ///
 /// The flag for sequences 76 and 77 may only be raised/lowered by
 /// program control.
-///
-/// The standard readin program executes the program it read in from
-/// the address specified by the program.  The program executes as
-/// sequence 52 (PETR) with the PETR unit initially turned off.
 ///
 #[derive(Debug)]
 struct SequenceFlags {
@@ -95,12 +88,17 @@ impl SequenceFlags {
 
     fn lower(&mut self, flag: &SequenceNumber) {
         assert!(u16::from(*flag) < 0o100_u16);
-        self.flag_values = self.flag_values & !SequenceFlags::flagbit(flag);
+        self.flag_values &= !SequenceFlags::flagbit(flag);
     }
 
     fn raise(&mut self, flag: &SequenceNumber) {
         assert!(u16::from(*flag) < 0o100_u16);
-        self.flag_values = self.flag_values | SequenceFlags::flagbit(flag);
+        self.flag_values |= SequenceFlags::flagbit(flag);
+    }
+
+    fn current_flag_state(&self, flag: &SequenceNumber) -> bool {
+        assert!(u16::from(*flag) < 0o100_u16);
+        self.flag_values | SequenceFlags::flagbit(flag) != 0
     }
 
     /// Return the index of the highest-priority (lowest-numbered)
@@ -234,7 +232,7 @@ impl ControlRegisters {
 	let n = usize::from(n);
         assert_eq!(self.index_regs[0], 0);
         assert!(n < 0o100);
-        return self.index_regs[usize::from(n)];
+        self.index_regs[n]
     }
 
     fn get_index_register_as_address(&mut self, n: Unsigned6Bit) -> Address {
@@ -288,23 +286,14 @@ impl ResetMode {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
-enum SetMetabit {
-    Never,
-    //ForcedNever,		// by console switch
-    Instructions,
-    DeferredAddresses,
-    Operands,
-}
-
+/// ControlUnit simulates the operation of the Control Element of the TX-2 computer.
+///
 #[derive(Debug)]
 pub struct ControlUnit {
     regs: ControlRegisters,
     running: bool,
-    /// `trap_on_change_sequence` is described in Users Handbook
-    /// section 4-5 No. 42, Trapping.
-    trap_on_change_sequence: bool,
-    set_metabit_mode: SetMetabit,
+    trap: TrapCircuit,
+    devices: DeviceManager,
 }
 
 fn sign_extend_index_value(index_val: &Signed18Bit) -> Unsigned36Bit {
@@ -321,19 +310,38 @@ impl ControlUnit {
         ControlUnit {
             regs: ControlRegisters::new(),
             running: false,
-            trap_on_change_sequence: false,
-            set_metabit_mode: SetMetabit::Never,
+	    trap: TrapCircuit::new(),
+	    devices: DeviceManager::new(),
         }
     }
 
+    pub fn set_metabits_disabled(&mut self, disable: bool) {
+	self.trap.set_metabits_disabled(disable);
+    }
+
+    pub fn disconnect_io_devices(&mut self) {
+	self.devices.disconnect_all();
+    }
+
     /// There are actually 9 different CODABO buttons (see page 5-18
-    /// of the User Guide).  and 9 different RESET buttons.
-    /// Each RESET button has a corresponding CODABO button.
+    /// of the User Guide).  There are also 9 corresponding RESET
+    /// buttons.  Each RESET button has a corresponding CODABO button.
     /// See the `reset` method for address assignments.
     ///
     /// The CODABO operation leaves the Start Point Register set to
     /// the selected start point.  There are also 9 reset buttons
     /// which perform a similar task.
+    ///
+    /// Pressing the main CODABO button (the one which uses the Toggle
+    /// Start Point register) will result in memory being cleared,
+    /// F-memory being set up in a standard way, and then a program
+    /// being read from the paper tape reader using the standard
+    /// readin program set up on the plugboard.
+    ///
+    /// The standard readin program executes the program it read in
+    /// from the address specified by the program.  The program
+    /// executes as sequence 52 (PETR) with the PETR unit initially
+    /// turned off.
     pub fn codabo(&mut self, reset_mode: &ResetMode) {
         // TODO: clear alarms.
         // We probably don't need an equivalent of resetting the
@@ -345,15 +353,14 @@ impl ControlUnit {
         // so perhaps all the registers in V memory are cleared by
         // CODABO.
         //
-        // TODO: clear the "connected" ("C") flip-flops in the I/O
-        // system.
-        println!("Starting CODABO {:?}", &reset_mode);
+	event!(Level::INFO, "Starting CODABO {:?}", &reset_mode);
+	self.disconnect_io_devices();
         self.reset(reset_mode);
         self.regs.flags.lower_all();
 	self.regs.current_sequence_is_runnable = false;
         self.startover();
         // TODO: begin issuing clock cycles.
-        println!("After CODABO, control unit contains {:#?}", &self);
+	event!(Level::DEBUG, "After CODABO, control unit contains {:#?}", &self);
     }
 
     /// There are 9 separate RESET buttons, for 8 fixed addresses and
@@ -377,7 +384,7 @@ impl ControlUnit {
         self.regs.flags.raise(&SequenceNumber::ZERO);
     }
 
-    /// Return the value in the Toggle Start Register.  It is likely
+    /// Return the value in the Toggle Start Register.  It is possible
     /// that this was memory-mapped in the real machine, but if that's
     /// the case the user guide doesn't specify where.  For now, we
     /// haven't made it configurable (i.e. have not emulated the
@@ -387,17 +394,25 @@ impl ControlUnit {
         // The operation of RESET (or CODABO) will copy this value
         // into the zeroth index register (which the program counter
         // placeholder for sequence 0).
-        memorymap::STANDARD_PROGRAM_CLEAR_MEMORY
+        memory::STANDARD_PROGRAM_CLEAR_MEMORY
+    }
+
+    fn trap_seq() -> Unsigned6Bit {
+	Unsigned6Bit::try_from(0o42).unwrap()
+    }
+
+    fn raise_trap(&mut self) {
+	self.regs.flags.raise(&Self::trap_seq());
     }
 
     fn change_sequence(&mut self, prev_seq: Option<SequenceNumber>, mut next_seq: SequenceNumber) {
         // If the "Trap on Change Sequence" is enabled and the new
         // sequence is marked (bit 2.9 of its index register is set).
-        // Activate unit 42, unless that's the unit which is giving up
-        // control.
+        // Activate unit 0o42, unless that's the unit which is giving
+        // up control.
         //
         // I'm not sure what should happen for the alternative case,
-        // where a unit of higher priority than 42 is marked for
+        // where a unit of higher priority than 0o42 is marked for
         // trap-on-sequence-change.
         if prev_seq == Some(next_seq) {
             // TODO: log a warning event.
@@ -408,8 +423,8 @@ impl ControlUnit {
 	    index_val < &0
 	}
 
-	let trap_seq = Unsigned6Bit::try_from(42).unwrap();
-        let sequence_change_trap = self.trap_on_change_sequence
+	let trap_seq = Self::trap_seq();
+        let sequence_change_trap = self.trap.trap_on_changed_sequence()
             && is_marked_placeholder(&self.regs.get_index_register(next_seq))
             && self.regs.k != Some(trap_seq)
             && next_seq > trap_seq;
@@ -515,7 +530,7 @@ impl ControlUnit {
 		    }
 		}
 		Some(seq) => {
-                    println!("Highest-priority sequence is {}", seq);
+		    event!(Level::TRACE, "Highest-priority sequence is {}", seq);
                     if Some(seq) == self.regs.k {
 			// just carry on.
                     } else {
@@ -537,12 +552,18 @@ impl ControlUnit {
 	self.set_program_counter(ProgramCounterChange::CounterUpdate);
 
 	// Actually fetch the instruction.
-	let meta_op = match self.set_metabit_mode {
-            SetMetabit::Instructions => MetaBitChange::Set,
-            _ => MetaBitChange::None,
+	let meta_op = if self.trap.set_metabits_of_instructions() {
+            MetaBitChange::Set
+	} else {
+	    MetaBitChange::None
         };
         let instruction_word = match mem.fetch(&p_physical_address, &meta_op) {
-            Ok((inst, _meta)) => inst,
+            Ok((inst, extra_bits)) => {
+		if extra_bits.meta && self.trap.trap_on_marked_instruction() {
+		    self.raise_trap();
+		}
+		inst
+	    }
             Err(e) => match e {
                 MemoryOpFailure::NotMapped => {
                     return Err(Alarm::PSAL(
@@ -553,12 +574,54 @@ impl ControlUnit {
                 MemoryOpFailure::ReadOnly => unreachable!(),
             },
         };
-        println!(
-            "Fetched instruction {:?} from physical address {:?}",
-            instruction_word, p_physical_address
+	event!(Level::TRACE,
+               "Fetched instruction {:?} from physical address {:?}",
+               instruction_word, p_physical_address
         );
 	self.update_n_register(instruction_word)?;
 	Ok(true)		// not in Limbo (i.e. a sequence should run)
+    }
+
+    pub fn poll_hardware(&mut self) -> Result<(), Alarm> {
+	let (mut raised_flags, alarm) = self.devices.poll();
+	// For each newly-raised flag, raise the flag in self.flags.
+	event!(
+	    Level::TRACE,
+	    "poll_hardware: there are {} new flag raises",
+	    raised_flags.count_ones(),
+	);
+	for bitpos in 0.. {
+	    if raised_flags == 0 {
+		break;
+	    }
+	    let mask = 1_u64 << bitpos;
+	    if raised_flags & mask != 0 {
+		match SequenceNumber::try_from(bitpos) {
+		    Ok(unit) => {
+			self.regs.flags.raise(&unit);
+		    }
+		    Err(_) => {
+			break;
+		    }
+		}
+	    }
+	    raised_flags &= !mask;
+	}
+
+	// If a device raised an alarm, generate that alarm now.  This
+	// alarm was not an error return from the poll() method,
+	// because we needed to ensure that all flag raised were
+	// processed.
+	if let Some(active) = alarm {
+	    event!(
+		Level::INFO,
+		"poll_hardware: an alarm is active: {:?}",
+		active
+	    );
+	    Err(active)
+	} else {
+	    Ok(())
+	}
     }
 
     fn update_n_register(&mut self, instruction_word: Unsigned36Bit) -> Result<(), Alarm> {
@@ -578,32 +641,51 @@ impl ControlUnit {
         )
     }
 
+    fn estimate_execute_time_ns(&self, orig_inst: &Instruction) -> u64 {
+	let inst_from: Address = self.regs.p; // this is now P+1 but likely in the same memory type.
+	let defer_from: Option<Address> = match orig_inst.operand_address() {
+	    OperandAddress::Deferred(phys) => Some(phys),
+	    OperandAddress::Direct(_) => None,
+	};
+	let operand_from = match self.regs.n.operand_address() {
+	    OperandAddress::Deferred(phys) => Some(phys),
+	    OperandAddress::Direct(_) => None,
+	};
+	timing::estimate_instruction_ns(inst_from, orig_inst.opcode_number(), defer_from, operand_from)
+    }
+
     /// Execute the instruction in the N register (i.e. the
     /// instruction just fetched by fetch_instruction().  The P
-    /// register already points to the next instruction.
-    pub fn execute_instruction(&mut self, mem: &mut MemoryUnit) -> Result<(), Alarm> {
+    /// register already points to the next instruction.  Returns the
+    /// estimated number of nanoseconds needed to execute the
+    /// instruction.
+    pub fn execute_instruction(&mut self, mem: &mut MemoryUnit) -> Result<u64, Alarm> {
         let sym = match &self.regs.n_sym {
             None => return Err(self.invalid_opcode_alarm()),
             Some(s) => s,
         };
-        println!("Executing instruction {}...", sym);
-        use Opcode::*;
+	event!(Level::DEBUG, "Executing instruction {}...", sym);
+	// Execution of the instruction will change self.regs.n, but
+	// we want to preserve the original value so that we know
+	// whether the original version of the instruction used
+	// deferred addressing, since this affects our estimate of the
+	// execution time.
+	let saved_inst: Instruction = self.regs.n;
         match sym.opcode() {
-            Skx => self.op_skx(),
-            Dpx => self.op_dpx(mem),
-            Jmp => self.op_jmp(),
-	    Jpx => self.op_jpx(mem),
-	    Jnx => self.op_jnx(mem),
-	    Skm => self.op_skm(mem),
-	    Spg => self.op_spg(mem),
-            _ => {
-                return Err(Alarm::ROUNDTUITAL(format!(
-                    "The emulator does not yet implement opcode {}",
-                    sym.opcode()
-                )));
-            }
+            Opcode::Skx => self.op_skx(),
+            Opcode::Dpx => self.op_dpx(mem),
+            Opcode::Jmp => self.op_jmp(),
+	    Opcode::Jpx => self.op_jpx(mem),
+	    Opcode::Jnx => self.op_jnx(mem),
+	    Opcode::Skm => self.op_skm(mem),
+	    Opcode::Spg => self.op_spg(mem),
+	    Opcode::Ios => self.op_ios(),
+            _ => Err(Alarm::ROUNDTUITAL(format!(
+                "The emulator does not yet implement opcode {}",
+                sym.opcode()
+            ))),
         }
-        //Ok(())
+	.map(|()| self.estimate_execute_time_ns(&saved_inst))
     }
 
     fn get_config(&self) -> SystemConfiguration {
@@ -612,16 +694,22 @@ impl ControlUnit {
     }
 
     fn fetch_operand_from_address(
-        &self,
+        &mut self,
         mem: &mut MemoryUnit,
         operand_address: &Address,
     ) -> Result<(Unsigned36Bit, ExtraBits), Alarm> {
-        let meta_op: MetaBitChange = match self.set_metabit_mode {
-            SetMetabit::Operands => MetaBitChange::Set,
-            _ => MetaBitChange::None,
+        let meta_op: MetaBitChange = if self.trap.set_metabits_of_operands() {
+            MetaBitChange::Set
+	} else {
+	    MetaBitChange::None
         };
         match mem.fetch(operand_address, &meta_op) {
-            Ok((word, extra_bits)) => Ok((word, extra_bits)),
+            Ok((word, extra_bits)) => {
+		if extra_bits.meta && self.trap.trap_on_operand() {
+		    self.raise_trap();
+		}
+		Ok((word, extra_bits))
+	    }
             Err(MemoryOpFailure::NotMapped) => Err(Alarm::QSAL(
 		self.regs.n,
                 Unsigned36Bit::from(*operand_address),
@@ -634,42 +722,6 @@ impl ControlUnit {
         }
     }
 
-    /// Implements the SKX instruction (Opcode 012, User Handbook,
-    /// page 3-24).
-    pub fn op_skx(&mut self) -> Result<(), Alarm> {
-        let inst = &self.regs.n;
-        let j = inst.index_address();
-        // SKX does not cause an access to STUV memory; instead the
-        // operand is the full value of the operand and defer fields
-        // of the instruction.  This allows us to use SKX to mark a
-        // placeholder for use with TRAP 42.
-        let operand = inst.operand_address_and_defer_bit();
-        match u8::from(inst.configuration()) {
-            0o0 | 0o10 => {
-                if j != 0 {
-                    // Xj is fixed at 0.
-                    self.regs.set_index_register(j.into(), &operand.reinterpret_as_signed());
-                }
-                if j & 0o10 != 0 {
-                    self.regs.flags.raise(&j.into());
-                }
-                Ok(())
-            }
-	    0o1 => {
-                if j != 0 {  // Xj is fixed at 0.
-		    // Calculate -T
-		    let t_negated = Signed18Bit::ZERO.wrapping_sub(operand.reinterpret_as_signed());
-                    self.regs.set_index_register(j.into(), &t_negated);
-                }
-                Ok(())
-	    }
-            _ => Err(Alarm::ROUNDTUITAL(format!(
-                "SKX configuration {:#o} is not implemented yet",
-                inst.configuration()
-            ))),
-        }
-    }
-
     fn memory_store_without_exchange(
         &self,
         mem: &mut MemoryUnit,
@@ -677,10 +729,10 @@ impl ControlUnit {
         value: &Unsigned36Bit,
         meta_op: &MetaBitChange,
     ) -> Result<(), Alarm> {
-	println!(
-	    "memory_store_without_exchange: write @{:>06o} <- {:o}",
-	    target,
-	    value,
+	event!(Level::TRACE,
+	       "memory_store_without_exchange: write @{:>06o} <- {:o}",
+	       target,
+	       value,
 	);
         mem.store(target, value, meta_op).map_err(|e| {
             Alarm::QSAL(
@@ -717,7 +769,7 @@ impl ControlUnit {
     fn resolve_operand_address(
         self: &mut ControlUnit,
         mem: &mut MemoryUnit,
-	mut initial_index_override: Option<Unsigned6Bit>,
+	initial_index_override: Option<Unsigned6Bit>,
     ) -> Result<Address, Alarm> {
 	// The deferred addressing process may be performed more than
 	// once, in other words it is a loop.  This is explained in
@@ -740,14 +792,14 @@ impl ControlUnit {
 	    // when no deferred address cycles are called for.  When
 	    // PI¹₂, the input to the X Adder from the N₂.₉ position
 	    // is forced to appear as a ZERO.
-
-            println!(
-		"deferred addressing: deferred address is {:o}",
-		&physical
+	    event!(Level::TRACE,
+		   "deferred addressing: deferred address is {:o}",
+		   &physical
             );
-            let meta_op = match self.set_metabit_mode {
-		SetMetabit::DeferredAddresses => MetaBitChange::Set,
-		_ => MetaBitChange::None,
+            let meta_op = if self.trap.set_metabits_of_deferred_addresses() {
+		MetaBitChange::Set
+	    } else {
+		MetaBitChange::None
             };
             let fetched = match mem.fetch(&physical, &meta_op) {
                 Err(e) => {
@@ -757,7 +809,11 @@ impl ControlUnit {
 			format!("address {:#o} out of range while fetching deferred address: {}", &physical, e),
 		    ));
                 }
-                Ok((word, _meta)) => {
+                Ok((word, extra)) => {
+		    if extra.meta && self.trap.trap_on_deferred_address() {
+			self.raise_trap();
+		    }
+
 		    // I think it's likely that the TX2 should perform
 		    // indexation on deferred addreses.  This idea is
 		    // based on the fact that the left subword of
@@ -767,9 +823,10 @@ impl ControlUnit {
 		    // is therefore non-indexable except through
 		    // deferred addressing".
 		    let (left, right) = subword::split_halves(word);
-		    println!(
-			"deferred addressing: fetched full word is {:o},,{:o}; using {:o} as the final address",
-			&left, &right, &right);
+		    event!(Level::TRACE,
+			   "deferred addressing: fetched full word is {:o},,{:o}; using {:o} as the final address",
+			   &left, &right, &right,
+		    );
 		    Address::from(right)
                 }
 	    };
@@ -794,11 +851,7 @@ impl ControlUnit {
 	// for the IndexBy trait).
 	let j = match initial_index_override {
 	    None => self.regs.n.index_address(),
-	    Some(overridden) => {
-		let j = overridden;
-		initial_index_override = None;
-		j
-	    },
+	    Some(overridden) => overridden,
 	};
 	let delta = self.regs.get_index_register(j); // this is Xj.
 
@@ -814,22 +867,6 @@ impl ControlUnit {
         Ok(self.regs.q)
     }
 
-    /// Implements the DPX instruction (Opcode 016, User Handbook,
-    /// page 3-16).
-    pub fn op_dpx(&mut self, mem: &mut MemoryUnit) -> Result<(), Alarm> {
-	let j = self.regs.n.index_address();
-        let xj: Unsigned36Bit = sign_extend_index_value(&self.regs.get_index_register(j));
-        let target: Address = self.operand_address_with_optional_defer_and_index(mem)?;
-        let (dest, _meta) = self.fetch_operand_from_address(mem, &target)?;
-        self.memory_store_with_exchange(
-            mem,
-            &target,
-            &xj,
-            &dest,
-            &MetaBitChange::None,
-        )
-    }
-
     fn dismiss_unless_held(&mut self) {
 	if !self.regs.n.is_held() {
             if let Some(current_seq) = self.regs.k {
@@ -839,209 +876,10 @@ impl ControlUnit {
 	}
     }
 
-    /// Implements the JMP opcode and its variations (all of which are unconditional jumps).
-    pub fn op_jmp(&mut self) -> Result<(), Alarm> {
-        // For JMP the configuration field in the instruction controls
-        // the behaviour of the instruction, without involving
-        // a load from F-memory.
-        fn nonzero(value: Unsigned5Bit) -> bool {
-            !value.is_zero()
-        }
-        let cf = self.regs.n.configuration();
-        let dismiss = nonzero(cf & 0b10000_u8);
-        let save_q = nonzero(cf & 0b01000_u8);
-        let savep_e = nonzero(cf & 0b00100_u8);
-        let savep_ix = nonzero(cf & 0b00010_u8);
-        let indexed = nonzero(cf & 0b00001_u8);
-        let left: Unsigned18Bit = if save_q {
-            Unsigned18Bit::from(self.regs.q)
-        } else {
-            subword::left_half(self.regs.e)
-        };
-        let right: Unsigned18Bit = if savep_e {
-            Unsigned18Bit::from(self.regs.p)
-        } else {
-            subword::right_half(self.regs.e)
-        };
-        self.regs.e = subword::join_halves(left, right);
+}
 
-        if savep_ix {
-            let j = self.regs.n.index_address();
-            if j != 0 {
-                // Xj is fixed at 0.
-                let p = self.regs.p;
-                self.regs.set_index_register_from_address(j.into(), &p);
-            }
-        }
-
-        let physical: Address = match self.regs.n.operand_address() {
-            OperandAddress::Deferred(_) => {
-                // TODO: I don't know whether this is allowed or
-                // not, but if we disallow this for now, we can
-                // use any resulting error to identify cases where
-                // this is in fact used.
-                return Err(Alarm::PSAL(
-                    u32::from(self.regs.n.operand_address_and_defer_bit()),
-                    format!(
-                        "JMP target has deferred address {:#o}",
-                        self.regs.n.operand_address()
-                    ),
-                ));
-            }
-            OperandAddress::Direct(phys) => phys,
-        };
-
-	let new_pc: Address = if indexed {
-	    physical.index_by(self.regs.n.index_address().reinterpret_as_signed())
-        } else {
-	    physical
-        };
-	self.set_program_counter(ProgramCounterChange::Jump(new_pc));
-        if dismiss {
-	    self.dismiss_unless_held();
-        }
-        Ok(())
-    }
-
-    /// Implements the JPX (jump on positive index) opcode (06).
-    pub fn op_jpx(&mut self, mem: &mut MemoryUnit) -> Result<(), Alarm> {
-	let is_positive_address = |xj: &Signed18Bit| xj.is_positive();
-	self.impl_op_jpx_jnx(is_positive_address, mem)
-    }
-
-    /// Implements the JNX (jump on positive index) opcode (07).
-    pub fn op_jnx(&mut self, mem: &mut MemoryUnit) -> Result<(), Alarm> {
-	let is_negative_address = |xj: &Signed18Bit| xj.is_negative();
-	self.impl_op_jpx_jnx(is_negative_address, mem)
-    }
-
-    // Implements JPX (opcode 06) and JNX.  Note that these opcodes
-    // handle deferred addressing in a unique way.  This is described
-    // on page 5-9 of the User Handbook:
-    //
-    // EXCEPT when the operation is JNX or JPX (codes 6 and 7), for on
-    // these two operations the right half of N is used for the sign
-    // extended index increment (18 bits).  (BUT if the JNX or JPX is
-    // deferred, the increment is not addded until PK3 so N is not
-    // changed during PK1).
-    pub fn impl_op_jpx_jnx<F: FnOnce(&Signed18Bit)->bool>(
-	&mut self,
-	predicate: F,
-	mem: &mut MemoryUnit,
-    ) -> Result<(), Alarm> {
-	let dismiss = !self.regs.n.is_held();
-	let j = self.regs.n.index_address();
-	let xj = self.regs.get_index_register(j);
-	let do_jump: bool = predicate(&xj);
-
-	// Compute the jump target (which possibly involves indexing)
-	// before modifying Xj.  See note 3 on page 3-27 of the User
-	// Handbook, which says
-	//
-	// The address of a deferred JNX or JPX is completely
-	// determined before the index register is changed.  Therefore
-	// a ⁻¹JPXₐ|ₐ S would jump to Sₐ as defined by the original
-	// contents of Xₐ - if it jumps at all.
-        let target: Address = self.resolve_operand_address(mem, Some(Unsigned6Bit::ZERO))?;
-	let cf: Signed5Bit = self.regs.n.configuration().reinterpret_as_signed();
-	let new_xj: Signed18Bit = xj.wrapping_add(Signed18Bit::from(cf));
-	self.regs.set_index_register(j, &new_xj);
-
-	if do_jump {
-            self.dismiss_unless_held();
-            self.regs.e = subword::join_halves(subword::left_half(self.regs.e),
-					       Unsigned18Bit::from(self.regs.p));
-            self.set_program_counter(ProgramCounterChange::Jump(target));
-	}
-        if dismiss {
-            if let Some(current_seq) = self.regs.k {
-                self.regs.flags.lower(&current_seq);
-		self.regs.current_sequence_is_runnable = false;
-            }
-        }
-        Ok(())
-     }
-
-    /// Implement the SKM instruction.  This has a number of
-    /// supernumerary mnemonics.  The index address field of the
-    /// instruction identifies which bit (within the target word) to
-    /// operate on, and the instruction configuration value determines
-    /// both how to manipulate that bit, and what to do on the basis
-    /// of its original value.
-    ///
-    /// The SKM instruction is documented on pages 7-34 and 7-35 of
-    /// the User Handbook.
-    pub fn op_skm(&mut self, mem: &mut MemoryUnit) -> Result<(), Alarm> {
-	let bit = index_address_to_bit_selection(self.regs.n.index_address());
-	// Determine the operand address; any initial deferred cycle
-	// must use 0 as the indexation, as the index address of the
-	// SKM instruction is used to identify the bit to operate on.
-	let target = self.resolve_operand_address(mem, Some(Unsigned6Bit::ZERO))?;
-	let cf: u8 = u8::from(self.regs.n.configuration());
-	let change: WordChange = WordChange {
-	    bit,
-	    bitop: match cf & 0b11 {
-		0b00 => None,
-		0b01 => Some(BitChange::Flip),
-		0b10 => Some(BitChange::Clear),
-		0b11 => Some(BitChange::Set),
-		_ => unreachable!(),
-	    },
-	    cycle: cf & 0b100 != 0,
-	};
-	let prev_bit_value: Option<bool> = match mem.change_bit(&target, &change) {
-	    Ok(prev) => prev,
-	    Err(MemoryOpFailure::NotMapped) => {
-		return Err(Alarm::QSAL(
-		    self.regs.n,
-		    target.into(),
-                    format!(
-			"SKM instruction attempted to access address {:o} but it is not mapped",
-			target,
-                    ),
-		));
-	    }
-	    Err(MemoryOpFailure::ReadOnly) => {
-		return Err(Alarm::QSAL(
-		    self.regs.n,
-		    target.into(),
-                    format!(
-			"SKM instruction attempted to modify (instruction configuration={:o}) a read-only location {:o}",
-			cf,
-			target,
-                    ),
-		));
-	    }
-	};
-	let skip: bool = if let Some(prevbit) = prev_bit_value {
-	    match (cf >> 3) & 3 {
-		0b00 => false,
-		0b01 => true,
-		0b10 => !prevbit,
-		0b11 => prevbit,
-		_ => unreachable!(),
-	    }
-	} else {
-	    // The index address specified a nonexistent bit
-	    // (e.g. 1.0) and so we do not perform a skip.
-	    false
-	};
-	// The location of the currently executing instruction is referred to by M4
-	// as '#'.  The next instruction would be '#+1' and that's where the P register
-	// currently points.  But "skip" means to set P=#+2.
-	if skip {
-	    self.set_program_counter(ProgramCounterChange::CounterUpdate);
-	}
-	Ok(())
-    }
-
-    pub fn op_spg(&mut self, mem: &mut MemoryUnit) -> Result<(), Alarm> {
-        let c = usize::from(self.regs.n.configuration());
-	let target = self.operand_address_with_optional_defer_and_index(mem)?;
-        let (word, _meta) = self.fetch_operand_from_address(mem, &target)?;
-	for (quarter_number, cfg_value) in subword::quarters(word).iter().enumerate() {
-	    self.regs.f_memory[c + quarter_number] = (*cfg_value).into();
-	}
-	Ok(())
+impl Default for ControlUnit {
+    fn default() -> Self {
+        Self::new()
     }
 }

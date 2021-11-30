@@ -443,6 +443,12 @@ pub struct Unsigned9Bit {
     pub(crate) bits: u16,
 }
 
+/// `Unsigned12Bit` is used as the _mode_ of a connected I/O device.
+#[derive(Clone, Copy)]
+pub struct Unsigned12Bit {
+    pub(crate) bits: u16,
+}
+
 /// `Unsigned18Bit` is the value of a "half" of the 36-bit TX-2
 /// machine word.  We use this type to hold STUV-memory addresses,
 /// among other things.  Physical memory addresses though are only 17
@@ -466,6 +472,7 @@ pub struct Unsigned36Bit {
 unsigned_ones_complement_impl!(Unsigned5Bit, 5, u8, Signed5Bit);
 unsigned_ones_complement_impl!(Unsigned6Bit, 6, u8, Signed6Bit);
 unsigned_ones_complement_impl!(Unsigned9Bit, 9, u16, Signed9Bit);
+unsigned_ones_complement_impl!(Unsigned12Bit, 12, u16, Signed12Bit);
 unsigned_ones_complement_impl!(Unsigned18Bit, 18, u32, Signed18Bit);
 unsigned_ones_complement_impl!(Unsigned36Bit, 36, u64, Signed36Bit);
 
@@ -495,6 +502,14 @@ from_self_to_native_type!(Unsigned6Bit, u8 i8 u16 i16 u32 i32 u64 i64 usize);
 // all the things that may not fit into Unsigned6Bit
 try_from_native_type_to_self!(Unsigned6Bit, u8, i8 u8 u16 i16 u32 i32 u64 i64 usize);
 
+impl From<Unsigned5Bit> for Unsigned6Bit {
+    fn from(n: Unsigned5Bit) -> Self {
+        Self {
+            bits: n.bits,
+        }
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////
 // Unsigned9Bit
 ////////////////////////////////////////////////////////////////////////
@@ -515,6 +530,70 @@ impl From<Unsigned5Bit> for Unsigned9Bit {
         }
     }
 }
+
+impl From<Unsigned6Bit> for Unsigned9Bit {
+    fn from(n: Unsigned6Bit) -> Self {
+        Self {
+            bits: n.bits.into(),
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////
+// Unsigned12Bit
+////////////////////////////////////////////////////////////////////////
+
+// all the things that always fit into Unsigned12Bit
+from_native_type_to_self!(Unsigned12Bit, u8);
+// all the things that Unsigned12Bit always fits into
+from_self_to_native_type!(Unsigned12Bit, u16 i16 u32 i32 u64 i64);
+// all the things that Unsigned12Bit may not fit into
+try_from_self_to_native_type!(Unsigned12Bit, u8 i8);
+// all the things that may not fit into Unsigned12Bit
+try_from_native_type_to_self!(Unsigned12Bit, u16, i8 u16 i16 u32 i32 u64 i64);
+
+impl From<Unsigned5Bit> for Unsigned12Bit {
+    fn from(n: Unsigned5Bit) -> Self {
+        Self {
+            bits: n.bits.into(),
+        }
+    }
+}
+
+impl From<Unsigned6Bit> for Unsigned12Bit {
+    fn from(n: Unsigned6Bit) -> Self {
+        Self {
+            bits: n.bits.into(),
+        }
+    }
+}
+
+impl From<Unsigned9Bit> for Unsigned12Bit {
+    fn from(n: Unsigned9Bit) -> Self {
+        Self {
+            bits: n.bits,
+        }
+    }
+}
+
+impl TryFrom<Unsigned18Bit> for Unsigned12Bit {
+    type Error = ConversionFailed;
+    fn try_from(n: Unsigned18Bit) -> Result<Self, ConversionFailed> {
+	match u16::try_from(n.bits) {
+	    Ok(n) => {
+		if n > Self::VALUE_BITS {
+		    Err(ConversionFailed::TooLarge)
+		} else {
+		    Ok(Self {
+			bits: n,
+		    })
+		}
+	    }
+	    Err(_) => Err(ConversionFailed::TooLarge),
+	}
+    }
+}
+
 
 ////////////////////////////////////////////////////////////////////////
 // Unsigned18Bit
@@ -575,8 +654,17 @@ impl TryFrom<Unsigned36Bit> for Unsigned6Bit {
 	}
     }
 }
+
 impl From<Unsigned5Bit> for Unsigned36Bit {
     fn from(n: Unsigned5Bit) -> Self {
+        Self {
+            bits: n.bits.into(),
+        }
+    }
+}
+
+impl From<Unsigned6Bit> for Unsigned36Bit {
+    fn from(n: Unsigned6Bit) -> Self {
         Self {
             bits: n.bits.into(),
         }
@@ -591,18 +679,18 @@ impl From<Unsigned9Bit> for Unsigned36Bit {
     }
 }
 
-impl From<Unsigned18Bit> for Unsigned36Bit {
-    fn from(n: Unsigned18Bit) -> Self {
+impl From<Unsigned12Bit> for Unsigned36Bit {
+    fn from(n: Unsigned12Bit) -> Self {
         Self {
             bits: n.bits.into(),
         }
     }
 }
 
-impl From<Unsigned6Bit> for Unsigned9Bit {
-    fn from(n: Unsigned6Bit) -> Self {
-	Self {
-	    bits: n.bits.into()
-	}
+impl From<Unsigned18Bit> for Unsigned36Bit {
+    fn from(n: Unsigned18Bit) -> Self {
+        Self {
+            bits: n.bits.into(),
+        }
     }
 }

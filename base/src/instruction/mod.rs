@@ -224,7 +224,7 @@ impl Inst for Instruction {
 /// Different copies of the User Handbook differ in the description of
 /// opcodes 0o44 and 0o45.
 #[repr(u8)]
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub enum Opcode {
     // opcode 1 is unused
     // opcode 2 may be XEQ, but no documentation on this.
