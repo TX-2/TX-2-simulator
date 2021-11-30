@@ -111,7 +111,7 @@ impl TrapCircuit {
 }
 
 impl Unit for TrapCircuit {
-    fn poll(&self) -> UnitStatus {
+    fn poll(&mut self, _system_time: &Duration) -> UnitStatus {
 	UnitStatus {
 	    special: Unsigned12Bit::ZERO,
 	    change_flag: None,
@@ -127,19 +127,19 @@ impl Unit for TrapCircuit {
 	}
     }
 
-    fn connect(&mut self, mode: Unsigned12Bit) {
+    fn connect(&mut self, _system_time: &Duration, mode: Unsigned12Bit) {
 	self.mode = mode;
     }
 
     /// I don't know whether this is supposed to behave like an input
     /// unit or an output unit.
-    fn read(&mut self, target: &mut Unsigned36Bit) -> Result<(), TransferFailed> {
+    fn read(&mut self, _system_time: &Duration, _target: &mut Unsigned36Bit) -> Result<(), TransferFailed> {
 	Ok(())
     }
 
     /// I don't know whether this is supposed to behave like an input
     /// unit or an output unit.
-    fn write(&mut self, source: Unsigned36Bit) -> Result<(), TransferFailed> {
+    fn write(&mut self, _system_time: &Duration, _source: Unsigned36Bit) -> Result<(), TransferFailed> {
 	Ok(())
     }
 

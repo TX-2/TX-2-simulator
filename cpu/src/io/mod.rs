@@ -157,10 +157,10 @@ impl Display for TransferFailed {
 impl std::error::Error for TransferFailed {}
 
 pub trait Unit {
-    fn poll(&self) -> UnitStatus;
-    fn connect(&mut self, mode: Unsigned12Bit);
-    fn read(&mut self, target: &mut Unsigned36Bit) -> Result<(), TransferFailed>;
-    fn write(&mut self, source: Unsigned36Bit) -> Result<(), TransferFailed>;
+    fn poll(&mut self, system_time: &Duration) -> UnitStatus;
+    fn connect(&mut self, system_time: &Duration, mode: Unsigned12Bit);
+    fn read(&mut self, system_time: &Duration, target: &mut Unsigned36Bit) -> Result<(), TransferFailed>;
+    fn write(&mut self, system_time: &Duration, source: Unsigned36Bit) -> Result<(), TransferFailed>;
     fn name(&self) -> String;
 }
 
@@ -221,11 +221,12 @@ impl DeviceManager {
 
     pub fn attach(
 	&mut self,
+	system_time: &Duration,
 	unit_number: Unsigned6Bit,
 	in_maintenance: bool,
-	unit: Box<dyn Unit>,
+	mut unit: Box<dyn Unit>,
     ) {
-	let status: UnitStatus = unit.poll();
+	let status: UnitStatus = unit.poll(system_time);
 	self.devices.insert(unit_number, AttachedUnit {
 	    inner: unit,
 	    is_input_unit: status.is_input_unit,
@@ -234,14 +235,14 @@ impl DeviceManager {
 	});
     }
 
-    pub fn report(&mut self, unit: Unsigned6Bit, current_flag: bool) -> Result<Unsigned36Bit, Alarm> {
+    pub fn report(&mut self, system_time: &Duration, unit: Unsigned6Bit, current_flag: bool) -> Result<Unsigned36Bit, Alarm> {
 	match self.devices.get_mut(&unit) {
 	    Some(attached) => {
 		// Because the unit report word contains a `Connect`
 		// (2.6) and `Maintenance` bit (2.7) we need to be
 		// able to collect status from a unit which is
 		// attached but not otherwise usable.
-		let unit_status = attached.inner.poll();
+		let unit_status = attached.inner.poll(system_time);
 		Ok(make_unit_report_word(unit, attached.connected, attached.in_maintenance, current_flag, &unit_status))
 	    }
 	    None => {
@@ -254,7 +255,7 @@ impl DeviceManager {
 	}
     }
 
-    pub fn poll(&mut self) -> (u64, Option<Alarm>) {
+    pub fn poll(&mut self, system_time: &Duration) -> (u64, Option<Alarm>) {
 	let mut raised_flags: u64 = 0;
 	let mut alarm: Option<Alarm> = None;
 	for (devno, attached) in self.devices.iter_mut() {
@@ -262,7 +263,7 @@ impl DeviceManager {
 		continue;
 	    }
 	    assert!(!attached.in_maintenance); // cannot connect in-maint devices.
-	    let unit_status = attached.inner.poll();
+	    let unit_status = attached.inner.poll(system_time);
 	    match unit_status.change_flag {
 		Some(FlagChange::Raise) => {
 		    raised_flags |= 1 << u8::from(*devno);
@@ -307,7 +308,7 @@ impl DeviceManager {
 	}
     }
 
-    pub fn connect(&mut self, device: &Unsigned6Bit, mode: Unsigned12Bit) -> Result<Option<FlagChange>, Alarm> {
+    pub fn connect(&mut self, system_time: &Duration, device: &Unsigned6Bit, mode: Unsigned12Bit) -> Result<Option<FlagChange>, Alarm> {
 	match self.devices.get_mut(device) {
 	    Some(attached) => {
 		let flag_change = if attached.is_disconnected_output_unit() {
@@ -315,7 +316,7 @@ impl DeviceManager {
 		} else {
 		    None
 		};
-		attached.inner.connect(mode);
+		attached.inner.connect(system_time, mode);
 		Ok(flag_change)
 	    }
 	    None => Err(Alarm::IOSAL {
@@ -326,28 +327,28 @@ impl DeviceManager {
 	}
     }
 
-    pub fn read(&mut self, device: &Unsigned6Bit, target: &mut Unsigned36Bit) -> Result<(), TransferFailed> {
+    pub fn read(&mut self, system_time: &Duration, device: &Unsigned6Bit, target: &mut Unsigned36Bit) -> Result<(), TransferFailed> {
 	match self.devices.get_mut(device) {
 	    Some(attached) => {
 		attached.assert_unit_connected()?;
 		if !attached.is_input_unit {
 		    Err(TransferFailed::ReadOnWriteChannel)
 		} else {
-		    attached.inner.read(target)
+		    attached.inner.read(system_time, target)
 		}
 	    }
 	    None => Err(TransferFailed::MissingUnit),
 	}
     }
 
-    pub fn write(&mut self, device: &Unsigned6Bit, source: Unsigned36Bit) -> Result<(), TransferFailed> {
+    pub fn write(&mut self, system_time: &Duration, device: &Unsigned6Bit, source: Unsigned36Bit) -> Result<(), TransferFailed> {
 	match self.devices.get_mut(device) {
 	    Some(attached) => {
 		attached.assert_unit_connected()?;
 		if attached.is_input_unit {
 		    Err(TransferFailed::WriteOnReadChannel)
 		} else {
-		    attached.inner.write(source)
+		    attached.inner.write(system_time, source)
 		}
 	    }
 	    None => Err(TransferFailed::MissingUnit),

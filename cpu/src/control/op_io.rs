@@ -1,3 +1,4 @@
+use std::time::Duration;
 use base::prelude::*;
 
 use crate::alarm::Alarm;
@@ -11,7 +12,7 @@ use crate::io::{
 
 impl ControlUnit {
     /// Implements the IOS opcode
-    pub fn op_ios(&mut self) -> Result<(), Alarm> {
+    pub fn op_ios(&mut self, system_time: &Duration) -> Result<(), Alarm> {
         let j = self.regs.n.index_address();
 	let cf = self.regs.n.configuration();
 
@@ -21,7 +22,7 @@ impl ControlUnit {
 	    // change to be copied into the E register.  (as stated in
 	    // section 4-3.6 of the User Handbook).
 	    let flag_raised: bool = self.regs.flags.current_flag_state(&j);
-	    self.regs.e = self.devices.report(j, flag_raised)?;
+	    self.regs.e = self.devices.report(system_time, j, flag_raised)?;
 	}
 
         let operand = self.regs.n.operand_address_and_defer_bit();
@@ -29,7 +30,7 @@ impl ControlUnit {
 	    0o20_000 => self.disconnect_unit(j),
 	    0o30_000..=0o37_777 => {
 		let mode: Unsigned12Bit = Unsigned12Bit::try_from(operand & 0o07_777).unwrap();
-		self.connect_unit(j, mode)
+		self.connect_unit(system_time, j, mode)
 	    }
 	    0o40_000 => {
 		self.regs.flags.lower(&j);
@@ -67,13 +68,13 @@ impl ControlUnit {
 	}
     }
 
-    fn connect_unit(&mut self, unit: Unsigned6Bit, mode: Unsigned12Bit) -> Result<(), Alarm> {
+    fn connect_unit(&mut self, system_time: &Duration, unit: Unsigned6Bit, mode: Unsigned12Bit) -> Result<(), Alarm> {
 	let maybe_flag_change: Option<FlagChange> = match u8::from(unit) {
 	    0o42 => {
-		self.trap.connect(mode);
+		self.trap.connect(system_time, mode);
 		None
 	    }
-	    _ => self.devices.connect(&unit, mode)?,
+	    _ => self.devices.connect(system_time, &unit, mode)?,
 	};
 	match maybe_flag_change {
 	    Some(FlagChange::Raise) => {

@@ -3,6 +3,7 @@
 #![crate_name="cpu"]
 
 mod alarm;
+mod clock;
 mod control;
 mod exchanger;
 mod io;
@@ -13,7 +14,7 @@ pub use control::{
     ControlUnit,
     ResetMode
 };
-pub use control::timing::{
+pub use clock::{
     Clock,
     BasicClock,
     MinimalSleeper,

@@ -13,11 +13,11 @@ fn run_until_alarm(
     let mut sleeper = MinimalSleeper::new(Duration::from_millis(2));
     let mut clk = BasicClock::new(1.0).expect("reasonable clock config");
     loop {
-	control.poll_hardware()?; // check for I/O alarms, flag changes.
+	control.poll_hardware(&clk.now())?; // check for I/O alarms, flag changes.
         if !control.fetch_instruction(mem)? {
             break;
         }
-        elapsed_ns += match control.execute_instruction(mem) {
+        elapsed_ns += match control.execute_instruction(&clk.now(), mem) {
 	    Err(e) => {
 		event!(Level::INFO, "Alarm raised after {}ns", elapsed_ns);
 		return Err(e);

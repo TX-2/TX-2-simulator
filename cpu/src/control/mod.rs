@@ -11,6 +11,7 @@
 //! - Keep track of the placeholder of each sequence
 //! - Manage switching between sequences
 //! - Remember the setting of the TSP (Toggle Start Point) register
+use std::time::Duration;
 
 use tracing::{event, Level};
 
@@ -582,8 +583,8 @@ impl ControlUnit {
 	Ok(true)		// not in Limbo (i.e. a sequence should run)
     }
 
-    pub fn poll_hardware(&mut self) -> Result<(), Alarm> {
-	let (mut raised_flags, alarm) = self.devices.poll();
+    pub fn poll_hardware(&mut self, system_time: &Duration) -> Result<(), Alarm> {
+	let (mut raised_flags, alarm) = self.devices.poll(system_time);
 	// For each newly-raised flag, raise the flag in self.flags.
 	event!(
 	    Level::TRACE,
@@ -659,7 +660,7 @@ impl ControlUnit {
     /// register already points to the next instruction.  Returns the
     /// estimated number of nanoseconds needed to execute the
     /// instruction.
-    pub fn execute_instruction(&mut self, mem: &mut MemoryUnit) -> Result<u64, Alarm> {
+    pub fn execute_instruction(&mut self, system_time: &Duration, mem: &mut MemoryUnit) -> Result<u64, Alarm> {
         let sym = match &self.regs.n_sym {
             None => return Err(self.invalid_opcode_alarm()),
             Some(s) => s,
@@ -679,7 +680,7 @@ impl ControlUnit {
 	    Opcode::Jnx => self.op_jnx(mem),
 	    Opcode::Skm => self.op_skm(mem),
 	    Opcode::Spg => self.op_spg(mem),
-	    Opcode::Ios => self.op_ios(),
+	    Opcode::Ios => self.op_ios(system_time),
             _ => Err(Alarm::ROUNDTUITAL(format!(
                 "The emulator does not yet implement opcode {}",
                 sym.opcode()
