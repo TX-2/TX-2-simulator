@@ -1,16 +1,9 @@
 //! Simulation of elapsed time in the simulated system.
 
 use std::error::Error;
-use std::fmt::{
-    self,
-    Display,
-    Formatter,
-};
+use std::fmt::{self, Display, Formatter};
 use std::thread::sleep;
-use std::time::{
-    Duration,
-    Instant,
-};
+use std::time::{Duration, Instant};
 
 use tracing::{event, Level};
 
@@ -60,7 +53,6 @@ pub trait Clock {
     fn consume_all(&mut self);
 }
 
-
 /// BasicClock provides a simulated clock which runs slower or faster
 /// than real time by a specified multiplier.
 ///
@@ -109,14 +101,14 @@ pub struct BasicClock {
 
 #[derive(Debug)]
 pub enum BadClockConfig {
-    BadMultiplier(String)
+    BadMultiplier(String),
 }
 
 impl Display for BadClockConfig {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-	match self {
-	    BadClockConfig::BadMultiplier(msg) => write!(f, "bad clock multiplier: {}", msg),
-	}
+        match self {
+            BadClockConfig::BadMultiplier(msg) => write!(f, "bad clock multiplier: {}", msg),
+        }
     }
 }
 
@@ -124,66 +116,71 @@ impl Error for BadClockConfig {}
 
 impl BasicClock {
     pub fn new(multiplier: f64) -> Result<BasicClock, BadClockConfig> {
-	if multiplier < 0.0 {
-	    Err(BadClockConfig::BadMultiplier(format!("negative multiplier {}", multiplier)))
-	} else if multiplier < 1.0e-12 {
-	    Err(BadClockConfig::BadMultiplier(format!("excessively tiny multiplier {}", multiplier)))
-	} else {
-	    let zero_duration = Duration::new(0, 0);
-	    Ok(BasicClock {
-		origin: Instant::now(),
-		// Clocks initially coincide, so actual and simulated
-		// elapsed time are both zero.
-		simulator_elapsed: zero_duration,
-		simulator_consumed: zero_duration,
-		multiplier,
-	    })
-	}
+        if multiplier < 0.0 {
+            Err(BadClockConfig::BadMultiplier(format!(
+                "negative multiplier {}",
+                multiplier
+            )))
+        } else if multiplier < 1.0e-12 {
+            Err(BadClockConfig::BadMultiplier(format!(
+                "excessively tiny multiplier {}",
+                multiplier
+            )))
+        } else {
+            let zero_duration = Duration::new(0, 0);
+            Ok(BasicClock {
+                origin: Instant::now(),
+                // Clocks initially coincide, so actual and simulated
+                // elapsed time are both zero.
+                simulator_elapsed: zero_duration,
+                simulator_consumed: zero_duration,
+                multiplier,
+            })
+        }
     }
 
     fn zero_duration() -> Duration {
-	Duration::new(0, 0)
+        Duration::new(0, 0)
     }
 }
 
 impl Clock for BasicClock {
     fn now(&self) -> Duration {
-	self.simulator_consumed
+        self.simulator_consumed
     }
 
     fn consume(&mut self, interval: &Duration) -> Duration {
-	let deficit: Duration = match self.simulator_elapsed.checked_sub(self.simulator_consumed) {
-	    Some(surplus) if surplus > *interval => {
-		self.simulator_consumed += *interval;
-		Self::zero_duration()
-	    }
-	    Some(surplus) => {
-		self.simulator_consumed += surplus;
-		match interval.checked_sub(surplus) {
-		    Some(deficit) => deficit,
-		    // We do not expect overflow because the `surplus
-		    // > interval` test failed above.
-		    None => unreachable!(),
-		}
-	    }
-	    None => {
-		// `self.simulator_consumed > self.simulator_elapsed`,
-		// which should not happen.
-		*interval
-	    }
-	};
-	// deficit is measured in simulated clock time; convert it to
-	// host time.
-	deficit.div_f64(self.multiplier)
+        let deficit: Duration = match self.simulator_elapsed.checked_sub(self.simulator_consumed) {
+            Some(surplus) if surplus > *interval => {
+                self.simulator_consumed += *interval;
+                Self::zero_duration()
+            }
+            Some(surplus) => {
+                self.simulator_consumed += surplus;
+                match interval.checked_sub(surplus) {
+                    Some(deficit) => deficit,
+                    // We do not expect overflow because the `surplus
+                    // > interval` test failed above.
+                    None => unreachable!(),
+                }
+            }
+            None => {
+                // `self.simulator_consumed > self.simulator_elapsed`,
+                // which should not happen.
+                *interval
+            }
+        };
+        // deficit is measured in simulated clock time; convert it to
+        // host time.
+        deficit.div_f64(self.multiplier)
     }
 
     fn consume_all(&mut self) {
-	self.origin = Instant::now();
-	self.simulator_elapsed = Duration::new(0, 0);
-	self.simulator_consumed = Duration::new(0, 0);
+        self.origin = Instant::now();
+        self.simulator_elapsed = Duration::new(0, 0);
+        self.simulator_consumed = Duration::new(0, 0);
     }
 }
-
 
 #[derive(Debug)]
 struct SignedDuration {
@@ -193,81 +190,83 @@ struct SignedDuration {
 
 impl SignedDuration {
     pub const ZERO: SignedDuration = SignedDuration {
-	negative: false,
-	magnitude: Duration::ZERO,
+        negative: false,
+        magnitude: Duration::ZERO,
     };
-
 }
 
 impl From<Duration> for SignedDuration {
     fn from(magnitude: Duration) -> Self {
-	Self {
-	    negative: false,
-	    magnitude,
-	}
+        Self {
+            negative: false,
+            magnitude,
+        }
     }
 }
 
 impl SignedDuration {
     fn checked_sub(&self, d: Duration) -> Option<SignedDuration> {
-	if self.negative {
-	    match self.magnitude.checked_add(d) {
-		Some(result) => Some(SignedDuration {
-		    negative: true,
-		    magnitude: result,
-		}),
-		None => None,	// actual overflow
-	    }
-	} else {
-	    match self.magnitude.checked_sub(d) {
-		Some(diff) => {
-		    Some(SignedDuration {
-			negative: false,
-			magnitude: diff,
-		    })
-		}
-		None => match d.checked_sub(self.magnitude) {
-		    Some(diff) => Some(SignedDuration {
-			negative: true,
-			magnitude: diff,
-		    }),
-		    None => {
-			panic!("checked_sub inconsistent for {:?} - {:?}", self.magnitude, d);
-		    }
-		}
-	    }
-	}
+        if self.negative {
+            match self.magnitude.checked_add(d) {
+                Some(result) => Some(SignedDuration {
+                    negative: true,
+                    magnitude: result,
+                }),
+                None => None, // actual overflow
+            }
+        } else {
+            match self.magnitude.checked_sub(d) {
+                Some(diff) => Some(SignedDuration {
+                    negative: false,
+                    magnitude: diff,
+                }),
+                None => match d.checked_sub(self.magnitude) {
+                    Some(diff) => Some(SignedDuration {
+                        negative: true,
+                        magnitude: diff,
+                    }),
+                    None => {
+                        panic!(
+                            "checked_sub inconsistent for {:?} - {:?}",
+                            self.magnitude, d
+                        );
+                    }
+                },
+            }
+        }
     }
 
     fn checked_add(&self, d: Duration) -> Option<SignedDuration> {
-	if self.negative {
-	    match d.checked_sub(self.magnitude) {
-		Some(diff) => Some(SignedDuration {
-		    negative: false,
-		    magnitude: diff,
-		}),
-		None => match self.magnitude.checked_sub(d) {
-		    Some(diff) => Some(SignedDuration {
-			negative: true,
-			magnitude: diff,
-		    }),
-		    None => {
-			panic!("checked_add inconsistent for {:?} - {:?}", self.magnitude, d);
-		    }
-		}
-	    }
-	} else {
-	    match self.magnitude.checked_add(d) {
-		Some(tot) => Some(SignedDuration {
-		    negative: false,
-		    magnitude: tot,
-		}),
-		None => None,	// actual overflow
-	    }
-	}
+        if self.negative {
+            match d.checked_sub(self.magnitude) {
+                Some(diff) => Some(SignedDuration {
+                    negative: false,
+                    magnitude: diff,
+                }),
+                None => match self.magnitude.checked_sub(d) {
+                    Some(diff) => Some(SignedDuration {
+                        negative: true,
+                        magnitude: diff,
+                    }),
+                    None => {
+                        panic!(
+                            "checked_add inconsistent for {:?} - {:?}",
+                            self.magnitude, d
+                        );
+                    }
+                },
+            }
+        } else {
+            match self.magnitude.checked_add(d) {
+                Some(tot) => Some(SignedDuration {
+                    negative: false,
+                    magnitude: tot,
+                }),
+                None => None, // actual overflow
+            }
+        }
     }
 }
-
 
 /// MinimalSleeper provides a facility for periodically sleeping such
 /// that on average we sleep for the requested amount of time, even
@@ -294,61 +293,78 @@ pub struct MinimalSleeper {
 
 impl MinimalSleeper {
     pub fn new(min_sleep: Duration) -> MinimalSleeper {
-	MinimalSleeper {
-	    min_sleep,
-	    sleep_owed: SignedDuration::ZERO,
-	    total_cumulative_sleep: Duration::ZERO,
-	}
+        MinimalSleeper {
+            min_sleep,
+            sleep_owed: SignedDuration::ZERO,
+            total_cumulative_sleep: Duration::ZERO,
+        }
     }
 
     fn really_sleep(&mut self) {
-	match self.sleep_owed {
-	    SignedDuration { negative: false, magnitude, } => {
-		let then = Instant::now();
-		event!(Level::DEBUG, "Sleeping for {:?}...", self.sleep_owed);
-		sleep(magnitude);
-		self.total_cumulative_sleep += magnitude;
-		let now = Instant::now();
-		let slept_for = now - then;
-		event!(Level::TRACE, "MinimalSleeper: owed sleep is {:?}, actually slept for {:?}", self.sleep_owed, slept_for);
-		match self.sleep_owed.checked_sub(slept_for) {
-		    Some(remainder) => {
-			self.sleep_owed = remainder;
-		    }
-		    None => {
-			panic!("MinimalSleeper::really_sleep: overflow in sleep_owed");
-		    }
-		}
-	    }
-	    _ => unreachable!(), // should not have been called.
-	}
-	event!(Level::DEBUG, "MinimalSleeper: updated sleep debt is {:?}...", self.sleep_owed);
+        match self.sleep_owed {
+            SignedDuration {
+                negative: false,
+                magnitude,
+            } => {
+                let then = Instant::now();
+                event!(Level::DEBUG, "Sleeping for {:?}...", self.sleep_owed);
+                sleep(magnitude);
+                self.total_cumulative_sleep += magnitude;
+                let now = Instant::now();
+                let slept_for = now - then;
+                event!(
+                    Level::TRACE,
+                    "MinimalSleeper: owed sleep is {:?}, actually slept for {:?}",
+                    self.sleep_owed,
+                    slept_for
+                );
+                match self.sleep_owed.checked_sub(slept_for) {
+                    Some(remainder) => {
+                        self.sleep_owed = remainder;
+                    }
+                    None => {
+                        panic!("MinimalSleeper::really_sleep: overflow in sleep_owed");
+                    }
+                }
+            }
+            _ => unreachable!(), // should not have been called.
+        }
+        event!(
+            Level::DEBUG,
+            "MinimalSleeper: updated sleep debt is {:?}...",
+            self.sleep_owed
+        );
     }
 
     pub fn sleep(&mut self, duration: &Duration) {
-	match self.sleep_owed.checked_add(*duration) {
-	    Some(more) => {
-		self.sleep_owed = more;
-		match self.sleep_owed {
-		    SignedDuration { negative: false, magnitude, } if magnitude > self.min_sleep => {
-			self.really_sleep()
-		    }
-		    _ => {
-			// We did not build up enough sleep debt to exceed the
-			// threshold, or our sleep debt is negative.  Wait for
-			// more calls to sleep to bring us over the threshold.
-		    }
-		}
-	    }
-	    None => {
-		panic!("MinimalSleeper::really_sleep: overflow in sleep_owed");
-	    }
-	}
+        match self.sleep_owed.checked_add(*duration) {
+            Some(more) => {
+                self.sleep_owed = more;
+                match self.sleep_owed {
+                    SignedDuration {
+                        negative: false,
+                        magnitude,
+                    } if magnitude > self.min_sleep => self.really_sleep(),
+                    _ => {
+                        // We did not build up enough sleep debt to exceed the
+                        // threshold, or our sleep debt is negative.  Wait for
+                        // more calls to sleep to bring us over the threshold.
+                    }
+                }
+            }
+            None => {
+                panic!("MinimalSleeper::really_sleep: overflow in sleep_owed");
+            }
+        }
     }
 }
 
 impl Drop for MinimalSleeper {
     fn drop(&mut self) {
-	event!(Level::INFO, "MinimalSleeper: drop: total cumulative sleep is {:?}", self.total_cumulative_sleep);
+        event!(
+            Level::INFO,
+            "MinimalSleeper: drop: total cumulative sleep is {:?}",
+            self.total_cumulative_sleep
+        );
     }
 }

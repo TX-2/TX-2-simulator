@@ -2,21 +2,12 @@
 /// onescomplement/unsigned.rs) to represent this.  As stored in
 /// memory, there are two additional bits; these are implemented in
 /// the CPU emulation, not here.
-
 use std::cmp::Ordering;
 use std::fmt::{Debug, Display, Error, Formatter, Octal};
 
 use crate::onescomplement::error::ConversionFailed;
-use crate::onescomplement::signed::{
-    Signed5Bit,
-    Signed6Bit,
-    Signed18Bit,
-};
-use crate::onescomplement::unsigned::{
-    Unsigned18Bit,
-    Unsigned36Bit,
-    Unsigned6Bit,
-};
+use crate::onescomplement::signed::{Signed18Bit, Signed5Bit, Signed6Bit};
+use crate::onescomplement::unsigned::{Unsigned18Bit, Unsigned36Bit, Unsigned6Bit};
 use crate::onescomplement::{Sign, WordCommon};
 
 /// The `IndexBy` trait implements address arithmetic (adding a signed
@@ -122,9 +113,13 @@ impl Address {
     /// address will have a zero-valued top bit, no matter what is in
     /// `addr`.  This is the opposite of `split`.
     pub fn join(addr: Unsigned18Bit, mark: bool) -> Address {
-	let markbit: Unsigned18Bit = if mark { PLACEHOLDER_MARK_BIT } else { Unsigned18Bit::ZERO };
-	let addr_without_mark: Unsigned18Bit = addr & !PLACEHOLDER_MARK_BIT;
-	Address::from(markbit | addr_without_mark)
+        let markbit: Unsigned18Bit = if mark {
+            PLACEHOLDER_MARK_BIT
+        } else {
+            Unsigned18Bit::ZERO
+        };
+        let addr_without_mark: Unsigned18Bit = addr & !PLACEHOLDER_MARK_BIT;
+        Address::from(markbit | addr_without_mark)
     }
 
     /// Computes the address following the current address.  Used,
@@ -159,7 +154,7 @@ impl IndexBy<u8> for Address {
     fn index_by(&self, index: u8) -> Address {
         let offset: Unsigned18Bit = index.into();
         let (address, mark) = self.split();
-	Address::join(address.wrapping_add(offset) & !PLACEHOLDER_MARK_BIT, mark)
+        Address::join(address.wrapping_add(offset) & !PLACEHOLDER_MARK_BIT, mark)
     }
 }
 
@@ -176,19 +171,19 @@ fn idx_impl(base: Address, delta: Signed18Bit) -> Result<Address, ConversionFail
 
 impl IndexBy<Signed5Bit> for Address {
     fn index_by(&self, delta: Signed5Bit) -> Address {
-	idx_impl(*self, Signed18Bit::from(delta)).unwrap()
+        idx_impl(*self, Signed18Bit::from(delta)).unwrap()
     }
 }
 
 impl IndexBy<Signed6Bit> for Address {
     fn index_by(&self, delta: Signed6Bit) -> Address {
-	idx_impl(*self, Signed18Bit::from(delta)).unwrap()
+        idx_impl(*self, Signed18Bit::from(delta)).unwrap()
     }
 }
 
 impl IndexBy<Signed18Bit> for Address {
     fn index_by(&self, delta: Signed18Bit) -> Address {
-	idx_impl(*self, delta).unwrap()
+        idx_impl(*self, delta).unwrap()
     }
 }
 

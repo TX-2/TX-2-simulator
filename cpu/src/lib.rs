@@ -1,6 +1,6 @@
 //! This module decodes instructions and emulates the arithmetic unit
 //! and the exchange unit.
-#![crate_name="cpu"]
+#![crate_name = "cpu"]
 
 mod alarm;
 mod clock;
@@ -10,13 +10,6 @@ pub mod io;
 mod memory;
 
 pub use alarm::Alarm;
-pub use control::{
-    ControlUnit,
-    ResetMode
-};
-pub use clock::{
-    Clock,
-    BasicClock,
-    MinimalSleeper,
-};
+pub use clock::{BasicClock, Clock, MinimalSleeper};
+pub use control::{ControlUnit, ResetMode};
 pub use memory::{MemoryConfiguration, MemoryUnit};

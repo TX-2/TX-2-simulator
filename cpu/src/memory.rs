@@ -75,7 +75,7 @@ pub enum MetaBitChange {
 pub enum BitChange {
     Clear,
     Set,
-    Flip
+    Flip,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -87,15 +87,21 @@ pub struct WordChange {
 
 impl WordChange {
     pub fn will_mutate_memory(&self) -> bool {
-	if self.cycle {
-	    true
-	} else if self.bitop.is_none() {
-	    false
-	} else {
-	    // Only bit positions 1-9 (normal bits) and 10 (meta) are
-	    // modifiable.
-	    !matches!(self.bit, BitSelector { quarter: _, bitpos: 0|11|12 })
-	}
+        if self.cycle {
+            true
+        } else if self.bitop.is_none() {
+            false
+        } else {
+            // Only bit positions 1-9 (normal bits) and 10 (meta) are
+            // modifiable.
+            !matches!(
+                self.bit,
+                BitSelector {
+                    quarter: _,
+                    bitpos: 0 | 11 | 12
+                }
+            )
+        }
     }
 }
 
@@ -119,7 +125,7 @@ pub trait MemoryMapped {
     fn change_bit(
         &mut self,
         addr: &Address,
-	op: &WordChange,
+        op: &WordChange,
     ) -> Result<Option<bool>, MemoryOpFailure>;
 }
 
@@ -142,28 +148,31 @@ impl Debug for MemoryWord {
 
 fn compute_extra_bits(w: u64) -> ExtraBits {
     let parity: bool = match w.count_ones() & 1 {
-	0 => false,
-	1 => true,
-	_ => unreachable!(),
+        0 => false,
+        1 => true,
+        _ => unreachable!(),
     };
     let meta: bool = w & META_BIT != 0;
-    ExtraBits {
-	meta,
-	parity,
-    }
+    ExtraBits { meta, parity }
 }
 
 impl From<&MemoryWord> for (Unsigned36Bit, ExtraBits) {
     fn from(w: &MemoryWord) -> (Unsigned36Bit, ExtraBits) {
         let valuebits: u64 = w.0 & WORD_BITS;
-        (Unsigned36Bit::try_from(valuebits).unwrap(), compute_extra_bits(w.0))
+        (
+            Unsigned36Bit::try_from(valuebits).unwrap(),
+            compute_extra_bits(w.0),
+        )
     }
 }
 
 impl From<&mut MemoryWord> for (Unsigned36Bit, ExtraBits) {
     fn from(w: &mut MemoryWord) -> (Unsigned36Bit, ExtraBits) {
         let valuebits: u64 = w.0 & WORD_BITS;
-        (Unsigned36Bit::try_from(valuebits).unwrap(), compute_extra_bits(w.0))
+        (
+            Unsigned36Bit::try_from(valuebits).unwrap(),
+            compute_extra_bits(w.0),
+        )
     }
 }
 
@@ -339,40 +348,39 @@ fn change_word(mem_word: &mut MemoryWord, op: &WordChange) -> Option<bool> {
     // handbook, page 3-35) explains, we perform the
     // possible bit change before the possible rotate.
     let prev: Option<bool> = match (op.bit.quarter, op.bit.bitpos) {
-	(_, 0) => None,
-	(quarter, shift@ 1..=10) => {
-	    let mask: u64 = if shift < 10 {
-		1 << ((u8::from(quarter) * 9) + (shift-1))
-	    } else {
-		META_BIT
-	    };
-	    let old_value: bool = (mem_word.0 & mask) != 0;
-	    match op.bitop {
-		None => (),
-		Some(BitChange::Clear) => mem_word.0 &= !mask,
-		Some(BitChange::Set) => mem_word.0 |= mask,
-		Some(BitChange::Flip) => mem_word.0 ^= mask,
-	    }
-	    Some(old_value)
-	}
-	// 11 is the partiy bit 12 is the computed parity.
-	// Both a read-only, but I don't think an attempt
-	// to modify them trips an alarm (at least, I
-	// can't see any mention of this in the SKM
-	// documentation).
-	(_, 11|12) => {
-	    let (_wordval, extra_bits): (Unsigned36Bit, ExtraBits) = mem_word.into();
-	    Some(extra_bits.parity)
-	}
-	_ => unreachable!(),
+        (_, 0) => None,
+        (quarter, shift @ 1..=10) => {
+            let mask: u64 = if shift < 10 {
+                1 << ((u8::from(quarter) * 9) + (shift - 1))
+            } else {
+                META_BIT
+            };
+            let old_value: bool = (mem_word.0 & mask) != 0;
+            match op.bitop {
+                None => (),
+                Some(BitChange::Clear) => mem_word.0 &= !mask,
+                Some(BitChange::Set) => mem_word.0 |= mask,
+                Some(BitChange::Flip) => mem_word.0 ^= mask,
+            }
+            Some(old_value)
+        }
+        // 11 is the partiy bit 12 is the computed parity.
+        // Both a read-only, but I don't think an attempt
+        // to modify them trips an alarm (at least, I
+        // can't see any mention of this in the SKM
+        // documentation).
+        (_, 11 | 12) => {
+            let (_wordval, extra_bits): (Unsigned36Bit, ExtraBits) = mem_word.into();
+            Some(extra_bits.parity)
+        }
+        _ => unreachable!(),
     };
     if op.cycle {
-	let (value, _extra) = mem_word.into();
-	mem_word.set_value(&(value >> 1));
+        let (value, _extra) = mem_word.into();
+        mem_word.set_value(&(value >> 1));
     }
     prev
 }
-
 
 impl MemoryMapped for MemoryUnit {
     fn fetch(
@@ -381,12 +389,12 @@ impl MemoryMapped for MemoryUnit {
         side_effect: &MetaBitChange,
     ) -> Result<(Unsigned36Bit, ExtraBits), MemoryOpFailure> {
         if u32::from(addr) >= V_MEMORY_START {
-	    // The description of the SKM instruction doesn't state
-	    // explicitly that SKM works on V-memory, but since
-	    // arithmetic unit registers are mapped to it, it would
-	    // make sense.  However, there are clearly other locations
-	    // in V memory (e.g. the plugboard) that we can't cycle.
-	    if *side_effect != MetaBitChange::None {
+            // The description of the SKM instruction doesn't state
+            // explicitly that SKM works on V-memory, but since
+            // arithmetic unit registers are mapped to it, it would
+            // make sense.  However, there are clearly other locations
+            // in V memory (e.g. the plugboard) that we can't cycle.
+            if *side_effect != MetaBitChange::None {
                 // Changng meta bits in V memory is not allowed,
                 // see the longer comment in the store() method.
                 return Err(MemoryOpFailure::ReadOnly);
@@ -394,13 +402,13 @@ impl MemoryMapped for MemoryUnit {
         }
         match self.access(&MemoryAccess::Read, addr) {
             Err(e) => Err(e),
-	    Ok(None) => unreachable!(),
+            Ok(None) => unreachable!(),
             Ok(Some(mem_word)) => {
                 let result = mem_word.into();
-		match side_effect {
-		    MetaBitChange::None => (),
-		    MetaBitChange::Set => mem_word.set_meta_bit(&true),
-		}
+                match side_effect {
+                    MetaBitChange::None => (),
+                    MetaBitChange::Set => mem_word.set_meta_bit(&true),
+                }
                 Ok(result)
             }
         }
@@ -432,7 +440,7 @@ impl MemoryMapped for MemoryUnit {
             // The User Handbook also states that V-memory locations
             // other than registers A-E cannot be written at all.
             //return Err(MemoryOpFailure::ReadOnly);
-	    return Ok(());	// ignore the write.
+            return Ok(()); // ignore the write.
         }
 
         // TODO: instructions are not allowed to write to V-memory
@@ -442,16 +450,16 @@ impl MemoryMapped for MemoryUnit {
             Err(e) => {
                 return Err(e);
             }
-	    Ok(None) => {
-		// Attempt to write to memory that cannot be written.
-		// We just ignore this.
-		return Ok(());
-	    }
+            Ok(None) => {
+                // Attempt to write to memory that cannot be written.
+                // We just ignore this.
+                return Ok(());
+            }
             Ok(Some(mem_word)) => {
                 mem_word.set_value(value);
                 match meta {
-		    MetaBitChange::None => (),
-		    MetaBitChange::Set => mem_word.set_meta_bit(&true),
+                    MetaBitChange::None => (),
+                    MetaBitChange::Set => mem_word.set_meta_bit(&true),
                 }
             }
         }
@@ -459,41 +467,41 @@ impl MemoryMapped for MemoryUnit {
     }
 
     fn change_bit(
-	&mut self,
-	addr: &Address,
-	op: &WordChange,
+        &mut self,
+        addr: &Address,
+        op: &WordChange,
     ) -> Result<Option<bool>, MemoryOpFailure> {
-	let memory_access: MemoryAccess = if op.will_mutate_memory() {
-	    MemoryAccess::Write
-	} else {
-	    MemoryAccess::Read
-	};
-	// If the memory address is not mapped at all, access will
-	// return Err, causing the next line to bail out of this
-	// function.
-	match self.access(&memory_access, addr)? {
-	    None => {
-		// The memory address is mapped to read-only memory.
-		// For example, plugboard memory.
-		//
-		// We downgrade the bit operation to be non-mutating,
-		// so that the outcome of the bit test is as it should
-		// be, but the memory-write is inhibited.
-		match self.access(&MemoryAccess::Read, addr)? {
-		    None => unreachable!(),
-		    Some(mem_word) => {
-			let downgraded_op = WordChange {
-			    bit: op.bit, // access the same bit
-			    bitop: None, // read-only
-			    cycle: false, // read-only
-			};
-			assert!(!downgraded_op.will_mutate_memory()); // should be read-only now
-			Ok(change_word(mem_word, &downgraded_op))
-		    }
-		}
-	    }
+        let memory_access: MemoryAccess = if op.will_mutate_memory() {
+            MemoryAccess::Write
+        } else {
+            MemoryAccess::Read
+        };
+        // If the memory address is not mapped at all, access will
+        // return Err, causing the next line to bail out of this
+        // function.
+        match self.access(&memory_access, addr)? {
+            None => {
+                // The memory address is mapped to read-only memory.
+                // For example, plugboard memory.
+                //
+                // We downgrade the bit operation to be non-mutating,
+                // so that the outcome of the bit test is as it should
+                // be, but the memory-write is inhibited.
+                match self.access(&MemoryAccess::Read, addr)? {
+                    None => unreachable!(),
+                    Some(mem_word) => {
+                        let downgraded_op = WordChange {
+                            bit: op.bit,  // access the same bit
+                            bitop: None,  // read-only
+                            cycle: false, // read-only
+                        };
+                        assert!(!downgraded_op.will_mutate_memory()); // should be read-only now
+                        Ok(change_word(mem_word, &downgraded_op))
+                    }
+                }
+            }
             Some(mem_word) => Ok(change_word(mem_word, op)),
-	}
+        }
     }
 }
 
@@ -609,9 +617,9 @@ impl VMemory {
         addr: &Address,
     ) -> Result<Option<&mut MemoryWord>, MemoryOpFailure> {
         if access_type == &MemoryAccess::Write {
-	    // There appear to be some instructions which special-case
-	    // attempts to write to arithmetic unit registers, so we
-	    // may need a more sophisticated approach here.
+            // There appear to be some instructions which special-case
+            // attempts to write to arithmetic unit registers, so we
+            // may need a more sophisticated approach here.
             return Ok(None);
         }
         match u32::from(addr) {

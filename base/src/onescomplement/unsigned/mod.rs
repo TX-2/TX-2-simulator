@@ -10,8 +10,8 @@ use std::fmt::{self, Debug, Display, Formatter, Octal};
 use std::hash::{Hash, Hasher};
 
 use super::error::ConversionFailed;
-use super::{Sign, WordCommon};
 use super::signed::*;
+use super::{Sign, WordCommon};
 
 #[cfg(test)]
 mod tests;
@@ -121,7 +121,7 @@ macro_rules! try_from_native_type_to_self {
 macro_rules! unsigned_ones_complement_impl {
     ($SelfT:ty, $BITS:expr, $InnerT:ty, $SignedPeerT:ty) => {
         impl $SelfT {
-	    const MODULUS: $InnerT = (1 << $BITS);
+            const MODULUS: $InnerT = (1 << $BITS);
             const VALUE_BITS: $InnerT = Self::MODULUS - 1;
 
             pub const MAX: Self = Self {
@@ -129,7 +129,7 @@ macro_rules! unsigned_ones_complement_impl {
             };
 
             pub const ZERO: Self = Self { bits: 0 };
-	    pub const ONE: Self = Self { bits: 1 };
+            pub const ONE: Self = Self { bits: 1 };
             pub const MIN: Self = Self::ZERO;
 
             pub const fn is_zero(&self) -> bool {
@@ -144,17 +144,15 @@ macro_rules! unsigned_ones_complement_impl {
                 true
             }
 
-	    pub const fn reinterpret_as_signed(&self) -> $SignedPeerT {
-		type T = $SignedPeerT;
-		T {
-		    bits: self.bits
-		}
-	    }
+            pub const fn reinterpret_as_signed(&self) -> $SignedPeerT {
+                type T = $SignedPeerT;
+                T { bits: self.bits }
+            }
 
             pub fn wrapping_add(self, rhs: $SelfT) -> $SelfT {
                 let left = <$InnerT>::from(self);
                 let right = <$InnerT>::from(rhs);
-		let in_range_value: $InnerT = left.wrapping_add(right) & Self::VALUE_BITS;
+                let in_range_value: $InnerT = left.wrapping_add(right) & Self::VALUE_BITS;
                 Self::try_from(in_range_value).unwrap()
             }
 
@@ -387,11 +385,11 @@ macro_rules! unsigned_ones_complement_impl {
         impl std::ops::Shl<$SelfT> for $SelfT {
             type Output = $SelfT;
             fn shl(self, shift_by: $SelfT) -> Self {
-		// Clippy is suspicious of the use of the modulus
-		// operation, but this lint check is really intended
-		// to detect things like subtractions inside an add
-		// operation.
-		#[allow(clippy::suspicious_arithmetic_impl)]
+                // Clippy is suspicious of the use of the modulus
+                // operation, but this lint check is really intended
+                // to detect things like subtractions inside an add
+                // operation.
+                #[allow(clippy::suspicious_arithmetic_impl)]
                 let shift: u32 = (shift_by.bits % $BITS) as u32;
                 self.shl(shift)
             }
@@ -504,9 +502,7 @@ try_from_native_type_to_self!(Unsigned6Bit, u8, i8 u8 u16 i16 u32 i32 u64 i64 us
 
 impl From<Unsigned5Bit> for Unsigned6Bit {
     fn from(n: Unsigned5Bit) -> Self {
-        Self {
-            bits: n.bits,
-        }
+        Self { bits: n.bits }
     }
 }
 
@@ -570,30 +566,25 @@ impl From<Unsigned6Bit> for Unsigned12Bit {
 
 impl From<Unsigned9Bit> for Unsigned12Bit {
     fn from(n: Unsigned9Bit) -> Self {
-        Self {
-            bits: n.bits,
-        }
+        Self { bits: n.bits }
     }
 }
 
 impl TryFrom<Unsigned18Bit> for Unsigned12Bit {
     type Error = ConversionFailed;
     fn try_from(n: Unsigned18Bit) -> Result<Self, ConversionFailed> {
-	match u16::try_from(n.bits) {
-	    Ok(n) => {
-		if n > Self::VALUE_BITS {
-		    Err(ConversionFailed::TooLarge)
-		} else {
-		    Ok(Self {
-			bits: n,
-		    })
-		}
-	    }
-	    Err(_) => Err(ConversionFailed::TooLarge),
-	}
+        match u16::try_from(n.bits) {
+            Ok(n) => {
+                if n > Self::VALUE_BITS {
+                    Err(ConversionFailed::TooLarge)
+                } else {
+                    Ok(Self { bits: n })
+                }
+            }
+            Err(_) => Err(ConversionFailed::TooLarge),
+        }
     }
 }
-
 
 ////////////////////////////////////////////////////////////////////////
 // Unsigned18Bit
@@ -640,18 +631,16 @@ try_from_native_type_to_self!(Unsigned36Bit, u64, i8 i16 i32 u64 i64);
 impl TryFrom<Unsigned36Bit> for Unsigned6Bit {
     type Error = ConversionFailed;
     fn try_from(n: Unsigned36Bit) -> Result<Self, ConversionFailed> {
-	match u8::try_from(n.bits) {
-	    Ok(n) => {
-		if n > Self::VALUE_BITS {
-		    Err(ConversionFailed::TooLarge)
-		} else {
-		    Ok(Self {
-			bits: n,
-		    })
-		}
-	    }
-	    Err(_) => Err(ConversionFailed::TooLarge),
-	}
+        match u8::try_from(n.bits) {
+            Ok(n) => {
+                if n > Self::VALUE_BITS {
+                    Err(ConversionFailed::TooLarge)
+                } else {
+                    Ok(Self { bits: n })
+                }
+            }
+            Err(_) => Err(ConversionFailed::TooLarge),
+        }
     }
 }
 

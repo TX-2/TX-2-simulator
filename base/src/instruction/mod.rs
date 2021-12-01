@@ -49,7 +49,6 @@ use crate::subword;
 
 mod format;
 
-
 /// `Quarter` describes which quarter of a word an SKM instruction
 /// will operate on.  See the [`index_address_to_bit_selection`]
 /// function.
@@ -66,12 +65,12 @@ pub enum Quarter {
 /// word).
 impl From<Quarter> for u8 {
     fn from(q: Quarter) -> u8 {
-	match q {
-	    Quarter::Q1 => 0,
-	    Quarter::Q2 => 1,
-	    Quarter::Q3 => 2,
-	    Quarter::Q4 => 3,
-	}
+        match q {
+            Quarter::Q1 => 0,
+            Quarter::Q2 => 1,
+            Quarter::Q3 => 2,
+            Quarter::Q4 => 3,
+        }
     }
 }
 
@@ -87,7 +86,7 @@ pub struct BitSelector {
     /// will be used when SKM tests bit 0).  10 is the meta bit.  11
     /// is the parity bit stored in memory.  12 is the parity value
     /// computed from the bits stored in memory.
-    pub bitpos: u8,	// takes values 0..=12.
+    pub bitpos: u8, // takes values 0..=12.
 }
 
 /// Convert the index address field of an SKM instruction into a
@@ -95,14 +94,14 @@ pub struct BitSelector {
 pub fn index_address_to_bit_selection(index_address: Unsigned6Bit) -> BitSelector {
     let j: u8 = u8::from(index_address);
     BitSelector {
-	quarter: match (j >> 4) & 0b11 {
-	    0 => Quarter::Q4,
-	    1 => Quarter::Q1,
-	    2 => Quarter::Q2,
-	    3 => Quarter::Q3,
-	    _ => unreachable!(),
-	},
-	bitpos: j & 0b1111_u8,
+        quarter: match (j >> 4) & 0b11 {
+            0 => Quarter::Q4,
+            1 => Quarter::Q1,
+            2 => Quarter::Q2,
+            3 => Quarter::Q3,
+            _ => unreachable!(),
+        },
+        bitpos: j & 0b1111_u8,
     }
 }
 
@@ -125,7 +124,7 @@ impl From<Unsigned36Bit> for Instruction {
 
 impl From<Instruction> for Unsigned36Bit {
     fn from(inst: Instruction) -> Unsigned36Bit {
-	inst.0
+        inst.0
     }
 }
 
@@ -308,7 +307,7 @@ impl Opcode {
     }
 
     pub fn hold_is_implicit(&self) -> bool {
-	matches!(self, Opcode::Lde | Opcode::Ite | Opcode::Jpx | Opcode::Jnx)
+        matches!(self, Opcode::Lde | Opcode::Ite | Opcode::Jpx | Opcode::Jnx)
     }
 }
 
@@ -440,7 +439,7 @@ impl Inst for SymbolicInstruction {
     }
 
     fn operand_address_and_defer_bit(&self) -> Unsigned18Bit {
-	const ADDRESS_DEFER_BIT: u32 = 0o400_000;
+        const ADDRESS_DEFER_BIT: u32 = 0o400_000;
         match self.operand_address {
             OperandAddress::Deferred(addr) => {
                 let defer_bit = Unsigned18Bit::try_from(ADDRESS_DEFER_BIT).unwrap();
