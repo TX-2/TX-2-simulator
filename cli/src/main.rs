@@ -1,7 +1,6 @@
 use std::ffi::OsString;
 use std::fs::File;
 use std::fs::OpenOptions;
-use std::time::Duration;
 
 use clap::{App, Arg};
 use tracing::{event, Level};
@@ -10,37 +9,8 @@ use tracing_subscriber::prelude::*;
 use base::prelude::*;
 use cpu::io::{Petr, TapeIterator};
 use cpu::{
-    Alarm, BasicClock, Clock, ControlUnit, MemoryConfiguration, MemoryUnit, MinimalSleeper,
-    ResetMode,
+    run_until_alarm, BasicClock, Clock, ControlUnit, MemoryConfiguration, MemoryUnit, ResetMode,
 };
-
-fn run_until_alarm(
-    control: &mut ControlUnit,
-    mem: &mut MemoryUnit,
-    clk: &mut BasicClock,
-) -> Result<(), Alarm> {
-    let mut elapsed_ns: u64 = 0;
-    let mut sleeper = MinimalSleeper::new(Duration::from_millis(2));
-    loop {
-        control.poll_hardware(&clk.now())?; // check for I/O alarms, flag changes.
-        if !control.fetch_instruction(mem)? {
-            break;
-        }
-        elapsed_ns += match control.execute_instruction(&clk.now(), mem) {
-            Err(e) => {
-                event!(Level::INFO, "Alarm raised after {}ns", elapsed_ns);
-                return Err(e);
-            }
-            Ok(ns) => {
-                let delay = clk.consume(&Duration::from_nanos(ns));
-                sleeper.sleep(&delay);
-                ns
-            }
-        };
-    }
-    event!(Level::INFO, "Stopped after {}ns", elapsed_ns);
-    Ok(())
-}
 
 fn run(control: &mut ControlUnit, mem: &mut MemoryUnit, clk: &mut BasicClock) -> i32 {
     control.codabo(&ResetMode::ResetTSP);
@@ -80,7 +50,7 @@ impl TapeIterator for TapeSequence {
     }
 }
 
-fn main() {
+fn run_simulator() -> Result<(), Box<dyn std::error::Error>> {
     let matches = App::new("TX-2 Emulator")
         .author("James Youngman <youngman@google.com>")
         .about("Simulate the historic TX-2 computer")
@@ -88,6 +58,13 @@ fn main() {
             Arg::with_name("PTAPE")
                 .help("File containing paper tape data")
                 .multiple(true)
+                .required(false),
+        )
+        .arg(
+            Arg::with_name("speed-multiplier")
+                .help("Run this many times faster than real-time ('MAX' for as-fast-as-possible)")
+                .takes_value(true)
+                .long("speed-multiplier")
                 .required(false),
         )
         .get_matches();
@@ -101,8 +78,7 @@ fn main() {
         .or_else(|_| tracing_subscriber::EnvFilter::try_new("info"))
     {
         Err(e) => {
-            eprintln!("{}", e);
-            std::process::exit(1);
+            return Err(Box::new(e));
         }
         Ok(layer) => layer,
     };
@@ -125,8 +101,41 @@ fn main() {
             .collect(),
     );
     let petr = Box::new(Petr::new(Box::new(tapes)));
+
+    let speed_multiplier: Option<f64> = match matches.value_of("speed-multiplier") {
+        None => {
+            event!(
+                Level::INFO,
+                "No --speed-multiplier option specified, using multiplier of 1.0"
+            );
+            Some(1.0)
+        }
+        Some("MAX") => {
+            event!(
+                Level::INFO,
+                "--speed-multiplier=MAX, running at maximum speed"
+            );
+            None
+        }
+        Some(s) => match s.parse::<f64>() {
+            Ok(x) => {
+                event!(
+                    Level::INFO,
+                    "--speed-multiplier={}, running at speed multiplier {}",
+                    s,
+                    x
+                );
+                Some(x)
+            }
+            Err(e) => {
+                return Err(Box::new(e));
+            }
+        },
+    };
+
     let mut control = ControlUnit::new();
-    let mut clk = BasicClock::new(1.0).expect("reasonable clock config");
+    let mut clk: BasicClock = BasicClock::new(speed_multiplier).expect("reasonable clock config");
+
     let petr_unit: Unsigned6Bit = Unsigned6Bit::try_from(0o52_u8).unwrap();
     control.attach(&clk.now(), petr_unit, false, petr);
     event!(
@@ -136,4 +145,16 @@ fn main() {
     );
     let mut mem = MemoryUnit::new(&mem_config);
     std::process::exit(run(&mut control, &mut mem, &mut clk));
+}
+
+fn main() {
+    match run_simulator() {
+        Err(e) => {
+            eprintln!("{}", e);
+            std::process::exit(1);
+        }
+        Ok(()) => {
+            std::process::exit(0);
+        }
+    }
 }

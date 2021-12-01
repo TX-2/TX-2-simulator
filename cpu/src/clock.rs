@@ -62,7 +62,16 @@ pub trait Clock {
 /// use cpu::BasicClock;
 /// use cpu::Clock;
 /// // `clk` tracks real time.
-/// let mut clk = BasicClock::new(1.0);
+/// let mut clk = BasicClock::new(Some(1.0));
+/// ```
+///
+/// ```
+/// use std::time::Duration;
+/// use cpu::BasicClock;
+/// use cpu::Clock;
+/// // `fast` keeps track of simulated time but never asks the
+/// // host to sleep.
+/// let mut clk = BasicClock::new(None);
 /// ```
 ///
 /// ```
@@ -74,7 +83,7 @@ pub trait Clock {
 /// // is not far enough ahead of real time to allow [`consume`] to
 /// // complete without blocking, it will sleep for at least 6
 /// // milliseconds of host time.
-/// let mut clk_half = BasicClock::new(0.5);
+/// let mut clk_half = BasicClock::new(Some(0.5));
 /// ```
 #[derive(Debug)]
 pub struct BasicClock {
@@ -88,7 +97,7 @@ pub struct BasicClock {
     /// Elapsed time as measured by the simulated clock.
     simulator_elapsed: Duration,
 
-    /// The duration "used up" by calls to [`SleepyClock::consume`].
+    /// The duration "used up" by calls to `consume`
     simulator_consumed: Duration,
 
     /// How much faster the simulated blocks runs compared to
@@ -96,7 +105,9 @@ pub struct BasicClock {
     /// real-time.  A value of 0.01 means that we try to run the
     /// simulated clock at 1/100 real-time (that is, the simulated
     /// machine will appear to be very slow).
-    multiplier: f64,
+    ///
+    /// When multiplier is None, run as fast as possble.
+    multiplier: Option<f64>,
 }
 
 #[derive(Debug)]
@@ -115,28 +126,29 @@ impl Display for BadClockConfig {
 impl Error for BadClockConfig {}
 
 impl BasicClock {
-    pub fn new(multiplier: f64) -> Result<BasicClock, BadClockConfig> {
-        if multiplier < 0.0 {
-            Err(BadClockConfig::BadMultiplier(format!(
-                "negative multiplier {}",
-                multiplier
-            )))
-        } else if multiplier < 1.0e-12 {
-            Err(BadClockConfig::BadMultiplier(format!(
-                "excessively tiny multiplier {}",
-                multiplier
-            )))
-        } else {
-            let zero_duration = Duration::new(0, 0);
-            Ok(BasicClock {
-                origin: Instant::now(),
-                // Clocks initially coincide, so actual and simulated
-                // elapsed time are both zero.
-                simulator_elapsed: zero_duration,
-                simulator_consumed: zero_duration,
-                multiplier,
-            })
+    pub fn new(multiplier: Option<f64>) -> Result<BasicClock, BadClockConfig> {
+        if let Some(m) = multiplier {
+            if m < 0.0 {
+                return Err(BadClockConfig::BadMultiplier(format!(
+                    "negative multiplier {}",
+                    m
+                )));
+            } else if m < 1.0e-12 {
+                return Err(BadClockConfig::BadMultiplier(format!(
+                    "excessively tiny multiplier {}",
+                    m
+                )));
+            }
         }
+        let zero_duration = Duration::new(0, 0);
+        Ok(BasicClock {
+            origin: Instant::now(),
+            // Clocks initially coincide, so actual and simulated
+            // elapsed time are both zero.
+            simulator_elapsed: zero_duration,
+            simulator_consumed: zero_duration,
+            multiplier,
+        })
     }
 
     fn zero_duration() -> Duration {
@@ -172,7 +184,11 @@ impl Clock for BasicClock {
         };
         // deficit is measured in simulated clock time; convert it to
         // host time.
-        deficit.div_f64(self.multiplier)
+        if let Some(mult) = self.multiplier {
+            deficit.div_f64(mult)
+        } else {
+            Duration::from_nanos(0)
+        }
     }
 
     fn consume_all(&mut self) {
