@@ -90,11 +90,21 @@ impl SequenceFlags {
 
     fn lower(&mut self, flag: &SequenceNumber) {
         assert!(u16::from(*flag) < 0o100_u16);
+	event!(
+	    Level::INFO,
+	    "Lowering flag {}",
+	    flag,
+	);
         self.flag_values &= !SequenceFlags::flagbit(flag);
     }
 
     fn raise(&mut self, flag: &SequenceNumber) {
         assert!(u16::from(*flag) < 0o100_u16);
+	event!(
+	    Level::INFO,
+	    "Raising flag {}",
+	    flag,
+	);
         self.flag_values |= SequenceFlags::flagbit(flag);
     }
 
@@ -428,9 +438,19 @@ impl ControlUnit {
         // where a unit of higher priority than 0o42 is marked for
         // trap-on-sequence-change.
         if prev_seq == Some(next_seq) {
-            // TODO: log a warning event.
+	    event!(
+		Level::WARN,
+		"change_sequence: old and new sequences are the same: {:>02o}",
+		u8::from(next_seq),
+	    );
             return;
         }
+
+	event!(
+	    Level::INFO,
+	    "Changing sequence to {:>02o}",
+	    u8::from(next_seq),
+	);
 
 	fn is_marked_placeholder(index_val: &Signed18Bit) -> bool {
 	    index_val < &0
@@ -677,7 +697,12 @@ impl ControlUnit {
             None => return Err(self.invalid_opcode_alarm()),
             Some(s) => s,
         };
-	event!(Level::DEBUG, "Executing instruction {}...", sym);
+	event!(
+	    Level::DEBUG,
+	    "Executing (n seq {:>02o}) instruction {}...",
+	    u8::from(self.regs.k.unwrap()),
+	    sym,
+	);
 	// Execution of the instruction will change self.regs.n, but
 	// we want to preserve the original value so that we know
 	// whether the original version of the instruction used
