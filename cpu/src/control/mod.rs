@@ -13,7 +13,7 @@
 //! - Remember the setting of the TSP (Toggle Start Point) register
 use std::time::Duration;
 
-use tracing::{event, Level};
+use tracing::{event, span, Level};
 
 mod op_configuration;
 mod op_index;
@@ -574,7 +574,6 @@ impl ControlUnit {
         // Calculate the address from which we will fetch the
         // instruction, and the increment the program counter.
         let p_physical_address = Address::from(self.regs.p.split().0);
-        self.set_program_counter(ProgramCounterChange::CounterUpdate);
 
         // Actually fetch the instruction.
         let meta_op = if self.trap.set_metabits_of_instructions() {
@@ -696,37 +695,63 @@ impl ControlUnit {
         system_time: &Duration,
         mem: &mut MemoryUnit,
     ) -> Result<u64, Alarm> {
-        let sym = match &self.regs.n_sym {
-            None => return Err(self.invalid_opcode_alarm()),
-            Some(s) => s,
-        };
-        event!(
-            Level::DEBUG,
-            "Executing (n seq {:>02o}) instruction {}...",
-            u8::from(self.regs.k.unwrap()),
-            sym,
-        );
-        // Execution of the instruction will change self.regs.n, but
-        // we want to preserve the original value so that we know
-        // whether the original version of the instruction used
-        // deferred addressing, since this affects our estimate of the
-        // execution time.
-        let saved_inst: Instruction = self.regs.n;
-        match sym.opcode() {
-            Opcode::Skx => self.op_skx(),
-            Opcode::Dpx => self.op_dpx(mem),
-            Opcode::Jmp => self.op_jmp(),
-            Opcode::Jpx => self.op_jpx(mem),
-            Opcode::Jnx => self.op_jnx(mem),
-            Opcode::Skm => self.op_skm(mem),
-            Opcode::Spg => self.op_spg(mem),
-            Opcode::Ios => self.op_ios(system_time),
-            _ => Err(Alarm::ROUNDTUITAL(format!(
-                "The emulator does not yet implement opcode {}",
-                sym.opcode()
-            ))),
+        fn execute(
+            opcode: &Opcode,
+            control: &mut ControlUnit,
+            system_time: &Duration,
+            mem: &mut MemoryUnit,
+        ) -> Result<u64, Alarm> {
+            // Execution of the instruction will change self.regs.n, but
+            // we want to preserve the original value so that we know
+            // whether the original version of the instruction used
+            // deferred addressing, since this affects our estimate of the
+            // execution time.
+            let saved_inst: Instruction = control.regs.n;
+            match opcode {
+                Opcode::Skx => control.op_skx(),
+                Opcode::Dpx => control.op_dpx(mem),
+                Opcode::Jmp => control.op_jmp(),
+                Opcode::Jpx => control.op_jpx(mem),
+                Opcode::Jnx => control.op_jnx(mem),
+                Opcode::Skm => control.op_skm(mem),
+                Opcode::Spg => control.op_spg(mem),
+                Opcode::Ios => control.op_ios(system_time),
+                _ => Err(Alarm::ROUNDTUITAL(format!(
+                    "The emulator does not yet implement opcode {}",
+                    opcode,
+                ))),
+            }
+            .map(|()| control.estimate_execute_time_ns(&saved_inst))
         }
-        .map(|()| self.estimate_execute_time_ns(&saved_inst))
+
+        let p = self.regs.p;
+        self.set_program_counter(ProgramCounterChange::CounterUpdate);
+        if let Some(sym) = self.regs.n_sym.as_ref() {
+            let inst = sym.to_string();
+            let span = span!(Level::INFO,
+			     "xop",
+			     seq=u8::from(self.regs.k.unwrap()),
+			     p=?p,
+			     op=%sym.opcode());
+            let _enter = span.enter();
+            match execute(&sym.opcode(), self, system_time, mem) {
+                Ok(ns) => {
+                    event!(
+                        Level::DEBUG,
+                        "instruction {} executed in simulated {}ns",
+                        inst,
+                        ns
+                    );
+                    Ok(ns)
+                }
+                Err(e) => {
+                    event!(Level::WARN, "instruction {} raised alarm {}", inst, e);
+                    Err(e)
+                }
+            }
+        } else {
+            Err(self.invalid_opcode_alarm())
+        }
     }
 
     fn get_config(&self) -> SystemConfiguration {
