@@ -47,14 +47,15 @@ impl ControlUnit {
         // of the instruction.  This allows us to use SKX to mark a
         // placeholder for use with TRAP 42.
         let operand = inst.operand_address_and_defer_bit();
-        match u8::from(inst.configuration()) {
+        let config = u8::from(inst.configuration());
+        match config {
             0o0 | 0o10 => {
                 if j != 0 {
                     // Xj is fixed at 0.
                     self.regs
                         .set_index_register(j, &operand.reinterpret_as_signed());
                 }
-                if j & 0o10 != 0 {
+                if config & 0o10 != 0 {
                     self.regs.flags.raise(&j);
                 }
                 Ok(())
