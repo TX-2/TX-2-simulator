@@ -40,6 +40,8 @@ use std::fmt::{self, Debug, Display, Formatter};
 use std::ops::Shl;
 use std::time::Duration;
 
+use tracing::{event, span, Level};
+
 use crate::alarm::Alarm;
 use base::prelude::*;
 
@@ -275,13 +277,23 @@ impl DeviceManager {
         let mut raised_flags: u64 = 0;
         let mut alarm: Option<Alarm> = None;
         for (devno, attached) in self.devices.iter_mut() {
+            let span = span!(Level::ERROR, "poll", unit=?devno);
+            let _enter = span.enter();
             if !attached.connected {
+                event!(Level::TRACE, "not polling unit. it's not connected");
                 continue;
             }
             assert!(!attached.in_maintenance); // cannot connect in-maint devices.
+            event!(
+                Level::TRACE,
+                "polling unit at system time {:?}",
+                system_time
+            );
             let unit_status = attached.inner.poll(system_time);
+            event!(Level::TRACE, "unit status is {:?}", unit_status);
             match unit_status.change_flag {
                 Some(FlagChange::Raise) => {
+                    event!(Level::TRACE, "unit has raised its flag");
                     raised_flags |= 1 << u8::from(*devno);
                 }
                 None => (),
@@ -332,13 +344,22 @@ impl DeviceManager {
     ) -> Result<Option<FlagChange>, Alarm> {
         match self.devices.get_mut(device) {
             Some(attached) => {
-                let flag_change = if attached.is_disconnected_output_unit() {
-                    Some(FlagChange::Raise)
+                if attached.in_maintenance {
+                    Err(Alarm::IOSAL {
+                        unit: *device,
+                        operand: None,
+                        message: format!("Attempt to connect in-maint unit {}", device),
+                    })
                 } else {
-                    None
-                };
-                attached.inner.connect(system_time, mode);
-                Ok(flag_change)
+                    let flag_change = if attached.is_disconnected_output_unit() {
+                        Some(FlagChange::Raise)
+                    } else {
+                        None
+                    };
+                    attached.inner.connect(system_time, mode);
+                    attached.connected = true;
+                    Ok(flag_change)
+                }
             }
             None => Err(Alarm::IOSAL {
                 unit: *device,

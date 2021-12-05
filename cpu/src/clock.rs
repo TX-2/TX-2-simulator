@@ -1,7 +1,5 @@
 //! Simulation of elapsed time in the simulated system.
 
-use std::error::Error;
-use std::fmt::{self, Display, Formatter};
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
@@ -37,54 +35,25 @@ pub trait Clock {
     ///
     /// fn g<C: Clock>(clk: &mut C) {
     ///   // We just performed an action which would have taken
-    ///   // one millisecond on the simulated machine.  Let the
-    ///   // clock know so that our rate of simulated progress is
-    ///   // forced to match the simulated clock rate.
-    ///   let wait = clk.consume(&Duration::from_millis(1));
-    ///   sleep(wait);
+    ///   // one millisecond on the simulated machine.
+    ///   clk.consume(&Duration::from_millis(1));
     /// }
     /// ```
-    fn consume(&mut self, inteval: &Duration) -> Duration;
-
-    /// Discard any accumulated surplus of ticks.  We might do this
-    /// for example where the machine has gone into the _Limbo_ state
-    /// where no sequence is runnable (i.e. progress cannot be made
-    /// and the system clock is not the constraining factor).
-    fn consume_all(&mut self);
+    fn consume(&mut self, inteval: &Duration);
 }
 
-/// BasicClock provides a simulated clock which runs slower or faster
-/// than real time by a specified multiplier.
+/// BasicClock provides a simulated clock.
 ///
 /// # Examples
 /// ```
 /// use std::time::Duration;
 /// use cpu::BasicClock;
 /// use cpu::Clock;
-/// // `clk` tracks real time.
-/// let mut clk = BasicClock::new(Some(1.0));
+/// let mut clk = BasicClock::new();
+/// clk.consume(&Duration::from_micros(12));
 /// ```
 ///
-/// ```
-/// use std::time::Duration;
-/// use cpu::BasicClock;
-/// use cpu::Clock;
-/// // `fast` keeps track of simulated time but never asks the
-/// // host to sleep.
-/// let mut clk = BasicClock::new(None);
-/// ```
 ///
-/// ```
-/// use std::time::Duration;
-/// use cpu::BasicClock;
-/// // `clk_half` allows the caller to consume, on average, half a
-/// // second of simulated clock time per actual second of elapsed
-/// // time as measured by the host.   When the simulated clock time
-/// // is not far enough ahead of real time to allow [`consume`] to
-/// // complete without blocking, it will sleep for at least 6
-/// // milliseconds of host time.
-/// let mut clk_half = BasicClock::new(Some(0.5));
-/// ```
 #[derive(Debug)]
 pub struct BasicClock {
     /// The host time at which the clock started running.  At this
@@ -96,105 +65,30 @@ pub struct BasicClock {
 
     /// Elapsed time as measured by the simulated clock.
     simulator_elapsed: Duration,
-
-    /// The duration "used up" by calls to `consume`
-    simulator_consumed: Duration,
-
-    /// How much faster the simulated blocks runs compared to
-    /// real-time.  A value of 1.0 means that we try to match
-    /// real-time.  A value of 0.01 means that we try to run the
-    /// simulated clock at 1/100 real-time (that is, the simulated
-    /// machine will appear to be very slow).
-    ///
-    /// When multiplier is None, run as fast as possble.
-    multiplier: Option<f64>,
 }
-
-#[derive(Debug)]
-pub enum BadClockConfig {
-    BadMultiplier(String),
-}
-
-impl Display for BadClockConfig {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        match self {
-            BadClockConfig::BadMultiplier(msg) => write!(f, "bad clock multiplier: {}", msg),
-        }
-    }
-}
-
-impl Error for BadClockConfig {}
 
 impl BasicClock {
-    pub fn new(multiplier: Option<f64>) -> Result<BasicClock, BadClockConfig> {
-        if let Some(m) = multiplier {
-            if m < 0.0 {
-                return Err(BadClockConfig::BadMultiplier(format!(
-                    "negative multiplier {}",
-                    m
-                )));
-            } else if m < 1.0e-12 {
-                return Err(BadClockConfig::BadMultiplier(format!(
-                    "excessively tiny multiplier {}",
-                    m
-                )));
-            }
-        }
-        let zero_duration = Duration::new(0, 0);
-        Ok(BasicClock {
+    pub fn new() -> BasicClock {
+        BasicClock {
             origin: Instant::now(),
-            // Clocks initially coincide, so actual and simulated
-            // elapsed time are both zero.
-            simulator_elapsed: zero_duration,
-            simulator_consumed: zero_duration,
-            multiplier,
-        })
+            simulator_elapsed: Duration::new(0, 0),
+        }
     }
+}
 
-    fn zero_duration() -> Duration {
-        Duration::new(0, 0)
+impl Default for BasicClock {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 impl Clock for BasicClock {
     fn now(&self) -> Duration {
-        self.simulator_consumed
+        self.simulator_elapsed
     }
 
-    fn consume(&mut self, interval: &Duration) -> Duration {
-        let deficit: Duration = match self.simulator_elapsed.checked_sub(self.simulator_consumed) {
-            Some(surplus) if surplus > *interval => {
-                self.simulator_consumed += *interval;
-                Self::zero_duration()
-            }
-            Some(surplus) => {
-                self.simulator_consumed += surplus;
-                match interval.checked_sub(surplus) {
-                    Some(deficit) => deficit,
-                    // We do not expect overflow because the `surplus
-                    // > interval` test failed above.
-                    None => unreachable!(),
-                }
-            }
-            None => {
-                // `self.simulator_consumed > self.simulator_elapsed`,
-                // which should not happen.
-                *interval
-            }
-        };
-        // deficit is measured in simulated clock time; convert it to
-        // host time.
-        if let Some(mult) = self.multiplier {
-            deficit.div_f64(mult)
-        } else {
-            Duration::from_nanos(0)
-        }
-    }
-
-    fn consume_all(&mut self) {
-        self.origin = Instant::now();
-        self.simulator_elapsed = Duration::new(0, 0);
-        self.simulator_consumed = Duration::new(0, 0);
+    fn consume(&mut self, interval: &Duration) {
+        self.simulator_elapsed += *interval;
     }
 }
 
@@ -223,13 +117,10 @@ impl From<Duration> for SignedDuration {
 impl SignedDuration {
     fn checked_sub(&self, d: Duration) -> Option<SignedDuration> {
         if self.negative {
-            match self.magnitude.checked_add(d) {
-                Some(result) => Some(SignedDuration {
-                    negative: true,
-                    magnitude: result,
-                }),
-                None => None, // actual overflow
-            }
+            self.magnitude.checked_add(d).map(|result| SignedDuration {
+                negative: true,
+                magnitude: result,
+            })
         } else {
             match self.magnitude.checked_sub(d) {
                 Some(diff) => Some(SignedDuration {
@@ -273,13 +164,10 @@ impl SignedDuration {
                 },
             }
         } else {
-            match self.magnitude.checked_add(d) {
-                Some(tot) => Some(SignedDuration {
-                    negative: false,
-                    magnitude: tot,
-                }),
-                None => None, // actual overflow
-            }
+            self.magnitude.checked_add(d).map(|tot| SignedDuration {
+                negative: false,
+                magnitude: tot,
+            })
         }
     }
 }

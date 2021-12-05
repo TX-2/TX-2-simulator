@@ -12,18 +12,17 @@ use cpu::{
     run_until_alarm, BasicClock, Clock, ControlUnit, MemoryConfiguration, MemoryUnit, ResetMode,
 };
 
-fn run(control: &mut ControlUnit, mem: &mut MemoryUnit, clk: &mut BasicClock) -> i32 {
+fn run(
+    control: &mut ControlUnit,
+    mem: &mut MemoryUnit,
+    clk: &mut BasicClock,
+    multiplier: Option<f64>,
+) -> i32 {
     control.codabo(&ResetMode::ResetTSP);
-    if let Err(e) = run_until_alarm(control, mem, clk) {
+    if let Err(e) = run_until_alarm(control, mem, clk, multiplier) {
         event!(Level::ERROR, "Execution stopped: {}", e);
-        1
-    } else {
-        event!(
-            Level::INFO,
-            "machine is in limbo, terminating since there are no I/O devices yet",
-        );
-        0
     }
+    1
 }
 
 #[derive(Debug)]
@@ -134,7 +133,7 @@ fn run_simulator() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let mut control = ControlUnit::new();
-    let mut clk: BasicClock = BasicClock::new(speed_multiplier).expect("reasonable clock config");
+    let mut clk: BasicClock = BasicClock::new();
 
     let petr_unit: Unsigned6Bit = Unsigned6Bit::try_from(0o52_u8).unwrap();
     control.attach(&clk.now(), petr_unit, false, petr);
@@ -144,7 +143,7 @@ fn run_simulator() -> Result<(), Box<dyn std::error::Error>> {
         &control
     );
     let mut mem = MemoryUnit::new(&mem_config);
-    std::process::exit(run(&mut control, &mut mem, &mut clk));
+    std::process::exit(run(&mut control, &mut mem, &mut clk, speed_multiplier));
 }
 
 fn main() {

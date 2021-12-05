@@ -362,6 +362,10 @@ impl ControlUnit {
         // so perhaps all the registers in V memory are cleared by
         // CODABO.
         //
+        let span = span!(Level::ERROR,
+			 "codabo",
+			 reset_mode=?reset_mode);
+        let _enter = span.enter();
         event!(Level::INFO, "Starting CODABO {:?}", &reset_mode);
         self.disconnect_io_devices();
         self.reset(reset_mode);
@@ -470,8 +474,11 @@ impl ControlUnit {
         }
         self.regs.k = Some(next_seq);
         if let Some(prev) = prev_seq {
-            let p = self.regs.p;
-            self.regs.set_index_register_from_address(prev, &p);
+            // Index register 0 never changes, it's always 0.
+            if prev_seq != Some(Unsigned6Bit::ZERO) {
+                let p = self.regs.p;
+                self.regs.set_index_register_from_address(prev, &p);
+            }
         }
         self.set_program_counter(ProgramCounterChange::SequenceChange(next_seq));
     }
@@ -944,6 +951,7 @@ impl ControlUnit {
     fn dismiss_unless_held(&mut self) {
         if !self.regs.n.is_held() {
             if let Some(current_seq) = self.regs.k {
+                event!(Level::INFO, "dismissing current sequence");
                 self.regs.flags.lower(&current_seq);
                 self.regs.current_sequence_is_runnable = false;
             }

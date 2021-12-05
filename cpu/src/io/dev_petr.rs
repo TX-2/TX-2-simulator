@@ -164,10 +164,18 @@ impl Petr {
             None | Some(0) => {
                 // We reached - or were already at - the END MARK,
                 // reverse direction.
+                event!(Level::INFO, "reached the end mark");
                 assert!(self.direction == Direction::Bin);
                 self.direction = Direction::Reel;
             }
-            Some(reduced_by_1) => self.rewind_line_counter = reduced_by_1,
+            Some(reduced_by_1) => {
+                self.rewind_line_counter = reduced_by_1;
+                event!(
+                    Level::DEBUG,
+                    "rewound over a line: {} more to go",
+                    self.rewind_line_counter
+                );
+            }
         }
     }
 
@@ -209,12 +217,25 @@ impl Petr {
                     if t > *system_time {
                         // The next line has not yet appeared under the read
                         // head.
+                        let to_wait = || t - *system_time;
+                        event!(
+                            Level::TRACE,
+                            "motor running ({}) but next line will not be read for {:?} yet",
+                            self.direction,
+                            to_wait()
+                        );
                         return;
                     }
                 }
                 match self.direction {
-                    Direction::Bin => self.do_rewind(),
-                    Direction::Reel => self.do_read(),
+                    Direction::Bin => {
+                        event!(Level::TRACE, "motor running, doing rewind action");
+                        self.do_rewind()
+                    }
+                    Direction::Reel => {
+                        event!(Level::TRACE, "motor running, doing read action");
+                        self.do_read()
+                    }
                 }
                 // do_read may have stopped the motor, so take account
                 // of that.
@@ -226,6 +247,7 @@ impl Petr {
             Activity::Stopped => {
                 // The motor is not running.  So no events (of lines
                 // passing under the photodetector) will happen.
+                event!(Level::TRACE, "motor stopped, nothing more to simulate");
             }
         }
     }

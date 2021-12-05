@@ -19,9 +19,10 @@ impl ControlUnit {
             let flag_raised: bool = self.regs.flags.current_flag_state(&j);
             self.regs.e = self.devices.report(system_time, j, flag_raised)?;
         }
+        let mut dismiss: bool = cf & 0o20 != 0;
 
         let operand = self.regs.n.operand_address_and_defer_bit();
-        match u32::from(operand) {
+        let result = match u32::from(operand) {
             0o20_000 => self.disconnect_unit(j),
             0o30_000..=0o37_777 => {
                 let mode: Unsigned12Bit = Unsigned12Bit::try_from(operand & 0o07_777).unwrap();
@@ -39,6 +40,9 @@ impl ControlUnit {
             }
             0o50_000 => {
                 self.regs.flags.raise(&j);
+                if Some(j) == self.regs.k {
+                    dismiss = false;
+                }
                 Ok(())
             }
             0o60_000..=0o60777 => {
@@ -59,7 +63,11 @@ impl ControlUnit {
                     ),
                 })
             }
+        };
+        if dismiss {
+            self.dismiss_unless_held();
         }
+        result
     }
 
     fn connect_unit(
@@ -75,11 +83,8 @@ impl ControlUnit {
             }
             _ => self.devices.connect(system_time, &unit, mode)?,
         };
-        match maybe_flag_change {
-            Some(FlagChange::Raise) => {
-                self.regs.flags.raise(&unit);
-            }
-            None => (),
+        if let Some(FlagChange::Raise) = maybe_flag_change {
+            self.regs.flags.raise(&unit);
         }
         Ok(())
     }
