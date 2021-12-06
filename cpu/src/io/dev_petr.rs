@@ -160,7 +160,7 @@ impl Petr {
     }
 
     fn do_rewind(&mut self) {
-        match self.rewind_line_counter.checked_sub(1 as usize) {
+        match self.rewind_line_counter.checked_sub(1) {
             None | Some(0) => {
                 // We reached - or were already at - the END MARK,
                 // reverse direction.

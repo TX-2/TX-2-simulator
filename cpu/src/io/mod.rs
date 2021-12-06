@@ -286,12 +286,9 @@ impl DeviceManager {
             );
             let unit_status = attached.inner.poll(system_time);
             event!(Level::TRACE, "unit status is {:?}", unit_status);
-            match unit_status.change_flag {
-                Some(FlagChange::Raise) => {
-                    event!(Level::TRACE, "unit has raised its flag");
-                    raised_flags |= 1 << u8::from(*devno);
-                }
-                None => (),
+            if let Some(FlagChange::Raise) = unit_status.change_flag {
+                event!(Level::TRACE, "unit has raised its flag");
+                raised_flags |= 1 << u8::from(*devno);
             }
             if alarm.is_none() {
                 // TODO: support masking for alarms (hardware and
@@ -498,5 +495,12 @@ impl DeviceManager {
                 }
             }
         }
+    }
+}
+
+impl Default for DeviceManager {
+    /// We're implementing this mainly to keep clippy happy.
+    fn default() -> DeviceManager {
+        Self::new()
     }
 }
