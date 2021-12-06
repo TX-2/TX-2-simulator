@@ -117,7 +117,7 @@ impl ControlUnit {
                     ),
                 ));
             }
-            Err(MemoryOpFailure::ReadOnly) => {
+            Err(MemoryOpFailure::ReadOnly(_)) => {
                 return Err(Alarm::QSAL(
                     self.regs.n,
                     target.into(),

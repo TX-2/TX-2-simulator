@@ -22,6 +22,12 @@ pub enum Alarm {
     MISAL {
         unit: Unsigned6Bit,
     }, // Program too slow for I/O device.
+
+    // There is a bug in the simulator.
+    BUGAL {
+        instr: Option<Instruction>,
+        message: String,
+    },
 }
 
 impl Display for Alarm {
@@ -71,8 +77,17 @@ impl Display for Alarm {
                 }
                 write!(f, ": {}", message)
             }
+
             MISAL { unit } => {
                 write!(f, "MISAL: program too slow; missed data on unit {}", unit,)
+            }
+
+            BUGAL { instr, message } => {
+                write!(
+                    f,
+                    "BUGAL: encountered simulator bug during execution of instruction {:?}: {}",
+                    instr, message,
+                )
             }
         }
     }

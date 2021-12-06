@@ -343,7 +343,7 @@ impl Unit for Petr {
         _system_time: &Duration,
         _source: Unsigned36Bit,
     ) -> Result<(), TransferFailed> {
-        Err(TransferFailed::WriteOnReadChannel)
+        unreachable!()
     }
 
     fn name(&self) -> String {

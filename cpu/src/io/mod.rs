@@ -43,6 +43,7 @@ use std::time::Duration;
 use tracing::{event, span, Level};
 
 use crate::alarm::Alarm;
+use crate::memory::{MemoryMapped, MemoryOpFailure, MemoryUnit, MetaBitChange};
 use base::prelude::*;
 
 mod dev_petr;
@@ -133,22 +134,12 @@ fn make_unit_report_word(
 
 #[derive(Debug)]
 pub enum TransferFailed {
-    MissingUnit,
-    UnitNotConnected,
-    UnitInMaintenance,
-    ReadOnWriteChannel,
-    WriteOnReadChannel,
     BufferNotFree,
 }
 
 impl Display for TransferFailed {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         f.write_str(match self {
-            TransferFailed::MissingUnit => "missing unit",
-            TransferFailed::UnitNotConnected => "unit not connected",
-            TransferFailed::UnitInMaintenance => "unit in maintenance",
-            TransferFailed::ReadOnWriteChannel => "read on write-only unit",
-            TransferFailed::WriteOnReadChannel => "write on read-only unit",
             TransferFailed::BufferNotFree => "Unit buffer not available for use by the CPU",
         })
     }
@@ -185,16 +176,6 @@ struct AttachedUnit {
 }
 
 impl AttachedUnit {
-    fn assert_unit_connected(&self) -> Result<(), TransferFailed> {
-        if self.in_maintenance {
-            Err(TransferFailed::UnitInMaintenance)
-        } else if !self.connected {
-            Err(TransferFailed::UnitNotConnected)
-        } else {
-            Ok(())
-        }
-    }
-
     fn is_disconnected_output_unit(&self) -> bool {
         (!self.is_input_unit) && (!self.connected)
     }
@@ -216,6 +197,20 @@ impl Debug for AttachedUnit {
 #[derive(Debug)]
 pub struct DeviceManager {
     devices: BTreeMap<Unsigned6Bit, AttachedUnit>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum TransferOutcome {
+    /// When the outcome is successful, let the caller know if the
+    /// memory location's meta bit was set.  This allows the trap
+    /// circuit to be triggered if necessary.
+    Success(bool),
+
+    /// When the outcome of the TSD is dismiss and wait, we don't
+    /// trigger the trap circuit (not because we think the TX-2 behaved
+    /// this way, but because it keeps the code simpler and we don't
+    /// know if the oposite behaviour is needed).
+    DismissAndWait,
 }
 
 impl DeviceManager {
@@ -369,41 +364,139 @@ impl DeviceManager {
         }
     }
 
-    pub fn read(
+    /// Perform a TSD instruction.
+    pub fn transfer(
         &mut self,
         system_time: &Duration,
         device: &Unsigned6Bit,
-        target: &mut Unsigned36Bit,
-    ) -> Result<(), TransferFailed> {
-        match self.devices.get_mut(device) {
-            Some(attached) => {
-                attached.assert_unit_connected()?;
-                if !attached.is_input_unit {
-                    Err(TransferFailed::ReadOnWriteChannel)
-                } else {
-                    attached.inner.read(system_time, target)
-                }
-            }
-            None => Err(TransferFailed::MissingUnit),
+        // TODO: reduce argument count, perhaps pass the whole
+        // instruction.
+        config: &Unsigned5Bit,
+        address: &Address,
+        mem: &mut MemoryUnit,
+        inst: &Instruction,
+        meta_op: &MetaBitChange,
+    ) -> Result<TransferOutcome, Alarm> {
+        if *config != Unsigned5Bit::ZERO {
+            return Err(Alarm::ROUNDTUITAL(format!(
+                "TSD instruction has non-zero configuration value {:o}",
+                config,
+            )));
         }
-    }
 
-    pub fn write(
-        &mut self,
-        system_time: &Duration,
-        device: &Unsigned6Bit,
-        source: Unsigned36Bit,
-    ) -> Result<(), TransferFailed> {
-        match self.devices.get_mut(device) {
-            Some(attached) => {
-                attached.assert_unit_connected()?;
-                if attached.is_input_unit {
-                    Err(TransferFailed::WriteOnReadChannel)
-                } else {
-                    attached.inner.write(system_time, source)
+        let not_mapped = || -> Alarm {
+            Alarm::QSAL(
+                *inst,
+                Unsigned36Bit::from(*address),
+                "TSD address is not mapped".to_string(),
+            )
+        };
+
+        match u8::from(*device) {
+            0o40..=0o75 => {
+                // This is an "INOUT" channel, per Users Handbook,
+                // page 4-2.
+                match self.devices.get_mut(device) {
+                    None => {
+                        event!(Level::WARN, "TSD on unknown unit {:o}", *device);
+                        Ok(TransferOutcome::DismissAndWait)
+                    }
+                    Some(attached) => {
+                        // When the result of the TSD is dismiss and
+                        // wait, we don't trigger traps relating to
+                        // the state of the meta bit.
+                        if !attached.connected {
+                            event!(Level::WARN, "TSD on disconnected unit {:o}", *device);
+                            return Ok(TransferOutcome::DismissAndWait);
+                        }
+
+                        // TODO: consider rewriting this function to
+                        // use MemoryUnit::write_with_read_fallback().
+                        let inner_result: Result<TransferOutcome, TransferFailed> = if attached
+                            .is_input_unit
+                        {
+                            event!(Level::TRACE, "Read TSD on unit {:o}", *device);
+                            // Because a TSD may only affect part of a
+                            // word, we perform a memory fetch and
+                            // then write the value back.
+                            match mem.fetch(address, meta_op) {
+                                Ok((mut word, extra_bits)) => {
+                                    match attached.inner.read(system_time, &mut word) {
+                                        Ok(()) => match mem.store(address, &word, meta_op) {
+                                            Ok(()) => Ok(TransferOutcome::Success(extra_bits.meta)),
+                                            Err(MemoryOpFailure::ReadOnly(_)) => {
+                                                event!(
+							Level::WARN,
+							"Read TSD attempted to write into read-only location {} (this is valid but unusual)",
+							address
+						    );
+                                                Ok(TransferOutcome::Success(extra_bits.meta))
+                                            }
+                                            Err(MemoryOpFailure::NotMapped) => {
+                                                return Err(Alarm::BUGAL {
+                                                    instr: Some(*inst),
+                                                    message: format!(
+							    "Read TSD found memory location {} was mapped on read but not write" ,
+							    address,
+							),
+                                                });
+                                            }
+                                        },
+                                        Err(TransferFailed::BufferNotFree) => {
+                                            Ok(TransferOutcome::DismissAndWait)
+                                        }
+                                    }
+                                }
+                                Err(MemoryOpFailure::ReadOnly(_)) => unreachable!(),
+                                Err(MemoryOpFailure::NotMapped) => {
+                                    return Err(not_mapped());
+                                }
+                            }
+                        } else {
+                            event!(Level::TRACE, "Write TSD on unit {:o}", *device);
+                            match mem.fetch(address, meta_op) {
+                                Ok((word, extra_bits)) => {
+                                    match attached.inner.write(system_time, word) {
+                                        Ok(()) => Ok(TransferOutcome::Success(extra_bits.meta)),
+                                        Err(e) => Err(e),
+                                    }
+                                }
+                                Err(MemoryOpFailure::ReadOnly(_)) => unreachable!(),
+                                Err(MemoryOpFailure::NotMapped) => {
+                                    return Err(not_mapped());
+                                }
+                            }
+                        };
+
+                        match inner_result {
+                            Err(TransferFailed::BufferNotFree) => {
+                                event!(
+                                    Level::DEBUG,
+                                    "Buffer of unit {:o} is not free, will dismiss and wait",
+                                    *device
+                                );
+                                Ok(TransferOutcome::DismissAndWait)
+                            }
+                            Ok(outcome) => Ok(outcome),
+                        }
+                    }
                 }
             }
-            None => Err(TransferFailed::MissingUnit),
+            _ => {
+                // Not an "INOUT" channel.  Cycle the target word one
+                // place to the left (Users Handbook, page 4-2).
+                match mem.cycle_word(address) {
+                    Ok(extra_bits) => Ok(TransferOutcome::Success(extra_bits.meta)),
+                    Err(MemoryOpFailure::ReadOnly(extra_bits)) => {
+                        // The read-only case is not an error, it's
+                        // normal.  The TSD instruction simply has no
+                        // effect when the target address is
+                        // read-only.
+                        Ok(TransferOutcome::Success(extra_bits.meta))
+                    }
+                    Err(MemoryOpFailure::NotMapped) => Err(not_mapped()),
+                }
+            }
         }
     }
 }

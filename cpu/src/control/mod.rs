@@ -36,6 +36,7 @@ use trap::TrapCircuit;
 #[derive(Debug)]
 enum ProgramCounterChange {
     SequenceChange(Unsigned6Bit),
+    DismissAndWait(Address),
     CounterUpdate,
     Jump(Address),
 }
@@ -532,7 +533,7 @@ impl ControlUnit {
                 assert_eq!(old_mark, new_mark);
                 self.regs.p = new_p;
             }
-            ProgramCounterChange::Jump(new_p) => {
+            ProgramCounterChange::DismissAndWait(new_p) | ProgramCounterChange::Jump(new_p) => {
                 // Copy the value of P₂.₉ into `old_mark`.
                 let (_old_physical, old_mark) = self.regs.p.split();
                 // Update P, keeping the old value of P₂.₉.
@@ -602,7 +603,7 @@ impl ControlUnit {
                         "memory unit indicated physical address is not mapped".to_string(),
                     ));
                 }
-                MemoryOpFailure::ReadOnly => unreachable!(),
+                MemoryOpFailure::ReadOnly(_) => unreachable!(),
             },
         };
         event!(
@@ -707,13 +708,14 @@ impl ControlUnit {
             control: &mut ControlUnit,
             system_time: &Duration,
             mem: &mut MemoryUnit,
-        ) -> Result<u64, Alarm> {
+        ) -> Result<(u64, bool), Alarm> {
             // Execution of the instruction will change self.regs.n, but
             // we want to preserve the original value so that we know
             // whether the original version of the instruction used
             // deferred addressing, since this affects our estimate of the
             // execution time.
             let saved_inst: Instruction = control.regs.n;
+            let mut increment_program_counter: bool = true;
             match opcode {
                 Opcode::Skx => control.op_skx(),
                 Opcode::Dpx => control.op_dpx(mem),
@@ -723,16 +725,30 @@ impl ControlUnit {
                 Opcode::Skm => control.op_skm(mem),
                 Opcode::Spg => control.op_spg(mem),
                 Opcode::Ios => control.op_ios(system_time),
+                Opcode::Tsd => match control.op_tsd(system_time, mem) {
+                    Ok(increment_pc) => {
+                        increment_program_counter = increment_pc;
+                        Ok(())
+                    }
+                    Err(e) => Err(e),
+                },
                 _ => Err(Alarm::ROUNDTUITAL(format!(
                     "The emulator does not yet implement opcode {}",
                     opcode,
                 ))),
             }
-            .map(|()| control.estimate_execute_time_ns(&saved_inst))
+            .map(|()| {
+                (
+                    control.estimate_execute_time_ns(&saved_inst),
+                    increment_program_counter,
+                )
+            })
         }
 
+        // Save the old program counter.
         let p = self.regs.p;
         self.set_program_counter(ProgramCounterChange::CounterUpdate);
+
         if let Some(sym) = self.regs.n_sym.as_ref() {
             let inst = sym.to_string();
             let span = span!(Level::INFO,
@@ -742,13 +758,20 @@ impl ControlUnit {
 			     op=%sym.opcode());
             let _enter = span.enter();
             match execute(&sym.opcode(), self, system_time, mem) {
-                Ok(ns) => {
+                Ok((ns, increment_program_counter)) => {
                     event!(
                         Level::DEBUG,
                         "instruction {} executed in simulated {}ns",
                         inst,
                         ns
                     );
+                    if !increment_program_counter {
+                        // Restore the pre-increment value of the P
+                        // register, so that dismiss-and-wait will
+                        // cause execution of the current sequence to
+                        // resume at the TSD instruction.
+                        self.set_program_counter(ProgramCounterChange::DismissAndWait(p));
+                    }
                     Ok(ns)
                 }
                 Err(e) => {
@@ -791,7 +814,7 @@ impl ControlUnit {
                     operand_address
                 ),
             )),
-            Err(MemoryOpFailure::ReadOnly) => unreachable!(),
+            Err(MemoryOpFailure::ReadOnly(_)) => unreachable!(),
         }
     }
 
@@ -948,13 +971,16 @@ impl ControlUnit {
         Ok(self.regs.q)
     }
 
-    fn dismiss_unless_held(&mut self) {
-        if !self.regs.n.is_held() {
+    fn dismiss_unless_held(&mut self) -> bool {
+        if self.regs.n.is_held() {
+            false
+        } else {
             if let Some(current_seq) = self.regs.k {
                 event!(Level::INFO, "dismissing current sequence");
                 self.regs.flags.lower(&current_seq);
                 self.regs.current_sequence_is_runnable = false;
             }
+            true
         }
     }
 }

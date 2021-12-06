@@ -24,7 +24,7 @@ fn time_passes(
     t: &Duration,
     multiplier: Option<f64>,
 ) {
-    clk.consume(&t);
+    clk.consume(t);
     if let Some(m) = multiplier {
         sleeper.sleep(&t.mul_f64(m));
     }

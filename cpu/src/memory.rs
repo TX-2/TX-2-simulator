@@ -26,6 +26,8 @@
 use std::error;
 use std::fmt::{self, Debug, Display, Formatter};
 
+use tracing::{event, Level};
+
 use base::prelude::*;
 
 pub const S_MEMORY_START: u32 = 0o0000000;
@@ -48,14 +50,14 @@ pub enum MemoryOpFailure {
     // registers).  But by implemeting this we may be able to answer
     // that question if some real (recovered) program writes to a
     // location we assumed would be read-only.
-    ReadOnly,
+    ReadOnly(ExtraBits),
 }
 
 impl Display for MemoryOpFailure {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         f.write_str(match self {
             MemoryOpFailure::NotMapped => "address is not mapped to functioning memory",
-            MemoryOpFailure::ReadOnly => "address is mapped to read-only memory",
+            MemoryOpFailure::ReadOnly(_) => "address is mapped to read-only memory",
         })
     }
 }
@@ -106,14 +108,14 @@ impl WordChange {
 }
 
 pub trait MemoryMapped {
-    // Fetch a word.
+    /// Fetch a word.
     fn fetch(
         &mut self,
         addr: &Address,
         meta: &MetaBitChange,
     ) -> Result<(Unsigned36Bit, ExtraBits), MemoryOpFailure>;
 
-    // Store a word.
+    /// Store a word.
     fn store(
         &mut self,
         addr: &Address,
@@ -121,12 +123,15 @@ pub trait MemoryMapped {
         meta: &MetaBitChange,
     ) -> Result<(), MemoryOpFailure>;
 
-    // Mutate a bit in-place, returning its previous value.
+    /// Mutate a bit in-place, returning its previous value.
     fn change_bit(
         &mut self,
         addr: &Address,
         op: &WordChange,
     ) -> Result<Option<bool>, MemoryOpFailure>;
+
+    /// Cycle a memory location one place to the left (as in hTSD).
+    fn cycle_word(&mut self, addr: &Address) -> Result<ExtraBits, MemoryOpFailure>;
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -340,6 +345,38 @@ impl MemoryUnit {
             None => Err(MemoryOpFailure::NotMapped),
         }
     }
+
+    fn write_with_read_fallback<R, FW, FR>(
+        &mut self,
+        addr: &Address,
+        on_write: FW,
+        on_read: FR,
+    ) -> Result<R, MemoryOpFailure>
+    where
+        FW: FnOnce(&mut MemoryWord) -> Result<R, MemoryOpFailure>,
+        FR: FnOnce(&MemoryWord) -> Result<R, MemoryOpFailure>,
+    {
+        // If the memory address is not mapped at all, access will
+        // return Err, causing the next line to bail out of this
+        // function.
+        match self.access(&MemoryAccess::Write, addr) {
+            Ok(None) => {
+                // The memory address is mapped to read-only memory.
+                // For example, plugboard memory.
+                //
+                // We downgrade the bit operation to be non-mutating,
+                // so that the outcome of the bit test is as it should
+                // be, but the memory-write is inhibited.
+                match self.access(&MemoryAccess::Read, addr) {
+                    Ok(None) => unreachable!(),
+                    Ok(Some(mem_word)) => on_read(mem_word),
+                    Err(e) => Err(e),
+                }
+            }
+            Ok(Some(mem_word)) => on_write(mem_word),
+            Err(e) => Err(e),
+        }
+    }
 }
 
 /// Implement the heart of the change_bit() operation used by the SKM instruction.
@@ -388,28 +425,30 @@ impl MemoryMapped for MemoryUnit {
         addr: &Address,
         side_effect: &MetaBitChange,
     ) -> Result<(Unsigned36Bit, ExtraBits), MemoryOpFailure> {
-        if u32::from(addr) >= V_MEMORY_START {
-            // The description of the SKM instruction doesn't state
-            // explicitly that SKM works on V-memory, but since
-            // arithmetic unit registers are mapped to it, it would
-            // make sense.  However, there are clearly other locations
-            // in V memory (e.g. the plugboard) that we can't cycle.
-            if *side_effect != MetaBitChange::None {
-                // Changng meta bits in V memory is not allowed,
-                // see the longer comment in the store() method.
-                return Err(MemoryOpFailure::ReadOnly);
-            }
-        }
         match self.access(&MemoryAccess::Read, addr) {
             Err(e) => Err(e),
             Ok(None) => unreachable!(),
             Ok(Some(mem_word)) => {
-                let result = mem_word.into();
+                let (word, extra_bits) = mem_word.into();
                 match side_effect {
                     MetaBitChange::None => (),
-                    MetaBitChange::Set => mem_word.set_meta_bit(&true),
+                    MetaBitChange::Set => {
+                        if u32::from(addr) >= V_MEMORY_START {
+                            // The description of the SKM instruction doesn't state
+                            // explicitly that SKM works on V-memory, but since
+                            // arithmetic unit registers are mapped to it, it would
+                            // make sense.  However, there are clearly other locations
+                            // in V memory (e.g. the plugboard) that we can't cycle.
+                            if *side_effect != MetaBitChange::None {
+                                // Changng meta bits in V memory is not allowed,
+                                // see the longer comment in the store() method.
+                                return Err(MemoryOpFailure::ReadOnly(extra_bits));
+                            }
+                        }
+                        mem_word.set_meta_bit(&true)
+                    }
                 }
-                Ok(result)
+                Ok((word, extra_bits))
             }
         }
     }
@@ -464,6 +503,20 @@ impl MemoryMapped for MemoryUnit {
             }
         }
         Ok(())
+    }
+
+    fn cycle_word(&mut self, addr: &Address) -> Result<ExtraBits, MemoryOpFailure> {
+        fn on_write_cycle(mem_word: &mut MemoryWord) -> Result<ExtraBits, MemoryOpFailure> {
+            let (value, extra_bits) = mem_word.into();
+            mem_word.set_value(&(value << 1));
+            Ok(extra_bits)
+        }
+        fn on_read_only_fail(mem_word: &MemoryWord) -> Result<ExtraBits, MemoryOpFailure> {
+            event!(Level::DEBUG, "Cannot cycle read-only memory location");
+            let (_word, extra_bits) = mem_word.into();
+            Err(MemoryOpFailure::ReadOnly(extra_bits))
+        }
+        self.write_with_read_fallback(addr, on_write_cycle, on_read_only_fail)
     }
 
     fn change_bit(

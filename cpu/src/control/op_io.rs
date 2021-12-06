@@ -1,9 +1,12 @@
 use base::prelude::*;
 use std::time::Duration;
 
+use tracing::{event, Level};
+
 use crate::alarm::Alarm;
 use crate::control::ControlUnit;
-use crate::io::{FlagChange, Unit};
+use crate::io::{FlagChange, TransferOutcome, Unit};
+use crate::memory::{MemoryUnit, MetaBitChange};
 
 impl ControlUnit {
     /// Implements the IOS opcode
@@ -93,6 +96,58 @@ impl ControlUnit {
         match u8::from(unit) {
             0o42 => Ok(()),
             _ => self.devices.disconnect(&unit),
+        }
+    }
+
+    pub fn op_tsd(&mut self, system_time: &Duration, mem: &mut MemoryUnit) -> Result<bool, Alarm> {
+        let mut increment_pc: bool = true;
+        if let Some(unit) = self.regs.k {
+            let cf = self.regs.n.configuration();
+            let target: Address = self.operand_address_with_optional_defer_and_index(mem)?;
+            let meta_op: MetaBitChange = if self.trap.set_metabits_of_operands() {
+                MetaBitChange::Set
+            } else {
+                MetaBitChange::None
+            };
+            match self.devices.transfer(
+                system_time,
+                &unit,
+                &cf,
+                &target,
+                mem,
+                &self.regs.n,
+                &meta_op,
+            ) {
+                Ok(TransferOutcome::Success(meta_bit_set)) => {
+                    if meta_bit_set && self.trap.trap_on_operand() {
+                        self.raise_trap();
+                    }
+                    Ok(true)
+                }
+                Ok(TransferOutcome::DismissAndWait) => {
+                    if let Some(current_seq) = self.regs.k {
+                        if current_seq == Unsigned6Bit::ZERO {
+                            event!(Level::WARN, "Ignoring TSD dismiss and wait for sequence 0",);
+                        } else {
+                            // The program counter has not yet been
+                            // incremented, which is good, because
+                            // this sequence should resume at the
+                            // current address.  The P register will
+                            // be saved in the relevant index register
+                            // by fetch_instruction().
+                            let dismissed: bool = self.dismiss_unless_held();
+                            increment_pc = !dismissed;
+                        }
+                    }
+                    Ok(increment_pc)
+                }
+                Err(e) => Err(e),
+            }
+        } else {
+            Err(Alarm::BUGAL {
+		instr: Some(self.regs.n),
+		message: "Executed TSD instruction while the K register is None (i.e. there is no current sequence)".to_string(),
+	    })
         }
     }
 }
