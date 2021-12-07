@@ -7,6 +7,7 @@
 mod onescomplement;
 mod types;
 
+pub mod charset;
 pub mod instruction;
 pub mod prelude;
 pub mod subword;
