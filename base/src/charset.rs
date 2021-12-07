@@ -1,3 +1,10 @@
+//! Character set conversions.
+//!
+//! Unicode to and from Lincoln Writer characters.  No support for
+//! colour shifting.  No support for overstrke characters (such as the
+//! LW circle (0o73 upper case) overstruck with logical or (0o22 lower
+//! case).
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 
@@ -96,12 +103,35 @@ pub enum LincolnToUnicodeConversionFailure {
     NoMapping(u8),
 }
 
+impl Display for LincolnToUnicodeConversionFailure {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        match self {
+            LincolnToUnicodeConversionFailure::CharacterOutOfRange(u) => {
+                write!(
+		    f,
+		    "cannot convert byte {:#o} from Lincoln Writer character set to Unicode, because the input value is too large (Lincoln Writers only use 6 bits)",
+		    u
+		)
+            }
+            LincolnToUnicodeConversionFailure::NoMapping(u) => {
+                write!(
+		    f,
+		    "cannot convert byte {:#o} from Lincoln Writer character set to Unicode, because there is no known mapping",
+		    u
+		)
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum Script {
     Normal,
     Super,
     Sub,
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 struct LincolnState {
     script: Script,
     uppercase: bool,
@@ -287,5 +317,180 @@ fn test_lincoln_to_unicode_strict() {
             0o53, // ) (when upper case)
         ]),
         Ok("{}()".to_string())
+    );
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+struct LincChar {
+    state: LincolnState,
+    value: u8,
+}
+
+struct UnicodeToLincolnMapping {
+    m: HashMap<char, LincChar>,
+}
+
+enum UnicodeToLincolnConversionFailure {
+    NoMapping(char),
+}
+
+impl Display for UnicodeToLincolnConversionFailure {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        match self {
+            UnicodeToLincolnConversionFailure::NoMapping(ch) => {
+                write!(
+                    f,
+                    "there is no mapping for '{}' from Unicode to Lincoln Writer character set",
+                    ch,
+                )
+            }
+        }
+    }
+}
+
+impl UnicodeToLincolnMapping {
+    fn new() -> UnicodeToLincolnMapping {
+        let mut m: HashMap<char, LincChar> = HashMap::new();
+        for script in [Script::Normal, Script::Super, Script::Sub] {
+            for uppercase in [false, true] {
+                for value in 0..=0o77 {
+                    let mut state = LincolnState { script, uppercase };
+                    if let Ok(Some(unicode)) = lincoln_char_to_unicode_char(&value, &mut state) {
+                        m.insert(unicode, LincChar { state, value });
+                    }
+                }
+            }
+        }
+        UnicodeToLincolnMapping { m }
+    }
+
+    pub fn to_lincoln(&self, s: &str) -> Result<Vec<u8>, UnicodeToLincolnConversionFailure> {
+        let mut result: Vec<u8> = Vec::with_capacity(s.len());
+        let mut current_uppercase: Option<bool> = None;
+        let mut current_script: Option<Script> = None;
+
+        for ch in s.chars() {
+            match self.m.get(&ch) {
+                None => {
+                    return Err(UnicodeToLincolnConversionFailure::NoMapping(ch));
+                }
+                Some(lch) => {
+                    if Some(lch.state.uppercase) == current_uppercase {
+                        // Nothing to do
+                    } else {
+                        result.push(if lch.state.uppercase { 0o75 } else { 0o74 });
+                        current_uppercase = Some(lch.state.uppercase);
+                    }
+
+                    if Some(lch.state.script) == current_script {
+                        // Nothing to do
+                    } else {
+                        result.push(match lch.state.script {
+                            Script::Super => 0o64,
+                            Script::Normal => 0o65,
+                            Script::Sub => 0o66,
+                        });
+                        current_script = Some(lch.state.script);
+                    }
+
+                    result.push(lch.value);
+                }
+            }
+        }
+        Ok(result)
+    }
+}
+
+#[test]
+fn round_trip() {
+    fn must_round_trip(input: &str, mapping: &UnicodeToLincolnMapping) {
+        match mapping.to_lincoln(input) {
+            Ok(bytes) => match lincoln_to_unicode_strict(&bytes) {
+                Ok(s) => {
+                    assert_eq!(input, s);
+                }
+                Err(e) => {
+                    panic!("failed to convert back to unicode: {}", e);
+                }
+            },
+            Err(e) => {
+                panic!("failed to convert [{}] to Lincoln: {}", input, e);
+            }
+        }
+    }
+
+    let ulmap = UnicodeToLincolnMapping::new();
+    must_round_trip("HELLO, WORLD.  012345", &ulmap);
+    must_round_trip("(){}_^*", &ulmap);
+    must_round_trip("iyzjkaph", &ulmap);
+    must_round_trip("\t\r", &ulmap);
+    must_round_trip("\u{2080}", &ulmap); // ₀
+    must_round_trip("\u{2081}", &ulmap); // ₁
+    must_round_trip("\u{2082}", &ulmap); // ₂
+    must_round_trip("\u{2083}", &ulmap); // ₃
+    must_round_trip("\u{2084}", &ulmap); // ₄
+    must_round_trip("\u{2085}", &ulmap); // ₅
+    must_round_trip("\u{2086}", &ulmap); // ₆
+    must_round_trip("\u{2087}", &ulmap); // ₇
+    must_round_trip("\u{2088}", &ulmap); // ₈
+    must_round_trip("\u{2089}", &ulmap); // ₉
+    must_round_trip("\u{208B}", &ulmap); // ₋
+    must_round_trip(".", &ulmap);
+    must_round_trip("\u{2070}", &ulmap);
+    must_round_trip("\u{00B9}", &ulmap);
+    must_round_trip("\u{00B2}", &ulmap);
+    must_round_trip("\u{00B3}", &ulmap);
+    must_round_trip("\u{2074}", &ulmap);
+    must_round_trip("\u{2075}", &ulmap);
+    must_round_trip("\u{2076}", &ulmap);
+    must_round_trip("\u{2077}", &ulmap);
+    must_round_trip("\u{2078}", &ulmap);
+    must_round_trip("\u{2079}", &ulmap);
+    must_round_trip("ᴬ", &ulmap);
+    must_round_trip("ᴮ", &ulmap);
+    must_round_trip("\u{A7F2}", &ulmap);
+    must_round_trip("ᴰ", &ulmap);
+    must_round_trip("ᴱ", &ulmap);
+    must_round_trip("\u{A7F3}", &ulmap);
+    must_round_trip("ᴳ", &ulmap);
+    must_round_trip("ᴴ", &ulmap);
+    must_round_trip("ᴵ", &ulmap);
+    must_round_trip("ᴶ", &ulmap);
+    must_round_trip("ᴷ", &ulmap);
+    must_round_trip("ᴸ", &ulmap);
+    must_round_trip("ᴹ", &ulmap);
+    must_round_trip("ᴺ", &ulmap);
+    must_round_trip("ᴼ", &ulmap);
+    must_round_trip("ᴾ", &ulmap);
+    must_round_trip("\u{A7F4}", &ulmap);
+    must_round_trip("ᴿ", &ulmap);
+    must_round_trip("\u{209B}", &ulmap);
+    must_round_trip("ᵀ", &ulmap);
+    must_round_trip("ᵁ", &ulmap);
+    must_round_trip("ⱽ", &ulmap);
+    must_round_trip("ᵂ", &ulmap);
+    must_round_trip("\u{2093}", &ulmap);
+    must_round_trip("YZ", &ulmap);
+}
+
+#[test]
+fn missing_superscript() {
+    // There is no superscript uppercase Y in Unicode.  So we expect
+    // the mapping to just select a regular 'Y'
+    assert_eq!(
+        lincoln_to_unicode_strict(&[
+            0o64, // superscript
+            0o75, // uppercase
+            0o50
+        ]), // Y
+        Ok("Y".to_string())
+    ); // plain Y, not superscript
+}
+
+#[test]
+fn no_mapping() {
+    assert_eq!(
+        lincoln_to_unicode_strict(&[0o14]), // "READ IN"
+        Err(LincolnToUnicodeConversionFailure::NoMapping(0o14))
     );
 }
