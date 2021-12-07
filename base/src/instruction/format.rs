@@ -1,12 +1,11 @@
-use std::error::Error;
-/// Human-oriented formatting for instructions (or parts of instructions).
-use std::fmt::{self, Display, Formatter, Octal};
-
+use crate::charset::{subscript_char, superscript_char, NoSubscriptKnown, NoSuperscriptKnown};
 use crate::instruction::{
     index_address_to_bit_selection, BitSelector, DisassemblyFailure, Inst, Opcode, OperandAddress,
     Quarter, SymbolicInstruction,
 };
 use crate::prelude::*;
+/// Human-oriented formatting for instructions (or parts of instructions).
+use std::fmt::{self, Display, Formatter, Octal};
 
 /// Render the quarter ("q") part of the bit selector ("q.b").
 impl Display for Quarter {
@@ -132,59 +131,8 @@ impl Display for DisassemblyFailure {
     }
 }
 
-fn superscript_digit(regular_digit: char) -> char {
-    match regular_digit {
-        '0' => '\u{2070}',
-        '1' => '\u{00B9}',
-        '2' => '\u{00B2}',
-        '3' => '\u{00B3}',
-        '4' => '\u{2074}',
-        '5' => '\u{2075}',
-        '6' => '\u{2076}',
-        '7' => '\u{2077}',
-        '8' => '\u{2078}',
-        '9' => '\u{2079}',
-        _ => {
-            panic!("non-digit '{}'", regular_digit);
-        }
-    }
-}
-
-fn octal_superscript_u8(n: u8) -> String {
-    format!("{:o}", n).chars().map(superscript_digit).collect()
-}
-
-#[derive(Debug, Clone, Copy)]
-struct NoSubscriptKnown(char);
-
-impl Display for NoSubscriptKnown {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(
-            f,
-            "bug: no subscript mapping is yet implemented for '{}'",
-            self.0
-        )
-    }
-}
-
-impl Error for NoSubscriptKnown {}
-
-fn subscript_char(ch: char) -> Result<char, NoSubscriptKnown> {
-    match ch {
-        '0' => Ok('\u{2080}'), // ₀
-        '1' => Ok('\u{2081}'), // ₁
-        '2' => Ok('\u{2082}'), // ₂
-        '3' => Ok('\u{2083}'), // ₃
-        '4' => Ok('\u{2084}'), // ₄
-        '5' => Ok('\u{2085}'), // ₅
-        '6' => Ok('\u{2086}'), // ₆
-        '7' => Ok('\u{2087}'), // ₇
-        '8' => Ok('\u{2088}'), // ₈
-        '9' => Ok('\u{2089}'), // ₉
-        '-' => Ok('\u{208B}'), // ₋
-        '.' => Ok('.'),        // there appears to be no subscript version
-        _ => Err(NoSubscriptKnown(ch)),
-    }
+fn octal_superscript_u8(n: u8) -> Result<String, NoSuperscriptKnown> {
+    format!("{:o}", n).chars().map(superscript_char).collect()
 }
 
 fn subscript(s: &str) -> Result<String, NoSubscriptKnown> {
@@ -319,7 +267,7 @@ impl Display for SymbolicInstruction {
         }
         if !self.configuration().is_zero() {
             let cf: u8 = self.configuration().into();
-            f.write_str(&octal_superscript_u8(cf))?;
+            f.write_str(&octal_superscript_u8(cf).unwrap())?;
         }
         write_opcode(self.opcode(), self.configuration(), f)?;
         let j = self.index_address();
@@ -357,21 +305,29 @@ mod tests {
 
     #[test]
     fn test_octal_superscript_u8() {
-        assert_eq!(&octal_superscript_u8(0), "\u{2070}", "0 decimal is 0 octal");
-        assert_eq!(&octal_superscript_u8(1), "\u{00B9}", "1 decimal is 1 octal");
         assert_eq!(
-            &octal_superscript_u8(4),
-            "\u{02074}",
+            octal_superscript_u8(0),
+            Ok("\u{2070}".to_string()),
+            "0 decimal is 0 octal"
+        );
+        assert_eq!(
+            octal_superscript_u8(1),
+            Ok("\u{00B9}".to_string()),
+            "1 decimal is 1 octal"
+        );
+        assert_eq!(
+            octal_superscript_u8(4),
+            Ok("\u{02074}".to_string()),
             "4 decimal is 4 octal"
         );
         assert_eq!(
-            &octal_superscript_u8(11),
-            "\u{00B9}\u{00B3}",
+            octal_superscript_u8(11),
+            Ok("\u{00B9}\u{00B3}".to_string()),
             "11 decimal is 13 octal"
         );
         assert_eq!(
-            &octal_superscript_u8(255),
-            "\u{00B3}\u{2077}\u{2077}",
+            octal_superscript_u8(255),
+            Ok("\u{00B3}\u{2077}\u{2077}".to_string()),
             "255 decimal is 377 octal"
         );
     }
