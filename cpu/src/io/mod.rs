@@ -47,8 +47,10 @@ use crate::memory::{MemoryMapped, MemoryOpFailure, MemoryUnit, MetaBitChange};
 use base::prelude::*;
 
 mod dev_petr;
+mod pollq;
 
 pub use dev_petr::{Petr, TapeIterator};
+use pollq::PollQueue;
 
 /// The mode with which the unit is connected; specified with IOS command 0o3X_XXX.
 pub const IO_MASK_MODE: Unsigned36Bit = Unsigned36Bit::MAX.and(0o_000_000_007_777);
@@ -197,6 +199,7 @@ impl Debug for AttachedUnit {
 #[derive(Debug)]
 pub struct DeviceManager {
     devices: BTreeMap<Unsigned6Bit, AttachedUnit>,
+    poll_queue: PollQueue,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -217,6 +220,7 @@ impl DeviceManager {
     pub fn new() -> DeviceManager {
         DeviceManager {
             devices: BTreeMap::new(),
+            poll_queue: PollQueue::new(),
         }
     }
 
@@ -237,6 +241,7 @@ impl DeviceManager {
                 in_maintenance,
             },
         );
+        self.poll_queue.push(unit_number, status.poll_after);
     }
 
     pub fn report(
@@ -252,6 +257,7 @@ impl DeviceManager {
                 // able to collect status from a unit which is
                 // attached but not otherwise usable.
                 let unit_status = attached.inner.poll(system_time);
+                self.poll_queue.push(unit, unit_status.poll_after);
                 Ok(make_unit_report_word(
                     unit,
                     attached.connected,
@@ -268,44 +274,90 @@ impl DeviceManager {
         }
     }
 
-    pub fn poll(&mut self, system_time: &Duration) -> (u64, Option<Alarm>) {
+    pub fn poll(&mut self, system_time: &Duration) -> (u64, Option<Alarm>, Option<Duration>) {
         let mut raised_flags: u64 = 0;
         let mut alarm: Option<Alarm> = None;
-        for (devno, attached) in self.devices.iter_mut() {
-            let span = span!(Level::ERROR, "poll", unit=?devno);
-            let _enter = span.enter();
-            if !attached.connected {
-                event!(Level::TRACE, "not polling unit. it's not connected");
-                continue;
+        let mut next_poll: Option<Duration> = None;
+
+        loop {
+            match self.poll_queue.peek() {
+                None => {
+                    break;
+                }
+                Some((_, poll_time)) => {
+                    if poll_time > system_time {
+                        // Next poll action is not due yet.
+                        event!(
+                            Level::TRACE,
+                            "poll: next poll is not due yet; due={:?}, now={:?}",
+                            poll_time,
+                            system_time
+                        );
+                        next_poll = Some(*poll_time);
+                        break;
+                    }
+                }
             }
-            assert!(!attached.in_maintenance); // cannot connect in-maint devices.
-            event!(
-                Level::TRACE,
-                "polling unit at system time {:?}",
-                system_time
-            );
-            let unit_status = attached.inner.poll(system_time);
-            event!(Level::TRACE, "unit status is {:?}", unit_status);
-            if let Some(FlagChange::Raise) = unit_status.change_flag {
-                event!(Level::TRACE, "unit has raised its flag");
-                raised_flags |= 1 << u8::from(*devno);
-            }
-            if alarm.is_none() {
-                // TODO: support masking for alarms (hardware and
-                // software masking are both available; either should
-                // be able to mask it).
-                if unit_status.inability {
-                    alarm = Some(Alarm::IOSAL {
-                        unit: *devno,
-                        operand: None,
-                        message: format!("unit {} reports inability (EIA)", devno),
-                    });
-                } else if unit_status.missed_data {
-                    alarm = Some(Alarm::MISAL { unit: *devno });
+            match self.poll_queue.pop() {
+                None => unreachable!(),
+                Some((devno, poll_time)) => {
+                    let span = span!(Level::ERROR, "poll", unit=?devno);
+                    let _enter = span.enter();
+
+                    event!(
+                        Level::TRACE,
+                        "poll: next poll is now due; due={:?}, now={:?}",
+                        poll_time,
+                        system_time
+                    );
+                    assert!(poll_time <= *system_time);
+
+                    let attached = match self.devices.get_mut(&devno) {
+                        Some(attached) => attached,
+                        None => {
+                            event!(
+				Level::ERROR,
+				"Device {:?} is present in the polling queue but not in the device map; ignoring it",
+				devno
+			    );
+                            continue;
+                        }
+                    };
+                    if !attached.connected {
+                        event!(Level::TRACE, "not polling unit. it's not connected");
+                        continue;
+                    }
+                    assert!(!attached.in_maintenance); // cannot connect in-maint devices.
+                    event!(
+                        Level::TRACE,
+                        "polling unit at system time {:?}",
+                        system_time
+                    );
+                    let unit_status = attached.inner.poll(system_time);
+                    event!(Level::TRACE, "unit status is {:?}", unit_status);
+                    self.poll_queue.push(devno, unit_status.poll_after);
+                    if let Some(FlagChange::Raise) = unit_status.change_flag {
+                        event!(Level::TRACE, "unit has raised its flag");
+                        raised_flags |= 1 << u8::from(devno);
+                    }
+                    if alarm.is_none() {
+                        // TODO: support masking for alarms (hardware and
+                        // software masking are both available; either should
+                        // be able to mask it).
+                        if unit_status.inability {
+                            alarm = Some(Alarm::IOSAL {
+                                unit: devno,
+                                operand: None,
+                                message: format!("unit {} reports inability (EIA)", devno),
+                            });
+                        } else if unit_status.missed_data {
+                            alarm = Some(Alarm::MISAL { unit: devno });
+                        }
+                    }
                 }
             }
         }
-        (raised_flags, alarm)
+        (raised_flags, alarm, next_poll)
     }
 
     pub fn disconnect_all(&mut self) {

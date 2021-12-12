@@ -616,8 +616,8 @@ impl ControlUnit {
         Ok(true) // not in Limbo (i.e. a sequence should run)
     }
 
-    pub fn poll_hardware(&mut self, system_time: &Duration) -> Result<(), Alarm> {
-        let (mut raised_flags, alarm) = self.devices.poll(system_time);
+    pub fn poll_hardware(&mut self, system_time: &Duration) -> Result<Option<Duration>, Alarm> {
+        let (mut raised_flags, alarm, next_poll) = self.devices.poll(system_time);
         // For each newly-raised flag, raise the flag in self.flags.
         event!(
             Level::TRACE,
@@ -654,7 +654,7 @@ impl ControlUnit {
             );
             Err(active)
         } else {
-            Ok(())
+            Ok(next_poll)
         }
     }
 
