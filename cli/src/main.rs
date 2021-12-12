@@ -35,6 +35,10 @@ impl TapeSequence {
     fn new(names: Vec<OsString>) -> TapeSequence {
         TapeSequence { pos: 0, names }
     }
+
+    fn is_empty(&self) -> bool {
+        self.names.is_empty()
+    }
 }
 
 impl TapeIterator for TapeSequence {
@@ -99,6 +103,12 @@ fn run_simulator() -> Result<(), Box<dyn std::error::Error>> {
             .map(OsString::from)
             .collect(),
     );
+    if tapes.is_empty() {
+        event!(
+            Level::WARN,
+            "No paper tapes were specified on the command line, so no program will be loaded"
+        );
+    }
     let petr = Box::new(Petr::new(Box::new(tapes)));
 
     let speed_multiplier: Option<f64> = match matches.value_of("speed-multiplier") {
