@@ -104,10 +104,10 @@ fn run_simulator() -> Result<(), Box<dyn std::error::Error>> {
     let speed_multiplier: Option<f64> = match matches.value_of("speed-multiplier") {
         None => {
             event!(
-                Level::INFO,
-                "No --speed-multiplier option specified, using multiplier of 1.0"
+                Level::WARN,
+                "No --speed-multiplier option specified, running at maximum speed"
             );
-            Some(1.0)
+            None
         }
         Some("MAX") => {
             event!(
