@@ -3,8 +3,8 @@ use std::fmt::{self, Debug, Formatter, Octal};
 use std::hash::{Hash, Hasher};
 
 use super::error::ConversionFailed;
-use super::{Sign, WordCommon};
 use super::unsigned::*;
+use super::{Sign, WordCommon};
 
 #[cfg(test)]
 mod tests18;
@@ -130,10 +130,10 @@ macro_rules! signed_ones_complement_impl {
                 self.bits == 0 || self.bits == Self::ALL_BITS
             }
 
-	    pub const fn reinterpret_as_unsigned(&self) -> $UnsignedPeerT {
-		type T = $UnsignedPeerT;
-		T { bits: self.bits }
-	    }
+            pub const fn reinterpret_as_unsigned(&self) -> $UnsignedPeerT {
+                type T = $UnsignedPeerT;
+                T { bits: self.bits }
+            }
 
             pub const fn is_negative(&self) -> bool {
                 self.bits & Self::SIGN_BIT != 0 && !self.is_zero()
@@ -171,31 +171,35 @@ macro_rules! signed_ones_complement_impl {
                 }
             }
 
-	    pub fn wrapping_add(self, rhs: $SelfT) -> $SelfT {
+            pub fn wrapping_add(self, rhs: $SelfT) -> $SelfT {
                 let left = <$SignedInnerT>::from(self);
                 let right = <$SignedInnerT>::from(rhs);
-		let (result, overflow) = left.overflowing_add(right);
-		if overflow {
-		    panic!("bug: $SignedInnerT is not wide enough to perform no-overflow arithmetic");
-		}
-		const MODULUS: $SignedInnerT = 1 << ($BITS - 1);
-		Self {
-		    bits: Self::convert_to_ones_complement(result % MODULUS),
-		}
-	    }
+                let (result, overflow) = left.overflowing_add(right);
+                if overflow {
+                    panic!(
+                        "bug: $SignedInnerT is not wide enough to perform no-overflow arithmetic"
+                    );
+                }
+                const MODULUS: $SignedInnerT = 1 << ($BITS - 1);
+                Self {
+                    bits: Self::convert_to_ones_complement(result % MODULUS),
+                }
+            }
 
-	    pub fn wrapping_sub(self, rhs: $SelfT) -> $SelfT {
+            pub fn wrapping_sub(self, rhs: $SelfT) -> $SelfT {
                 let left = <$SignedInnerT>::from(self);
                 let right = <$SignedInnerT>::from(rhs);
-		let (result, overflow) = left.overflowing_sub(right);
-		if overflow {
-		    panic!("bug: $SignedInnerT is not wide enough to perform no-overflow arithmetic");
-		}
-		const MODULUS: $SignedInnerT = 1 << ($BITS - 1);
-		Self {
-		    bits: Self::convert_to_ones_complement(result % MODULUS),
-		}
-	    }
+                let (result, overflow) = left.overflowing_sub(right);
+                if overflow {
+                    panic!(
+                        "bug: $SignedInnerT is not wide enough to perform no-overflow arithmetic"
+                    );
+                }
+                const MODULUS: $SignedInnerT = 1 << ($BITS - 1);
+                Self {
+                    bits: Self::convert_to_ones_complement(result % MODULUS),
+                }
+            }
 
             pub const fn abs(self) -> Self {
                 if self.is_zero() {
@@ -437,7 +441,6 @@ try_from_self_to_native_type!(Signed12Bit, u16, i16, u64);
 // Signed18Bit
 ////////////////////////////////////////////////////////////////////////
 
-
 /// Signed counterpart of [`Unsigned18Bit`].
 #[derive(Clone, Copy)]
 pub struct Signed18Bit {
@@ -510,31 +513,28 @@ try_from_self_to_native_type!(Signed36Bit, u64, i64, u64);
 
 signed_ones_complement_impl!(Signed36Bit, 36, u64, i64, Unsigned36Bit);
 
-
-
-
 impl TryFrom<Unsigned18Bit> for Signed18Bit {
     type Error = ConversionFailed;
     fn try_from(n: Unsigned18Bit) -> Result<Self, ConversionFailed> {
-	let val: i32 = i32::from(n);
-	Signed18Bit::try_from(val)
+        let val: i32 = i32::from(n);
+        Signed18Bit::try_from(val)
     }
 }
 
 impl From<Signed5Bit> for Signed18Bit {
     fn from(n: Signed5Bit) -> Self {
-	Signed18Bit::from(i8::from(n))
+        Signed18Bit::from(i8::from(n))
     }
 }
 
 impl From<Signed6Bit> for Signed18Bit {
     fn from(n: Signed6Bit) -> Self {
-	Signed18Bit::from(i8::from(n))
+        Signed18Bit::from(i8::from(n))
     }
 }
 
 impl From<Signed9Bit> for Signed18Bit {
     fn from(n: Signed9Bit) -> Self {
-	Signed18Bit::from(i16::from(n))
+        Signed18Bit::from(i16::from(n))
     }
 }

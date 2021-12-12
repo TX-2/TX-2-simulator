@@ -309,35 +309,39 @@ fn test_signed9bit_checked_abs() {
 #[test]
 fn test_wrapping_add() {
     for left in -255_i16..255_i16 {
-	for right in -255_i16..255_i16 {
-	    let expected = left.wrapping_add(right);
-	    let expected = i16::from(Signed9Bit::try_from(expected % 256).unwrap());
+        for right in -255_i16..255_i16 {
+            let expected = left.wrapping_add(right);
+            let expected = i16::from(Signed9Bit::try_from(expected % 256).unwrap());
 
-	    let left_operand = Signed9Bit::try_from(left).unwrap();
-	    let right_operand = Signed9Bit::try_from(right).unwrap();
-	    let got = i16::from(left_operand.wrapping_add(right_operand));
+            let left_operand = Signed9Bit::try_from(left).unwrap();
+            let right_operand = Signed9Bit::try_from(right).unwrap();
+            let got = i16::from(left_operand.wrapping_add(right_operand));
 
-	    assert_eq!(expected, got,
-		       "Expected {} + {} = {}, got {:?} + {:?} = {}",
-		       left, right, expected, left_operand, right_operand, got);
-	}
+            assert_eq!(
+                expected, got,
+                "Expected {} + {} = {}, got {:?} + {:?} = {}",
+                left, right, expected, left_operand, right_operand, got
+            );
+        }
     }
 }
 
 #[test]
 fn test_wrapping_sub() {
     for left in -255_i16..255_i16 {
-	for right in -255_i16..255_i16 {
-	    let expected = left.wrapping_sub(right);
-	    let expected = i16::from(Signed9Bit::try_from(expected % 256).unwrap());
+        for right in -255_i16..255_i16 {
+            let expected = left.wrapping_sub(right);
+            let expected = i16::from(Signed9Bit::try_from(expected % 256).unwrap());
 
-	    let left_operand = Signed9Bit::try_from(left).unwrap();
-	    let right_operand = Signed9Bit::try_from(right).unwrap();
-	    let got = i16::from(left_operand.wrapping_sub(right_operand));
+            let left_operand = Signed9Bit::try_from(left).unwrap();
+            let right_operand = Signed9Bit::try_from(right).unwrap();
+            let got = i16::from(left_operand.wrapping_sub(right_operand));
 
-	    assert_eq!(expected, got,
-		       "Expected {} + {} = {}, got {:?} + {:?} = {}",
-		       left, right, expected, left_operand, right_operand, got);
-	}
+            assert_eq!(
+                expected, got,
+                "Expected {} + {} = {}, got {:?} + {:?} = {}",
+                left, right, expected, left_operand, right_operand, got
+            );
+        }
     }
 }

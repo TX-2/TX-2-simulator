@@ -78,6 +78,10 @@ deferred addressing?  Is this somehow used as an index value also?
    not included in the edition of the User Handbook I have).
 3. Is there surviving documentation on the plotter?  (It is
    not included in the edition of the User Handbook I have).
+4. If a TSD instruction causes "Dismiss and Wait", (because the buffer
+   is busy for example) and the meta bit of the location which would
+   have been used is set, and the trap circuit is set to "trap on
+   metabit set on operand", does the flag for Unit 42 get raised?
 
 ## Assembly Source
 

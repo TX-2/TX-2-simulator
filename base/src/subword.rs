@@ -36,8 +36,10 @@ pub fn left_half(word: Unsigned36Bit) -> Unsigned18Bit {
 /// of the original 26-bit full word).
 pub fn split_halfword(halfword: Unsigned18Bit) -> (Unsigned9Bit, Unsigned9Bit) {
     let bits: u32 = u32::from(halfword);
-    (Unsigned9Bit::try_from((bits >> 9) & 0o777).unwrap(),
-     Unsigned9Bit::try_from((bits     ) & 0o777).unwrap())
+    (
+        Unsigned9Bit::try_from((bits >> 9) & 0o777).unwrap(),
+        Unsigned9Bit::try_from((bits) & 0o777).unwrap(),
+    )
 }
 
 /// Split a 36-bit word into four 9-bit quarters.  The result is a
@@ -95,16 +97,23 @@ mod tests {
     #[test]
     fn test_split_halfword() {
         let h = Unsigned18Bit::try_from(0o123_456_u32).expect("valid test data");
-	assert_eq!(split_halfword(h), (Unsigned9Bit::try_from(0o123).unwrap(),
-				       Unsigned9Bit::try_from(0o456).unwrap()));
+        assert_eq!(
+            split_halfword(h),
+            (
+                Unsigned9Bit::try_from(0o123).unwrap(),
+                Unsigned9Bit::try_from(0o456).unwrap()
+            )
+        );
     }
 
     #[test]
     fn test_quarters() {
-	fn q(n: u16) -> Unsigned9Bit {
-	    Unsigned9Bit::try_from(n).expect("valid test data")
-	}
-	assert_eq!(quarters(Unsigned36Bit::try_from(0o123_456_525_252_u64).unwrap()),
-		   [q(0o123), q(0o456), q(0o525), q(0o252)])
+        fn q(n: u16) -> Unsigned9Bit {
+            Unsigned9Bit::try_from(n).expect("valid test data")
+        }
+        assert_eq!(
+            quarters(Unsigned36Bit::try_from(0o123_456_525_252_u64).unwrap()),
+            [q(0o123), q(0o456), q(0o525), q(0o252)]
+        )
     }
 }

@@ -159,9 +159,11 @@ impl SystemConfiguration {
         // 0010 means that quarters 4, 3 and 1 are active.
         let act_field: u16 = (!(u16::from(self.0) >> 3)) & 0b1111;
         let result = QuarterActivity::new(act_field as u8);
-	event!(Level::TRACE,
-               "active_quarters: system configuration {:>03o} -> result {:?}",
-               self, result
+        event!(
+            Level::TRACE,
+            "active_quarters: system configuration {:>03o} -> result {:?}",
+            self,
+            result
         );
         result
     }
@@ -202,7 +204,7 @@ macro_rules! assert_octal_eq {
 /// of the Technical Manual.
 fn permutation_source(permutation: &Permutation, target_quarter: u8) -> u8 {
     match permutation {
-        Permutation::P0 =>  target_quarter      % 4,
+        Permutation::P0 => target_quarter % 4,
         Permutation::P1 => (target_quarter + 1) % 4,
         Permutation::P2 => (target_quarter + 2) % 4,
         Permutation::P3 => (target_quarter + 3) % 4,
@@ -244,7 +246,11 @@ fn apply_sign(word: u64, quarter_number_from: u8, quarter_number_to: u8) -> u64 
     }
 }
 
-fn sign_extend_quarters(w: &Unsigned36Bit, active_quarters: QuarterActivity, quarters: &[u8]) -> Unsigned36Bit {
+fn sign_extend_quarters(
+    w: &Unsigned36Bit,
+    active_quarters: QuarterActivity,
+    quarters: &[u8],
+) -> Unsigned36Bit {
     let mut word: Unsigned36Bit = *w;
     if !active_quarters.is_empty() {
         let first_active = active_quarters.first_active_quarter();
@@ -263,7 +269,11 @@ fn sign_extend_quarters(w: &Unsigned36Bit, active_quarters: QuarterActivity, qua
     word
 }
 
-pub fn sign_extend(form: &SubwordForm, mut word: Unsigned36Bit, active: QuarterActivity) -> Unsigned36Bit {
+pub fn sign_extend(
+    form: &SubwordForm,
+    mut word: Unsigned36Bit,
+    active: QuarterActivity,
+) -> Unsigned36Bit {
     match form {
         SubwordForm::FullWord => {
             let first = active.first_active_quarter();
@@ -331,7 +341,11 @@ fn test_sign_extend_full_word() {
 
     // When all quarters are active, sign extension should make no difference.
     assert_octal_eq!(
-        sign_extend(&FullWord, Unsigned36Bit::from(0_u8), QuarterActivity::new(0b1111)),
+        sign_extend(
+            &FullWord,
+            Unsigned36Bit::from(0_u8),
+            QuarterActivity::new(0b1111)
+        ),
         word(0)
     );
     assert_octal_eq!(
@@ -780,7 +794,11 @@ fn test_permute() {
 /// Perform an exchange operation; that is, emulate the operation of
 /// the exchange unit. The operation of this unit is described in
 /// section 12 (volume 2) of the Technical Manual.
-pub fn exchanged_value(cfg: &SystemConfiguration, source: &Unsigned36Bit, dest: &Unsigned36Bit) -> Unsigned36Bit {
+pub fn exchanged_value(
+    cfg: &SystemConfiguration,
+    source: &Unsigned36Bit,
+    dest: &Unsigned36Bit,
+) -> Unsigned36Bit {
     let active_quarters = cfg.active_quarters();
     let permutation = cfg.permutation();
     let permuted_target = permute(&permutation, &active_quarters, source, dest);
@@ -801,7 +819,12 @@ mod tests {
                 let index = (i * 4) + quarter;
                 let value: u64 = u64::from(*spg_word) >> (quarter * 9);
                 let value: u16 = (value & 0o777) as u16;
-		event!(Level::TRACE, "F-memory index {:>03o} = {:>03o}", index, value);
+                event!(
+                    Level::TRACE,
+                    "F-memory index {:>03o} = {:>03o}",
+                    index,
+                    value
+                );
                 result.push(value);
             }
         }
@@ -810,13 +833,13 @@ mod tests {
 
     #[test]
     fn test_system_configuration_standard_config() {
-	/// The standard configuration set of F-memory, taken from table 7-2
-	/// (marked "OLD") of the TX-2 User's Guide (October 1961).
-	const STANDARD_CONFIG: [u16; 32] = [
-	    0o000, 0o340, 0o342, 0o760, 0o761, 0o762, 0o763, 0o410, 0o411, 0o140, 0o142, 0o160, 0o161,
-	    0o162, 0o163, 0o202, 0o200, 0o230, 0o232, 0o732, 0o733, 0o730, 0o731, 0o605, 0o600, 0o750,
-	    0o670, 0o320, 0o333, 0o330, 0o331, 0o604,
-	];
+        /// The standard configuration set of F-memory, taken from table 7-2
+        /// (marked "OLD") of the TX-2 User's Guide (October 1961).
+        const STANDARD_CONFIG: [u16; 32] = [
+            0o000, 0o340, 0o342, 0o760, 0o761, 0o762, 0o763, 0o410, 0o411, 0o140, 0o142, 0o160,
+            0o161, 0o162, 0o163, 0o202, 0o200, 0o230, 0o232, 0o732, 0o733, 0o730, 0o731, 0o605,
+            0o600, 0o750, 0o670, 0o320, 0o333, 0o330, 0o331, 0o604,
+        ];
 
         #[derive(Debug)]
         struct Expectation {

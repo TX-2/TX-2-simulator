@@ -372,7 +372,8 @@ fn test_signed18bit_eq() {
 
     let another_one: Signed18Bit = Signed18Bit::from(1_i8);
     assert_eq!(
-        Signed18Bit::ONE, another_one,
+        Signed18Bit::ONE,
+        another_one,
         "ensure we don't confuse identity with equality"
     );
 }
@@ -380,11 +381,26 @@ fn test_signed18bit_eq() {
 #[test]
 fn test_signed18bit_checked_add() {
     // Test the basics: adding zero to something leaves it unchanged.
-    assert_eq!(Signed18Bit::ZERO.checked_add(Signed18Bit::ZERO), Some(Signed18Bit::ZERO));
-    assert_eq!(Signed18Bit::ZERO.checked_add(Signed18Bit::ONE), Some(Signed18Bit::ONE));
-    assert_eq!(Signed18Bit::ONE.checked_add(Signed18Bit::ZERO), Some(Signed18Bit::ONE));
-    assert_eq!(Signed18Bit::MAX.checked_add(Signed18Bit::ZERO), Some(Signed18Bit::MAX));
-    assert_eq!(Signed18Bit::MIN.checked_add(Signed18Bit::ZERO), Some(Signed18Bit::MIN));
+    assert_eq!(
+        Signed18Bit::ZERO.checked_add(Signed18Bit::ZERO),
+        Some(Signed18Bit::ZERO)
+    );
+    assert_eq!(
+        Signed18Bit::ZERO.checked_add(Signed18Bit::ONE),
+        Some(Signed18Bit::ONE)
+    );
+    assert_eq!(
+        Signed18Bit::ONE.checked_add(Signed18Bit::ZERO),
+        Some(Signed18Bit::ONE)
+    );
+    assert_eq!(
+        Signed18Bit::MAX.checked_add(Signed18Bit::ZERO),
+        Some(Signed18Bit::MAX)
+    );
+    assert_eq!(
+        Signed18Bit::MIN.checked_add(Signed18Bit::ZERO),
+        Some(Signed18Bit::MIN)
+    );
 
     // Test the basics: 1+1=2
     let two: Signed18Bit = Signed18Bit::from(2_i8);
@@ -407,10 +423,22 @@ fn test_signed18bit_checked_sub() {
     let minus_one: Signed18Bit = Signed18Bit::from(-1_i8);
 
     // Test the basics: adding zero to something leaves it unchanged.
-    assert_eq!(Signed18Bit::ZERO.checked_sub(Signed18Bit::ZERO), Some(Signed18Bit::ZERO));
-    assert_eq!(Signed18Bit::ONE.checked_sub(Signed18Bit::ZERO), Some(Signed18Bit::ONE));
-    assert_eq!(Signed18Bit::MAX.checked_sub(Signed18Bit::ZERO), Some(Signed18Bit::MAX));
-    assert_eq!(Signed18Bit::MIN.checked_sub(Signed18Bit::ZERO), Some(Signed18Bit::MIN));
+    assert_eq!(
+        Signed18Bit::ZERO.checked_sub(Signed18Bit::ZERO),
+        Some(Signed18Bit::ZERO)
+    );
+    assert_eq!(
+        Signed18Bit::ONE.checked_sub(Signed18Bit::ZERO),
+        Some(Signed18Bit::ONE)
+    );
+    assert_eq!(
+        Signed18Bit::MAX.checked_sub(Signed18Bit::ZERO),
+        Some(Signed18Bit::MAX)
+    );
+    assert_eq!(
+        Signed18Bit::MIN.checked_sub(Signed18Bit::ZERO),
+        Some(Signed18Bit::MIN)
+    );
 
     // Test the basics: 2-1=1
     let two: Signed18Bit = Signed18Bit::from(2_i8);
@@ -424,7 +452,10 @@ fn test_signed18bit_checked_sub() {
         i32::from(Signed18Bit::MAX.checked_sub(Signed18Bit::ONE).unwrap()),
         0o377776_i32
     );
-    assert_eq!(Signed18Bit::ZERO.checked_sub(Signed18Bit::ONE).unwrap(), minus_one);
+    assert_eq!(
+        Signed18Bit::ZERO.checked_sub(Signed18Bit::ONE).unwrap(),
+        minus_one
+    );
 }
 
 #[test]
@@ -438,7 +469,13 @@ fn test_signed18bit_abs() {
 #[test]
 fn test_signed18bit_checked_abs() {
     let minus_one: Signed18Bit = Signed18Bit::from(-1_i8);
-    assert_eq!((Signed18Bit::ZERO, false), Signed18Bit::ZERO.overflowing_abs());
-    assert_eq!((Signed18Bit::ONE, false), Signed18Bit::ONE.overflowing_abs());
+    assert_eq!(
+        (Signed18Bit::ZERO, false),
+        Signed18Bit::ZERO.overflowing_abs()
+    );
+    assert_eq!(
+        (Signed18Bit::ONE, false),
+        Signed18Bit::ONE.overflowing_abs()
+    );
     assert_eq!((Signed18Bit::ONE, false), minus_one.overflowing_abs());
 }

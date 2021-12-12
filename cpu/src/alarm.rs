@@ -4,7 +4,6 @@ use std::fmt::{self, Display, Formatter};
 use base::instruction::Instruction;
 use base::prelude::*;
 
-
 // Alarms from User's Handbook section 5-2.2
 #[derive(Debug)]
 pub enum Alarm {
@@ -13,10 +12,22 @@ pub enum Alarm {
     QSAL(Instruction, Unsigned36Bit, String), // Q register (i.e. data fetch address) is set to illegal address
     ROUNDTUITAL(String),                      // Something is not implemented
     // I/O Alarm in IOS instruction; device broken/maintenance/nonexistent.
-    IOSAL{unit: Unsigned6Bit, operand: Option<Unsigned18Bit>, message: String},
+    IOSAL {
+        unit: Unsigned6Bit,
+        operand: Option<Unsigned18Bit>,
+        message: String,
+    },
 
     // Missed-data alarm.
-    MISAL {unit: Unsigned6Bit }, // Program too slow for I/O device.
+    MISAL {
+        unit: Unsigned6Bit,
+    }, // Program too slow for I/O device.
+
+    // There is a bug in the simulator.
+    BUGAL {
+        instr: Option<Instruction>,
+        message: String,
+    },
 }
 
 impl Display for Alarm {
@@ -55,24 +66,29 @@ impl Display for Alarm {
                 )
             }
 
-	    IOSAL { unit, operand, message } => {
-		write!(
-		    f,
-		    "IOSAL: I/O alarm during operation on unit {}",
-		    unit,
-		)?;
-		if let Some(oper) = operand {
-		    write!(f, " with operand {}", oper)?;
-		}
-		write!(f, ": {}", message)
-	    }
-	    MISAL { unit } => {
-		write!(
-		    f,
-		    "MISAL: program too slow; missed data on unit {}",
-		    unit,
-		)
-	    }
+            IOSAL {
+                unit,
+                operand,
+                message,
+            } => {
+                write!(f, "IOSAL: I/O alarm during operation on unit {}", unit,)?;
+                if let Some(oper) = operand {
+                    write!(f, " with operand {}", oper)?;
+                }
+                write!(f, ": {}", message)
+            }
+
+            MISAL { unit } => {
+                write!(f, "MISAL: program too slow; missed data on unit {}", unit,)
+            }
+
+            BUGAL { instr, message } => {
+                write!(
+                    f,
+                    "BUGAL: encountered simulator bug during execution of instruction {:?}: {}",
+                    instr, message,
+                )
+            }
         }
     }
 }

@@ -1,28 +1,22 @@
+use std::error::Error;
 /// Human-oriented formatting for instructions (or parts of instructions).
 use std::fmt::{self, Display, Formatter, Octal};
-use std::error::Error;
 
-use crate::prelude::*;
 use crate::instruction::{
-    Quarter,
-    BitSelector,
-    DisassemblyFailure,
-    index_address_to_bit_selection,
-    Inst,
-    Opcode,
-    OperandAddress,
-    SymbolicInstruction,
+    index_address_to_bit_selection, BitSelector, DisassemblyFailure, Inst, Opcode, OperandAddress,
+    Quarter, SymbolicInstruction,
 };
+use crate::prelude::*;
 
 /// Render the quarter ("q") part of the bit selector ("q.b").
 impl Display for Quarter {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-	f.write_str(match self {
-	    Quarter::Q1 => "1",
-	    Quarter::Q2 => "2",
-	    Quarter::Q3 => "3",
-	    Quarter::Q4 => "4",
-	})
+        f.write_str(match self {
+            Quarter::Q1 => "1",
+            Quarter::Q2 => "2",
+            Quarter::Q3 => "3",
+            Quarter::Q4 => "4",
+        })
     }
 }
 
@@ -36,7 +30,7 @@ impl Display for Quarter {
 /// in the documentation.
 impl Display for BitSelector {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-	write!(f, "{}.{}", self.quarter, self.bitpos)
+        write!(f, "{}.{}", self.quarter, self.bitpos)
     }
 }
 
@@ -165,7 +159,11 @@ struct NoSubscriptKnown(char);
 
 impl Display for NoSubscriptKnown {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-	write!(f, "bug: no subscript mapping is yet implemented for '{}'", self.0)
+        write!(
+            f,
+            "bug: no subscript mapping is yet implemented for '{}'",
+            self.0
+        )
     }
 }
 
@@ -173,26 +171,25 @@ impl Error for NoSubscriptKnown {}
 
 fn subscript_char(ch: char) -> Result<char, NoSubscriptKnown> {
     match ch {
-        '0' => Ok('\u{2080}'),	// ₀
-        '1' => Ok('\u{2081}'),	// ₁
-        '2' => Ok('\u{2082}'),	// ₂
-        '3' => Ok('\u{2083}'),	// ₃
-        '4' => Ok('\u{2084}'),	// ₄
-        '5' => Ok('\u{2085}'),	// ₅
-        '6' => Ok('\u{2086}'),	// ₆
-        '7' => Ok('\u{2087}'),	// ₇
-        '8' => Ok('\u{2088}'),	// ₈
-        '9' => Ok('\u{2089}'),	// ₉
-	'-' => Ok('\u{208B}'),	// ₋
-	'.' => Ok('.'),		// there appears to be no subscript version
-        _ =>  Err(NoSubscriptKnown(ch)),
+        '0' => Ok('\u{2080}'), // ₀
+        '1' => Ok('\u{2081}'), // ₁
+        '2' => Ok('\u{2082}'), // ₂
+        '3' => Ok('\u{2083}'), // ₃
+        '4' => Ok('\u{2084}'), // ₄
+        '5' => Ok('\u{2085}'), // ₅
+        '6' => Ok('\u{2086}'), // ₆
+        '7' => Ok('\u{2087}'), // ₇
+        '8' => Ok('\u{2088}'), // ₈
+        '9' => Ok('\u{2089}'), // ₉
+        '-' => Ok('\u{208B}'), // ₋
+        '.' => Ok('.'),        // there appears to be no subscript version
+        _ => Err(NoSubscriptKnown(ch)),
     }
 }
 
 fn subscript(s: &str) -> Result<String, NoSubscriptKnown> {
     s.chars().map(subscript_char).collect()
 }
-
 
 fn octal_subscript_number(n: u8) -> String {
     subscript(&format!("{:o}", n)).unwrap()
@@ -204,59 +201,59 @@ fn write_opcode(op: Opcode, cfg: Unsigned5Bit, f: &mut Formatter<'_>) -> Result<
     // Handbook.
     let cfg = u8::from(cfg);
     match op {
-	Opcode::Jmp => f.write_str(match cfg {
-	    0o00 => "JMP",
-	    0o01 => "BRC",
-	    0o02 => "JPS",
-	    0o03 => "BRS",
-	    0o14 => "JPQ",
-	    0o15 => "BPQ",
-	    0o16 => "JES",
-	    0o20 => "JPD",
-	    0o21 => "JMP",
-	    0o22 => "JDS",
-	    0o23 => "BDS",
-	    _ => "JMP",
-	}),
-	Opcode::Skx => f.write_str(match cfg {
-	    0o00 => "REX",
-	    0o02 => "INX",
-	    0o03 => "DEX",
-	    0o04 => "SXD",
-	    0o06 => "SXL",
-	    0o07 => "SXG",
-	    0o10 => "RXF",
-	    0o20 => "RXD",
-	    0o30 => "RFD",
-	    _ => "SKX",
-	}),
-	Opcode::Skm => f.write_str(match cfg {
-	    0o00 => "SKM",
-	    0o01 => "MKC",
-	    0o02 => "MKZ",
-	    0o03 => "MKN",
-	    0o10 => "SKU",
-	    0o11 => "SUC",
-	    0o12 => "SUZ",
-	    0o13 => "SUN",
-	    0o20 => "SKZ",
-	    0o21 => "SZC",
-	    0o22 => "SZZ",
-	    0o23 => "SZN",
-	    0o30 => "SKN",
-	    0o31 => "SNC",
-	    0o32 => "SNZ",
-	    0o33 => "SNN",
-	    0o04 => "CYR",
-	    0o05 => "MCR",
-	    0o06 => "MZR",
-	    0o07 => "MNR",
-	    0o34 => "SNR",
-	    0o24 => "SZR",
-	    0o14 => "SUR",
-	    _ => "SKM",
-	}),
-	_ => write!(f, "{}", op)
+        Opcode::Jmp => f.write_str(match cfg {
+            0o00 => "JMP",
+            0o01 => "BRC",
+            0o02 => "JPS",
+            0o03 => "BRS",
+            0o14 => "JPQ",
+            0o15 => "BPQ",
+            0o16 => "JES",
+            0o20 => "JPD",
+            0o21 => "JMP",
+            0o22 => "JDS",
+            0o23 => "BDS",
+            _ => "JMP",
+        }),
+        Opcode::Skx => f.write_str(match cfg {
+            0o00 => "REX",
+            0o02 => "INX",
+            0o03 => "DEX",
+            0o04 => "SXD",
+            0o06 => "SXL",
+            0o07 => "SXG",
+            0o10 => "RXF",
+            0o20 => "RXD",
+            0o30 => "RFD",
+            _ => "SKX",
+        }),
+        Opcode::Skm => f.write_str(match cfg {
+            0o00 => "SKM",
+            0o01 => "MKC",
+            0o02 => "MKZ",
+            0o03 => "MKN",
+            0o10 => "SKU",
+            0o11 => "SUC",
+            0o12 => "SUZ",
+            0o13 => "SUN",
+            0o20 => "SKZ",
+            0o21 => "SZC",
+            0o22 => "SZZ",
+            0o23 => "SZN",
+            0o30 => "SKN",
+            0o31 => "SNC",
+            0o32 => "SNZ",
+            0o33 => "SNN",
+            0o04 => "CYR",
+            0o05 => "MCR",
+            0o06 => "MZR",
+            0o07 => "MNR",
+            0o34 => "SNR",
+            0o24 => "SZR",
+            0o14 => "SUR",
+            _ => "SKM",
+        }),
+        _ => write!(f, "{}", op),
     }
 }
 
@@ -295,14 +292,14 @@ impl Display for SymbolicInstruction {
     /// "well-known" but we do not currently display these in symbolic
     /// form.
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-	// This implementation of Display is incomplete because, for
-	// example there are some instructions for which the index
-	// value is rendered as X.Y (I believe these are the
-	// bit-manipulation instructions).  The I/O instructions also
-	// have special cases.
-	//
-	// We also don't render "special" addresses, such as the
-	// addresses of actual registers, in symbolic form.
+        // This implementation of Display is incomplete because, for
+        // example there are some instructions for which the index
+        // value is rendered as X.Y (I believe these are the
+        // bit-manipulation instructions).  The I/O instructions also
+        // have special cases.
+        //
+        // We also don't render "special" addresses, such as the
+        // addresses of actual registers, in symbolic form.
         match (self.opcode().hold_is_implicit(), self.is_held()) {
             (true, false) => {
                 // I didn't find any examples of this (a programmer
@@ -324,24 +321,24 @@ impl Display for SymbolicInstruction {
             let cf: u8 = self.configuration().into();
             f.write_str(&octal_superscript_u8(cf))?;
         }
-	write_opcode(self.opcode(), self.configuration(), f)?;
-	let j = self.index_address();
-	match self.opcode() {
-	    Opcode::Skm => {
-		// The index address field in SKM instructions
-		// identify a bit in the operand to operate on, and
-		// are shown in the form "q.b".  The "q" identifies
-		// the quarter and the "b" the bit.
-		let selector: BitSelector = index_address_to_bit_selection(j);
-		let rendering: String = subscript(&selector.to_string()).unwrap();
-		f.write_str(&rendering)?;
-	    }
-	    _ => {
-		if j != 0 {
-		    f.write_str(&octal_subscript_number(u8::from(j)))?;
-		}
-	    }
-	}
+        write_opcode(self.opcode(), self.configuration(), f)?;
+        let j = self.index_address();
+        match self.opcode() {
+            Opcode::Skm => {
+                // The index address field in SKM instructions
+                // identify a bit in the operand to operate on, and
+                // are shown in the form "q.b".  The "q" identifies
+                // the quarter and the "b" the bit.
+                let selector: BitSelector = index_address_to_bit_selection(j);
+                let rendering: String = subscript(&selector.to_string()).unwrap();
+                f.write_str(&rendering)?;
+            }
+            _ => {
+                if j != 0 {
+                    f.write_str(&octal_subscript_number(u8::from(j)))?;
+                }
+            }
+        }
         write!(f, " {:>08o}", self.operand_address()) // includes [] if needed.
     }
 }

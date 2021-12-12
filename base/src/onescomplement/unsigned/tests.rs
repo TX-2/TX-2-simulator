@@ -431,5 +431,8 @@ fn test_unsigned9bit_shl() {
     assert_eq!(Unsigned9Bit::ZERO, Unsigned9Bit::ZERO << Unsigned9Bit::ZERO);
     assert_eq!(Unsigned9Bit::ZERO, Unsigned9Bit::ZERO << Unsigned9Bit::ONE);
     assert_eq!(Unsigned9Bit::ONE, Unsigned9Bit::ONE << Unsigned9Bit::ZERO);
-    assert_eq!(Unsigned9Bit::from(4_u8), Unsigned9Bit::ONE << Unsigned9Bit::from(2_u8));
+    assert_eq!(
+        Unsigned9Bit::from(4_u8),
+        Unsigned9Bit::ONE << Unsigned9Bit::from(2_u8)
+    );
 }

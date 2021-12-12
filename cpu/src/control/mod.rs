@@ -11,8 +11,9 @@
 //! - Keep track of the placeholder of each sequence
 //! - Manage switching between sequences
 //! - Remember the setting of the TSP (Toggle Start Point) register
+use std::time::Duration;
 
-use tracing::{event, Level};
+use tracing::{event, span, Level};
 
 mod op_configuration;
 mod op_index;
@@ -26,27 +27,16 @@ use base::prelude::*;
 use base::subword;
 
 use crate::alarm::Alarm;
-use crate::exchanger::{
-    exchanged_value,
-    SystemConfiguration,
-};
-use crate::io::{
-    DeviceManager
-};
-use crate::memory::{
-    ExtraBits,
-    MemoryMapped,
-    MemoryUnit,
-    MemoryOpFailure,
-    MetaBitChange,
-    self,
-};
+use crate::exchanger::{exchanged_value, SystemConfiguration};
+use crate::io::{DeviceManager, Unit};
+use crate::memory::{self, ExtraBits, MemoryMapped, MemoryOpFailure, MemoryUnit, MetaBitChange};
 
 use trap::TrapCircuit;
 
 #[derive(Debug)]
 enum ProgramCounterChange {
     SequenceChange(Unsigned6Bit),
+    DismissAndWait(Address),
     CounterUpdate,
     Jump(Address),
 }
@@ -73,9 +63,7 @@ impl SequenceFlags {
     fn new() -> SequenceFlags {
         // New instances start with no flags raised (i.e. in "Limbo",
         // STARTOVER not running).
-        SequenceFlags {
-	    flag_values: 0,
-	}
+        SequenceFlags { flag_values: 0 }
     }
 
     fn lower_all(&mut self) {
@@ -83,16 +71,18 @@ impl SequenceFlags {
     }
 
     fn flagbit(flag: &SequenceNumber) -> u64 {
-	1_u64 << u64::from(*flag)
+        1_u64 << u64::from(*flag)
     }
 
     fn lower(&mut self, flag: &SequenceNumber) {
         assert!(u16::from(*flag) < 0o100_u16);
+        event!(Level::INFO, "Lowering flag {}", flag,);
         self.flag_values &= !SequenceFlags::flagbit(flag);
     }
 
     fn raise(&mut self, flag: &SequenceNumber) {
         assert!(u16::from(*flag) < 0o100_u16);
+        event!(Level::INFO, "Raising flag {}", flag,);
         self.flag_values |= SequenceFlags::flagbit(flag);
     }
 
@@ -122,13 +112,22 @@ fn test_sequence_flags() {
     assert_eq!(flags.highest_priority_raised_flag(), None);
 
     flags.raise(&Unsigned6Bit::ZERO);
-    assert_eq!(flags.highest_priority_raised_flag().map(i8::from), Some(0_i8));
+    assert_eq!(
+        flags.highest_priority_raised_flag().map(i8::from),
+        Some(0_i8)
+    );
     flags.raise(&Unsigned6Bit::ONE);
     // 0 is still raised, so it still has the highest priority.
-    assert_eq!(flags.highest_priority_raised_flag(), Some(Unsigned6Bit::ZERO));
+    assert_eq!(
+        flags.highest_priority_raised_flag(),
+        Some(Unsigned6Bit::ZERO)
+    );
 
     flags.lower(&SequenceNumber::ZERO);
-    assert_eq!(flags.highest_priority_raised_flag(), Some(Unsigned6Bit::ONE));
+    assert_eq!(
+        flags.highest_priority_raised_flag(),
+        Some(Unsigned6Bit::ONE)
+    );
     flags.lower(&SequenceNumber::ONE);
     assert_eq!(flags.highest_priority_raised_flag(), None);
 
@@ -188,7 +187,7 @@ struct ControlRegisters {
     /// description of the AUX instruction) and are described on page
     /// 3-68 of the User Handbook (section 3-3.1) as being signed
     /// integers.
-    index_regs: [Signed18Bit; 0o100],	 // AKA the X memory
+    index_regs: [Signed18Bit; 0o100], // AKA the X memory
     f_memory: [SystemConfiguration; 32], // the F memory
     flags: SequenceFlags,
     current_sequence_is_runnable: bool,
@@ -210,7 +209,7 @@ impl ControlRegisters {
             index_regs: [Signed18Bit::default(); 0o100],
             f_memory: fmem,
             flags: SequenceFlags::new(),
-	    current_sequence_is_runnable: false,
+            current_sequence_is_runnable: false,
             spr: Address::default(),
         };
         // Index register 0 always contains 0.  This should still be
@@ -229,19 +228,19 @@ impl ControlRegisters {
     }
 
     fn get_index_register(&self, n: Unsigned6Bit) -> Signed18Bit {
-	let n = usize::from(n);
+        let n = usize::from(n);
         assert_eq!(self.index_regs[0], 0);
         assert!(n < 0o100);
         self.index_regs[n]
     }
 
     fn get_index_register_as_address(&mut self, n: Unsigned6Bit) -> Address {
-	let value: Signed18Bit = self.get_index_register(n);
-	Address::from(value.reinterpret_as_unsigned())
+        let value: Signed18Bit = self.get_index_register(n);
+        Address::from(value.reinterpret_as_unsigned())
     }
 
     fn set_index_register(&mut self, n: Unsigned6Bit, value: &Signed18Bit) {
-	let n = usize::from(n);
+        let n = usize::from(n);
         assert_eq!(self.index_regs[0], 0);
         assert_ne!(n, 0, "Index register 0 should be fixed at 0");
         assert!(n < 0o100);
@@ -249,8 +248,8 @@ impl ControlRegisters {
     }
 
     fn set_index_register_from_address(&mut self, n: Unsigned6Bit, addr: &Address) {
-	let value: Unsigned18Bit = Unsigned18Bit::from(*addr);
-	self.set_index_register(n, &value.reinterpret_as_signed());
+        let value: Unsigned18Bit = Unsigned18Bit::from(*addr);
+        self.set_index_register(n, &value.reinterpret_as_signed());
     }
 
     fn get_f_mem(&self, n: Unsigned5Bit) -> SystemConfiguration {
@@ -298,9 +297,9 @@ pub struct ControlUnit {
 
 fn sign_extend_index_value(index_val: &Signed18Bit) -> Unsigned36Bit {
     let left = if index_val.is_negative() {
-	Unsigned18Bit::MAX
+        Unsigned18Bit::MAX
     } else {
-	Unsigned18Bit::ZERO
+        Unsigned18Bit::ZERO
     };
     subword::join_halves(left, index_val.reinterpret_as_unsigned())
 }
@@ -310,17 +309,28 @@ impl ControlUnit {
         ControlUnit {
             regs: ControlRegisters::new(),
             running: false,
-	    trap: TrapCircuit::new(),
-	    devices: DeviceManager::new(),
+            trap: TrapCircuit::new(),
+            devices: DeviceManager::new(),
         }
     }
 
+    pub fn attach(
+        &mut self,
+        system_time: &Duration,
+        unit_number: Unsigned6Bit,
+        in_maintenance: bool,
+        unit: Box<dyn Unit>,
+    ) {
+        self.devices
+            .attach(system_time, unit_number, in_maintenance, unit)
+    }
+
     pub fn set_metabits_disabled(&mut self, disable: bool) {
-	self.trap.set_metabits_disabled(disable);
+        self.trap.set_metabits_disabled(disable);
     }
 
     pub fn disconnect_io_devices(&mut self) {
-	self.devices.disconnect_all();
+        self.devices.disconnect_all();
     }
 
     /// There are actually 9 different CODABO buttons (see page 5-18
@@ -353,14 +363,22 @@ impl ControlUnit {
         // so perhaps all the registers in V memory are cleared by
         // CODABO.
         //
-	event!(Level::INFO, "Starting CODABO {:?}", &reset_mode);
-	self.disconnect_io_devices();
+        let span = span!(Level::ERROR,
+			 "codabo",
+			 reset_mode=?reset_mode);
+        let _enter = span.enter();
+        event!(Level::INFO, "Starting CODABO {:?}", &reset_mode);
+        self.disconnect_io_devices();
         self.reset(reset_mode);
         self.regs.flags.lower_all();
-	self.regs.current_sequence_is_runnable = false;
+        self.regs.current_sequence_is_runnable = false;
         self.startover();
         // TODO: begin issuing clock cycles.
-	event!(Level::DEBUG, "After CODABO, control unit contains {:#?}", &self);
+        event!(
+            Level::DEBUG,
+            "After CODABO, control unit contains {:#?}",
+            &self
+        );
     }
 
     /// There are 9 separate RESET buttons, for 8 fixed addresses and
@@ -398,11 +416,11 @@ impl ControlUnit {
     }
 
     fn trap_seq() -> Unsigned6Bit {
-	Unsigned6Bit::try_from(0o42).unwrap()
+        Unsigned6Bit::try_from(0o42).unwrap()
     }
 
     fn raise_trap(&mut self) {
-	self.regs.flags.raise(&Self::trap_seq());
+        self.regs.flags.raise(&Self::trap_seq());
     }
 
     fn change_sequence(&mut self, prev_seq: Option<SequenceNumber>, mut next_seq: SequenceNumber) {
@@ -415,15 +433,25 @@ impl ControlUnit {
         // where a unit of higher priority than 0o42 is marked for
         // trap-on-sequence-change.
         if prev_seq == Some(next_seq) {
-            // TODO: log a warning event.
+            event!(
+                Level::WARN,
+                "change_sequence: old and new sequences are the same: {:>02o}",
+                u8::from(next_seq),
+            );
             return;
         }
 
-	fn is_marked_placeholder(index_val: &Signed18Bit) -> bool {
-	    index_val < &0
-	}
+        event!(
+            Level::INFO,
+            "Changing sequence to {:>02o}",
+            u8::from(next_seq),
+        );
 
-	let trap_seq = Self::trap_seq();
+        fn is_marked_placeholder(index_val: &Signed18Bit) -> bool {
+            index_val < &0
+        }
+
+        let trap_seq = Self::trap_seq();
         let sequence_change_trap = self.trap.trap_on_changed_sequence()
             && is_marked_placeholder(&self.regs.get_index_register(next_seq))
             && self.regs.k != Some(trap_seq)
@@ -434,8 +462,10 @@ impl ControlUnit {
             Some(n) => n,
         };
         self.regs.e = join_halves(
-            join_quarters(Unsigned9Bit::from(previous_sequence),
-			  Unsigned9Bit::from(next_seq)),
+            join_quarters(
+                Unsigned9Bit::from(previous_sequence),
+                Unsigned9Bit::from(next_seq),
+            ),
             Unsigned18Bit::from(self.regs.p),
         );
 
@@ -444,104 +474,107 @@ impl ControlUnit {
             next_seq = trap_seq;
         }
         self.regs.k = Some(next_seq);
-	if let Some(prev) = prev_seq {
-            let p = self.regs.p;
-            self.regs.set_index_register_from_address(prev, &p);
+        if let Some(prev) = prev_seq {
+            // Index register 0 never changes, it's always 0.
+            if prev_seq != Some(Unsigned6Bit::ZERO) {
+                let p = self.regs.p;
+                self.regs.set_index_register_from_address(prev, &p);
+            }
         }
-	self.set_program_counter(ProgramCounterChange::SequenceChange(next_seq));
+        self.set_program_counter(ProgramCounterChange::SequenceChange(next_seq));
     }
 
     fn set_program_counter(&mut self, change: ProgramCounterChange) {
-	match change {
-	    ProgramCounterChange::SequenceChange(next_seq) => {
-		// According to the Technical Manual, page 12-6,
-		// change of seqeuence is the only time in which P₂.₉
-		// is altered.
-		if next_seq != 0 {
-		    self.regs.p = self.regs.get_index_register_as_address(next_seq);
-		} else {
-		    // Index register 0 is always 0, but by setting
-		    // the Toggle Status Register, the user can run
-		    // sequence 0 from an arbitrary address. That
-		    // address can't be stored in index register 0
-		    // since that's always 0, so we use an internal
-		    // "spr" register which is updated by the
-		    // RESET/CODABO buttons.  Here, we copy that saved
-		    // value into P.
-		    self.regs.p = self.regs.spr;
-		}
-	    }
-	    ProgramCounterChange::CounterUpdate => {
-		// Volume 2 of the Technical Manual (section 12-2.3 "P
-		// REGISTER DRIVER LOGIC") states, """Information can
-		// be transferred into the P register only from the X
-		// Adder.  In addition to this single transfer path,
-		// ther P register has a counter which can index the
-		// contents of the P register by one.  Note that count
-		// circuit does not alter the contents of P₂.₉"""
-		//
-		// Since P₂.₉ is the sign bit, this means that the P
-		// register wraps rather than overflows.
-		//
-		// As a practical matter, this wrap-around case means
-		// that self.regs.p previously contained 377,777.
-		// That is the last instruction in V Memory.  This is
-		// normally an unconditional JMP.  So in the standard
-		// plugboard configuration, we're going to take the
-		// jmp, meaning that we're never going to fetch an
-		// instruction from the address we just computed.
-		// But, this case may be needed to cover non-standard
-		// plugboard configurations.  According to the
-		// Technical Manual, page 12-6, change of seqeuence is
-		// the only time in which P₂.₉ is altered.
-		let (_old_physical, old_mark) = self.regs.p.split();
-		let new_p = self.regs.p.successor(); // p now points at the next instruction.
-		let (_new_physical, new_mark) = new_p.split();
-		assert_eq!(old_mark, new_mark);
-		self.regs.p = new_p;
-	    }
-	    ProgramCounterChange::Jump(new_p) => {
-		// Copy the value of P₂.₉ into `old_mark`.
-		let (_old_physical, old_mark) = self.regs.p.split();
-		// Update P, keeping the old value of P₂.₉.
-		self.regs.p = Address::join(new_p.into(), old_mark);
-	    }
-	}
+        match change {
+            ProgramCounterChange::SequenceChange(next_seq) => {
+                // According to the Technical Manual, page 12-6,
+                // change of seqeuence is the only time in which P₂.₉
+                // is altered.
+                if next_seq != 0 {
+                    self.regs.p = self.regs.get_index_register_as_address(next_seq);
+                } else {
+                    // Index register 0 is always 0, but by setting
+                    // the Toggle Status Register, the user can run
+                    // sequence 0 from an arbitrary address. That
+                    // address can't be stored in index register 0
+                    // since that's always 0, so we use an internal
+                    // "spr" register which is updated by the
+                    // RESET/CODABO buttons.  Here, we copy that saved
+                    // value into P.
+                    self.regs.p = self.regs.spr;
+                }
+            }
+            ProgramCounterChange::CounterUpdate => {
+                // Volume 2 of the Technical Manual (section 12-2.3 "P
+                // REGISTER DRIVER LOGIC") states, """Information can
+                // be transferred into the P register only from the X
+                // Adder.  In addition to this single transfer path,
+                // ther P register has a counter which can index the
+                // contents of the P register by one.  Note that count
+                // circuit does not alter the contents of P₂.₉"""
+                //
+                // Since P₂.₉ is the sign bit, this means that the P
+                // register wraps rather than overflows.
+                //
+                // As a practical matter, this wrap-around case means
+                // that self.regs.p previously contained 377,777.
+                // That is the last instruction in V Memory.  This is
+                // normally an unconditional JMP.  So in the standard
+                // plugboard configuration, we're going to take the
+                // jmp, meaning that we're never going to fetch an
+                // instruction from the address we just computed.
+                // But, this case may be needed to cover non-standard
+                // plugboard configurations.  According to the
+                // Technical Manual, page 12-6, change of seqeuence is
+                // the only time in which P₂.₉ is altered.
+                let (_old_physical, old_mark) = self.regs.p.split();
+                let new_p = self.regs.p.successor(); // p now points at the next instruction.
+                let (_new_physical, new_mark) = new_p.split();
+                assert_eq!(old_mark, new_mark);
+                self.regs.p = new_p;
+            }
+            ProgramCounterChange::DismissAndWait(new_p) | ProgramCounterChange::Jump(new_p) => {
+                // Copy the value of P₂.₉ into `old_mark`.
+                let (_old_physical, old_mark) = self.regs.p.split();
+                // Update P, keeping the old value of P₂.₉.
+                self.regs.p = Address::join(new_p.into(), old_mark);
+            }
+        }
     }
 
     pub fn fetch_instruction(&mut self, mem: &mut MemoryUnit) -> Result<bool, Alarm> {
-	// If the previous instruction was held, we don't even scan
-	// the flags.  This follows the description of how control
-	// handles flags in section 4-3.5 of the User Handbook (page
-	// 4-8).
-	if !self.regs.previous_instruction_hold() {
+        // If the previous instruction was held, we don't even scan
+        // the flags.  This follows the description of how control
+        // handles flags in section 4-3.5 of the User Handbook (page
+        // 4-8).
+        if !self.regs.previous_instruction_hold() {
             // Handle any possible change of sequence.
             match self.regs.flags.highest_priority_raised_flag() {
-		None => {
+                None => {
                     // The current sequence's flag is no longer raised.
-		    //
-		    // This happens either because the sequence was
-		    // dismissed (permanent or temporary drop-out) or IOSj
-		    // 40000 ("LOWER FLAG J") had been issued.  In the
-		    // latter case, the current sequence should continue
-		    // to run until another sequence's flag is raised.
-		    if !self.regs.current_sequence_is_runnable {
-			return Ok(false);
-		    }
-		}
-		Some(seq) => {
-		    event!(Level::TRACE, "Highest-priority sequence is {}", seq);
-                    if Some(seq) == self.regs.k {
-			// just carry on.
-                    } else {
-			// Change of sequence.  Either seq is a higher
-			// priority than the current sequence, or the
-			// (previously) current sequence dropped out.
-			self.change_sequence(self.regs.k, seq);
+                    //
+                    // This happens either because the sequence was
+                    // dismissed (permanent or temporary drop-out) or IOSj
+                    // 40000 ("LOWER FLAG J") had been issued.  In the
+                    // latter case, the current sequence should continue
+                    // to run until another sequence's flag is raised.
+                    if !self.regs.current_sequence_is_runnable {
+                        return Ok(false);
                     }
-		}
+                }
+                Some(seq) => {
+                    event!(Level::TRACE, "Highest-priority sequence is {}", seq);
+                    if Some(seq) == self.regs.k {
+                        // just carry on.
+                    } else {
+                        // Change of sequence.  Either seq is a higher
+                        // priority than the current sequence, or the
+                        // (previously) current sequence dropped out.
+                        self.change_sequence(self.regs.k, seq);
+                    }
+                }
             }
-	}
+        }
 
         // self.regs.k now identifies the sequence we should be
         // running and self.regs.p contains its program counter.
@@ -549,21 +582,20 @@ impl ControlUnit {
         // Calculate the address from which we will fetch the
         // instruction, and the increment the program counter.
         let p_physical_address = Address::from(self.regs.p.split().0);
-	self.set_program_counter(ProgramCounterChange::CounterUpdate);
 
-	// Actually fetch the instruction.
-	let meta_op = if self.trap.set_metabits_of_instructions() {
+        // Actually fetch the instruction.
+        let meta_op = if self.trap.set_metabits_of_instructions() {
             MetaBitChange::Set
-	} else {
-	    MetaBitChange::None
+        } else {
+            MetaBitChange::None
         };
         let instruction_word = match mem.fetch(&p_physical_address, &meta_op) {
             Ok((inst, extra_bits)) => {
-		if extra_bits.meta && self.trap.trap_on_marked_instruction() {
-		    self.raise_trap();
-		}
-		inst
-	    }
+                if extra_bits.meta && self.trap.trap_on_marked_instruction() {
+                    self.raise_trap();
+                }
+                inst
+            }
             Err(e) => match e {
                 MemoryOpFailure::NotMapped => {
                     return Err(Alarm::PSAL(
@@ -571,57 +603,59 @@ impl ControlUnit {
                         "memory unit indicated physical address is not mapped".to_string(),
                     ));
                 }
-                MemoryOpFailure::ReadOnly => unreachable!(),
+                MemoryOpFailure::ReadOnly(_) => unreachable!(),
             },
         };
-	event!(Level::TRACE,
-               "Fetched instruction {:?} from physical address {:?}",
-               instruction_word, p_physical_address
+        event!(
+            Level::TRACE,
+            "Fetched instruction {:?} from physical address {:?}",
+            instruction_word,
+            p_physical_address
         );
-	self.update_n_register(instruction_word)?;
-	Ok(true)		// not in Limbo (i.e. a sequence should run)
+        self.update_n_register(instruction_word)?;
+        Ok(true) // not in Limbo (i.e. a sequence should run)
     }
 
-    pub fn poll_hardware(&mut self) -> Result<(), Alarm> {
-	let (mut raised_flags, alarm) = self.devices.poll();
-	// For each newly-raised flag, raise the flag in self.flags.
-	event!(
-	    Level::TRACE,
-	    "poll_hardware: there are {} new flag raises",
-	    raised_flags.count_ones(),
-	);
-	for bitpos in 0.. {
-	    if raised_flags == 0 {
-		break;
-	    }
-	    let mask = 1_u64 << bitpos;
-	    if raised_flags & mask != 0 {
-		match SequenceNumber::try_from(bitpos) {
-		    Ok(unit) => {
-			self.regs.flags.raise(&unit);
-		    }
-		    Err(_) => {
-			break;
-		    }
-		}
-	    }
-	    raised_flags &= !mask;
-	}
+    pub fn poll_hardware(&mut self, system_time: &Duration) -> Result<(), Alarm> {
+        let (mut raised_flags, alarm) = self.devices.poll(system_time);
+        // For each newly-raised flag, raise the flag in self.flags.
+        event!(
+            Level::TRACE,
+            "poll_hardware: there are {} new flag raises",
+            raised_flags.count_ones(),
+        );
+        for bitpos in 0.. {
+            if raised_flags == 0 {
+                break;
+            }
+            let mask = 1_u64 << bitpos;
+            if raised_flags & mask != 0 {
+                match SequenceNumber::try_from(bitpos) {
+                    Ok(unit) => {
+                        self.regs.flags.raise(&unit);
+                    }
+                    Err(_) => {
+                        break;
+                    }
+                }
+            }
+            raised_flags &= !mask;
+        }
 
-	// If a device raised an alarm, generate that alarm now.  This
-	// alarm was not an error return from the poll() method,
-	// because we needed to ensure that all flag raised were
-	// processed.
-	if let Some(active) = alarm {
-	    event!(
-		Level::INFO,
-		"poll_hardware: an alarm is active: {:?}",
-		active
-	    );
-	    Err(active)
-	} else {
-	    Ok(())
-	}
+        // If a device raised an alarm, generate that alarm now.  This
+        // alarm was not an error return from the poll() method,
+        // because we needed to ensure that all flag raised were
+        // processed.
+        if let Some(active) = alarm {
+            event!(
+                Level::INFO,
+                "poll_hardware: an alarm is active: {:?}",
+                active
+            );
+            Err(active)
+        } else {
+            Ok(())
+        }
     }
 
     fn update_n_register(&mut self, instruction_word: Unsigned36Bit) -> Result<(), Alarm> {
@@ -642,16 +676,21 @@ impl ControlUnit {
     }
 
     fn estimate_execute_time_ns(&self, orig_inst: &Instruction) -> u64 {
-	let inst_from: Address = self.regs.p; // this is now P+1 but likely in the same memory type.
-	let defer_from: Option<Address> = match orig_inst.operand_address() {
-	    OperandAddress::Deferred(phys) => Some(phys),
-	    OperandAddress::Direct(_) => None,
-	};
-	let operand_from = match self.regs.n.operand_address() {
-	    OperandAddress::Deferred(phys) => Some(phys),
-	    OperandAddress::Direct(_) => None,
-	};
-	timing::estimate_instruction_ns(inst_from, orig_inst.opcode_number(), defer_from, operand_from)
+        let inst_from: Address = self.regs.p; // this is now P+1 but likely in the same memory type.
+        let defer_from: Option<Address> = match orig_inst.operand_address() {
+            OperandAddress::Deferred(phys) => Some(phys),
+            OperandAddress::Direct(_) => None,
+        };
+        let operand_from = match self.regs.n.operand_address() {
+            OperandAddress::Deferred(phys) => Some(phys),
+            OperandAddress::Direct(_) => None,
+        };
+        timing::estimate_instruction_ns(
+            inst_from,
+            orig_inst.opcode_number(),
+            defer_from,
+            operand_from,
+        )
     }
 
     /// Execute the instruction in the N register (i.e. the
@@ -659,33 +698,90 @@ impl ControlUnit {
     /// register already points to the next instruction.  Returns the
     /// estimated number of nanoseconds needed to execute the
     /// instruction.
-    pub fn execute_instruction(&mut self, mem: &mut MemoryUnit) -> Result<u64, Alarm> {
-        let sym = match &self.regs.n_sym {
-            None => return Err(self.invalid_opcode_alarm()),
-            Some(s) => s,
-        };
-	event!(Level::DEBUG, "Executing instruction {}...", sym);
-	// Execution of the instruction will change self.regs.n, but
-	// we want to preserve the original value so that we know
-	// whether the original version of the instruction used
-	// deferred addressing, since this affects our estimate of the
-	// execution time.
-	let saved_inst: Instruction = self.regs.n;
-        match sym.opcode() {
-            Opcode::Skx => self.op_skx(),
-            Opcode::Dpx => self.op_dpx(mem),
-            Opcode::Jmp => self.op_jmp(),
-	    Opcode::Jpx => self.op_jpx(mem),
-	    Opcode::Jnx => self.op_jnx(mem),
-	    Opcode::Skm => self.op_skm(mem),
-	    Opcode::Spg => self.op_spg(mem),
-	    Opcode::Ios => self.op_ios(),
-            _ => Err(Alarm::ROUNDTUITAL(format!(
-                "The emulator does not yet implement opcode {}",
-                sym.opcode()
-            ))),
+    pub fn execute_instruction(
+        &mut self,
+        system_time: &Duration,
+        mem: &mut MemoryUnit,
+    ) -> Result<u64, Alarm> {
+        fn execute(
+            opcode: &Opcode,
+            control: &mut ControlUnit,
+            system_time: &Duration,
+            mem: &mut MemoryUnit,
+        ) -> Result<(u64, bool), Alarm> {
+            // Execution of the instruction will change self.regs.n, but
+            // we want to preserve the original value so that we know
+            // whether the original version of the instruction used
+            // deferred addressing, since this affects our estimate of the
+            // execution time.
+            let saved_inst: Instruction = control.regs.n;
+            let mut increment_program_counter: bool = true;
+            match opcode {
+                Opcode::Skx => control.op_skx(),
+                Opcode::Dpx => control.op_dpx(mem),
+                Opcode::Jmp => control.op_jmp(),
+                Opcode::Jpx => control.op_jpx(mem),
+                Opcode::Jnx => control.op_jnx(mem),
+                Opcode::Skm => control.op_skm(mem),
+                Opcode::Spg => control.op_spg(mem),
+                Opcode::Ios => control.op_ios(system_time),
+                Opcode::Tsd => match control.op_tsd(system_time, mem) {
+                    Ok(increment_pc) => {
+                        increment_program_counter = increment_pc;
+                        Ok(())
+                    }
+                    Err(e) => Err(e),
+                },
+                _ => Err(Alarm::ROUNDTUITAL(format!(
+                    "The emulator does not yet implement opcode {}",
+                    opcode,
+                ))),
+            }
+            .map(|()| {
+                (
+                    control.estimate_execute_time_ns(&saved_inst),
+                    increment_program_counter,
+                )
+            })
         }
-	.map(|()| self.estimate_execute_time_ns(&saved_inst))
+
+        // Save the old program counter.
+        let p = self.regs.p;
+        self.set_program_counter(ProgramCounterChange::CounterUpdate);
+
+        if let Some(sym) = self.regs.n_sym.as_ref() {
+            let inst = sym.to_string();
+            let span = span!(Level::INFO,
+			     "xop",
+			     seq=u8::from(self.regs.k.unwrap()),
+			     p=?p,
+			     op=%sym.opcode());
+            let _enter = span.enter();
+            match execute(&sym.opcode(), self, system_time, mem) {
+                Ok((ns, increment_program_counter)) => {
+                    event!(
+                        Level::DEBUG,
+                        "instruction {} executed in simulated {}ns",
+                        inst,
+                        ns
+                    );
+                    if !increment_program_counter {
+                        // Restore the pre-increment value of the P
+                        // register, so that dismiss-and-wait will
+                        // cause execution of the current sequence to
+                        // resume at the TSD instruction.
+                        self.set_program_counter(ProgramCounterChange::DismissAndWait(p));
+                    }
+                    Ok(ns)
+                }
+                Err(e) => {
+                    event!(Level::WARN, "instruction {} raised alarm {}", inst, e);
+                    Err(e)
+                }
+            }
+        } else {
+            Err(self.invalid_opcode_alarm())
+        }
     }
 
     fn get_config(&self) -> SystemConfiguration {
@@ -700,25 +796,25 @@ impl ControlUnit {
     ) -> Result<(Unsigned36Bit, ExtraBits), Alarm> {
         let meta_op: MetaBitChange = if self.trap.set_metabits_of_operands() {
             MetaBitChange::Set
-	} else {
-	    MetaBitChange::None
+        } else {
+            MetaBitChange::None
         };
         match mem.fetch(operand_address, &meta_op) {
             Ok((word, extra_bits)) => {
-		if extra_bits.meta && self.trap.trap_on_operand() {
-		    self.raise_trap();
-		}
-		Ok((word, extra_bits))
-	    }
+                if extra_bits.meta && self.trap.trap_on_operand() {
+                    self.raise_trap();
+                }
+                Ok((word, extra_bits))
+            }
             Err(MemoryOpFailure::NotMapped) => Err(Alarm::QSAL(
-		self.regs.n,
+                self.regs.n,
                 Unsigned36Bit::from(*operand_address),
                 format!(
                     "memory unit indicated address {:o} is not mapped",
                     operand_address
                 ),
             )),
-            Err(MemoryOpFailure::ReadOnly) => unreachable!(),
+            Err(MemoryOpFailure::ReadOnly(_)) => unreachable!(),
         }
     }
 
@@ -729,11 +825,12 @@ impl ControlUnit {
         value: &Unsigned36Bit,
         meta_op: &MetaBitChange,
     ) -> Result<(), Alarm> {
-	event!(Level::TRACE,
-	       "memory_store_without_exchange: write @{:>06o} <- {:o}",
-	       target,
-	       value,
-	);
+        event!(
+            Level::TRACE,
+            "memory_store_without_exchange: write @{:>06o} <- {:o}",
+            target,
+            value,
+        );
         mem.store(target, value, meta_op).map_err(|e| {
             Alarm::QSAL(
                 self.regs.n,
@@ -763,97 +860,104 @@ impl ControlUnit {
         self: &mut ControlUnit,
         mem: &mut MemoryUnit,
     ) -> Result<Address, Alarm> {
-	self.resolve_operand_address(mem, None)
+        self.resolve_operand_address(mem, None)
     }
 
     fn resolve_operand_address(
         self: &mut ControlUnit,
         mem: &mut MemoryUnit,
-	initial_index_override: Option<Unsigned6Bit>,
+        initial_index_override: Option<Unsigned6Bit>,
     ) -> Result<Address, Alarm> {
-	// The deferred addressing process may be performed more than
-	// once, in other words it is a loop.  This is explained in
-	// section 9-7, "DEFERRED ADDRESSING CYCLES" of Volume 2 of
-	// the technical manual.
-	while let OperandAddress::Deferred(physical) = self.regs.n.operand_address() {
-	    // In effect, this loop emulates a non-ultimate deferred
-	    // address cycle.
-	    //
+        // The deferred addressing process may be performed more than
+        // once, in other words it is a loop.  This is explained in
+        // section 9-7, "DEFERRED ADDRESSING CYCLES" of Volume 2 of
+        // the technical manual.
+        while let OperandAddress::Deferred(physical) = self.regs.n.operand_address() {
+            // In effect, this loop emulates a non-ultimate deferred
+            // address cycle.
+            //
             // According to the description of PK3 on page 5-9 of the
             // User handbook, the deferred address calculation and
             // indexing occurs in (i.e. by modifying) the N register.
-	    //
-	    // JPX and JNX seem to be handled differently, but I don't
-	    // think I understand exactly what the difference is
-	    // supposed to be.
-	    //
-	    // (Vol 2, page 12-9): It should also be noted that the
-	    // N₂.₉ bit is presented as an input to the X Adder only
-	    // when no deferred address cycles are called for.  When
-	    // PI¹₂, the input to the X Adder from the N₂.₉ position
-	    // is forced to appear as a ZERO.
-	    event!(Level::TRACE,
-		   "deferred addressing: deferred address is {:o}",
-		   &physical
+            //
+            // JPX and JNX seem to be handled differently, but I don't
+            // think I understand exactly what the difference is
+            // supposed to be.
+            //
+            // (Vol 2, page 12-9): It should also be noted that the
+            // N₂.₉ bit is presented as an input to the X Adder only
+            // when no deferred address cycles are called for.  When
+            // PI¹₂, the input to the X Adder from the N₂.₉ position
+            // is forced to appear as a ZERO.
+            event!(
+                Level::TRACE,
+                "deferred addressing: deferred address is {:o}",
+                &physical
             );
             let meta_op = if self.trap.set_metabits_of_deferred_addresses() {
-		MetaBitChange::Set
-	    } else {
-		MetaBitChange::None
+                MetaBitChange::Set
+            } else {
+                MetaBitChange::None
             };
             let fetched = match mem.fetch(&physical, &meta_op) {
                 Err(e) => {
-		    return Err(Alarm::QSAL(
-			self.regs.n,
-			Unsigned36Bit::from(physical),
-			format!("address {:#o} out of range while fetching deferred address: {}", &physical, e),
-		    ));
+                    return Err(Alarm::QSAL(
+                        self.regs.n,
+                        Unsigned36Bit::from(physical),
+                        format!(
+                            "address {:#o} out of range while fetching deferred address: {}",
+                            &physical, e
+                        ),
+                    ));
                 }
                 Ok((word, extra)) => {
-		    if extra.meta && self.trap.trap_on_deferred_address() {
-			self.raise_trap();
-		    }
+                    if extra.meta && self.trap.trap_on_deferred_address() {
+                        self.raise_trap();
+                    }
 
-		    // I think it's likely that the TX2 should perform
-		    // indexation on deferred addreses.  This idea is
-		    // based on the fact that the left subword of
-		    // deferred addresses used in plugboard programs
-		    // can be nonzero, and on the fact that the
-		    // description of the SKM instruction notes "SKM
-		    // is therefore non-indexable except through
-		    // deferred addressing".
-		    let (left, right) = subword::split_halves(word);
-		    event!(Level::TRACE,
+                    // I think it's likely that the TX2 should perform
+                    // indexation on deferred addreses.  This idea is
+                    // based on the fact that the left subword of
+                    // deferred addresses used in plugboard programs
+                    // can be nonzero, and on the fact that the
+                    // description of the SKM instruction notes "SKM
+                    // is therefore non-indexable except through
+                    // deferred addressing".
+                    let (left, right) = subword::split_halves(word);
+                    event!(Level::TRACE,
 			   "deferred addressing: fetched full word is {:o},,{:o}; using {:o} as the final address",
 			   &left, &right, &right,
 		    );
-		    Address::from(right)
+                    Address::from(right)
                 }
-	    };
+            };
 
-	    // We update the lower 18 bits (i.e. right half) of N with
-	    // the value we just loaded from memory.
-	    let unchanged_left = subword::left_half(Unsigned36Bit::from(self.regs.n));
-	    self.update_n_register(subword::join_halves(unchanged_left, Unsigned18Bit::from(fetched)))?;
-	}
-	let physical_address = match self.regs.n.operand_address() {
-	    // Cannot be a deferred address any more, as loop above
-	    // loops until the address is not deferred.
-	    OperandAddress::Deferred(_) => unreachable!(),
-	    OperandAddress::Direct(physical_address) => physical_address,
-	};
-	// The defer bit in N is (now) not set.  Emulate a regular or
-	// ultimate address cycle.  That is, add the index value to
-	// the operand address.  While the index_address field in the
-	// instruction is unsigned (following the conventions in the
-	// assembly source), the indexation operation itself uses
-	// signed arithmetic (see the explanation in the doc comment
-	// for the IndexBy trait).
-	let j = match initial_index_override {
-	    None => self.regs.n.index_address(),
-	    Some(overridden) => overridden,
-	};
-	let delta = self.regs.get_index_register(j); // this is Xj.
+            // We update the lower 18 bits (i.e. right half) of N with
+            // the value we just loaded from memory.
+            let unchanged_left = subword::left_half(Unsigned36Bit::from(self.regs.n));
+            self.update_n_register(subword::join_halves(
+                unchanged_left,
+                Unsigned18Bit::from(fetched),
+            ))?;
+        }
+        let physical_address = match self.regs.n.operand_address() {
+            // Cannot be a deferred address any more, as loop above
+            // loops until the address is not deferred.
+            OperandAddress::Deferred(_) => unreachable!(),
+            OperandAddress::Direct(physical_address) => physical_address,
+        };
+        // The defer bit in N is (now) not set.  Emulate a regular or
+        // ultimate address cycle.  That is, add the index value to
+        // the operand address.  While the index_address field in the
+        // instruction is unsigned (following the conventions in the
+        // assembly source), the indexation operation itself uses
+        // signed arithmetic (see the explanation in the doc comment
+        // for the IndexBy trait).
+        let j = match initial_index_override {
+            None => self.regs.n.index_address(),
+            Some(overridden) => overridden,
+        };
+        let delta = self.regs.get_index_register(j); // this is Xj.
 
         // A number of things expect that the "most recent data (memory)
         // reference" is saved in register Q.  14JMP (a.k.a. JPQ) makes
@@ -867,15 +971,18 @@ impl ControlUnit {
         Ok(self.regs.q)
     }
 
-    fn dismiss_unless_held(&mut self) {
-	if !self.regs.n.is_held() {
+    fn dismiss_unless_held(&mut self) -> bool {
+        if self.regs.n.is_held() {
+            false
+        } else {
             if let Some(current_seq) = self.regs.k {
+                event!(Level::INFO, "dismissing current sequence");
                 self.regs.flags.lower(&current_seq);
-		self.regs.current_sequence_is_runnable = false;
+                self.regs.current_sequence_is_runnable = false;
             }
-	}
+            true
+        }
     }
-
 }
 
 impl Default for ControlUnit {

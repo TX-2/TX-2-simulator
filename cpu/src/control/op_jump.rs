@@ -2,17 +2,8 @@ use base::prelude::*;
 use base::subword;
 
 use crate::alarm::Alarm;
-use crate::control::{
-    ControlUnit,
-    ProgramCounterChange,
-};
-use crate::memory::{
-    BitChange,
-    MemoryMapped,
-    MemoryUnit,
-    MemoryOpFailure,
-    WordChange,
-};
+use crate::control::{ControlUnit, ProgramCounterChange};
+use crate::memory::{BitChange, MemoryMapped, MemoryOpFailure, MemoryUnit, WordChange};
 
 /// ## "Jump Skip Class" opcodes
 ///
@@ -75,14 +66,14 @@ impl ControlUnit {
             OperandAddress::Direct(phys) => phys,
         };
 
-	let new_pc: Address = if indexed {
-	    physical.index_by(self.regs.n.index_address().reinterpret_as_signed())
+        let new_pc: Address = if indexed {
+            physical.index_by(self.regs.n.index_address().reinterpret_as_signed())
         } else {
-	    physical
+            physical
         };
-	self.set_program_counter(ProgramCounterChange::Jump(new_pc));
+        self.set_program_counter(ProgramCounterChange::Jump(new_pc));
         if dismiss {
-	    self.dismiss_unless_held();
+            self.dismiss_unless_held();
         }
         Ok(())
     }
@@ -97,67 +88,66 @@ impl ControlUnit {
     /// The SKM instruction is documented on pages 7-34 and 7-35 of
     /// the User Handbook.
     pub fn op_skm(&mut self, mem: &mut MemoryUnit) -> Result<(), Alarm> {
-	let bit = index_address_to_bit_selection(self.regs.n.index_address());
-	// Determine the operand address; any initial deferred cycle
-	// must use 0 as the indexation, as the index address of the
-	// SKM instruction is used to identify the bit to operate on.
-	let target = self.resolve_operand_address(mem, Some(Unsigned6Bit::ZERO))?;
-	let cf: u8 = u8::from(self.regs.n.configuration());
-	let change: WordChange = WordChange {
-	    bit,
-	    bitop: match cf & 0b11 {
-		0b00 => None,
-		0b01 => Some(BitChange::Flip),
-		0b10 => Some(BitChange::Clear),
-		0b11 => Some(BitChange::Set),
-		_ => unreachable!(),
-	    },
-	    cycle: cf & 0b100 != 0,
-	};
-	let prev_bit_value: Option<bool> = match mem.change_bit(&target, &change) {
-	    Ok(prev) => prev,
-	    Err(MemoryOpFailure::NotMapped) => {
-		return Err(Alarm::QSAL(
-		    self.regs.n,
-		    target.into(),
+        let bit = index_address_to_bit_selection(self.regs.n.index_address());
+        // Determine the operand address; any initial deferred cycle
+        // must use 0 as the indexation, as the index address of the
+        // SKM instruction is used to identify the bit to operate on.
+        let target = self.resolve_operand_address(mem, Some(Unsigned6Bit::ZERO))?;
+        let cf: u8 = u8::from(self.regs.n.configuration());
+        let change: WordChange = WordChange {
+            bit,
+            bitop: match cf & 0b11 {
+                0b00 => None,
+                0b01 => Some(BitChange::Flip),
+                0b10 => Some(BitChange::Clear),
+                0b11 => Some(BitChange::Set),
+                _ => unreachable!(),
+            },
+            cycle: cf & 0b100 != 0,
+        };
+        let prev_bit_value: Option<bool> = match mem.change_bit(&target, &change) {
+            Ok(prev) => prev,
+            Err(MemoryOpFailure::NotMapped) => {
+                return Err(Alarm::QSAL(
+                    self.regs.n,
+                    target.into(),
                     format!(
-			"SKM instruction attempted to access address {:o} but it is not mapped",
-			target,
+                        "SKM instruction attempted to access address {:o} but it is not mapped",
+                        target,
                     ),
-		));
-	    }
-	    Err(MemoryOpFailure::ReadOnly) => {
-		return Err(Alarm::QSAL(
-		    self.regs.n,
-		    target.into(),
+                ));
+            }
+            Err(MemoryOpFailure::ReadOnly(_)) => {
+                return Err(Alarm::QSAL(
+                    self.regs.n,
+                    target.into(),
                     format!(
 			"SKM instruction attempted to modify (instruction configuration={:o}) a read-only location {:o}",
 			cf,
 			target,
                     ),
-		));
-	    }
-	};
-	let skip: bool = if let Some(prevbit) = prev_bit_value {
-	    match (cf >> 3) & 3 {
-		0b00 => false,
-		0b01 => true,
-		0b10 => !prevbit,
-		0b11 => prevbit,
-		_ => unreachable!(),
-	    }
-	} else {
-	    // The index address specified a nonexistent bit
-	    // (e.g. 1.0) and so we do not perform a skip.
-	    false
-	};
-	// The location of the currently executing instruction is referred to by M4
-	// as '#'.  The next instruction would be '#+1' and that's where the P register
-	// currently points.  But "skip" means to set P=#+2.
-	if skip {
-	    self.set_program_counter(ProgramCounterChange::CounterUpdate);
-	}
-	Ok(())
+                ));
+            }
+        };
+        let skip: bool = if let Some(prevbit) = prev_bit_value {
+            match (cf >> 3) & 3 {
+                0b00 => false,
+                0b01 => true,
+                0b10 => !prevbit,
+                0b11 => prevbit,
+                _ => unreachable!(),
+            }
+        } else {
+            // The index address specified a nonexistent bit
+            // (e.g. 1.0) and so we do not perform a skip.
+            false
+        };
+        // The location of the currently executing instruction is referred to by M4
+        // as '#'.  The next instruction would be '#+1' and that's where the P register
+        // currently points.  But "skip" means to set P=#+2.
+        if skip {
+            self.set_program_counter(ProgramCounterChange::CounterUpdate);
+        }
+        Ok(())
     }
-
 }
