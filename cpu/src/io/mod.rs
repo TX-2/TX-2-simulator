@@ -97,7 +97,7 @@ pub struct UnitStatus {
 
     /// Indicates that the unit wishes to be polled for its status
     /// before the indicated (simulated) duration has elapsed.
-    pub poll_before: Duration,
+    pub poll_after: Duration,
 
     /// True for units which are input units.  Some devices (Lincoln
     /// Writers for example) occupy two units, one for read (input)o

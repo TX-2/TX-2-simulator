@@ -269,7 +269,7 @@ impl Unit for Petr {
             inability: self.read_failed,
             missed_data: self.overrun,
             mode: self.mode,
-            poll_before: self.next_poll_time(system_time),
+            poll_after: self.next_poll_time(system_time),
             is_input_unit: true,
         }
     }
