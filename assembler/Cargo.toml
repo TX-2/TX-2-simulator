@@ -1,0 +1,24 @@
+[package]
+name = "assembler"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+base = {path = "../base" }
+
+# Clap is dual-licensed MIT/Apache
+# https://github.com/clap-rs/clap/blob/master/LICENSE-MIT
+# https://github.com/clap-rs/clap/blob/master/LICENSE-APACHE
+clap = "2"
+
+# nom has an MIT-style copyright license.
+# https://github.com/Geal/nom/blob/main/LICENSE
+nom = "7"
+
+# tracing has an MIT copyright license.
+# https://github.com/tokio-rs/tracing/blob/master/LICENSE
+tracing = "0.1"
+
+# tracing-subscriber has an MIT copyright license.
+# https://github.com/tokio-rs/tracing/blob/master/LICENSE
+tracing-subscriber = "0.2"

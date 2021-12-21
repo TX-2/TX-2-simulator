@@ -11,4 +11,10 @@ members = [
 
 	# cli provides a basic emulator suitable for running from the command-line.
 	"cli",
+
+	# assembler is a cross-assembler for the TX-2 machine.  It
+	# runs on the same kind of machine as the simulator but
+	# produces output intended to be run within the simulated
+	# TX-2.
+	"assembler",
 ]
