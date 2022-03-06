@@ -924,6 +924,12 @@ impl ControlUnit {
         self.resolve_operand_address(mem, None)
     }
 
+    /// Resolve the address of the operand of the current instruction,
+    /// leaving this address in the Q register.  If
+    /// `initial_index_override` is None, the final j bits are taken
+    /// from the initial contents of the N register.  Otherwise
+    /// (e.g. for JNX) they are taken to be the value in
+    /// initial_index_override.
     fn resolve_operand_address(
         self: &mut ControlUnit,
         mem: &mut MemoryUnit,
@@ -933,6 +939,11 @@ impl ControlUnit {
         // once, in other words it is a loop.  This is explained in
         // section 9-7, "DEFERRED ADDRESSING CYCLES" of Volume 2 of
         // the technical manual.
+        //
+        // See also "TX-2 Introductory Notes" by A. Vanderburgh, 24
+        // February 1959, available from the UMN collection (BCI61 Box
+        // 8).
+        let mut seen_deferred_addresses: HashSet<Address> = HashSet::new();
         while let OperandAddress::Deferred(physical) = self.regs.n.operand_address() {
             // In effect, this loop emulates a non-ultimate deferred
             // address cycle.
@@ -940,10 +951,15 @@ impl ControlUnit {
             // According to the description of PK3 on page 5-9 of the
             // User handbook, the deferred address calculation and
             // indexing occurs in (i.e. by modifying) the N register.
+            // "TX-2 Introductory Notes" explains the same thing.
             //
             // JPX and JNX seem to be handled differently, but I don't
             // think I understand exactly what the difference is
-            // supposed to be.
+            // supposed to be. "TX-2 Introductory Notes" points out
+            // that in JPX and JNX, the j bits are used for something
+            // other than indexing, so the "handled differently" may
+            // just be that deferred addressing is the only way to use
+            // indexing in combination with JPX and JNX.
             //
             // (Vol 2, page 12-9): It should also be noted that the
             // N₂.₉ bit is presented as an input to the X Adder only
@@ -962,34 +978,67 @@ impl ControlUnit {
             };
             let fetched = match mem.fetch(&physical, &meta_op) {
                 Err(e) => {
-                    return Err(Alarm::QSAL(
-                        self.regs.n,
-                        BadMemOp::Read(Unsigned36Bit::from(physical)),
+                    let msg = || {
                         format!(
                             "address {:#o} out of range while fetching deferred address: {}",
                             &physical, e
-                        ),
-                    ));
+                        )
+                    };
+
+                    self.alarm_unit.fire_if_not_masked(Alarm::QSAL(
+                        self.regs.n,
+                        BadMemOp::Read(Unsigned36Bit::from(physical)),
+                        msg(),
+                    ))?;
+                    // QSAL is masked.  I don't know what the TX-2 did in this situation.
+                    return Err(self.alarm_unit.always_fire(Alarm::ROUNDTUITAL(format!(
+                        "we don't know how to handle {} when QSAL is masked",
+                        msg()
+                    ))));
                 }
                 Ok((word, extra)) => {
                     if extra.meta && self.trap.trap_on_deferred_address() {
                         self.raise_trap();
                     }
 
-                    // I think it's likely that the TX2 should perform
-                    // indexation on deferred addreses.  This idea is
-                    // based on the fact that the left subword of
-                    // deferred addresses used in plugboard programs
-                    // can be nonzero, and on the fact that the
-                    // description of the SKM instruction notes "SKM
-                    // is therefore non-indexable except through
-                    // deferred addressing".
+                    // The TX2 performs indexation on deferred
+                    // addreses.  Indeed, the "TX-2 Introductory
+                    // Notes" by A. Vanderburg imply that the ability
+                    // to do this is the motivation for having
+                    // deferred addressing at all (see section
+                    // "Deferred Addressing" in that document).
+                    //
+                    // This idea is also supported by the fact that
+                    // the left subword of deferred addresses used in
+                    // plugboard programs can be nonzero, and on the
+                    // fact that the description of the SKM
+                    // instruction notes "SKM is therefore
+                    // non-indexable except through deferred
+                    // addressing".
                     let (left, right) = subword::split_halves(word);
+                    let mask: Unsigned18Bit = Unsigned18Bit::from(63_u8);
+                    let j6: Unsigned6Bit = Unsigned6Bit::try_from(left.bitand(mask)).unwrap();
+                    let next = Address::from(right).index_by(self.regs.get_index_register(j6));
                     event!(Level::TRACE,
-			   "deferred addressing: fetched full word is {:o},,{:o}; using {:o} as the final address",
-			   &left, &right, &right,
+			   "deferred addressing: fetched full word is {:o},,{:o}; j={:o}, using {:o} as the next address",
+			   &left, &right, &j6, &next,
 		    );
-                    Address::from(right)
+                    if !seen_deferred_addresses.insert(next) {
+                        // A `false` return indicates that the map
+                        // already contained `next`, meaning that we
+                        // have a loop.
+                        //
+                        // Detection of this kind of loop is not a
+                        // feature of the TX-2.  The "TX-2
+                        // Introductory Notes" document explicitly
+                        // states, "In fact, you can inadvertantly
+                        // [sic] defer back to where you started and
+                        // get a loop less than one instruction long".
+                        return Err(self
+                            .alarm_unit
+                            .always_fire(Alarm::DEFERLOOPAL { address: right }));
+                    }
+                    Address::from(next)
                 }
             };
 
@@ -1029,6 +1078,9 @@ impl ControlUnit {
         // definitely expect the physical operand address to be
         // written back into the N register (in a
         // programmer-detectable way).
+        //
+        // "TX-2 Introductory Notes" states that this happens, but the
+        // question is whether the programmer can detect it.
         Ok(self.regs.q)
     }
 
