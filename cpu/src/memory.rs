@@ -687,9 +687,10 @@ impl VMemory {
         addr: &Address,
     ) -> Result<Option<&mut MemoryWord>, MemoryOpFailure> {
         if access_type == &MemoryAccess::Write {
-            // There appear to be some instructions which special-case
-            // attempts to write to arithmetic unit registers, so we
-            // may need a more sophisticated approach here.
+            // TODO: there appear to be some instructions which
+            // special-case attempts to write to arithmetic unit
+            // registers, so we may need a more sophisticated approach
+            // here.
             return Ok(None);
         }
         match u32::from(addr) {

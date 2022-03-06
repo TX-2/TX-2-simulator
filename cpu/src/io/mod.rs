@@ -42,7 +42,7 @@ use std::time::Duration;
 
 use tracing::{event, span, Level};
 
-use crate::alarm::Alarm;
+use crate::alarm::{Alarm, AlarmUnit, BadMemOp};
 use crate::memory::{MemoryMapped, MemoryOpFailure, MemoryUnit, MetaBitChange};
 use base::prelude::*;
 
@@ -134,6 +134,25 @@ fn make_unit_report_word(
     report | Unsigned36Bit::from(unit).shl(18) | Unsigned36Bit::from(status.special).shl(24)
 }
 
+fn make_report_word_for_invalid_unit(unit: Unsigned6Bit, current_flag: bool) -> Unsigned36Bit {
+    make_unit_report_word(
+        unit,
+        false, // not connected
+        true,  // in maintenance
+        current_flag,
+        &UnitStatus {
+            special: Unsigned12Bit::ZERO,
+            change_flag: None,
+            buffer_available_to_cpu: false,
+            inability: true,
+            missed_data: false,
+            mode: Unsigned12Bit::ZERO,
+            poll_after: Duration::from_secs(10),
+            is_input_unit: false,
+        },
+    )
+}
+
 #[derive(Debug)]
 pub enum TransferFailed {
     BufferNotFree,
@@ -216,6 +235,20 @@ pub enum TransferOutcome {
     DismissAndWait,
 }
 
+type OpConversion = fn(Address) -> BadMemOp;
+
+fn bad_read(addr: Address) -> BadMemOp {
+    BadMemOp::Read(addr.into())
+}
+
+fn bad_write(addr: Address) -> BadMemOp {
+    BadMemOp::Write(addr.into())
+}
+
+fn make_tsd_qsal(inst: Instruction, op: BadMemOp) -> Alarm {
+    Alarm::QSAL(inst, op, "TSD address is not mapped".to_string())
+}
+
 impl DeviceManager {
     pub fn new() -> DeviceManager {
         DeviceManager {
@@ -249,6 +282,7 @@ impl DeviceManager {
         system_time: &Duration,
         unit: Unsigned6Bit,
         current_flag: bool,
+        alarm_unit: &AlarmUnit,
     ) -> Result<Unsigned36Bit, Alarm> {
         match self.devices.get_mut(&unit) {
             Some(attached) => {
@@ -266,11 +300,15 @@ impl DeviceManager {
                     &unit_status,
                 ))
             }
-            None => Err(Alarm::IOSAL {
-                unit,
-                operand: None,
-                message: format!("unit {} is not known", unit),
-            }),
+            None => {
+                alarm_unit.fire_if_not_masked(Alarm::IOSAL {
+                    unit,
+                    operand: None,
+                    message: format!("unit {} is not known", unit),
+                })?;
+                // IOSAL is masked.
+                Ok(make_report_word_for_invalid_unit(unit, current_flag))
+            }
         }
     }
 
@@ -366,17 +404,24 @@ impl DeviceManager {
         }
     }
 
-    pub fn disconnect(&mut self, device: &Unsigned6Bit) -> Result<(), Alarm> {
+    pub fn disconnect(
+        &mut self,
+        device: &Unsigned6Bit,
+        alarm_unit: &AlarmUnit,
+    ) -> Result<(), Alarm> {
         match self.devices.get_mut(device) {
             Some(attached) => {
                 attached.connected = false;
                 Ok(())
             }
-            None => Err(Alarm::IOSAL {
-                unit: *device,
-                operand: None,
-                message: format!("Attempt to disconnect missing unit {}", device),
-            }),
+            None => {
+                alarm_unit.fire_if_not_masked(Alarm::IOSAL {
+                    unit: *device,
+                    operand: None,
+                    message: format!("Attempt to disconnect missing unit {}", device),
+                })?;
+                Ok(()) // IOSAL is masked, carry on.
+            }
         }
     }
 
@@ -385,6 +430,7 @@ impl DeviceManager {
         system_time: &Duration,
         device: &Unsigned6Bit,
         mode: Unsigned12Bit,
+        alarm_unit: &AlarmUnit,
     ) -> Result<Option<FlagChange>, Alarm> {
         match self.devices.get_mut(device) {
             Some(attached) => {
@@ -405,11 +451,14 @@ impl DeviceManager {
                     Ok(flag_change)
                 }
             }
-            None => Err(Alarm::IOSAL {
-                unit: *device,
-                operand: None,
-                message: format!("Attempt to connect missing unit {}", device),
-            }),
+            None => {
+                alarm_unit.fire_if_not_masked(Alarm::IOSAL {
+                    unit: *device,
+                    operand: None,
+                    message: format!("Attempt to connect missing unit {}", device),
+                })?;
+                Ok(None) // IOSAL is masked, carry on
+            }
         }
     }
 
@@ -425,20 +474,18 @@ impl DeviceManager {
         mem: &mut MemoryUnit,
         inst: &Instruction,
         meta_op: &MetaBitChange,
+        alarm_unit: &AlarmUnit,
     ) -> Result<TransferOutcome, Alarm> {
         if *config != Unsigned5Bit::ZERO {
-            return Err(Alarm::ROUNDTUITAL(format!(
+            return Err(alarm_unit.always_fire(Alarm::ROUNDTUITAL(format!(
                 "TSD instruction has non-zero configuration value {:o}",
                 config,
-            )));
+            ))));
         }
 
-        let not_mapped = || -> Alarm {
-            Alarm::QSAL(
-                *inst,
-                Unsigned36Bit::from(*address),
-                "TSD address is not mapped".to_string(),
-            )
+        let not_mapped = |op_conv: OpConversion| -> Alarm {
+            let op: BadMemOp = op_conv(*address);
+            make_tsd_qsal(*inst, op)
         };
 
         match u8::from(*device) {
@@ -498,7 +545,9 @@ impl DeviceManager {
                                 }
                                 Err(MemoryOpFailure::ReadOnly(_)) => unreachable!(),
                                 Err(MemoryOpFailure::NotMapped) => {
-                                    return Err(not_mapped());
+                                    alarm_unit.fire_if_not_masked(not_mapped(bad_read))?;
+                                    // QSAL is masked, carry on.
+                                    Ok(TransferOutcome::Success(false)) // act as if metabit unset
                                 }
                             }
                         } else {
@@ -512,7 +561,9 @@ impl DeviceManager {
                                 }
                                 Err(MemoryOpFailure::ReadOnly(_)) => unreachable!(),
                                 Err(MemoryOpFailure::NotMapped) => {
-                                    return Err(not_mapped());
+                                    alarm_unit.fire_if_not_masked(not_mapped(bad_write))?;
+                                    // QSAL is masked, carry on.
+                                    Ok(TransferOutcome::Success(false)) // act as if metabit unset
                                 }
                             }
                         };
@@ -543,7 +594,11 @@ impl DeviceManager {
                         // read-only.
                         Ok(TransferOutcome::Success(extra_bits.meta))
                     }
-                    Err(MemoryOpFailure::NotMapped) => Err(not_mapped()),
+                    Err(MemoryOpFailure::NotMapped) => {
+                        alarm_unit.fire_if_not_masked(not_mapped(bad_write))?;
+                        // QSAL is masked, carry on.
+                        Ok(TransferOutcome::Success(false)) // act as if metabit unset
+                    }
                 }
             }
         }

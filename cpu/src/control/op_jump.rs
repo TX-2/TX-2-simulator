@@ -1,7 +1,7 @@
 use base::prelude::*;
 use base::subword;
 
-use crate::alarm::Alarm;
+use crate::alarm::{Alarm, BadMemOp};
 use crate::control::{ControlUnit, ProgramCounterChange};
 use crate::memory::{BitChange, MemoryMapped, MemoryOpFailure, MemoryUnit, WordChange};
 
@@ -55,13 +55,18 @@ impl ControlUnit {
                 // not, but if we disallow this for now, we can
                 // use any resulting error to identify cases where
                 // this is in fact used.
-                return Err(Alarm::PSAL(
+                self.alarm_unit.fire_if_not_masked(Alarm::PSAL(
                     u32::from(self.regs.n.operand_address_and_defer_bit()),
                     format!(
                         "JMP target has deferred address {:#o}",
                         self.regs.n.operand_address()
                     ),
-                ));
+                ))?;
+                // If deferred addressing is allowed for JMP, we will
+                // need to implement it.  It's not yet implemented.
+                return Err(self.alarm_unit.always_fire(Alarm::ROUNDTUITAL(
+                    "deferred JMP is not yet implemented".to_string(),
+                )));
             }
             OperandAddress::Direct(phys) => phys,
         };
@@ -108,25 +113,30 @@ impl ControlUnit {
         let prev_bit_value: Option<bool> = match mem.change_bit(&target, &change) {
             Ok(prev) => prev,
             Err(MemoryOpFailure::NotMapped) => {
-                return Err(Alarm::QSAL(
+                self.alarm_unit.fire_if_not_masked(Alarm::QSAL(
                     self.regs.n,
-                    target.into(),
+                    BadMemOp::Write(target.into()),
                     format!(
                         "SKM instruction attempted to access address {:o} but it is not mapped",
                         target,
                     ),
-                ));
+                ))?;
+                // The alarm is masked.  We turn the memory mutation into a no-op.
+                return Ok(());
             }
             Err(MemoryOpFailure::ReadOnly(_)) => {
-                return Err(Alarm::QSAL(
-                    self.regs.n,
-                    target.into(),
-                    format!(
-			"SKM instruction attempted to modify (instruction configuration={:o}) a read-only location {:o}",
-			cf,
-			target,
+                self.alarm_unit.fire_if_not_masked(
+                    Alarm::QSAL(
+			self.regs.n,
+			BadMemOp::Write(target.into()),
+			format!(
+			    "SKM instruction attempted to modify (instruction configuration={:o}) a read-only location {:o}",
+			    cf,
+			    target,
                     ),
-                ));
+                    ))?;
+                // The alarm is masked.  We turn the memory mutation into a no-op.
+                return Ok(());
             }
         };
         let skip: bool = if let Some(prevbit) = prev_bit_value {

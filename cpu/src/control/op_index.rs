@@ -11,7 +11,7 @@
 use base::prelude::*;
 use base::subword;
 
-use crate::alarm::Alarm;
+use crate::alarm::{Alarm, BadMemOp};
 use crate::control::{sign_extend_index_value, ControlUnit, ProgramCounterChange};
 use crate::memory::{MemoryUnit, MetaBitChange};
 
@@ -33,8 +33,26 @@ impl ControlUnit {
         let j = self.regs.n.index_address();
         let xj: Unsigned36Bit = sign_extend_index_value(&self.regs.get_index_register(j));
         let target: Address = self.operand_address_with_optional_defer_and_index(mem)?;
-        let (dest, _meta) = self.fetch_operand_from_address(mem, &target)?;
-        self.memory_store_with_exchange(mem, &target, &xj, &dest, &MetaBitChange::None)
+
+        // DPX is trying to perform a write.  But to do this in some
+        // subword configurations, we need to read the existing value.
+        match self.fetch_operand_from_address(mem, &target) {
+            Ok((dest, _meta)) => {
+                self.memory_store_with_exchange(mem, &target, &xj, &dest, &MetaBitChange::None)
+            }
+            Err(Alarm::QSAL(inst, BadMemOp::Read(addr), msg)) => {
+                // That read operation just failed.  So we handle this
+                // as a _write_ failure, meaning that we change
+                // BadMemOp::Read to BadMemOp::Write.
+                self.alarm_unit.fire_if_not_masked(Alarm::QSAL(
+                    inst,
+                    BadMemOp::Write(addr),
+                    msg,
+                ))?;
+                Ok(()) // QSAL is masked, we just carry on (the DPX instruction has no effect).
+            }
+            Err(other) => Err(other),
+        }
     }
 
     /// Implements the SKX instruction (Opcode 012, User Handbook,
@@ -69,10 +87,10 @@ impl ControlUnit {
                 }
                 Ok(())
             }
-            _ => Err(Alarm::ROUNDTUITAL(format!(
+            _ => Err(self.alarm_unit.always_fire(Alarm::ROUNDTUITAL(format!(
                 "SKX configuration {:#o} is not implemented yet",
                 inst.configuration()
-            ))),
+            )))),
         }
     }
 

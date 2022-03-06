@@ -506,6 +506,22 @@ impl From<Unsigned5Bit> for Unsigned6Bit {
     }
 }
 
+impl TryFrom<Unsigned18Bit> for Unsigned6Bit {
+    type Error = ConversionFailed;
+    fn try_from(n: Unsigned18Bit) -> Result<Self, ConversionFailed> {
+        match u8::try_from(n.bits) {
+            Ok(n) => {
+                if n > Self::VALUE_BITS {
+                    Err(ConversionFailed::TooLarge)
+                } else {
+                    Ok(Self { bits: n })
+                }
+            }
+            Err(_) => Err(ConversionFailed::TooLarge),
+        }
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////
 // Unsigned9Bit
 ////////////////////////////////////////////////////////////////////////

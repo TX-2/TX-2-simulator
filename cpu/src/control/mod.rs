@@ -11,6 +11,8 @@
 //! - Keep track of the placeholder of each sequence
 //! - Manage switching between sequences
 //! - Remember the setting of the TSP (Toggle Start Point) register
+use std::collections::HashSet;
+use std::ops::BitAnd;
 use std::time::Duration;
 
 use tracing::{event, span, Level};
@@ -26,7 +28,7 @@ use base::instruction::{Inst, Instruction, Opcode, OperandAddress, SymbolicInstr
 use base::prelude::*;
 use base::subword;
 
-use crate::alarm::Alarm;
+use crate::alarm::{Alarm, AlarmUnit, BadMemOp};
 use crate::exchanger::{exchanged_value, SystemConfiguration};
 use crate::io::{DeviceManager, Unit};
 use crate::memory::{self, ExtraBits, MemoryMapped, MemoryOpFailure, MemoryUnit, MetaBitChange};
@@ -318,6 +320,7 @@ pub struct ControlUnit {
     running: bool,
     trap: TrapCircuit,
     devices: DeviceManager,
+    alarm_unit: AlarmUnit,
 }
 
 fn sign_extend_index_value(index_val: &Signed18Bit) -> Unsigned36Bit {
@@ -336,6 +339,7 @@ impl ControlUnit {
             running: false,
             trap: TrapCircuit::new(),
             devices: DeviceManager::new(),
+            alarm_unit: AlarmUnit::new(),
         }
     }
 
@@ -623,10 +627,18 @@ impl ControlUnit {
             }
             Err(e) => match e {
                 MemoryOpFailure::NotMapped => {
-                    return Err(Alarm::PSAL(
+                    self.alarm_unit.fire_if_not_masked(Alarm::PSAL(
                         u32::from(p_physical_address),
                         "memory unit indicated physical address is not mapped".to_string(),
-                    ));
+                    ))?;
+                    // PSAL is masked, but we don't know what
+                    // instruction to execute, since we couldn't fetch
+                    // one.  The program counter will not be updated
+                    // until we call execute_instruction(), so we
+                    // shouldn't increment it here.  So we just return
+                    // a held instruction which is not otherwise
+                    // valid.
+                    Unsigned36Bit::from(Instruction::invalid())
                 }
                 MemoryOpFailure::ReadOnly(_) => unreachable!(),
             },
@@ -689,7 +701,12 @@ impl ControlUnit {
             self.regs.n_sym = Some(symbolic);
             Ok(()) // valid instruction
         } else {
-            Err(self.invalid_opcode_alarm())
+            self.alarm_unit.fire_if_not_masked(Alarm::OCSAL(
+                self.regs.n,
+                format!("invalid opcode {:#o}", self.regs.n.opcode_number()),
+            ))?;
+            self.regs.n_sym = None;
+            Ok(()) // invalid instruction, but OCSAL is masked.
         }
     }
 
@@ -707,6 +724,7 @@ impl ControlUnit {
             OperandAddress::Direct(_) => None,
         };
         let operand_from = match self.regs.n.operand_address() {
+            // TODO: handle chains of deferred loads
             OperandAddress::Deferred(phys) => Some(phys),
             OperandAddress::Direct(_) => None,
         };
@@ -805,7 +823,13 @@ impl ControlUnit {
                 }
             }
         } else {
-            Err(self.invalid_opcode_alarm())
+            self.alarm_unit.fire_if_not_masked(Alarm::OCSAL(
+                self.regs.n,
+                format!("invalid opcode {:#o}", self.regs.n.opcode_number()),
+            ))?;
+            self.set_program_counter(ProgramCounterChange::CounterUpdate);
+            let execution_time_ns = self.estimate_execute_time_ns(&Instruction::invalid());
+            Ok(execution_time_ns)
         }
     }
 
@@ -831,14 +855,23 @@ impl ControlUnit {
                 }
                 Ok((word, extra_bits))
             }
-            Err(MemoryOpFailure::NotMapped) => Err(Alarm::QSAL(
-                self.regs.n,
-                Unsigned36Bit::from(*operand_address),
-                format!(
-                    "memory unit indicated address {:o} is not mapped",
-                    operand_address
-                ),
-            )),
+            Err(MemoryOpFailure::NotMapped) => {
+                self.alarm_unit.fire_if_not_masked(Alarm::QSAL(
+                    self.regs.n,
+                    BadMemOp::Read(Unsigned36Bit::from(*operand_address)),
+                    format!(
+                        "memory unit indicated address {:o} is not mapped",
+                        operand_address
+                    ),
+                ))?;
+                // QSAL is masked to we have to return some value, but
+                // we don't know what the TX-2 did in this case.
+                return Err(self.alarm_unit.always_fire(Alarm::ROUNDTUITAL(
+			format!(
+			    "memory unit indicated address {:o} is not mapped and we don't know what to do when QSAL is masked",
+			    operand_address
+			))));
+            }
             Err(MemoryOpFailure::ReadOnly(_)) => unreachable!(),
         }
     }
@@ -856,13 +889,16 @@ impl ControlUnit {
             target,
             value,
         );
-        mem.store(target, value, meta_op).map_err(|e| {
-            Alarm::QSAL(
+        if let Err(e) = mem.store(target, value, meta_op) {
+            self.alarm_unit.fire_if_not_masked(Alarm::QSAL(
                 self.regs.n,
-                Unsigned36Bit::from(*target),
+                BadMemOp::Write(Unsigned36Bit::from(*target)),
                 format!("memory store to address {:#o} failed: {}", target, e,),
-            )
-        })
+            ))?;
+            Ok(()) // QSAL is masked, so just carry on.
+        } else {
+            Ok(())
+        }
     }
 
     fn memory_store_with_exchange(
@@ -928,7 +964,7 @@ impl ControlUnit {
                 Err(e) => {
                     return Err(Alarm::QSAL(
                         self.regs.n,
-                        Unsigned36Bit::from(physical),
+                        BadMemOp::Read(Unsigned36Bit::from(physical)),
                         format!(
                             "address {:#o} out of range while fetching deferred address: {}",
                             &physical, e
