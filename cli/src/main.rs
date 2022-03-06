@@ -18,7 +18,7 @@ fn run(
     clk: &mut BasicClock,
     multiplier: Option<f64>,
 ) -> i32 {
-    control.codabo(&ResetMode::ResetTSP);
+    control.codabo(&ResetMode::ResetTSP, mem);
     if let Err(e) = run_until_alarm(control, mem, clk, multiplier) {
         event!(Level::ERROR, "Execution stopped: {}", e);
     }

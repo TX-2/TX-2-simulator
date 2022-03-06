@@ -274,12 +274,37 @@ pub enum ResetMode {
 }
 
 impl ResetMode {
-    fn address(&self) -> Option<Address> {
+    fn address(&self, mem: &mut MemoryUnit) -> Option<Address> {
         use ResetMode::*;
         match self {
-            Reset0 | Reset1 | Reset2 | Reset3 | Reset4 | Reset5 | Reset6 | Reset7 => Some(
-                Address::from(Unsigned18Bit::try_from(*self as u32).unwrap()),
-            ),
+            Reset0 | Reset1 | Reset2 | Reset3 | Reset4 | Reset5 | Reset6 | Reset7 => {
+                let loc: Address = Address::from(Unsigned18Bit::try_from(*self as u32).unwrap());
+                match mem.fetch(&loc, &MetaBitChange::None) {
+                    Ok((word, _)) => {
+                        // word is 36 bits wide but we only want the bottom 17 bits.
+                        let (left, right) = subword::split_halves(word);
+                        if left != 0 {
+                            // issue warning but otherwise ignore
+                            event!(Level::WARN, "Ignoring non-zero left subword of reset register {:o}, containing {:o} (left side is {:o})",
+				   loc, word, left);
+                        }
+                        // We assume that reset operations don't implement deferred addressing.
+                        const PHYSICAL_ADDRESS_BITS: u32 = 0o377_777;
+                        let defer_bit = Unsigned18Bit::try_from(0o400_000).unwrap();
+                        if right & defer_bit != 0 {
+                            // issue warning but otherwise ignore
+                            event!(Level::WARN, "Ignoring non-zero defer bit of reset register {:o}, containing {:o}",
+				   loc, word);
+                        }
+
+                        let physical_address = Address::from(right & PHYSICAL_ADDRESS_BITS);
+                        Some(physical_address)
+                    }
+                    Err(e) => {
+                        panic!("failed to fetch reset {:?}: {}", self, e);
+                    }
+                }
+            }
             ResetTSP => None, // need to read the TSP toggle switch.
         }
     }
@@ -352,7 +377,7 @@ impl ControlUnit {
     /// from the address specified by the program.  The program
     /// executes as sequence 52 (PETR) with the PETR unit initially
     /// turned off.
-    pub fn codabo(&mut self, reset_mode: &ResetMode) {
+    pub fn codabo(&mut self, reset_mode: &ResetMode, mem: &mut MemoryUnit) {
         // TODO: clear alarms.
         // We probably don't need an equivalent of resetting the
         // control flip-flops in an emulator.  But if we did, that
@@ -369,7 +394,7 @@ impl ControlUnit {
         let _enter = span.enter();
         event!(Level::INFO, "Starting CODABO {:?}", &reset_mode);
         self.disconnect_io_devices();
-        self.reset(reset_mode);
+        self.reset(reset_mode, mem);
         self.regs.flags.lower_all();
         self.regs.current_sequence_is_runnable = false;
         self.startover();
@@ -389,8 +414,8 @@ impl ControlUnit {
     /// addresses 3777710 through 3777717, inclusive.
     ///
     /// RESET *only* loads the Start Point Register, nothing else.
-    pub fn reset(&mut self, reset_mode: &ResetMode) {
-        self.regs.set_spr(&match reset_mode.address() {
+    pub fn reset(&mut self, reset_mode: &ResetMode, mem: &mut MemoryUnit) {
+        self.regs.set_spr(&match reset_mode.address(mem) {
             Some(address) => address,
             None => self.tsp(),
         });

@@ -31,6 +31,9 @@
 11. Does indexation occur during the intermedia deferred addressing
     cycles?   What value is used (a value from the index register, or
     the left-hand-side of the word loaded from the deferred location)?
+12. If you press "RESET 0" and the defer bit is set in the "RESET 0"
+    location, does a deferred addressing cycle occur (similarly for
+	resets 1-7)?
 
 ### Deferred Addressing
 
