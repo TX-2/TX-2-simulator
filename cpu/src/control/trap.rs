@@ -117,7 +117,7 @@ impl Unit for TrapCircuit {
             missed_data: false,
             mode: self.mode,
             // The trap circuit does not need to be polled.
-            poll_before: Duration::from_secs(60),
+            poll_after: Duration::from_secs(60),
             // In truth, I don't know whether the trap unit is an
             // input unit or not.
             is_input_unit: true,

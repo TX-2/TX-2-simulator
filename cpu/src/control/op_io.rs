@@ -3,8 +3,8 @@ use std::time::Duration;
 
 use tracing::{event, Level};
 
-use crate::alarm::Alarm;
-use crate::control::ControlUnit;
+use crate::alarm::{Alarm, AlarmUnit};
+use crate::control::{ControlRegisters, ControlUnit, DeviceManager, TrapCircuit};
 use crate::io::{FlagChange, TransferOutcome, Unit};
 use crate::memory::{MemoryUnit, MetaBitChange};
 
@@ -20,7 +20,9 @@ impl ControlUnit {
             // change to be copied into the E register.  (as stated in
             // section 4-3.6 of the User Handbook).
             let flag_raised: bool = self.regs.flags.current_flag_state(&j);
-            self.regs.e = self.devices.report(system_time, j, flag_raised)?;
+            self.regs.e = self
+                .devices
+                .report(system_time, j, flag_raised, &self.alarm_unit)?;
         }
         let mut dismiss: bool = cf & 0o20 != 0;
 
@@ -29,7 +31,15 @@ impl ControlUnit {
             0o20_000 => self.disconnect_unit(j),
             0o30_000..=0o37_777 => {
                 let mode: Unsigned12Bit = Unsigned12Bit::try_from(operand & 0o07_777).unwrap();
-                self.connect_unit(system_time, j, mode)
+                ControlUnit::connect_unit(
+                    &mut self.devices,
+                    &mut self.regs,
+                    &mut self.trap,
+                    system_time,
+                    j,
+                    mode,
+                    &self.alarm_unit,
+                )
             }
             0o40_000 => {
                 self.regs.flags.lower(&j);
@@ -50,21 +60,23 @@ impl ControlUnit {
             }
             0o60_000..=0o60777 => {
                 // Select unit XXX
-                Err(Alarm::ROUNDTUITAL(format!(
+                Err(self.alarm_unit.always_fire(Alarm::ROUNDTUITAL(format!(
                     "IOS operand {:o}: Select Unit command is not yet implemented.",
                     operand
-                )))
+                ))))
             }
             _ => {
                 let command: u8 = (u32::from(operand) >> 12) as u8;
-                Err(Alarm::IOSAL {
+                self.alarm_unit.fire_if_not_masked(Alarm::IOSAL {
                     unit: j,
                     operand: Some(operand),
                     message: format!(
                         "IOS operand {:o} has unrecognised leading command digit {:o}",
                         operand, command,
                     ),
-                })
+                })?;
+                // IOSAL is masked.  Just do nothing.
+                Ok(())
             }
         };
         if dismiss {
@@ -74,20 +86,23 @@ impl ControlUnit {
     }
 
     fn connect_unit(
-        &mut self,
+        devices: &mut DeviceManager,
+        regs: &mut ControlRegisters,
+        trap: &mut TrapCircuit,
         system_time: &Duration,
         unit: Unsigned6Bit,
         mode: Unsigned12Bit,
+        alarm_unit: &AlarmUnit,
     ) -> Result<(), Alarm> {
         let maybe_flag_change: Option<FlagChange> = match u8::from(unit) {
             0o42 => {
-                self.trap.connect(system_time, mode);
+                trap.connect(system_time, mode);
                 None
             }
-            _ => self.devices.connect(system_time, &unit, mode)?,
+            _ => devices.connect(system_time, &unit, mode, alarm_unit)?,
         };
         if let Some(FlagChange::Raise) = maybe_flag_change {
-            self.regs.flags.raise(&unit);
+            regs.flags.raise(&unit);
         }
         Ok(())
     }
@@ -95,7 +110,7 @@ impl ControlUnit {
     fn disconnect_unit(&mut self, unit: Unsigned6Bit) -> Result<(), Alarm> {
         match u8::from(unit) {
             0o42 => Ok(()),
-            _ => self.devices.disconnect(&unit),
+            _ => self.devices.disconnect(&unit, &self.alarm_unit),
         }
     }
 
@@ -117,6 +132,7 @@ impl ControlUnit {
                 mem,
                 &self.regs.n,
                 &meta_op,
+                &self.alarm_unit,
             ) {
                 Ok(TransferOutcome::Success(meta_bit_set)) => {
                     if meta_bit_set && self.trap.trap_on_operand() {
@@ -144,10 +160,10 @@ impl ControlUnit {
                 Err(e) => Err(e),
             }
         } else {
-            Err(Alarm::BUGAL {
+            Err(self.alarm_unit.always_fire(Alarm::BUGAL {
 		instr: Some(self.regs.n),
 		message: "Executed TSD instruction while the K register is None (i.e. there is no current sequence)".to_string(),
-	    })
+	    }))
         }
     }
 }

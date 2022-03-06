@@ -38,24 +38,62 @@ pub fn run_until_alarm(
 ) -> Result<(), Alarm> {
     let mut elapsed_ns: u64 = 0;
     let mut sleeper = MinimalSleeper::new(Duration::from_millis(2));
-    let limbo_tick = Duration::from_micros(5);
+    let mut next_hw_poll = clk.now();
 
     loop {
-        // Consider having poll_hardware return a (simulated) duration
-        // after which there should be a succeeding call.
-        control.poll_hardware(&clk.now())?; // check for I/O alarms, flag changes.
-        if !control.fetch_instruction(mem)? {
+        let now = clk.now();
+        if now >= next_hw_poll {
+            // check for I/O alarms, flag changes.
+            event!(Level::TRACE, "polling hardware for updates");
+            match control.poll_hardware(&now) {
+                Ok(Some(next)) => {
+                    next_hw_poll = next;
+                }
+                Ok(None) => {
+                    next_hw_poll = now + Duration::from_micros(5);
+                }
+                Err(e) => {
+                    event!(
+                        Level::INFO,
+                        "Alarm raised during hardware polling after {}ns",
+                        elapsed_ns
+                    );
+                    return Err(e);
+                }
+            }
+        }
+        let in_limbo = match control.fetch_instruction(mem) {
+            Err(e) => {
+                event!(
+                    Level::INFO,
+                    "Alarm raised during instruction fetch after {}ns",
+                    elapsed_ns
+                );
+                return Err(e);
+            }
+            Ok(some_sequence_is_runnable) => !some_sequence_is_runnable,
+        };
+        if in_limbo {
+            // No sequence is active, so there is no CPU instruction
+            // to execute.  Therefore we can only leave the limbo
+            // state in response to a hardware event.  We already know
+            // that we need to check for that at `next_hw_poll`.
+            let interval: Duration = next_hw_poll - now;
             event!(
                 Level::TRACE,
                 "machine is in limbo, waiting {:?} for a flag to be raised",
-                &limbo_tick,
+                &interval,
             );
-            time_passes(clk, &mut sleeper, &limbo_tick, multiplier);
+            time_passes(clk, &mut sleeper, &interval, multiplier);
             continue;
         }
         elapsed_ns += match control.execute_instruction(&clk.now(), mem) {
             Err(e) => {
-                event!(Level::INFO, "Alarm raised after {}ns", elapsed_ns);
+                event!(
+                    Level::INFO,
+                    "Alarm raised during instruction execution after {}ns",
+                    elapsed_ns
+                );
                 return Err(e);
             }
             Ok(ns) => {

@@ -4,6 +4,7 @@
 /// the CPU emulation, not here.
 use std::cmp::Ordering;
 use std::fmt::{Debug, Display, Error, Formatter, Octal};
+use std::hash::{Hash, Hasher};
 
 use crate::onescomplement::error::ConversionFailed;
 use crate::onescomplement::signed::{Signed18Bit, Signed5Bit, Signed6Bit};
@@ -265,6 +266,15 @@ impl PartialOrd for Address {
 impl PartialEq for Address {
     fn eq(&self, other: &Self) -> bool {
         self.0.eq(&other.0)
+    }
+}
+
+impl Hash for Address {
+    fn hash<H>(&self, h: &mut H)
+    where
+        H: Hasher,
+    {
+        self.0.hash(h)
     }
 }
 

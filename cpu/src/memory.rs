@@ -25,6 +25,8 @@
 ///
 use std::error;
 use std::fmt::{self, Debug, Display, Formatter};
+#[cfg(test)]
+use std::ops::RangeInclusive;
 
 use tracing::{event, Level};
 
@@ -333,7 +335,7 @@ impl MemoryUnit {
     ) -> Result<Option<&mut MemoryWord>, MemoryOpFailure> {
         match decode(addr) {
             Some(MemoryDecode::S(offset)) => Ok(Some(&mut self.s_memory[offset])),
-            Some(MemoryDecode::T(offset)) => Ok(Some(&mut self.s_memory[offset])),
+            Some(MemoryDecode::T(offset)) => Ok(Some(&mut self.t_memory[offset])),
             Some(MemoryDecode::U(offset)) => {
                 if let Some(u) = &mut self.u_memory {
                     Ok(Some(&mut u[offset]))
@@ -585,10 +587,12 @@ struct VMemory {
     c_register: MemoryWord,
     d_register: MemoryWord,
     e_register: MemoryWord,
-    // TODO: shaft encoders
-    // TODO: external input register
-    // TODO: RTC
-    // TODO: CODABO start points
+
+    unimplemented_shaft_encoder: MemoryWord,
+    unimplemented_external_input_register: MemoryWord,
+    unimplemented_rtc: MemoryWord,
+
+    codabo_start_point: [MemoryWord; 8],
     plugboard: [MemoryWord; 32],
 }
 
@@ -660,7 +664,20 @@ impl VMemory {
             c_register: MemoryWord::default(),
             d_register: MemoryWord::default(),
             e_register: MemoryWord::default(),
+            codabo_start_point: [
+                MemoryWord::default(),
+                MemoryWord::default(),
+                MemoryWord::default(),
+                MemoryWord::default(),
+                MemoryWord::default(),
+                MemoryWord::default(),
+                MemoryWord::default(),
+                MemoryWord::default(),
+            ],
             plugboard: standard_plugboard_internal(),
+            unimplemented_shaft_encoder: MemoryWord::default(),
+            unimplemented_external_input_register: MemoryWord::default(),
+            unimplemented_rtc: MemoryWord::default(),
         }
     }
 
@@ -670,9 +687,13 @@ impl VMemory {
         addr: &Address,
     ) -> Result<Option<&mut MemoryWord>, MemoryOpFailure> {
         if access_type == &MemoryAccess::Write {
-            // There appear to be some instructions which special-case
-            // attempts to write to arithmetic unit registers, so we
-            // may need a more sophisticated approach here.
+            // TODO: there appear to be some instructions which
+            // special-case attempts to write to arithmetic unit
+            // registers, so we may need a more sophisticated approach
+            // here.
+            //
+            // For now, we handle writes to Vₜ and Vff memory the same
+            // way, which is to ignore them.
             return Ok(None);
         }
         match u32::from(addr) {
@@ -681,9 +702,38 @@ impl VMemory {
             0o0377606 => Ok(Some(&mut self.c_register)),
             0o0377607 => Ok(Some(&mut self.d_register)),
             0o0377610 => Ok(Some(&mut self.e_register)),
-            // Shaft encoder, External Input Register, Real Time Clock
-            0o0377620 | 0o0377621 | 0o0377630 => todo!(),
-            0o0377710..=0o0377717 => todo!(), // Location of CODABO start points
+            0o0377620 => {
+                // Shaft encoder is not yet implemented.
+                event!(
+                    Level::WARN,
+                    "Reading the shaft encoder is not yet implemented"
+                );
+                Ok(Some(&mut self.unimplemented_shaft_encoder))
+            }
+            0o0377621 => {
+                // Shaft encoder is not yet implemented.
+                event!(
+                    Level::WARN,
+                    "Reading the external input register is not yet implemented"
+                );
+                Ok(Some(&mut self.unimplemented_external_input_register))
+            }
+            0o0377630 => {
+                event!(
+                    Level::WARN,
+                    "Reading the real-time clock is not yet implemented"
+                );
+                Ok(Some(&mut self.unimplemented_rtc))
+            }
+            0o0377710 => Ok(Some(&mut self.codabo_start_point[0])), // CODABO Reset0
+            0o0377711 => Ok(Some(&mut self.codabo_start_point[1])), // CODABO Reset1
+            0o0377712 => Ok(Some(&mut self.codabo_start_point[2])), // CODABO Reset2
+            0o0377713 => Ok(Some(&mut self.codabo_start_point[3])), // CODABO Reset3
+            0o0377714 => Ok(Some(&mut self.codabo_start_point[4])), // CODABO Reset4
+            0o0377715 => Ok(Some(&mut self.codabo_start_point[5])), // CODABO Reset5
+            0o0377716 => Ok(Some(&mut self.codabo_start_point[6])), // CODABO Reset6
+            0o0377717 => Ok(Some(&mut self.codabo_start_point[7])), // CODABO Reset7
+
             addr @ 0o0377740..=0o0377777 => {
                 if let Ok(offset) = TryInto::<usize>::try_into(addr - 0o0377740) {
                     Ok(Some(&mut self.plugboard[offset]))
@@ -695,6 +745,72 @@ impl VMemory {
                 }
             }
             _ => Err(MemoryOpFailure::NotMapped),
+        }
+    }
+}
+
+#[cfg(test)]
+fn all_physical_memory_addresses() -> RangeInclusive<u32> {
+    let start = 0_u32;
+    let end: u32 = u32::from(Unsigned18Bit::MAX) >> 1;
+    start..=end
+}
+
+#[test]
+fn test_write_all_mem() {
+    let mut mem = MemoryUnit::new(&MemoryConfiguration {
+        with_u_memory: false,
+    });
+    for a in all_physical_memory_addresses() {
+        let addr: Address = Address::try_from(a).unwrap();
+        // The point of this test is to verify that we con't have any
+        // todo!()s in reachable code paths.
+        let result = mem.access(&MemoryAccess::Write, &addr);
+        match result {
+            Ok(Some(_)) => (),
+            Ok(None) => {
+                // This indicates that the write is ignored.  This may
+                // or may not be correct.  For example it's OK (I
+                // assume) to ignore a write to the shaft-encoder
+                // register since that is a memory-mapped input-only
+                // device, but it is not OK to ignore a write to
+                // 0377604 which is the Arithmetic Unit's B register.
+                //
+                // TODO: implement and test writes to toggle memory
+                // (Vₜ).
+            }
+            Err(MemoryOpFailure::NotMapped) => (),
+            Err(e) => {
+                panic!("Failure {:?} during write of memory address {:o}", e, addr);
+            }
+        }
+    }
+}
+
+#[test]
+fn test_read_all_mem() {
+    let mut mem = MemoryUnit::new(&MemoryConfiguration {
+        with_u_memory: false,
+    });
+    for a in all_physical_memory_addresses() {
+        let addr: Address = Address::try_from(a).unwrap();
+        // The point of this test is to verify that we con't have any
+        // todo!()s in reachable code paths.
+        let result = mem.access(&MemoryAccess::Read, &addr);
+        match result {
+            Ok(Some(_)) => (),
+            Ok(None) => {
+                // For writes, this indicates that the write is
+                // ignored. This should not happen for reads.
+                panic!(
+                    "'None' result during read of memory address {:o}, this should not happen (cannot ignore a read)",
+                    addr
+                );
+            }
+            Err(MemoryOpFailure::NotMapped) => (),
+            Err(e) => {
+                panic!("Failure {:?} during read of memory address {:o}", e, addr);
+            }
         }
     }
 }

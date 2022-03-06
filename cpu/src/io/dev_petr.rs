@@ -160,7 +160,7 @@ impl Petr {
     }
 
     fn do_rewind(&mut self) {
-        match self.rewind_line_counter.checked_sub(1 as usize) {
+        match self.rewind_line_counter.checked_sub(1) {
             None | Some(0) => {
                 // We reached - or were already at - the END MARK,
                 // reverse direction.
@@ -269,7 +269,7 @@ impl Unit for Petr {
             inability: self.read_failed,
             missed_data: self.overrun,
             mode: self.mode,
-            poll_before: self.next_poll_time(system_time),
+            poll_after: self.next_poll_time(system_time),
             is_input_unit: true,
         }
     }

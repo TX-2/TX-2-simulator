@@ -18,7 +18,7 @@ fn run(
     clk: &mut BasicClock,
     multiplier: Option<f64>,
 ) -> i32 {
-    control.codabo(&ResetMode::ResetTSP);
+    control.codabo(&ResetMode::ResetTSP, mem);
     if let Err(e) = run_until_alarm(control, mem, clk, multiplier) {
         event!(Level::ERROR, "Execution stopped: {}", e);
     }
@@ -34,6 +34,10 @@ struct TapeSequence {
 impl TapeSequence {
     fn new(names: Vec<OsString>) -> TapeSequence {
         TapeSequence { pos: 0, names }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.names.is_empty()
     }
 }
 
@@ -99,15 +103,21 @@ fn run_simulator() -> Result<(), Box<dyn std::error::Error>> {
             .map(OsString::from)
             .collect(),
     );
+    if tapes.is_empty() {
+        event!(
+            Level::WARN,
+            "No paper tapes were specified on the command line, so no program will be loaded"
+        );
+    }
     let petr = Box::new(Petr::new(Box::new(tapes)));
 
     let speed_multiplier: Option<f64> = match matches.value_of("speed-multiplier") {
         None => {
             event!(
-                Level::INFO,
-                "No --speed-multiplier option specified, using multiplier of 1.0"
+                Level::WARN,
+                "No --speed-multiplier option specified, running at maximum speed"
             );
-            Some(1.0)
+            None
         }
         Some("MAX") => {
             event!(

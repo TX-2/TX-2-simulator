@@ -11,6 +11,8 @@
 //! - Keep track of the placeholder of each sequence
 //! - Manage switching between sequences
 //! - Remember the setting of the TSP (Toggle Start Point) register
+use std::collections::HashSet;
+use std::ops::BitAnd;
 use std::time::Duration;
 
 use tracing::{event, span, Level};
@@ -26,7 +28,7 @@ use base::instruction::{Inst, Instruction, Opcode, OperandAddress, SymbolicInstr
 use base::prelude::*;
 use base::subword;
 
-use crate::alarm::Alarm;
+use crate::alarm::{Alarm, AlarmUnit, BadMemOp};
 use crate::exchanger::{exchanged_value, SystemConfiguration};
 use crate::io::{DeviceManager, Unit};
 use crate::memory::{self, ExtraBits, MemoryMapped, MemoryOpFailure, MemoryUnit, MetaBitChange};
@@ -274,12 +276,37 @@ pub enum ResetMode {
 }
 
 impl ResetMode {
-    fn address(&self) -> Option<Address> {
+    fn address(&self, mem: &mut MemoryUnit) -> Option<Address> {
         use ResetMode::*;
         match self {
-            Reset0 | Reset1 | Reset2 | Reset3 | Reset4 | Reset5 | Reset6 | Reset7 => Some(
-                Address::from(Unsigned18Bit::try_from(*self as u32).unwrap()),
-            ),
+            Reset0 | Reset1 | Reset2 | Reset3 | Reset4 | Reset5 | Reset6 | Reset7 => {
+                let loc: Address = Address::from(Unsigned18Bit::try_from(*self as u32).unwrap());
+                match mem.fetch(&loc, &MetaBitChange::None) {
+                    Ok((word, _)) => {
+                        // word is 36 bits wide but we only want the bottom 17 bits.
+                        let (left, right) = subword::split_halves(word);
+                        if left != 0 {
+                            // issue warning but otherwise ignore
+                            event!(Level::WARN, "Ignoring non-zero left subword of reset register {:o}, containing {:o} (left side is {:o})",
+				   loc, word, left);
+                        }
+                        // We assume that reset operations don't implement deferred addressing.
+                        const PHYSICAL_ADDRESS_BITS: u32 = 0o377_777;
+                        let defer_bit = Unsigned18Bit::try_from(0o400_000).unwrap();
+                        if right & defer_bit != 0 {
+                            // issue warning but otherwise ignore
+                            event!(Level::WARN, "Ignoring non-zero defer bit of reset register {:o}, containing {:o}",
+				   loc, word);
+                        }
+
+                        let physical_address = Address::from(right & PHYSICAL_ADDRESS_BITS);
+                        Some(physical_address)
+                    }
+                    Err(e) => {
+                        panic!("failed to fetch reset {:?}: {}", self, e);
+                    }
+                }
+            }
             ResetTSP => None, // need to read the TSP toggle switch.
         }
     }
@@ -293,6 +320,7 @@ pub struct ControlUnit {
     running: bool,
     trap: TrapCircuit,
     devices: DeviceManager,
+    alarm_unit: AlarmUnit,
 }
 
 fn sign_extend_index_value(index_val: &Signed18Bit) -> Unsigned36Bit {
@@ -311,6 +339,7 @@ impl ControlUnit {
             running: false,
             trap: TrapCircuit::new(),
             devices: DeviceManager::new(),
+            alarm_unit: AlarmUnit::new(),
         }
     }
 
@@ -352,7 +381,7 @@ impl ControlUnit {
     /// from the address specified by the program.  The program
     /// executes as sequence 52 (PETR) with the PETR unit initially
     /// turned off.
-    pub fn codabo(&mut self, reset_mode: &ResetMode) {
+    pub fn codabo(&mut self, reset_mode: &ResetMode, mem: &mut MemoryUnit) {
         // TODO: clear alarms.
         // We probably don't need an equivalent of resetting the
         // control flip-flops in an emulator.  But if we did, that
@@ -369,7 +398,7 @@ impl ControlUnit {
         let _enter = span.enter();
         event!(Level::INFO, "Starting CODABO {:?}", &reset_mode);
         self.disconnect_io_devices();
-        self.reset(reset_mode);
+        self.reset(reset_mode, mem);
         self.regs.flags.lower_all();
         self.regs.current_sequence_is_runnable = false;
         self.startover();
@@ -389,8 +418,8 @@ impl ControlUnit {
     /// addresses 3777710 through 3777717, inclusive.
     ///
     /// RESET *only* loads the Start Point Register, nothing else.
-    pub fn reset(&mut self, reset_mode: &ResetMode) {
-        self.regs.set_spr(&match reset_mode.address() {
+    pub fn reset(&mut self, reset_mode: &ResetMode, mem: &mut MemoryUnit) {
+        self.regs.set_spr(&match reset_mode.address(mem) {
             Some(address) => address,
             None => self.tsp(),
         });
@@ -598,10 +627,18 @@ impl ControlUnit {
             }
             Err(e) => match e {
                 MemoryOpFailure::NotMapped => {
-                    return Err(Alarm::PSAL(
+                    self.alarm_unit.fire_if_not_masked(Alarm::PSAL(
                         u32::from(p_physical_address),
                         "memory unit indicated physical address is not mapped".to_string(),
-                    ));
+                    ))?;
+                    // PSAL is masked, but we don't know what
+                    // instruction to execute, since we couldn't fetch
+                    // one.  The program counter will not be updated
+                    // until we call execute_instruction(), so we
+                    // shouldn't increment it here.  So we just return
+                    // a held instruction which is not otherwise
+                    // valid.
+                    Unsigned36Bit::from(Instruction::invalid())
                 }
                 MemoryOpFailure::ReadOnly(_) => unreachable!(),
             },
@@ -616,8 +653,8 @@ impl ControlUnit {
         Ok(true) // not in Limbo (i.e. a sequence should run)
     }
 
-    pub fn poll_hardware(&mut self, system_time: &Duration) -> Result<(), Alarm> {
-        let (mut raised_flags, alarm) = self.devices.poll(system_time);
+    pub fn poll_hardware(&mut self, system_time: &Duration) -> Result<Option<Duration>, Alarm> {
+        let (mut raised_flags, alarm, next_poll) = self.devices.poll(system_time);
         // For each newly-raised flag, raise the flag in self.flags.
         event!(
             Level::TRACE,
@@ -654,7 +691,7 @@ impl ControlUnit {
             );
             Err(active)
         } else {
-            Ok(())
+            Ok(next_poll)
         }
     }
 
@@ -664,7 +701,12 @@ impl ControlUnit {
             self.regs.n_sym = Some(symbolic);
             Ok(()) // valid instruction
         } else {
-            Err(self.invalid_opcode_alarm())
+            self.alarm_unit.fire_if_not_masked(Alarm::OCSAL(
+                self.regs.n,
+                format!("invalid opcode {:#o}", self.regs.n.opcode_number()),
+            ))?;
+            self.regs.n_sym = None;
+            Ok(()) // invalid instruction, but OCSAL is masked.
         }
     }
 
@@ -682,6 +724,7 @@ impl ControlUnit {
             OperandAddress::Direct(_) => None,
         };
         let operand_from = match self.regs.n.operand_address() {
+            // TODO: handle chains of deferred loads
             OperandAddress::Deferred(phys) => Some(phys),
             OperandAddress::Direct(_) => None,
         };
@@ -780,7 +823,13 @@ impl ControlUnit {
                 }
             }
         } else {
-            Err(self.invalid_opcode_alarm())
+            self.alarm_unit.fire_if_not_masked(Alarm::OCSAL(
+                self.regs.n,
+                format!("invalid opcode {:#o}", self.regs.n.opcode_number()),
+            ))?;
+            self.set_program_counter(ProgramCounterChange::CounterUpdate);
+            let execution_time_ns = self.estimate_execute_time_ns(&Instruction::invalid());
+            Ok(execution_time_ns)
         }
     }
 
@@ -806,14 +855,23 @@ impl ControlUnit {
                 }
                 Ok((word, extra_bits))
             }
-            Err(MemoryOpFailure::NotMapped) => Err(Alarm::QSAL(
-                self.regs.n,
-                Unsigned36Bit::from(*operand_address),
-                format!(
-                    "memory unit indicated address {:o} is not mapped",
-                    operand_address
-                ),
-            )),
+            Err(MemoryOpFailure::NotMapped) => {
+                self.alarm_unit.fire_if_not_masked(Alarm::QSAL(
+                    self.regs.n,
+                    BadMemOp::Read(Unsigned36Bit::from(*operand_address)),
+                    format!(
+                        "memory unit indicated address {:o} is not mapped",
+                        operand_address
+                    ),
+                ))?;
+                // QSAL is masked to we have to return some value, but
+                // we don't know what the TX-2 did in this case.
+                return Err(self.alarm_unit.always_fire(Alarm::ROUNDTUITAL(
+			format!(
+			    "memory unit indicated address {:o} is not mapped and we don't know what to do when QSAL is masked",
+			    operand_address
+			))));
+            }
             Err(MemoryOpFailure::ReadOnly(_)) => unreachable!(),
         }
     }
@@ -831,13 +889,16 @@ impl ControlUnit {
             target,
             value,
         );
-        mem.store(target, value, meta_op).map_err(|e| {
-            Alarm::QSAL(
+        if let Err(e) = mem.store(target, value, meta_op) {
+            self.alarm_unit.fire_if_not_masked(Alarm::QSAL(
                 self.regs.n,
-                Unsigned36Bit::from(*target),
+                BadMemOp::Write(Unsigned36Bit::from(*target)),
                 format!("memory store to address {:#o} failed: {}", target, e,),
-            )
-        })
+            ))?;
+            Ok(()) // QSAL is masked, so just carry on.
+        } else {
+            Ok(())
+        }
     }
 
     fn memory_store_with_exchange(
@@ -863,6 +924,12 @@ impl ControlUnit {
         self.resolve_operand_address(mem, None)
     }
 
+    /// Resolve the address of the operand of the current instruction,
+    /// leaving this address in the Q register.  If
+    /// `initial_index_override` is None, the final j bits are taken
+    /// from the initial contents of the N register.  Otherwise
+    /// (e.g. for JNX) they are taken to be the value in
+    /// initial_index_override.
     fn resolve_operand_address(
         self: &mut ControlUnit,
         mem: &mut MemoryUnit,
@@ -872,6 +939,11 @@ impl ControlUnit {
         // once, in other words it is a loop.  This is explained in
         // section 9-7, "DEFERRED ADDRESSING CYCLES" of Volume 2 of
         // the technical manual.
+        //
+        // See also "TX-2 Introductory Notes" by A. Vanderburgh, 24
+        // February 1959, available from the UMN collection (BCI61 Box
+        // 8).
+        let mut seen_deferred_addresses: HashSet<Address> = HashSet::new();
         while let OperandAddress::Deferred(physical) = self.regs.n.operand_address() {
             // In effect, this loop emulates a non-ultimate deferred
             // address cycle.
@@ -879,10 +951,15 @@ impl ControlUnit {
             // According to the description of PK3 on page 5-9 of the
             // User handbook, the deferred address calculation and
             // indexing occurs in (i.e. by modifying) the N register.
+            // "TX-2 Introductory Notes" explains the same thing.
             //
             // JPX and JNX seem to be handled differently, but I don't
             // think I understand exactly what the difference is
-            // supposed to be.
+            // supposed to be. "TX-2 Introductory Notes" points out
+            // that in JPX and JNX, the j bits are used for something
+            // other than indexing, so the "handled differently" may
+            // just be that deferred addressing is the only way to use
+            // indexing in combination with JPX and JNX.
             //
             // (Vol 2, page 12-9): It should also be noted that the
             // N₂.₉ bit is presented as an input to the X Adder only
@@ -901,34 +978,67 @@ impl ControlUnit {
             };
             let fetched = match mem.fetch(&physical, &meta_op) {
                 Err(e) => {
-                    return Err(Alarm::QSAL(
-                        self.regs.n,
-                        Unsigned36Bit::from(physical),
+                    let msg = || {
                         format!(
                             "address {:#o} out of range while fetching deferred address: {}",
                             &physical, e
-                        ),
-                    ));
+                        )
+                    };
+
+                    self.alarm_unit.fire_if_not_masked(Alarm::QSAL(
+                        self.regs.n,
+                        BadMemOp::Read(Unsigned36Bit::from(physical)),
+                        msg(),
+                    ))?;
+                    // QSAL is masked.  I don't know what the TX-2 did in this situation.
+                    return Err(self.alarm_unit.always_fire(Alarm::ROUNDTUITAL(format!(
+                        "we don't know how to handle {} when QSAL is masked",
+                        msg()
+                    ))));
                 }
                 Ok((word, extra)) => {
                     if extra.meta && self.trap.trap_on_deferred_address() {
                         self.raise_trap();
                     }
 
-                    // I think it's likely that the TX2 should perform
-                    // indexation on deferred addreses.  This idea is
-                    // based on the fact that the left subword of
-                    // deferred addresses used in plugboard programs
-                    // can be nonzero, and on the fact that the
-                    // description of the SKM instruction notes "SKM
-                    // is therefore non-indexable except through
-                    // deferred addressing".
+                    // The TX2 performs indexation on deferred
+                    // addreses.  Indeed, the "TX-2 Introductory
+                    // Notes" by A. Vanderburg imply that the ability
+                    // to do this is the motivation for having
+                    // deferred addressing at all (see section
+                    // "Deferred Addressing" in that document).
+                    //
+                    // This idea is also supported by the fact that
+                    // the left subword of deferred addresses used in
+                    // plugboard programs can be nonzero, and on the
+                    // fact that the description of the SKM
+                    // instruction notes "SKM is therefore
+                    // non-indexable except through deferred
+                    // addressing".
                     let (left, right) = subword::split_halves(word);
+                    let mask: Unsigned18Bit = Unsigned18Bit::from(63_u8);
+                    let j6: Unsigned6Bit = Unsigned6Bit::try_from(left.bitand(mask)).unwrap();
+                    let next = Address::from(right).index_by(self.regs.get_index_register(j6));
                     event!(Level::TRACE,
-			   "deferred addressing: fetched full word is {:o},,{:o}; using {:o} as the final address",
-			   &left, &right, &right,
+			   "deferred addressing: fetched full word is {:o},,{:o}; j={:o}, using {:o} as the next address",
+			   &left, &right, &j6, &next,
 		    );
-                    Address::from(right)
+                    if !seen_deferred_addresses.insert(next) {
+                        // A `false` return indicates that the map
+                        // already contained `next`, meaning that we
+                        // have a loop.
+                        //
+                        // Detection of this kind of loop is not a
+                        // feature of the TX-2.  The "TX-2
+                        // Introductory Notes" document explicitly
+                        // states, "In fact, you can inadvertantly
+                        // [sic] defer back to where you started and
+                        // get a loop less than one instruction long".
+                        return Err(self
+                            .alarm_unit
+                            .always_fire(Alarm::DEFERLOOPAL { address: right }));
+                    }
+                    Address::from(next)
                 }
             };
 
@@ -968,6 +1078,9 @@ impl ControlUnit {
         // definitely expect the physical operand address to be
         // written back into the N register (in a
         // programmer-detectable way).
+        //
+        // "TX-2 Introductory Notes" states that this happens, but the
+        // question is whether the programmer can detect it.
         Ok(self.regs.q)
     }
 
