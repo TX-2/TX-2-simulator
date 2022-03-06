@@ -691,6 +691,9 @@ impl VMemory {
             // special-case attempts to write to arithmetic unit
             // registers, so we may need a more sophisticated approach
             // here.
+            //
+            // For now, we handle writes to Vₜ and Vff memory the same
+            // way, which is to ignore them.
             return Ok(None);
         }
         match u32::from(addr) {
@@ -762,8 +765,25 @@ fn test_write_all_mem() {
         let addr: Address = Address::try_from(a).unwrap();
         // The point of this test is to verify that we con't have any
         // todo!()s in reachable code paths.
-        drop(mem.access(&MemoryAccess::Write, &addr));
-        // TODO: make this test fail if there is a ROUNDTUITAL.
+        let result = mem.access(&MemoryAccess::Write, &addr);
+        match result {
+            Ok(Some(_)) => (),
+            Ok(None) => {
+                // This indicates that the write is ignored.  This may
+                // or may not be correct.  For example it's OK (I
+                // assume) to ignore a write to the shaft-encoder
+                // register since that is a memory-mapped input-only
+                // device, but it is not OK to ignore a write to
+                // 0377604 which is the Arithmetic Unit's B register.
+                //
+                // TODO: implement and test writes to toggle memory
+                // (Vₜ).
+            }
+            Err(MemoryOpFailure::NotMapped) => (),
+            Err(e) => {
+                panic!("Failure {:?} during write of memory address {:o}", e, addr);
+            }
+        }
     }
 }
 
@@ -776,7 +796,21 @@ fn test_read_all_mem() {
         let addr: Address = Address::try_from(a).unwrap();
         // The point of this test is to verify that we con't have any
         // todo!()s in reachable code paths.
-        drop(mem.access(&MemoryAccess::Read, &addr))
-        // TODO: make this test fail if there is a ROUNDTUITAL.
+        let result = mem.access(&MemoryAccess::Read, &addr);
+        match result {
+            Ok(Some(_)) => (),
+            Ok(None) => {
+                // For writes, this indicates that the write is
+                // ignored. This should not happen for reads.
+                panic!(
+                    "'None' result during read of memory address {:o}, this should not happen (cannot ignore a read)",
+                    addr
+                );
+            }
+            Err(MemoryOpFailure::NotMapped) => (),
+            Err(e) => {
+                panic!("Failure {:?} during read of memory address {:o}", e, addr);
+            }
+        }
     }
 }
