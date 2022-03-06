@@ -333,7 +333,7 @@ impl MemoryUnit {
     ) -> Result<Option<&mut MemoryWord>, MemoryOpFailure> {
         match decode(addr) {
             Some(MemoryDecode::S(offset)) => Ok(Some(&mut self.s_memory[offset])),
-            Some(MemoryDecode::T(offset)) => Ok(Some(&mut self.s_memory[offset])),
+            Some(MemoryDecode::T(offset)) => Ok(Some(&mut self.t_memory[offset])),
             Some(MemoryDecode::U(offset)) => {
                 if let Some(u) = &mut self.u_memory {
                     Ok(Some(&mut u[offset]))
