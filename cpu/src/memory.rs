@@ -27,6 +27,7 @@ use std::error;
 use std::fmt::{self, Debug, Display, Formatter};
 #[cfg(test)]
 use std::ops::RangeInclusive;
+use std::time::SystemTime;
 
 use tracing::{event, Level};
 
@@ -590,8 +591,8 @@ struct VMemory {
 
     unimplemented_shaft_encoder: MemoryWord,
     unimplemented_external_input_register: MemoryWord,
-    unimplemented_rtc: MemoryWord,
-
+    rtc: MemoryWord,
+    rtc_start: SystemTime,
     codabo_start_point: [MemoryWord; 8],
     plugboard: [MemoryWord; 32],
 }
@@ -658,7 +659,8 @@ pub fn get_standard_plugboard() -> Vec<Unsigned36Bit> {
 
 impl VMemory {
     fn new() -> VMemory {
-        VMemory {
+        let now = SystemTime::now();
+        let mut result = VMemory {
             a_register: MemoryWord::default(),
             b_register: MemoryWord::default(),
             c_register: MemoryWord::default(),
@@ -677,8 +679,11 @@ impl VMemory {
             plugboard: standard_plugboard_internal(),
             unimplemented_shaft_encoder: MemoryWord::default(),
             unimplemented_external_input_register: MemoryWord::default(),
-            unimplemented_rtc: MemoryWord::default(),
-        }
+            rtc: MemoryWord::default(),
+            rtc_start: now,
+        };
+        result.reset_rtc(&now);
+        result
     }
 
     fn access(
@@ -703,7 +708,6 @@ impl VMemory {
             0o0377607 => Ok(Some(&mut self.d_register)),
             0o0377610 => Ok(Some(&mut self.e_register)),
             0o0377620 => {
-                // Shaft encoder is not yet implemented.
                 event!(
                     Level::WARN,
                     "Reading the shaft encoder is not yet implemented"
@@ -711,7 +715,6 @@ impl VMemory {
                 Ok(Some(&mut self.unimplemented_shaft_encoder))
             }
             0o0377621 => {
-                // Shaft encoder is not yet implemented.
                 event!(
                     Level::WARN,
                     "Reading the external input register is not yet implemented"
@@ -719,11 +722,8 @@ impl VMemory {
                 Ok(Some(&mut self.unimplemented_external_input_register))
             }
             0o0377630 => {
-                event!(
-                    Level::WARN,
-                    "Reading the real-time clock is not yet implemented"
-                );
-                Ok(Some(&mut self.unimplemented_rtc))
+                self.update_rtc();
+                Ok(Some(&mut self.rtc))
             }
             0o0377710 => Ok(Some(&mut self.codabo_start_point[0])), // CODABO Reset0
             0o0377711 => Ok(Some(&mut self.codabo_start_point[1])), // CODABO Reset1
@@ -745,6 +745,58 @@ impl VMemory {
                 }
             }
             _ => Err(MemoryOpFailure::NotMapped),
+        }
+    }
+
+    fn reset_rtc(&mut self, now: &SystemTime) {
+        self.rtc_start = *now;
+        self.rtc = MemoryWord(0);
+    }
+
+    fn update_rtc(&mut self) {
+        let now = SystemTime::now();
+        match now.duration_since(self.rtc_start) {
+            Ok(duration) => {
+                // Page 5-19 of the Nov 1963 Users Handbook states that the
+                // RTC has a period of 10 microseconds and will reset itself
+                // "every 7.6 days or so".
+                //
+                // These facts seems to be inconsistent, since 2^36 *
+                // 10 microseconds is 7.953643140740741 days (assuming
+                // 86400 seconds per day).  In other words, this
+                // period is about 5% too high, and is an odd choice
+                // of rounding (when the author could have said "just
+                // under 8 days" or "just over 7.9 days").
+                //
+                // A clock period of 9.555 microseconds on the other
+                // hand would give a rollover period of 7.5997 days
+                // (about 7d 14h 23m 34.1s).
+                //
+                // Since the tick interval is more important than the
+                // time between rollovers though, we stick with 10
+                // microseconds.
+                const TICK_MICROSEC: u128 = 10;
+                let tick_count = duration.as_micros() / TICK_MICROSEC;
+                const RTC_MODULUS: u128 = 1 << 36;
+                assert!(u128::from(u64::from(Unsigned36Bit::MAX)) < RTC_MODULUS);
+                match u64::try_from(tick_count % RTC_MODULUS) {
+                    Ok(n) => {
+                        self.rtc = MemoryWord(n);
+                    }
+                    Err(_) => {
+                        // (x % RTC_MODULUS) <= Unsigned36Bit::MAX for
+                        // all x, so this case cannot occur.
+                        unreachable!();
+                    }
+                }
+            }
+            Err(_) => {
+                // This error signals that self.rtc_start > now.  In
+                // other words, that there has ben a correction to the
+                // system clock.  We handle this by pretending that
+                // the user has just pressed the "reset RTC" button.
+                self.reset_rtc(&now);
+            }
         }
     }
 }
