@@ -164,7 +164,7 @@ impl Petr {
             None | Some(0) => {
                 // We reached - or were already at - the END MARK,
                 // reverse direction.
-                event!(Level::INFO, "reached the end mark");
+                event!(Level::INFO, "reached the end mark, reversing direction");
                 assert!(self.direction == Direction::Bin);
                 self.direction = Direction::Reel;
             }
@@ -194,6 +194,7 @@ impl Petr {
                     // At EOF.  We don't stop the motor, but if the
                     // real PETR device can detect when the whole tape
                     // has already passed through, perhaps we should.
+                    event!(Level::DEBUG, "paper tape: reading at end-of-file");
                     self.data = None;
                 }
                 Ok(_) => {
@@ -203,6 +204,7 @@ impl Petr {
             },
             None => {
                 // There is no tape.
+                event!(Level::TRACE, "paper tape: there is no tape");
                 self.data = None;
                 self.activity = Activity::Stopped;
                 self.time_of_next_read = None;
