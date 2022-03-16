@@ -13,7 +13,11 @@ clap = "2"
 
 # nom has an MIT-style copyright license.
 # https://github.com/Geal/nom/blob/main/LICENSE
-nom = "7"
+nom = "5"
+
+# nom_locate has an MIT-style copyright license.
+# https://github.com/fflorent/nom_locate/blob/master/LICENSE
+nom_locate = "2.0"
 
 # tracing has an MIT copyright license.
 # https://github.com/tokio-rs/tracing/blob/master/LICENSE
@@ -22,3 +26,11 @@ tracing = "0.1"
 # tracing-subscriber has an MIT copyright license.
 # https://github.com/tokio-rs/tracing/blob/master/LICENSE
 tracing-subscriber = "0.2"
+
+[lib]
+name = "assembler"
+path = "src/asmlib/lib.rs"
+
+[[bin]]
+name = "tx2m4as"
+path = "src/tx2m4as/main.rs"

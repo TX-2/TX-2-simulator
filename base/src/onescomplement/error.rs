@@ -7,8 +7,14 @@ use std::fmt::{self, Debug, Display, Formatter};
 /// unsigned types defined in the base crate.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ConversionFailed {
+    // TODO: give more range-specific name
     TooLarge,
     TooSmall,
+}
+
+pub enum StringConversionFailed {
+    Range(ConversionFailed),
+    NotOctal,
 }
 
 impl Error for ConversionFailed {}
