@@ -1,4 +1,4 @@
-use std::fmt::Write;
+use std::fmt::{self, Display, Formatter, Write};
 use std::num::IntErrorKind;
 use std::ops::Range;
 
@@ -8,21 +8,32 @@ use nom::branch::alt;
 use nom::bytes::complete::take_while1;
 use nom::character::complete::{char, oct_digit1};
 use nom::combinator::{map, map_res, opt};
-use nom::multi::many0;
-use nom::sequence::pair;
+use nom::multi::{many0, many1};
+use nom::sequence::{pair, terminated};
 
 use crate::ek::{self, ToRange};
 use crate::types::*;
 use base::prelude::*;
 
-#[derive(Debug)]
-pub struct ErrorLocation {
-    line: u32,
-    columns: Option<Range<usize>>,
+impl Display for ek::Error {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        match self.0.columns.as_ref() {
+            None => write!(f, "{}: {}", self.0.line, self.1,),
+            Some(cols) => write!(f, "{}:{}: {}", self.0.line, cols.start, self.1,),
+        }
+    }
 }
 
-impl<'a> From<&ek::LocatedSpan<'a>> for ErrorLocation {
-    fn from(span: &ek::LocatedSpan<'a>) -> ErrorLocation {
+#[derive(Debug, Clone)]
+pub struct ErrorLocation {
+    /// line is usually derived from LocatedSpan::location_line() which returns
+    /// a u32.
+    pub line: LineNumber,
+    pub columns: Option<Range<usize>>,
+}
+
+impl<'a, 'b> From<&ek::LocatedSpan<'a, 'b>> for ErrorLocation {
+    fn from(span: &ek::LocatedSpan<'a, 'b>) -> ErrorLocation {
         let r: Range<usize> = (*span).to_range();
         ErrorLocation {
             line: span.location_line(),
@@ -31,26 +42,23 @@ impl<'a> From<&ek::LocatedSpan<'a>> for ErrorLocation {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProgramInstruction {
     Parts(Vec<InstructionFragment>),
-    Error,
 }
 
-impl ProgramInstruction {
-    pub fn empty_line_representation() -> ProgramInstruction {
-        ProgramInstruction::Parts(Vec::new())
-    }
-}
-
-fn maybe_superscript_sign(input: ek::LocatedSpan) -> ek::IResult<Option<char>> {
+pub(crate) fn maybe_superscript_sign<'a, 'b>(
+    input: ek::LocatedSpan<'a, 'b>,
+) -> ek::IResult<'a, 'b, Option<char>> {
     opt(alt((
         char('\u{207B}'), // U+207B: superscript minus
         char('\u{207A}'), // U+207A: superscript plus
     )))(input)
 }
 
-fn maybe_subscript_sign(input: ek::LocatedSpan) -> ek::IResult<Option<char>> {
+pub(crate) fn maybe_subscript_sign<'a, 'b>(
+    input: ek::LocatedSpan<'a, 'b>,
+) -> ek::IResult<'a, 'b, Option<char>> {
     opt(alt((
         char('\u{208B}'), // U+208B: subscript minus
         char('\u{208A}'), // U+208A: subscript plus
@@ -169,12 +177,16 @@ fn make_subscript_num(
     make_num((sign, &normal_digits))
 }
 
-fn normal_literal_instruction_fragment(input: ek::LocatedSpan) -> ek::IResult<InstructionFragment> {
-    fn maybe_sign(input: ek::LocatedSpan) -> ek::IResult<Option<char>> {
+pub(crate) fn normal_literal_instruction_fragment<'a, 'b>(
+    input: ek::LocatedSpan<'a, 'b>,
+) -> ek::IResult<'a, 'b, InstructionFragment> {
+    fn maybe_sign<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, Option<char>> {
         opt(alt((char('-'), char('+'))))(input)
     }
 
-    pub fn normal_octal_number(input: ek::LocatedSpan) -> ek::IResult<Unsigned36Bit> {
+    pub fn normal_octal_number<'a, 'b>(
+        input: ek::LocatedSpan<'a, 'b>,
+    ) -> ek::IResult<'a, 'b, Unsigned36Bit> {
         map_res(pair(maybe_sign, oct_digit1), make_num_from_span)(input)
     }
 
@@ -184,15 +196,19 @@ fn normal_literal_instruction_fragment(input: ek::LocatedSpan) -> ek::IResult<In
     })(input)
 }
 
-fn superscript_literal_instruction_fragment(
-    input: ek::LocatedSpan,
-) -> ek::IResult<InstructionFragment> {
-    pub fn superscript_octal_number(input: ek::LocatedSpan) -> ek::IResult<Unsigned36Bit> {
+pub(crate) fn superscript_literal_instruction_fragment<'a, 'b>(
+    input: ek::LocatedSpan<'a, 'b>,
+) -> ek::IResult<'a, 'b, InstructionFragment> {
+    pub fn superscript_octal_number<'a, 'b>(
+        input: ek::LocatedSpan<'a, 'b>,
+    ) -> ek::IResult<'a, 'b, Unsigned36Bit> {
         fn is_superscript_oct_digit(ch: char) -> bool {
             superscript_oct_digit_to_value(ch).is_some()
         }
 
-        fn superscript_oct_digit1(input: ek::LocatedSpan) -> ek::IResult<ek::LocatedSpan> {
+        fn superscript_oct_digit1<'a, 'b>(
+            input: ek::LocatedSpan<'a, 'b>,
+        ) -> ek::IResult<'a, 'b, ek::LocatedSpan<'a, 'b>> {
             take_while1(is_superscript_oct_digit)(input)
         }
 
@@ -208,15 +224,19 @@ fn superscript_literal_instruction_fragment(
     })(input)
 }
 
-fn subscript_literal_instruction_fragment(
-    input: ek::LocatedSpan,
-) -> ek::IResult<InstructionFragment> {
-    pub fn subscript_octal_number(input: ek::LocatedSpan) -> ek::IResult<Unsigned36Bit> {
+pub(crate) fn subscript_literal_instruction_fragment<'a, 'b>(
+    input: ek::LocatedSpan<'a, 'b>,
+) -> ek::IResult<'a, 'b, InstructionFragment> {
+    pub fn subscript_octal_number<'a, 'b>(
+        input: ek::LocatedSpan<'a, 'b>,
+    ) -> ek::IResult<'a, 'b, Unsigned36Bit> {
         fn is_subscript_oct_digit(ch: char) -> bool {
             subscript_oct_digit_to_value(ch).is_some()
         }
 
-        fn subscript_oct_digit1(input: ek::LocatedSpan) -> ek::IResult<ek::LocatedSpan> {
+        fn subscript_oct_digit1<'a, 'b>(
+            input: ek::LocatedSpan<'a, 'b>,
+        ) -> ek::IResult<'a, 'b, ek::LocatedSpan<'a, 'b>> {
             take_while1(is_subscript_oct_digit)(input)
         }
         map_res(
@@ -231,7 +251,9 @@ fn subscript_literal_instruction_fragment(
     })(input)
 }
 
-pub fn program_instruction_fragment(input: ek::LocatedSpan) -> ek::IResult<InstructionFragment> {
+pub(crate) fn program_instruction_fragment<'a, 'b>(
+    input: ek::LocatedSpan<'a, 'b>,
+) -> ek::IResult<'a, 'b, InstructionFragment> {
     alt((
         normal_literal_instruction_fragment,
         superscript_literal_instruction_fragment,
@@ -239,30 +261,35 @@ pub fn program_instruction_fragment(input: ek::LocatedSpan) -> ek::IResult<Instr
     ))(input)
 }
 
-pub fn program_instruction(input: ek::LocatedSpan) -> ek::IResult<ProgramInstruction> {
-    map(many0(program_instruction_fragment), |fragments| {
+pub(crate) fn program_instruction<'a, 'b>(
+    input: ek::LocatedSpan<'a, 'b>,
+) -> ek::IResult<'a, 'b, ProgramInstruction> {
+    map(many1(program_instruction_fragment), |fragments| {
         ProgramInstruction::Parts(fragments)
     })(input)
 }
 
-pub fn assemble_line(
-    line_number: usize,
-    line: &str,
+pub fn newline<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, char> {
+    char('\n')(input)
+}
+
+pub(crate) fn directive<'a, 'b>(
+    input: ek::LocatedSpan<'a, 'b>,
+) -> ek::IResult<'a, 'b, Vec<ProgramInstruction>> {
+    many0(terminated(
+        program_instruction,
+        ek::expect(newline, "expected newline after a program instruction"),
+    ))(input)
+}
+
+pub fn parse_source_file(
+    body: &str,
     _symtab: &mut SymbolTable,
     errors: &mut Vec<ek::Error>,
-) -> Result<Option<ProgramInstruction>, AssemblerFailure> {
-    let (prog_instr, new_errors) = ek::parse(line_number, line);
+) -> Result<Vec<ProgramInstruction>, AssemblerFailure> {
+    let (prog_instr, new_errors) = ek::parse(body);
     if !new_errors.is_empty() {
         errors.extend(new_errors.into_iter());
-        Ok(Some(ProgramInstruction::Error))
-    } else {
-        match prog_instr {
-            ProgramInstruction::Parts(inst) => Ok(if inst.is_empty() {
-                None
-            } else {
-                Some(ProgramInstruction::Parts(inst))
-            }),
-            ProgramInstruction::Error => unreachable!(),
-        }
     }
+    Ok(prog_instr)
 }

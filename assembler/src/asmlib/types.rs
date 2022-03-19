@@ -5,16 +5,20 @@ use std::io::Error as IoError;
 
 use base::prelude::*;
 
+/// LineNumber values are usually derived from
+/// LocatedSpan::line_location() which returns a u32.
+pub type LineNumber = u32;
+
 #[derive(Debug)]
 pub enum AssemblerFailure {
     Unimplemented(String),
     IoErrorOnInput {
         filename: OsString,
         error: IoError,
-        line_number: Option<usize>,
+        line_number: Option<LineNumber>,
     },
     SyntaxError {
-        line: usize,
+        line: LineNumber,
         columns: Option<(usize, usize)>,
         msg: String,
     },
@@ -82,14 +86,14 @@ impl Display for Fail {
 
 impl Error for Fail {}
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Elevation {
     Superscript, // e.g. config values
     Normal,      // e.g. the address part of an instruction
     Subscript,   // e.g. the index bits
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstructionFragment {
     pub elevation: Elevation,
     pub value: Unsigned36Bit,

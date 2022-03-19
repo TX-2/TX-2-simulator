@@ -11,16 +11,16 @@ use nom::character::complete::anychar;
 use nom::combinator::{all_consuming, map, not, rest};
 use nom::sequence::{preceded, terminated};
 
-use crate::parser::{program_instruction, ErrorLocation, ProgramInstruction};
+use crate::parser::{directive, ErrorLocation, ProgramInstruction};
 
-pub type LocatedSpan<'a> = nom_locate::LocatedSpan<&'a str, State<'a>>;
-pub type IResult<'a, T> = nom::IResult<LocatedSpan<'a>, T>;
+pub type LocatedSpan<'a, 'b> = nom_locate::LocatedSpan<&'a str, State<'b>>;
+pub type IResult<'a, 'b, T> = nom::IResult<LocatedSpan<'a, 'b>, T>;
 
 pub trait ToRange {
     fn to_range(&self) -> Range<usize>;
 }
 
-impl<'a> ToRange for LocatedSpan<'a> {
+impl<'a, 'b> ToRange for LocatedSpan<'a, 'b> {
     fn to_range(&self) -> Range<usize> {
         let start = self.location_offset();
         let end = start + self.fragment().len();
@@ -28,21 +28,24 @@ impl<'a> ToRange for LocatedSpan<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Error(pub ErrorLocation, pub String);
 
 #[derive(Clone, Debug)]
-pub struct State<'a>(&'a RefCell<Vec<Error>>);
+pub struct State<'b>(pub(crate) &'b RefCell<Vec<Error>>);
 
-impl<'a> State<'a> {
+impl<'b> State<'b> {
     pub fn report_error(&self, error: Error) {
         self.0.borrow_mut().push(error);
     }
 }
 
-fn expect<'a, F, E, T>(parser: F, error_msg: E) -> impl Fn(LocatedSpan<'a>) -> IResult<Option<T>>
+pub fn expect<'a, 'b, F, E, T>(
+    parser: F,
+    error_msg: E,
+) -> impl Fn(LocatedSpan<'a, 'b>) -> IResult<'a, 'b, Option<T>>
 where
-    F: Fn(LocatedSpan<'a>) -> IResult<T>,
+    F: Fn(LocatedSpan<'a, 'b>) -> IResult<'a, 'b, T>,
     E: ToString,
 {
     move |input| match parser(input) {
@@ -56,24 +59,29 @@ where
     }
 }
 
-fn source_line(line: LocatedSpan) -> IResult<ProgramInstruction> {
-    let expr = alt((
-        program_instruction,
-        map(take(0usize), |_| {
-            ProgramInstruction::empty_line_representation()
-        }),
-    ));
-    let result = terminated(
-        expr,
-        preceded(expect(not(anychar), "expected end-of-line"), rest),
-    )(line);
-    // dbg!(&result);
-    result
+pub(crate) fn expect_end_of_file<'a, 'b>(body: LocatedSpan<'a, 'b>) -> IResult<'a, 'b, ()> {
+    map(
+        preceded(expect(not(anychar), "expected end-of-file"), rest),
+        |_| (),
+    )(body)
 }
 
-pub fn parse(_line_number: usize, input: &str) -> (ProgramInstruction, Vec<Error>) {
+fn source_file<'a, 'b>(body: LocatedSpan<'a, 'b>) -> IResult<'a, 'b, Vec<ProgramInstruction>> {
+    let parse_directive = alt((directive, map(take(0usize), |_| Vec::new())));
+    terminated(parse_directive, expect_end_of_file)(body)
+}
+
+pub(crate) fn parse_with<'a, T, F>(input_text: &'a str, parser: F) -> (T, Vec<Error>)
+where
+    F: for<'b> Fn(LocatedSpan<'a, 'b>) -> IResult<'a, 'b, T>,
+{
     let errors = RefCell::new(Vec::new());
-    let input = LocatedSpan::new_extra(input, State(&errors));
-    let (_, expr) = all_consuming(source_line)(input).expect("parser cannot fail");
-    (expr, errors.into_inner())
+    let state: State = State(&errors);
+    let input: LocatedSpan<'a, '_> = LocatedSpan::new_extra(input_text, state);
+    let (_, output) = all_consuming(parser)(input).expect("parser cannot fail");
+    (output, errors.into_inner())
+}
+
+pub fn parse(source_body: &str) -> (Vec<ProgramInstruction>, Vec<Error>) {
+    parse_with(source_body, source_file)
 }
