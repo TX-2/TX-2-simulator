@@ -5,6 +5,8 @@ use std::io::Error as IoError;
 
 use base::prelude::*;
 
+use crate::ek;
+
 /// LineNumber values are usually derived from
 /// LocatedSpan::line_location() which returns a u32.
 pub type LineNumber = u32;
@@ -97,6 +99,37 @@ pub enum Elevation {
 pub struct InstructionFragment {
     pub elevation: Elevation,
     pub value: Unsigned36Bit,
+}
+
+#[derive(Debug, Clone, Eq)]
+pub struct SymbolName {
+    pub canonical: String,
+    pub as_used: String,
+}
+
+impl PartialEq for SymbolName {
+    fn eq(&self, other: &SymbolName) -> bool {
+        self.canonical.eq(&other.canonical)
+    }
+}
+
+impl<'a, 'b> SymbolName {
+    // Symexes "TYPE A" and "TYPEA" are equivalent.
+    fn canonical(span: &ek::LocatedSpan<'a, 'b>) -> String {
+        (*span.fragment())
+            .chars()
+            .filter(|ch: &char| -> bool { *ch != ' ' })
+            .collect()
+    }
+}
+
+impl<'a, 'b> From<&ek::LocatedSpan<'a, 'b>> for SymbolName {
+    fn from(location: &ek::LocatedSpan<'a, 'b>) -> SymbolName {
+        SymbolName {
+            canonical: SymbolName::canonical(location),
+            as_used: location.fragment().to_string(),
+        }
+    }
 }
 
 #[derive(Debug)]

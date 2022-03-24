@@ -1,9 +1,11 @@
 // Assembler tests.
 use base::prelude::*;
 
-use super::ek;
+use nom::combinator::map;
+
+use super::ek::{self, parse_partially_with};
 use super::parser::*;
-use super::types::{Elevation, InstructionFragment, SymbolTable};
+use super::types::{Elevation, InstructionFragment, SymbolName, SymbolTable};
 
 #[test]
 fn test_assemble_blank_line() {
@@ -121,21 +123,54 @@ fn test_program_instruction_fragment() {
 fn test_program_instruction() {
     assert_eq!(
         parse_successfully_with("⁶673₃₁", program_instruction),
-        ProgramInstruction::Parts(vec![
-            InstructionFragment {
-                elevation: Elevation::Superscript,
-                value: Unsigned36Bit::from(0o6_u32),
-            },
-            InstructionFragment {
-                elevation: Elevation::Normal,
-                value: Unsigned36Bit::from(0o673_u32),
-            },
-            InstructionFragment {
-                elevation: Elevation::Subscript,
-                value: Unsigned36Bit::from(0o31_u32),
-            },
-        ])
+        ProgramInstruction {
+            tag: None,
+            parts: vec![
+                InstructionFragment {
+                    elevation: Elevation::Superscript,
+                    value: Unsigned36Bit::from(0o6_u32),
+                },
+                InstructionFragment {
+                    elevation: Elevation::Normal,
+                    value: Unsigned36Bit::from(0o673_u32),
+                },
+                InstructionFragment {
+                    elevation: Elevation::Subscript,
+                    value: Unsigned36Bit::from(0o31_u32),
+                },
+            ]
+        }
     );
+}
+
+#[test]
+fn test_parse_symex() {
+    for (input, expected) in [
+        ("SOMENAME", "SOMENAME"),
+        ("SOME NAME", "SOMENAME"),
+        // OK to use a reserved identifier if it is not the first
+        // syllable in the symex.
+        ("TEST A", "TESTA"),
+        // If there's no space after it, it's not reserved
+        ("ATEST", "ATEST"),
+        // Otherwise, the reserved identifier is the whole of it.
+        ("B", "B"),
+        // A symex can contain digits and can even start with one.
+        ("HOP2IT", "HOP2IT"),
+        ("HOP 2 IT", "HOP2IT"),
+        ("4REAL", "4REAL"),
+        // Some lower case letters are supported
+        ("j2", "j2"),
+        // Dot, underscore
+        (".q", ".q"),
+        ("._q", "._q"),
+        // Single quotes are allowed too
+        ("SCRATCH 'N' SNIFF", "SCRATCH'N'SNIFF"),
+        ("F '", "F'"),
+    ] {
+        let got: SymbolName = parse_successfully_with(input, parse_symex);
+        assert_eq!(got.canonical, expected);
+    }
 }
 
 #[test]
@@ -144,19 +179,113 @@ fn test_empty_directive() {
 }
 
 #[test]
-fn test_directive() {
+fn test_directive_without_tag() {
     assert_eq!(
         parse_successfully_with("673\n71\n", directive),
         vec![
-            ProgramInstruction::Parts(vec![InstructionFragment {
-                elevation: Elevation::Normal,
-                value: Unsigned36Bit::from(0o673_u32),
-            },]),
-            ProgramInstruction::Parts(vec![InstructionFragment {
-                elevation: Elevation::Normal,
-                value: Unsigned36Bit::from(0o71_u32),
-            },]),
+            ProgramInstruction {
+                tag: None,
+                parts: vec![InstructionFragment {
+                    elevation: Elevation::Normal,
+                    value: Unsigned36Bit::from(0o673_u32),
+                },]
+            },
+            ProgramInstruction {
+                tag: None,
+                parts: vec![InstructionFragment {
+                    elevation: Elevation::Normal,
+                    value: Unsigned36Bit::from(0o71_u32),
+                },]
+            },
         ]
+    );
+}
+
+#[test]
+fn test_symbol_name_one_syllable() {
+    assert_eq!(
+        parse_successfully_with("START4", symbol_name),
+        SymbolName {
+            canonical: "START4".to_string(),
+            as_used: "START4".to_string(),
+        }
+    );
+}
+
+#[test]
+fn test_symbol_name_two_syllables() {
+    assert_eq!(
+        parse_successfully_with("TWO WORDS", symbol_name),
+        SymbolName {
+            canonical: "TWOWORDS".to_string(),
+            as_used: "TWO WORDS".to_string(),
+        }
+    );
+}
+
+#[test]
+fn test_directive_with_single_syllable_tag() {
+    assert_eq!(
+        parse_successfully_with("START4  \t->\t205\n", directive),
+        vec![ProgramInstruction {
+            tag: Some(SymbolName {
+                canonical: "START4".to_string(),
+                as_used: "START4".to_string(),
+            }),
+            parts: vec![InstructionFragment {
+                elevation: Elevation::Normal,
+                value: Unsigned36Bit::from(0o205_u32),
+            },]
+        },]
+    );
+}
+
+#[test]
+fn test_arrow() {
+    fn arrow_string<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, String> {
+        map(arrow, |s| s.to_string())(input)
+    }
+    assert_eq!(
+        parse_successfully_with("->", arrow_string),
+        "->".to_string()
+    );
+    assert_eq!(
+        parse_successfully_with("  -> ", arrow_string),
+        "  -> ".to_string()
+    );
+}
+
+#[test]
+fn test_multi_syllable_tag() {
+    let (tail, symbol, errors) = parse_partially_with("CODE HERE->205\n", parse_symex);
+    dbg!(&tail);
+    dbg!(&symbol);
+    dbg!(&errors);
+    assert!(errors.is_empty());
+    assert_eq!(
+        symbol,
+        SymbolName {
+            canonical: "CODEHERE".to_string(),
+            as_used: "CODE HERE".to_string(),
+        }
+    );
+    assert_eq!(tail, "->205\n");
+}
+
+#[test]
+fn test_directive_with_multi_syllable_tag() {
+    assert_eq!(
+        parse_successfully_with("CODE HERE->205\n", directive),
+        vec![ProgramInstruction {
+            tag: Some(SymbolName {
+                canonical: "CODEHERE".to_string(),
+                as_used: "CODE HERE".to_string(),
+            }),
+            parts: vec![InstructionFragment {
+                elevation: Elevation::Normal,
+                value: Unsigned36Bit::from(0o205_u32),
+            },]
+        },]
     );
 }
 
@@ -191,7 +320,7 @@ fn assemble_literal(input: &str, expected: &InstructionFragment) {
         panic!("no symbol should have been generated");
     }
     match directive.as_slice() {
-        [ProgramInstruction::Parts(fragments)] => match fragments.as_slice() {
+        [ProgramInstruction { tag: None, parts }] => match parts.as_slice() {
             [only_frag] => {
                 if only_frag == expected {
                     return;
@@ -199,7 +328,7 @@ fn assemble_literal(input: &str, expected: &InstructionFragment) {
                 panic!("expected fragment {:?}, got {:?}", expected, only_frag);
             }
             _ => {
-                panic!("expected fragment {:?}, got {:?}", expected, &fragments);
+                panic!("expected fragment {:?}, got {:?}", expected, &parts);
             }
         },
         _ => {

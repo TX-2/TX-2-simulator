@@ -82,6 +82,21 @@ where
     (output, errors.into_inner())
 }
 
+#[cfg(test)]
+pub(crate) fn parse_partially_with<'a, T, F>(
+    input_text: &'a str,
+    parser: F,
+) -> (&'a str, T, Vec<Error>)
+where
+    F: for<'b> Fn(LocatedSpan<'a, 'b>) -> IResult<'a, 'b, T>,
+{
+    let errors = RefCell::new(Vec::new());
+    let state: State = State(&errors);
+    let input: LocatedSpan<'a, '_> = LocatedSpan::new_extra(input_text, state);
+    let (tail, output) = parser(input).expect("parser cannot fail");
+    (tail.fragment(), output, errors.into_inner())
+}
+
 pub fn parse(source_body: &str) -> (Vec<ProgramInstruction>, Vec<Error>) {
     parse_with(source_body, source_file)
 }
