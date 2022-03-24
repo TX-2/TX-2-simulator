@@ -290,6 +290,24 @@ fn test_directive_with_multi_syllable_tag() {
 }
 
 #[test]
+fn test_directive_with_real_arrow_tag() {
+    const INPUT: &str = "HERE→207\n"; // real Unicode rightward arrow (U+2192).
+    assert_eq!(
+        parse_successfully_with(INPUT, directive),
+        vec![ProgramInstruction {
+            tag: Some(SymbolName {
+                canonical: "HERE".to_string(),
+                as_used: "HERE".to_string(),
+            }),
+            parts: vec![InstructionFragment {
+                elevation: Elevation::Normal,
+                value: Unsigned36Bit::from(0o207_u32),
+            },]
+        },]
+    );
+}
+
+#[test]
 fn test_end_of_file() {
     parse_successfully_with("", ek::expect_end_of_file);
 }

@@ -454,7 +454,15 @@ pub(crate) fn parse_symex<'a, 'b>(
 pub(crate) fn arrow<'a, 'b>(
     input: ek::LocatedSpan<'a, 'b>,
 ) -> ek::IResult<'a, 'b, ek::LocatedSpan<'a, 'b>> {
-    recognize(tuple((space0, tag("->"), space0)))(input)
+    fn just_arrow<'a, 'b>(
+        input: ek::LocatedSpan<'a, 'b>,
+    ) -> ek::IResult<'a, 'b, ek::LocatedSpan<'a, 'b>> {
+        alt((
+            tag("->"),
+            tag("\u{2192}"), // Unicode rightwards pointing arrow
+        ))(input)
+    }
+    recognize(tuple((space0, just_arrow, space0)))(input)
 }
 
 pub(crate) fn symbol_name<'a, 'b>(
