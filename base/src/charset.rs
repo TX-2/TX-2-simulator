@@ -177,6 +177,7 @@ pub struct DescribedChar {
     pub base_char: char,
     pub display: Option<char>,
     pub attributes: LincolnState,
+    pub advance: bool,
 }
 
 pub fn lincoln_char_to_described_char(
@@ -189,6 +190,7 @@ pub fn lincoln_char_to_described_char(
     let by_case = |upper: char, lower: char| -> Option<char> {
         Some(if state.uppercase { upper } else { lower })
     };
+    let advance: bool = *lin_ch != 0o12 && *lin_ch != 0o13;
     let base_char: Option<char> = match lin_ch {
         0o00 => by_case('0', '☛'), // \U261B, black hand pointing right
         0o01 => by_case('1', 'Σ'),  // \U03A3, Greek capital letter Sigma
@@ -200,15 +202,29 @@ pub fn lincoln_char_to_described_char(
         0o07 => by_case('7', '→'), // rightwards arrow (U+2192)
         0o10 => by_case('8', '<'),
         0o11 => by_case('9', '>'),
-        0o12 => by_case('_', '‾'),   // Overline (U+203E)
-        0o13 => by_case('○', '□'), // U+25CB white circle, U+25A1 white square
-        0o14 => return nm(),           // "READ IN"
-        0o15 => return nm(),           // "BEGIN"
-        0o16 => return nm(),           // "NO"
-        0o17 => return nm(),           // "YES"
-        0o20 => by_case('A', '≈'),   // Almost Equal To (U+2248)
-        0o21 => by_case('B', '⊂'),   // Subset of (U+2282)
-        0o22 => by_case('C', '∨'),   // Logical or (U+2228)
+        0o12 => {
+            // These characters do not advance the carriage.  Hence we
+            // translate the lower-case 0o12 into Unicode 'combining
+            // low line' rather than underscore.
+            by_case(
+                '\u{0332}', // combining low line
+                '\u{0305}', // combining overline
+            )
+        }
+        0o13 => {
+            // These characters do not advance the carriage.
+            by_case(
+                '\u{20DD}', // combining enclosing circle
+                '\u{20DE}', // combining enclosing square
+            )
+        }
+        0o14 => return nm(),         // "READ IN"
+        0o15 => return nm(),         // "BEGIN"
+        0o16 => return nm(),         // "NO"
+        0o17 => return nm(),         // "YES"
+        0o20 => by_case('A', '≈'), // Almost Equal To (U+2248)
+        0o21 => by_case('B', '⊂'), // Subset of (U+2282)
+        0o22 => by_case('C', '∨'), // Logical or (U+2228)
         0o23 => by_case('D', 'q'),
         0o24 => by_case('E', 'γ'), // Greek small letter gamma (U+03B3)
         0o25 => by_case('F', 't'),
@@ -298,6 +314,7 @@ pub fn lincoln_char_to_described_char(
             base_char: base,
             display: display,
             attributes: state.clone(),
+            advance,
         }))
     } else {
         Ok(None)
@@ -312,12 +329,13 @@ pub fn lincoln_to_unicode_strict(
 ) -> Result<String, LincolnToUnicodeConversionFailure> {
     let mut result = String::with_capacity(input.len());
     let mut state: LincolnState = LincolnState::default();
-    for byte in input {
+    for byte in input.iter() {
         match lincoln_char_to_described_char(byte, &mut state) {
             Ok(Some(DescribedChar {
                 base_char: _,
                 display: Some(display),
                 attributes: _,
+                advance: _,
             })) => {
                 result.push(display);
             }
@@ -325,6 +343,7 @@ pub fn lincoln_to_unicode_strict(
                 base_char,
                 display: None,
                 attributes,
+                advance: _,
             })) => match attributes.script {
                 Script::Normal => unreachable!(),
                 Script::Sub => {
@@ -432,6 +451,7 @@ impl UnicodeToLincolnMapping {
                         base_char: _,
                         display: Some(display),
                         attributes: _,
+                        advance: _,
                     })) = lincoln_char_to_described_char(&value, &mut state)
                     {
                         m.insert(display, LincChar { state, value });
@@ -499,7 +519,7 @@ fn round_trip() {
 
     let ulmap = UnicodeToLincolnMapping::new();
     must_round_trip("HELLO, WORLD.  012345", &ulmap);
-    must_round_trip("(){}_^*", &ulmap);
+    must_round_trip("(){}^*", &ulmap);
     must_round_trip("iyzjkaph", &ulmap);
     must_round_trip("\t\r", &ulmap);
     must_round_trip("\u{2080}", &ulmap); // ₀
@@ -549,6 +569,25 @@ fn round_trip() {
     must_round_trip("ᵂ", &ulmap);
     must_round_trip("\u{2093}", &ulmap);
     must_round_trip("YZ", &ulmap);
+
+    // Some characters in the Lincoln Writer character set do not
+    // advance the carriage (these are 0o12 and 0o13, both upper and
+    // lower case for each).  We convert these into Unicode combining
+    // characters.
+    must_round_trip(
+        concat!(
+            "\u{0332}", // combining low line
+            "\u{0305}", // combining overline
+        ),
+        &ulmap,
+    );
+    must_round_trip(
+        concat!(
+            "\u{20DD}", // combining enclosing circle
+            "\u{20DE}", // combining enclosing square
+        ),
+        &ulmap,
+    );
 }
 
 #[test]
