@@ -101,6 +101,8 @@ pub fn superscript_char(ch: char) -> Result<char, NoSuperscriptKnown> {
 pub enum LincolnToUnicodeConversionFailure {
     CharacterOutOfRange(u8),
     NoMapping(u8),
+    CannotSuperscript(u8, char),
+    CannotSubscript(u8, char),
 }
 
 impl Display for LincolnToUnicodeConversionFailure {
@@ -120,21 +122,44 @@ impl Display for LincolnToUnicodeConversionFailure {
 		    u
 		)
             }
+            LincolnToUnicodeConversionFailure::CannotSubscript(u, ch) => {
+                write!(
+		    f,
+		    "cannot convert byte {:#o} from Lincoln Writer character set to Unicode, because Unicode has no subscript form of '{}'",
+		    u,
+		    ch
+		)
+            }
+            LincolnToUnicodeConversionFailure::CannotSuperscript(u, ch) => {
+                write!(
+		    f,
+		    "cannot convert byte {:#o} from Lincoln Writer character set to Unicode, because Unicode has no superscript form of '{}'",
+		    u,
+		    ch
+		)
+            }
         }
     }
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
-enum Script {
+pub enum Script {
     Normal,
     Super,
     Sub,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
-struct LincolnState {
-    script: Script,
-    uppercase: bool,
+pub enum Colour {
+    Black,
+    Red,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub struct LincolnState {
+    pub script: Script,
+    pub uppercase: bool,
+    pub colour: Colour,
 }
 
 impl Default for LincolnState {
@@ -142,15 +167,23 @@ impl Default for LincolnState {
         Self {
             script: Script::Normal,
             uppercase: true,
+            colour: Colour::Black,
         }
     }
 }
 
-fn lincoln_char_to_unicode_char(
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub struct DescribedChar {
+    pub base_char: char,
+    pub display: Option<char>,
+    pub attributes: LincolnState,
+}
+
+pub fn lincoln_char_to_described_char(
     lin_ch: &u8,
     state: &mut LincolnState,
-) -> Result<Option<char>, LincolnToUnicodeConversionFailure> {
-    let nm = || -> Result<Option<char>, LincolnToUnicodeConversionFailure> {
+) -> Result<Option<DescribedChar>, LincolnToUnicodeConversionFailure> {
+    let nm = || -> Result<Option<DescribedChar>, LincolnToUnicodeConversionFailure> {
         Err(LincolnToUnicodeConversionFailure::NoMapping(*lin_ch))
     };
     let by_case = |upper: char, lower: char| -> Option<char> {
@@ -208,7 +241,11 @@ fn lincoln_char_to_unicode_char(
         0o60 => Some('\r'),
         0o61 => Some('\t'),
         0o62 => Some('\u{0008}'), // backspace, U+0008
-        0o63 => return nm(),      // COLOR BLACK
+        0o63 => {
+            // COLOR BLACK
+            state.colour = Colour::Black;
+            None
+        }
         0o64 => {
             state.script = Script::Super;
             None
@@ -221,7 +258,11 @@ fn lincoln_char_to_unicode_char(
             state.script = Script::Sub;
             None
         }
-        0o67 => return nm(),      // COLOR RED
+        0o67 => {
+            // COLOR RED
+            state.colour = Colour::Red;
+            None
+        }
         0o70 => Some(' '),        // space
         0o71 => return nm(),      // WORD EXAM
         0o72 => Some('\n'),       // LINE FEED
@@ -248,11 +289,16 @@ fn lincoln_char_to_unicode_char(
     };
 
     if let Some(base) = base_char {
-        match state.script {
-            Script::Normal => Ok(Some(base)),
-            Script::Sub => Ok(Some(subscript_char(base).unwrap_or(base))),
-            Script::Super => Ok(Some(superscript_char(base).unwrap_or(base))),
-        }
+        let display = match state.script {
+            Script::Normal => Some(base),
+            Script::Sub => subscript_char(base).ok(),
+            Script::Super => superscript_char(base).ok(),
+        };
+        Ok(Some(DescribedChar {
+            base_char: base,
+            display: display,
+            attributes: state.clone(),
+        }))
     } else {
         Ok(None)
     }
@@ -267,10 +313,31 @@ pub fn lincoln_to_unicode_strict(
     let mut result = String::with_capacity(input.len());
     let mut state: LincolnState = LincolnState::default();
     for byte in input {
-        match lincoln_char_to_unicode_char(byte, &mut state) {
-            Ok(Some(ch)) => {
-                result.push(ch);
+        match lincoln_char_to_described_char(byte, &mut state) {
+            Ok(Some(DescribedChar {
+                base_char: _,
+                display: Some(display),
+                attributes: _,
+            })) => {
+                result.push(display);
             }
+            Ok(Some(DescribedChar {
+                base_char,
+                display: None,
+                attributes,
+            })) => match attributes.script {
+                Script::Normal => unreachable!(),
+                Script::Sub => {
+                    return Err(LincolnToUnicodeConversionFailure::CannotSubscript(
+                        *byte, base_char,
+                    ));
+                }
+                Script::Super => {
+                    return Err(LincolnToUnicodeConversionFailure::CannotSuperscript(
+                        *byte, base_char,
+                    ));
+                }
+            },
             Ok(None) => (),
             Err(e) => {
                 return Err(e);
@@ -302,8 +369,9 @@ fn test_lincoln_to_unicode_strict() {
             0o27, // H
             0o66, // Subscript
             0o02, // 2
-            0o36
-        ]), // O
+            0o65, // Normal
+            0o36  // O
+        ]),
         Ok("H₂O".to_string())
     );
 
@@ -326,11 +394,12 @@ struct LincChar {
     value: u8,
 }
 
-struct UnicodeToLincolnMapping {
+pub struct UnicodeToLincolnMapping {
     m: HashMap<char, LincChar>,
 }
 
-enum UnicodeToLincolnConversionFailure {
+#[derive(Debug, Clone)]
+pub enum UnicodeToLincolnConversionFailure {
     NoMapping(char),
 }
 
@@ -349,14 +418,23 @@ impl Display for UnicodeToLincolnConversionFailure {
 }
 
 impl UnicodeToLincolnMapping {
-    fn new() -> UnicodeToLincolnMapping {
+    pub fn new() -> UnicodeToLincolnMapping {
         let mut m: HashMap<char, LincChar> = HashMap::new();
         for script in [Script::Normal, Script::Super, Script::Sub] {
             for uppercase in [false, true] {
                 for value in 0..=0o77 {
-                    let mut state = LincolnState { script, uppercase };
-                    if let Ok(Some(unicode)) = lincoln_char_to_unicode_char(&value, &mut state) {
-                        m.insert(unicode, LincChar { state, value });
+                    let mut state = LincolnState {
+                        script,
+                        uppercase,
+                        colour: Colour::Black,
+                    };
+                    if let Ok(Some(DescribedChar {
+                        base_char: _,
+                        display: Some(display),
+                        attributes: _,
+                    })) = lincoln_char_to_described_char(&value, &mut state)
+                    {
+                        m.insert(display, LincChar { state, value });
                     }
                 }
             }
@@ -476,15 +554,17 @@ fn round_trip() {
 #[test]
 fn missing_superscript() {
     // There is no superscript uppercase Y in Unicode.  So we expect
-    // the mapping to just select a regular 'Y'
+    // the mapping to fail.
     assert_eq!(
         lincoln_to_unicode_strict(&[
             0o64, // superscript
             0o75, // uppercase
-            0o50
-        ]), // Y
-        Ok("Y".to_string())
-    ); // plain Y, not superscript
+            0o50  // Y
+        ]),
+        Err(LincolnToUnicodeConversionFailure::CannotSuperscript(
+            0o50, 'Y'
+        ))
+    );
 }
 
 #[test]
