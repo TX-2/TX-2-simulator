@@ -1,5 +1,7 @@
 // Assembler tests.
+
 use base::prelude::*;
+use std::cell::RefCell;
 
 use nom::combinator::map;
 
@@ -37,6 +39,19 @@ where
         panic!("unexpected parse errors: {:?}", &errors);
     }
     output
+}
+
+#[cfg(test)]
+fn parse_test_input<'a, F>(input_text: &'a str, parser: F) -> Result<String, String>
+where
+    F: for<'b> Fn(ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, ek::LocatedSpan<'a, 'b>>,
+{
+    let errors = RefCell::new(Vec::new());
+    let input: ek::LocatedSpan<'a, '_> = ek::LocatedSpan::new_extra(input_text, ek::State(&errors));
+    match parser(input) {
+        Ok(out) => Ok(out.1.fragment().to_string()),
+        Err(e) => Err(e.to_string()),
+    }
 }
 
 #[test]
@@ -170,6 +185,31 @@ fn test_parse_symex() {
     ] {
         let got: SymbolName = parse_successfully_with(input, parse_symex);
         assert_eq!(got.canonical, expected);
+    }
+}
+
+#[test]
+fn test_dead_char() {
+    let errors = RefCell::new(Vec::new());
+    let input: ek::LocatedSpan = ek::LocatedSpan::new_extra("X", ek::State(&errors));
+    assert!(dead_char(input).is_err());
+
+    let errors = RefCell::new(Vec::new());
+    let input: ek::LocatedSpan = ek::LocatedSpan::new_extra("\u{0332}", ek::State(&errors));
+    assert!(dead_char(input).is_ok());
+
+    assert!(parse_test_input("\u{0332}", dead_char).is_ok());
+}
+
+#[test]
+fn test_parse_compound_char() {
+    fn parse_cc<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, String> {
+        map(parse_compound_char, |cc| cc.fragment().to_string())(input)
+    }
+
+    for (input, expected) in [("X\u{0008}Y", "X\u{0008}Y")] {
+        let got: String = parse_successfully_with(input, parse_cc);
+        assert_eq!(got.as_str(), expected);
     }
 }
 
