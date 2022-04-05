@@ -5,14 +5,12 @@
 use std::cell::RefCell;
 use std::ops::Range;
 
-use nom::branch::alt;
-use nom::bytes::complete::take;
 use nom::character::complete::anychar;
 use nom::combinator::{all_consuming, map, not, rest};
-use nom::sequence::{preceded, terminated};
+use nom::sequence::preceded;
 
-use crate::parser::{directive, ErrorLocation, ProgramInstruction};
-use crate::state::{Error, NumeralMode, State};
+use crate::parser::ErrorLocation;
+use crate::state::{Error, State};
 
 pub type LocatedSpan<'a, 'b> = nom_locate::LocatedSpan<&'a str, State<'b>>;
 pub type IResult<'a, 'b, T> = nom::IResult<LocatedSpan<'a, 'b>, T>;
@@ -55,11 +53,6 @@ pub(crate) fn expect_end_of_file<'a, 'b>(body: LocatedSpan<'a, 'b>) -> IResult<'
     )(body)
 }
 
-fn source_file<'a, 'b>(body: LocatedSpan<'a, 'b>) -> IResult<'a, 'b, Vec<ProgramInstruction>> {
-    let parse_directive = alt((directive, map(take(0usize), |_| Vec::new())));
-    terminated(parse_directive, expect_end_of_file)(body)
-}
-
 pub(crate) fn parse_with<'a, T, F, M>(
     input_text: &'a str,
     parser: F,
@@ -91,15 +84,4 @@ where
     let input: LocatedSpan<'a, '_> = LocatedSpan::new_extra(input_text, state);
     let (tail, output) = parser(input).expect("parser cannot fail");
     (tail.fragment(), output, errors.into_inner())
-}
-
-pub fn parse(source_body: &str) -> (Vec<ProgramInstruction>, Vec<Error>) {
-    fn setup(state: &mut State) {
-        // Octal is actually the default numeral mode, we just call
-        // set_numeral_mode here to keep Clippy happy until we
-        // implement ☛☛DECIMAL and ☛☛OCTAL.
-        state.set_numeral_mode(NumeralMode::Decimal); // appease Clippy
-        state.set_numeral_mode(NumeralMode::Octal);
-    }
-    parse_with(source_body, source_file, setup)
 }

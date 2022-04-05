@@ -12,7 +12,7 @@ use nom::multi::{many0, many1};
 use nom::sequence::{pair, preceded, separated_pair, terminated, tuple};
 
 use crate::ek::{self, ToRange};
-use crate::state::Error;
+use crate::state::{Error, NumeralMode, State};
 use crate::types::*;
 use base::prelude::*;
 
@@ -743,21 +743,50 @@ pub(crate) fn newline<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a,
     char('\n')(input)
 }
 
-pub(crate) fn directive<'a, 'b>(
+/// Parse a manuscript (which is a sequence of metacommands, macros
+/// and assembly-language instructions).
+pub(crate) fn parse_manuscript<'a, 'b>(
     input: ek::LocatedSpan<'a, 'b>,
 ) -> ek::IResult<'a, 'b, Vec<ProgramInstruction>> {
+    // TODO: when we implement metacommands we will need to separate
+    // the processing of the metacommands and the generation of the
+    // assembled code, because in between those things has to come the
+    // execution of metacommands such as INSERT, DELETE, REPLACE.
     many0(terminated(
         program_instruction,
         ek::expect(newline, "expected newline after a program instruction"),
     ))(input)
 }
 
-pub fn parse_source_file(
+pub fn source_file(
     body: &str,
     _symtab: &mut SymbolTable,
     errors: &mut Vec<Error>,
 ) -> Result<Vec<ProgramInstruction>, AssemblerFailure> {
-    let (prog_instr, new_errors) = ek::parse(body);
+    fn setup(state: &mut State) {
+        // Octal is actually the default numeral mode, we just call
+        // set_numeral_mode here to keep Clippy happy until we
+        // implement ☛☛DECIMAL and ☛☛OCTAL.
+        state.set_numeral_mode(NumeralMode::Decimal); // appease Clippy
+        state.set_numeral_mode(NumeralMode::Octal);
+    }
+
+    fn parse_empty_file<'a, 'b>(
+        body: ek::LocatedSpan<'a, 'b>,
+    ) -> ek::IResult<'a, 'b, Vec<ProgramInstruction>> {
+        map(take(0usize), |_| Vec::new())(body)
+    }
+
+    fn parse_source_file<'a, 'b>(
+        body: ek::LocatedSpan<'a, 'b>,
+    ) -> ek::IResult<'a, 'b, Vec<ProgramInstruction>> {
+        terminated(
+            alt((parse_manuscript, parse_empty_file)),
+            ek::expect_end_of_file,
+        )(body)
+    }
+
+    let (prog_instr, new_errors) = ek::parse_with(body, parse_source_file, setup);
     if !new_errors.is_empty() {
         errors.extend(new_errors.into_iter());
     }

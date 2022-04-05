@@ -2,7 +2,7 @@ use std::ffi::OsStr;
 use std::fs::OpenOptions;
 use std::io::{BufReader, Read};
 
-use crate::parser::parse_source_file;
+use crate::parser::source_file;
 use crate::types::*;
 
 pub fn assemble_file(
@@ -28,7 +28,7 @@ pub fn assemble_file(
         Ok(_) => {
             let mut symtab = SymbolTable::new();
             let mut errors = Vec::new();
-            let _directive = parse_source_file(&source_file_body, &mut symtab, &mut errors)?;
+            let _directive = source_file(&source_file_body, &mut symtab, &mut errors)?;
             match errors.as_slice() {
                 [first, ..] => {
                     for e in errors.iter() {

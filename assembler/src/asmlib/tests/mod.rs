@@ -7,14 +7,14 @@ use nom::combinator::map;
 
 use super::ek::{self, parse_partially_with};
 use super::parser::*;
-use super::state::State;
+use super::state::{Error, NumeralMode, State};
 use super::types::{Elevation, InstructionFragment, SymbolName, SymbolTable};
 
 #[test]
 fn test_assemble_blank_line() {
     let mut symtab = SymbolTable::new();
-    let mut errors: Vec<ek::Error> = Vec::new();
-    match parse_source_file("", &mut symtab, &mut errors) {
+    let mut errors: Vec<Error> = Vec::new();
+    match source_file("", &mut symtab, &mut errors) {
         Err(e) => {
             panic!(
                 "expected blank line not to generate an assembly error, got error {}",
@@ -38,7 +38,7 @@ pub(crate) fn parse_successfully_with<'a, T, F, M>(
 ) -> T
 where
     F: for<'b> Fn(ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, T>,
-    M: FnMut(&mut ek::State),
+    M: FnMut(&mut State),
 {
     let (output, errors) = ek::parse_with(input_text, parser, state_setup);
     if !errors.is_empty() {
@@ -54,7 +54,7 @@ where
 {
     let errors = RefCell::new(Vec::new());
     let input: ek::LocatedSpan<'a, '_> =
-        ek::LocatedSpan::new_extra(input_text, ek::State::new(&errors));
+        ek::LocatedSpan::new_extra(input_text, State::new(&errors));
     match parser(input) {
         Ok(out) => Ok(out.1.fragment().to_string()),
         Err(e) => Err(e.to_string()),
@@ -62,11 +62,11 @@ where
 }
 
 #[cfg(test)]
-fn no_state_setup(_: &mut ek::State) {}
+fn no_state_setup(_: &mut State) {}
 
 #[cfg(test)]
-fn set_decimal_mode(state: &mut ek::State) {
-    state.set_numeral_mode(ek::NumeralMode::Decimal);
+fn set_decimal_mode(state: &mut State) {
+    state.set_numeral_mode(NumeralMode::Decimal);
 }
 
 #[test]
@@ -352,17 +352,17 @@ fn test_parse_compound_char() {
 }
 
 #[test]
-fn test_empty_directive() {
+fn test_empty_manuscript() {
     assert_eq!(
-        parse_successfully_with("", directive, no_state_setup),
+        parse_successfully_with("", parse_manuscript, no_state_setup),
         vec![]
     )
 }
 
 #[test]
-fn test_directive_without_tag() {
+fn test_manuscript_without_tag() {
     assert_eq!(
-        parse_successfully_with("673\n71\n", directive, no_state_setup),
+        parse_successfully_with("673\n71\n", parse_manuscript, no_state_setup),
         vec![
             ProgramInstruction {
                 tag: None,
@@ -405,9 +405,9 @@ fn test_symbol_name_two_syllables() {
 }
 
 #[test]
-fn test_directive_with_single_syllable_tag() {
+fn test_manuscript_with_single_syllable_tag() {
     assert_eq!(
-        parse_successfully_with("START4  \t->\t205\n", directive, no_state_setup),
+        parse_successfully_with("START4  \t->\t205\n", parse_manuscript, no_state_setup),
         vec![ProgramInstruction {
             tag: Some(SymbolName {
                 canonical: "START4".to_string(),
@@ -454,9 +454,9 @@ fn test_multi_syllable_tag() {
 }
 
 #[test]
-fn test_directive_with_multi_syllable_tag() {
+fn test_manuscript_with_multi_syllable_tag() {
     assert_eq!(
-        parse_successfully_with("CODE HERE->205\n", directive, no_state_setup),
+        parse_successfully_with("CODE HERE->205\n", parse_manuscript, no_state_setup),
         vec![ProgramInstruction {
             tag: Some(SymbolName {
                 canonical: "CODEHERE".to_string(),
@@ -471,10 +471,10 @@ fn test_directive_with_multi_syllable_tag() {
 }
 
 #[test]
-fn test_directive_with_real_arrow_tag() {
+fn test_manuscript_with_real_arrow_tag() {
     const INPUT: &str = "HERE→207\n"; // real Unicode rightward arrow (U+2192).
     assert_eq!(
-        parse_successfully_with(INPUT, directive, no_state_setup),
+        parse_successfully_with(INPUT, parse_manuscript, no_state_setup),
         vec![ProgramInstruction {
             tag: Some(SymbolName {
                 canonical: "HERE".to_string(),
@@ -502,8 +502,8 @@ fn test_not_end_of_file() {
 #[cfg(test)]
 fn assemble_nonempty_valid_input(input: &str) -> (Vec<ProgramInstruction>, SymbolTable) {
     let mut symtab = SymbolTable::new();
-    let mut errors: Vec<ek::Error> = Vec::new();
-    let result = parse_source_file(input, &mut symtab, &mut errors);
+    let mut errors: Vec<Error> = Vec::new();
+    let result = source_file(input, &mut symtab, &mut errors);
     if !errors.is_empty() {
         dbg!(&errors);
         panic!("assemble_nonempty_valid_input: errors were reported");
