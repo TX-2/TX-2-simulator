@@ -12,6 +12,7 @@ use nom::combinator::{all_consuming, map, not, rest};
 use nom::sequence::{preceded, terminated};
 
 use crate::parser::{directive, ErrorLocation, ProgramInstruction};
+use crate::state::{Error, NumeralMode, State};
 
 pub type LocatedSpan<'a, 'b> = nom_locate::LocatedSpan<&'a str, State<'b>>;
 pub type IResult<'a, 'b, T> = nom::IResult<LocatedSpan<'a, 'b>, T>;
@@ -25,50 +26,6 @@ impl<'a, 'b> ToRange for LocatedSpan<'a, 'b> {
         let start = self.location_offset();
         let end = start + self.fragment().len();
         start..end
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum NumeralMode {
-    Octal,
-    Decimal,
-}
-
-impl Default for NumeralMode {
-    fn default() -> NumeralMode {
-        NumeralMode::Octal
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Error(pub ErrorLocation, pub String);
-
-#[derive(Clone, Debug)]
-pub struct State<'b> {
-    pub(crate) errors: &'b RefCell<Vec<Error>>,
-    pub(crate) radix: NumeralMode,
-}
-
-impl<'b> State<'b> {
-    pub fn new(errors: &'b RefCell<Vec<Error>>) -> State {
-        State {
-            errors,
-            radix: NumeralMode::default(),
-        }
-    }
-    pub fn report_error(&self, error: Error) {
-        self.errors.borrow_mut().push(error);
-    }
-
-    pub fn radix(&self, alternate: bool) -> u32 {
-        match (&self.radix, alternate) {
-            (&NumeralMode::Octal, false) | (&NumeralMode::Decimal, true) => 8,
-            (&NumeralMode::Decimal, false) | (&NumeralMode::Octal, true) => 10,
-        }
-    }
-
-    pub fn set_numeral_mode(&mut self, numeral_mode: NumeralMode) {
-        self.radix = numeral_mode
     }
 }
 

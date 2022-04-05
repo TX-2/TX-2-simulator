@@ -7,6 +7,7 @@ use nom::combinator::map;
 
 use super::ek::{self, parse_partially_with};
 use super::parser::*;
+use super::state::State;
 use super::types::{Elevation, InstructionFragment, SymbolName, SymbolTable};
 
 #[test]
@@ -328,11 +329,11 @@ fn test_parse_symex() {
 #[test]
 fn test_dead_char() {
     let errors = RefCell::new(Vec::new());
-    let input: ek::LocatedSpan = ek::LocatedSpan::new_extra("X", ek::State::new(&errors));
+    let input: ek::LocatedSpan = ek::LocatedSpan::new_extra("X", State::new(&errors));
     assert!(dead_char(input).is_err());
 
     let errors = RefCell::new(Vec::new());
-    let input: ek::LocatedSpan = ek::LocatedSpan::new_extra("\u{0332}", ek::State::new(&errors));
+    let input: ek::LocatedSpan = ek::LocatedSpan::new_extra("\u{0332}", State::new(&errors));
     assert!(dead_char(input).is_ok());
 
     assert!(parse_test_input("\u{0332}", dead_char).is_ok());

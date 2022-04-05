@@ -1,4 +1,4 @@
-use std::fmt::{self, Display, Formatter, Write};
+use std::fmt::Write;
 use std::num::IntErrorKind;
 use std::ops::Range;
 
@@ -12,17 +12,9 @@ use nom::multi::{many0, many1};
 use nom::sequence::{pair, preceded, separated_pair, terminated, tuple};
 
 use crate::ek::{self, ToRange};
+use crate::state::Error;
 use crate::types::*;
 use base::prelude::*;
-
-impl Display for ek::Error {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        match self.0.columns.as_ref() {
-            None => write!(f, "{}: {}", self.0.line, self.1,),
-            Some(cols) => write!(f, "{}:{}: {}", self.0.line, cols.start, self.1,),
-        }
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct ErrorLocation {
@@ -763,7 +755,7 @@ pub(crate) fn directive<'a, 'b>(
 pub fn parse_source_file(
     body: &str,
     _symtab: &mut SymbolTable,
-    errors: &mut Vec<ek::Error>,
+    errors: &mut Vec<Error>,
 ) -> Result<Vec<ProgramInstruction>, AssemblerFailure> {
     let (prog_instr, new_errors) = ek::parse(body);
     if !new_errors.is_empty() {
