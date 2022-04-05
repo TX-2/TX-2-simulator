@@ -6,7 +6,7 @@ use std::ops::Range;
 //use base::prelude::*;
 use nom::branch::alt;
 use nom::bytes::complete::{tag, take, take_while1};
-use nom::character::complete::{char, oct_digit1, one_of, space0};
+use nom::character::complete::{char, digit1, one_of, space0};
 use nom::combinator::{map, map_res, opt, recognize, verify};
 use nom::multi::{many0, many1};
 use nom::sequence::{pair, preceded, separated_pair, terminated, tuple};
@@ -66,8 +66,8 @@ pub(crate) fn maybe_subscript_sign<'a, 'b>(
     )))(input)
 }
 
-fn make_u36(s: &str) -> Result<Unsigned36Bit, StringConversionFailed> {
-    match u64::from_str_radix(s, 8) {
+fn make_u36(s: &str, radix: u32) -> Result<Unsigned36Bit, StringConversionFailed> {
+    match u64::from_str_radix(s, radix) {
         Ok(n) => n.try_into().map_err(StringConversionFailed::Range),
         Err(e) => match e.kind() {
             IntErrorKind::Empty | IntErrorKind::InvalidDigit => {
@@ -81,8 +81,10 @@ fn make_u36(s: &str) -> Result<Unsigned36Bit, StringConversionFailed> {
     }
 }
 
-fn make_num((sign, digits): (Option<char>, &str)) -> Result<Unsigned36Bit, StringConversionFailed> {
-    let n = make_u36(digits)?;
+fn make_num(
+    (sign, digits, radix): (Option<char>, &str, u32),
+) -> Result<Unsigned36Bit, StringConversionFailed> {
+    let n = make_u36(digits, radix)?;
     if let Some('-') = sign {
         Ok(Unsigned36Bit::ZERO.wrapping_sub(n))
     } else {
@@ -91,9 +93,9 @@ fn make_num((sign, digits): (Option<char>, &str)) -> Result<Unsigned36Bit, Strin
 }
 
 fn make_num_from_span(
-    (sign, digits): (Option<char>, ek::LocatedSpan),
+    (sign, digits, dot): (Option<char>, ek::LocatedSpan, Option<ek::LocatedSpan>),
 ) -> Result<Unsigned36Bit, StringConversionFailed> {
-    make_num((sign, &digits))
+    make_num((sign, &digits, digits.extra.radix(dot.is_some())))
 }
 
 fn maybe_superscript_sign_to_maybe_regular_sign(
@@ -143,8 +145,13 @@ fn subscript_oct_digit_to_value(ch: char) -> Option<u8> {
 }
 
 fn make_superscript_num(
-    (superscript_sign, superscript_digits): (Option<char>, ek::LocatedSpan),
+    (superscript_sign, superscript_digits, dot): (
+        Option<char>,
+        ek::LocatedSpan,
+        Option<ek::LocatedSpan>,
+    ),
 ) -> Result<Unsigned36Bit, StringConversionFailed> {
+    let radix: u32 = superscript_digits.extra.radix(dot.is_some());
     let sign: Option<char> = maybe_superscript_sign_to_maybe_regular_sign(superscript_sign);
     let mut normal_digits: String = String::new();
     for digit in superscript_digits.fragment().chars() {
@@ -157,12 +164,13 @@ fn make_superscript_num(
             return Err(StringConversionFailed::NotOctal);
         }
     }
-    make_num((sign, &normal_digits))
+    make_num((sign, &normal_digits, radix))
 }
 
 fn make_subscript_num(
-    (subscript_sign, subscript_digits): (Option<char>, ek::LocatedSpan),
+    (subscript_sign, subscript_digits, dot): (Option<char>, ek::LocatedSpan, Option<char>),
 ) -> Result<Unsigned36Bit, StringConversionFailed> {
+    let radix: u32 = subscript_digits.extra.radix(dot.is_some());
     let sign: Option<char> = maybe_subscript_sign_to_maybe_regular_sign(subscript_sign);
     let mut normal_digits: String = String::new();
     for digit in subscript_digits.fragment().chars() {
@@ -175,7 +183,37 @@ fn make_subscript_num(
             return Err(StringConversionFailed::NotOctal);
         }
     }
-    make_num((sign, &normal_digits))
+    make_num((sign, &normal_digits, radix))
+}
+
+/// The Linconln writer places the "regular" (i.e. not superscript or
+/// subscript) in the middle of the vertical rise of normal digits
+/// instead of on the line.  So, "3⋅141", not "3.141".
+fn maybe_normal_dot<'a, 'b>(
+    input: ek::LocatedSpan<'a, 'b>,
+) -> ek::IResult<'a, 'b, Option<ek::LocatedSpan<'a, 'b>>> {
+    opt(alt((
+        tag("\u{22C5}"), // Unicode Dot Operator U+22C5 ("⋅")
+        tag("\u{00B7}"), // Unicode Middle Dot U+00B7 ("·")
+    )))(input)
+}
+
+fn maybe_superscript_dot<'a, 'b>(
+    input: ek::LocatedSpan<'a, 'b>,
+) -> ek::IResult<'a, 'b, Option<ek::LocatedSpan<'a, 'b>>> {
+    opt(
+        tag("\u{0307} "), // Unicode Combining Dot Above ̇followed by space ("̇ ")
+    )(input)
+}
+
+/// Recognise a subscript dot.  On the Linconln Writer, the dot is
+/// raised above the line, like the dot customarily used for the
+/// dot-product.  Hence for subscripts we use the regular ascii dot
+/// (full stop, period) which is on the line.
+fn maybe_subscript_dot<'a, 'b>(
+    input: ek::LocatedSpan<'a, 'b>,
+) -> ek::IResult<'a, 'b, Option<char>> {
+    opt(char('.'))(input)
 }
 
 pub(crate) fn normal_literal_instruction_fragment<'a, 'b>(
@@ -184,14 +222,14 @@ pub(crate) fn normal_literal_instruction_fragment<'a, 'b>(
     fn maybe_sign<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, Option<char>> {
         opt(alt((char('-'), char('+'))))(input)
     }
-
-    fn normal_octal_number<'a, 'b>(
-        input: ek::LocatedSpan<'a, 'b>,
-    ) -> ek::IResult<'a, 'b, Unsigned36Bit> {
-        map_res(pair(maybe_sign, oct_digit1), make_num_from_span)(input)
+    fn normal_number<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, Unsigned36Bit> {
+        map_res(
+            tuple((maybe_sign, digit1, maybe_normal_dot)),
+            make_num_from_span,
+        )(input)
     }
 
-    map(normal_octal_number, |n| InstructionFragment {
+    map(normal_number, |n| InstructionFragment {
         elevation: Elevation::Normal,
         value: n,
     })(input)
@@ -214,7 +252,11 @@ pub(crate) fn superscript_literal_instruction_fragment<'a, 'b>(
         }
 
         map_res(
-            pair(maybe_superscript_sign, superscript_oct_digit1),
+            tuple((
+                maybe_superscript_sign,
+                superscript_oct_digit1,
+                maybe_superscript_dot,
+            )),
             make_superscript_num,
         )(input)
     }
@@ -241,7 +283,11 @@ pub(crate) fn subscript_literal_instruction_fragment<'a, 'b>(
             take_while1(is_subscript_oct_digit)(input)
         }
         map_res(
-            pair(maybe_subscript_sign, subscript_oct_digit1),
+            tuple((
+                maybe_subscript_sign,
+                subscript_oct_digit1,
+                maybe_subscript_dot,
+            )),
             make_subscript_num,
         )(input)
     }
@@ -688,12 +734,6 @@ pub(crate) fn tag_definition<'a, 'b>(
 ) -> ek::IResult<'a, 'b, SymbolName> {
     terminated(symbol_name, arrow)(input)
 }
-
-// pub(crate) fn maybe_honest_tag_definition<'a, 'b>(
-//     input: ek::LocatedSpan<'a, 'b>,
-// ) -> ek::IResult<'a, 'b, Optional<> {
-//     opt(terminated(symbol_name, arrow))(input)
-// }
 
 pub(crate) fn program_instruction<'a, 'b>(
     input: ek::LocatedSpan<'a, 'b>,

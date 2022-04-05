@@ -30,11 +30,16 @@ fn test_assemble_blank_line() {
 }
 
 #[cfg(test)]
-pub(crate) fn parse_successfully_with<'a, T, F>(input_text: &'a str, parser: F) -> T
+pub(crate) fn parse_successfully_with<'a, T, F, M>(
+    input_text: &'a str,
+    parser: F,
+    state_setup: M,
+) -> T
 where
     F: for<'b> Fn(ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, T>,
+    M: FnMut(&mut ek::State),
 {
-    let (output, errors) = ek::parse_with(input_text, parser);
+    let (output, errors) = ek::parse_with(input_text, parser, state_setup);
     if !errors.is_empty() {
         panic!("unexpected parse errors: {:?}", &errors);
     }
@@ -47,19 +52,31 @@ where
     F: for<'b> Fn(ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, ek::LocatedSpan<'a, 'b>>,
 {
     let errors = RefCell::new(Vec::new());
-    let input: ek::LocatedSpan<'a, '_> = ek::LocatedSpan::new_extra(input_text, ek::State(&errors));
+    let input: ek::LocatedSpan<'a, '_> =
+        ek::LocatedSpan::new_extra(input_text, ek::State::new(&errors));
     match parser(input) {
         Ok(out) => Ok(out.1.fragment().to_string()),
         Err(e) => Err(e.to_string()),
     }
 }
 
+#[cfg(test)]
+fn no_state_setup(_: &mut ek::State) {}
+
+#[cfg(test)]
+fn set_decimal_mode(state: &mut ek::State) {
+    state.set_numeral_mode(ek::NumeralMode::Decimal);
+}
+
 #[test]
 fn test_maybe_superscript_sign() {
-    for sign in ['\u{207B}', '\u{207A}'] {
+    for sign in [
+        '\u{207B}', // ⁻
+        '\u{207A}', // ⁺
+    ] {
         let body = format!("{}", sign);
         assert_eq!(
-            parse_successfully_with(&body, maybe_superscript_sign),
+            parse_successfully_with(&body, maybe_superscript_sign, no_state_setup),
             Some(sign)
         );
     }
@@ -67,19 +84,24 @@ fn test_maybe_superscript_sign() {
 
 #[test]
 fn test_maybe_subscript_sign() {
-    for sign in ['\u{208B}', '\u{208A}'] {
+    for sign in [
+        '\u{208B}', // ₋
+        '\u{208A}', // ₊
+    ] {
         let body = format!("{}", sign);
         assert_eq!(
-            parse_successfully_with(&body, maybe_subscript_sign),
+            parse_successfully_with(&body, maybe_subscript_sign, no_state_setup),
             Some(sign)
         );
     }
 }
 
 #[test]
-fn test_normal_literal_instruction_fragment() {
+fn test_normal_literal_instruction_fragment_oct_defaultmode() {
+    // No trailing dot on a number indicates octal base (unless there
+    // was a previous ☛☛DECIMAL).
     assert_eq!(
-        parse_successfully_with("402", normal_literal_instruction_fragment),
+        parse_successfully_with("402", normal_literal_instruction_fragment, no_state_setup),
         InstructionFragment {
             elevation: Elevation::Normal,
             value: Unsigned36Bit::from(0o402_u32),
@@ -88,9 +110,56 @@ fn test_normal_literal_instruction_fragment() {
 }
 
 #[test]
-fn test_superscript_literal_instruction_fragment() {
+fn test_normal_literal_instruction_fragment_oct_decmode() {
+    // Simulate a previous ☛☛DECIMAL, so that the trailing dot selects octal.
     assert_eq!(
-        parse_successfully_with("³⁶", superscript_literal_instruction_fragment),
+        parse_successfully_with(
+            "402·",
+            normal_literal_instruction_fragment,
+            set_decimal_mode
+        ),
+        InstructionFragment {
+            elevation: Elevation::Normal,
+            value: Unsigned36Bit::from(0o402_u32), // note: octal
+        }
+    );
+}
+
+#[test]
+fn test_normal_literal_instruction_fragment_dec_defaultmode() {
+    // A trailing dot on a number indicates decimal base (unless there
+    // was a previous ☛☛DECIMAL).
+    assert_eq!(
+        parse_successfully_with("402·", normal_literal_instruction_fragment, no_state_setup),
+        InstructionFragment {
+            elevation: Elevation::Normal,
+            value: Unsigned36Bit::from(402_u32),
+        }
+    );
+}
+
+#[test]
+fn test_normal_literal_instruction_fragment_dec_decmode() {
+    assert_eq!(
+        // Decimal is the default if there was a previous ☛☛DECIMAL
+        parse_successfully_with("402", normal_literal_instruction_fragment, set_decimal_mode),
+        InstructionFragment {
+            elevation: Elevation::Normal,
+            value: Unsigned36Bit::from(402_u32),
+        }
+    );
+}
+
+#[test]
+fn test_superscript_literal_instruction_fragment_oct() {
+    // No trailing dot on a number indicates octal base (unless there
+    // was a previous ☛☛DECIMAL).
+    assert_eq!(
+        parse_successfully_with(
+            "³⁶",
+            superscript_literal_instruction_fragment,
+            no_state_setup
+        ),
         InstructionFragment {
             elevation: Elevation::Superscript,
             value: Unsigned36Bit::from(0o36_u32),
@@ -99,9 +168,44 @@ fn test_superscript_literal_instruction_fragment() {
 }
 
 #[test]
-fn test_subscript_literal_instruction_fragment() {
+fn test_superscript_literal_instruction_fragment_dec_defaultmode() {
+    // A trailing dot on a number indicates decimal base (unless there
+    // was a previous ☛☛DECIMAL).
     assert_eq!(
-        parse_successfully_with("₃₁", subscript_literal_instruction_fragment),
+        parse_successfully_with(
+            "³⁶̇ ",
+            superscript_literal_instruction_fragment,
+            no_state_setup
+        ),
+        InstructionFragment {
+            elevation: Elevation::Superscript,
+            value: Unsigned36Bit::from(36_u32), // decimal
+        }
+    );
+}
+
+#[test]
+fn test_superscript_literal_instruction_fragment_dec_decmode() {
+    // Simulate a previous ☛☛DECIMAL.
+    assert_eq!(
+        parse_successfully_with(
+            "³⁶",
+            superscript_literal_instruction_fragment,
+            set_decimal_mode
+        ),
+        InstructionFragment {
+            elevation: Elevation::Superscript,
+            value: Unsigned36Bit::from(36_u32), // decimal
+        }
+    );
+}
+
+#[test]
+fn test_subscript_literal_instruction_fragment_oct_defaultmode() {
+    // No trailing dot on a number indicates octal base (unless there
+    // was a previous ☛☛DECIMAL).
+    assert_eq!(
+        parse_successfully_with("₃₁", subscript_literal_instruction_fragment, no_state_setup),
         InstructionFragment {
             elevation: Elevation::Subscript,
             value: Unsigned36Bit::from(0o31_u32),
@@ -110,23 +214,56 @@ fn test_subscript_literal_instruction_fragment() {
 }
 
 #[test]
+fn test_subscript_literal_instruction_fragment_oct_decmode() {
+    // Simulate a previous ☛☛DECIMAL, so that the trailing dot selects octal.
+    assert_eq!(
+        parse_successfully_with(
+            "₃₁.",
+            subscript_literal_instruction_fragment,
+            set_decimal_mode
+        ),
+        InstructionFragment {
+            elevation: Elevation::Subscript,
+            value: Unsigned36Bit::from(0o31_u32),
+        }
+    );
+}
+
+#[test]
+fn test_subscript_literal_instruction_fragment_dec() {
+    // A trailing dot on a number indicates decimal base (unless there
+    // was a previous ☛☛DECIMAL).
+    assert_eq!(
+        parse_successfully_with(
+            "₃₁.",
+            subscript_literal_instruction_fragment,
+            no_state_setup
+        ),
+        InstructionFragment {
+            elevation: Elevation::Subscript,
+            value: Unsigned36Bit::from(31_u32),
+        }
+    );
+}
+
+#[test]
 fn test_program_instruction_fragment() {
     assert_eq!(
-        parse_successfully_with("₃₁", program_instruction_fragment),
+        parse_successfully_with("₃₁", program_instruction_fragment, no_state_setup),
         InstructionFragment {
             elevation: Elevation::Subscript,
             value: Unsigned36Bit::from(0o31_u32),
         }
     );
     assert_eq!(
-        parse_successfully_with("⁶³", program_instruction_fragment),
+        parse_successfully_with("⁶³", program_instruction_fragment, no_state_setup),
         InstructionFragment {
             elevation: Elevation::Superscript,
             value: Unsigned36Bit::from(0o63_u32),
         }
     );
     assert_eq!(
-        parse_successfully_with("6510", program_instruction_fragment),
+        parse_successfully_with("6510", program_instruction_fragment, no_state_setup),
         InstructionFragment {
             elevation: Elevation::Normal,
             value: Unsigned36Bit::from(0o6510_u32),
@@ -137,7 +274,7 @@ fn test_program_instruction_fragment() {
 #[test]
 fn test_program_instruction() {
     assert_eq!(
-        parse_successfully_with("⁶673₃₁", program_instruction),
+        parse_successfully_with("⁶673₃₁", program_instruction, no_state_setup),
         ProgramInstruction {
             tag: None,
             parts: vec![
@@ -183,7 +320,7 @@ fn test_parse_symex() {
         ("SCRATCH 'N' SNIFF", "SCRATCH'N'SNIFF"),
         ("F '", "F'"),
     ] {
-        let got: SymbolName = parse_successfully_with(input, parse_symex);
+        let got: SymbolName = parse_successfully_with(input, parse_symex, no_state_setup);
         assert_eq!(got.canonical, expected);
     }
 }
@@ -191,11 +328,11 @@ fn test_parse_symex() {
 #[test]
 fn test_dead_char() {
     let errors = RefCell::new(Vec::new());
-    let input: ek::LocatedSpan = ek::LocatedSpan::new_extra("X", ek::State(&errors));
+    let input: ek::LocatedSpan = ek::LocatedSpan::new_extra("X", ek::State::new(&errors));
     assert!(dead_char(input).is_err());
 
     let errors = RefCell::new(Vec::new());
-    let input: ek::LocatedSpan = ek::LocatedSpan::new_extra("\u{0332}", ek::State(&errors));
+    let input: ek::LocatedSpan = ek::LocatedSpan::new_extra("\u{0332}", ek::State::new(&errors));
     assert!(dead_char(input).is_ok());
 
     assert!(parse_test_input("\u{0332}", dead_char).is_ok());
@@ -208,20 +345,23 @@ fn test_parse_compound_char() {
     }
 
     for (input, expected) in [("X\u{0008}Y", "X\u{0008}Y")] {
-        let got: String = parse_successfully_with(input, parse_cc);
+        let got: String = parse_successfully_with(input, parse_cc, no_state_setup);
         assert_eq!(got.as_str(), expected);
     }
 }
 
 #[test]
 fn test_empty_directive() {
-    assert_eq!(parse_successfully_with("", directive), vec![])
+    assert_eq!(
+        parse_successfully_with("", directive, no_state_setup),
+        vec![]
+    )
 }
 
 #[test]
 fn test_directive_without_tag() {
     assert_eq!(
-        parse_successfully_with("673\n71\n", directive),
+        parse_successfully_with("673\n71\n", directive, no_state_setup),
         vec![
             ProgramInstruction {
                 tag: None,
@@ -244,7 +384,7 @@ fn test_directive_without_tag() {
 #[test]
 fn test_symbol_name_one_syllable() {
     assert_eq!(
-        parse_successfully_with("START4", symbol_name),
+        parse_successfully_with("START4", symbol_name, no_state_setup),
         SymbolName {
             canonical: "START4".to_string(),
             as_used: "START4".to_string(),
@@ -255,7 +395,7 @@ fn test_symbol_name_one_syllable() {
 #[test]
 fn test_symbol_name_two_syllables() {
     assert_eq!(
-        parse_successfully_with("TWO WORDS", symbol_name),
+        parse_successfully_with("TWO WORDS", symbol_name, no_state_setup),
         SymbolName {
             canonical: "TWOWORDS".to_string(),
             as_used: "TWO WORDS".to_string(),
@@ -266,7 +406,7 @@ fn test_symbol_name_two_syllables() {
 #[test]
 fn test_directive_with_single_syllable_tag() {
     assert_eq!(
-        parse_successfully_with("START4  \t->\t205\n", directive),
+        parse_successfully_with("START4  \t->\t205\n", directive, no_state_setup),
         vec![ProgramInstruction {
             tag: Some(SymbolName {
                 canonical: "START4".to_string(),
@@ -286,11 +426,11 @@ fn test_arrow() {
         map(arrow, |s| s.to_string())(input)
     }
     assert_eq!(
-        parse_successfully_with("->", arrow_string),
+        parse_successfully_with("->", arrow_string, no_state_setup),
         "->".to_string()
     );
     assert_eq!(
-        parse_successfully_with("  -> ", arrow_string),
+        parse_successfully_with("  -> ", arrow_string, no_state_setup),
         "  -> ".to_string()
     );
 }
@@ -315,7 +455,7 @@ fn test_multi_syllable_tag() {
 #[test]
 fn test_directive_with_multi_syllable_tag() {
     assert_eq!(
-        parse_successfully_with("CODE HERE->205\n", directive),
+        parse_successfully_with("CODE HERE->205\n", directive, no_state_setup),
         vec![ProgramInstruction {
             tag: Some(SymbolName {
                 canonical: "CODEHERE".to_string(),
@@ -333,7 +473,7 @@ fn test_directive_with_multi_syllable_tag() {
 fn test_directive_with_real_arrow_tag() {
     const INPUT: &str = "HERE→207\n"; // real Unicode rightward arrow (U+2192).
     assert_eq!(
-        parse_successfully_with(INPUT, directive),
+        parse_successfully_with(INPUT, directive, no_state_setup),
         vec![ProgramInstruction {
             tag: Some(SymbolName {
                 canonical: "HERE".to_string(),
@@ -349,12 +489,12 @@ fn test_directive_with_real_arrow_tag() {
 
 #[test]
 fn test_end_of_file() {
-    parse_successfully_with("", ek::expect_end_of_file);
+    parse_successfully_with("", ek::expect_end_of_file, no_state_setup);
 }
 
 #[test]
 fn test_not_end_of_file() {
-    let (_, errors) = ek::parse_with("something-is-here", ek::expect_end_of_file);
+    let (_, errors) = ek::parse_with("something-is-here", ek::expect_end_of_file, no_state_setup);
     assert!(!errors.is_empty());
 }
 
@@ -412,7 +552,7 @@ fn test_assemble_octal_literal() {
 #[test]
 fn test_assemble_octal_superscript_literal() {
     assemble_literal(
-        "³⁶\n", // 36, superscript
+        "⁺³⁶\n", // 36, superscript
         &InstructionFragment {
             elevation: Elevation::Superscript,
             value: Unsigned36Bit::from(0o36_u32),
@@ -423,7 +563,14 @@ fn test_assemble_octal_superscript_literal() {
 #[test]
 fn test_assemble_octal_subscript_literal() {
     assemble_literal(
-        "₁₃\n",
+        "₁₃\n", // without sign
+        &InstructionFragment {
+            elevation: Elevation::Subscript,
+            value: Unsigned36Bit::from(0o13_u32),
+        },
+    );
+    assemble_literal(
+        "₊₁₃\n", // with optional + sign
         &InstructionFragment {
             elevation: Elevation::Subscript,
             value: Unsigned36Bit::from(0o13_u32),

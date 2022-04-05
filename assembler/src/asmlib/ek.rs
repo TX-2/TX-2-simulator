@@ -29,14 +29,46 @@ impl<'a, 'b> ToRange for LocatedSpan<'a, 'b> {
 }
 
 #[derive(Debug, Clone)]
+pub enum NumeralMode {
+    Octal,
+    Decimal,
+}
+
+impl Default for NumeralMode {
+    fn default() -> NumeralMode {
+        NumeralMode::Octal
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct Error(pub ErrorLocation, pub String);
 
 #[derive(Clone, Debug)]
-pub struct State<'b>(pub(crate) &'b RefCell<Vec<Error>>);
+pub struct State<'b> {
+    pub(crate) errors: &'b RefCell<Vec<Error>>,
+    pub(crate) radix: NumeralMode,
+}
 
 impl<'b> State<'b> {
+    pub fn new(errors: &'b RefCell<Vec<Error>>) -> State {
+        State {
+            errors,
+            radix: NumeralMode::default(),
+        }
+    }
     pub fn report_error(&self, error: Error) {
-        self.0.borrow_mut().push(error);
+        self.errors.borrow_mut().push(error);
+    }
+
+    pub fn radix(&self, alternate: bool) -> u32 {
+        match (&self.radix, alternate) {
+            (&NumeralMode::Octal, false) | (&NumeralMode::Decimal, true) => 8,
+            (&NumeralMode::Decimal, false) | (&NumeralMode::Octal, true) => 10,
+        }
+    }
+
+    pub fn set_numeral_mode(&mut self, numeral_mode: NumeralMode) {
+        self.radix = numeral_mode
     }
 }
 
@@ -71,12 +103,18 @@ fn source_file<'a, 'b>(body: LocatedSpan<'a, 'b>) -> IResult<'a, 'b, Vec<Program
     terminated(parse_directive, expect_end_of_file)(body)
 }
 
-pub(crate) fn parse_with<'a, T, F>(input_text: &'a str, parser: F) -> (T, Vec<Error>)
+pub(crate) fn parse_with<'a, T, F, M>(
+    input_text: &'a str,
+    parser: F,
+    mut state_setup: M,
+) -> (T, Vec<Error>)
 where
     F: for<'b> Fn(LocatedSpan<'a, 'b>) -> IResult<'a, 'b, T>,
+    M: FnMut(&mut State),
 {
     let errors = RefCell::new(Vec::new());
-    let state: State = State(&errors);
+    let mut state: State = State::new(&errors);
+    state_setup(&mut state);
     let input: LocatedSpan<'a, '_> = LocatedSpan::new_extra(input_text, state);
     let (_, output) = all_consuming(parser)(input).expect("parser cannot fail");
     (output, errors.into_inner())
@@ -91,12 +129,20 @@ where
     F: for<'b> Fn(LocatedSpan<'a, 'b>) -> IResult<'a, 'b, T>,
 {
     let errors = RefCell::new(Vec::new());
-    let state: State = State(&errors);
+    let state: State = State::new(&errors);
+    // TODO: add setup callback like parse_with().
     let input: LocatedSpan<'a, '_> = LocatedSpan::new_extra(input_text, state);
     let (tail, output) = parser(input).expect("parser cannot fail");
     (tail.fragment(), output, errors.into_inner())
 }
 
 pub fn parse(source_body: &str) -> (Vec<ProgramInstruction>, Vec<Error>) {
-    parse_with(source_body, source_file)
+    fn setup(state: &mut State) {
+        // Octal is actually the default numeral mode, we just call
+        // set_numeral_mode here to keep Clippy happy until we
+        // implement ☛☛DECIMAL and ☛☛OCTAL.
+        state.set_numeral_mode(NumeralMode::Decimal); // appease Clippy
+        state.set_numeral_mode(NumeralMode::Octal);
+    }
+    parse_with(source_body, source_file, setup)
 }
