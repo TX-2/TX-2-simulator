@@ -7,7 +7,7 @@ use nom::combinator::map;
 
 use super::ek::{self, parse_partially_with};
 use super::parser::*;
-use super::state::{Error, NumeralMode, State};
+use super::state::{Error, NumeralMode, State, StateExtra};
 use super::types::{Elevation, InstructionFragment, SymbolName, SymbolTable};
 
 #[test]
@@ -52,9 +52,9 @@ fn parse_test_input<'a, F>(input_text: &'a str, parser: F) -> Result<String, Str
 where
     F: for<'b> Fn(ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, ek::LocatedSpan<'a, 'b>>,
 {
-    let errors = RefCell::new(Vec::new());
+    let rstate = RefCell::new(State::new());
     let input: ek::LocatedSpan<'a, '_> =
-        ek::LocatedSpan::new_extra(input_text, State::new(&errors));
+        ek::LocatedSpan::new_extra(input_text, StateExtra::new(&rstate));
     match parser(input) {
         Ok(out) => Ok(out.1.fragment().to_string()),
         Err(e) => Err(e.to_string()),
@@ -328,12 +328,12 @@ fn test_parse_symex() {
 
 #[test]
 fn test_dead_char() {
-    let errors = RefCell::new(Vec::new());
-    let input: ek::LocatedSpan = ek::LocatedSpan::new_extra("X", State::new(&errors));
+    let rstate = RefCell::new(State::new());
+    let input: ek::LocatedSpan = ek::LocatedSpan::new_extra("X", StateExtra::new(&rstate));
     assert!(dead_char(input).is_err());
 
-    let errors = RefCell::new(Vec::new());
-    let input: ek::LocatedSpan = ek::LocatedSpan::new_extra("\u{0332}", State::new(&errors));
+    let rstate = RefCell::new(State::new());
+    let input: ek::LocatedSpan = ek::LocatedSpan::new_extra("\u{0332}", StateExtra::new(&rstate));
     assert!(dead_char(input).is_ok());
 
     assert!(parse_test_input("\u{0332}", dead_char).is_ok());
@@ -576,5 +576,79 @@ fn test_assemble_octal_subscript_literal() {
             elevation: Elevation::Subscript,
             value: Unsigned36Bit::from(0o13_u32),
         },
+    );
+}
+
+#[test]
+fn test_metacommand_decimal() {
+    assert_eq!(
+        parse_successfully_with("☛☛DECIMAL", metacommand, no_state_setup),
+        MetaCommand::BaseChange(NumeralMode::Decimal)
+    );
+}
+
+#[test]
+fn test_metacommand_dec() {
+    assert_eq!(
+        parse_successfully_with("☛☛DEC", metacommand, no_state_setup),
+        MetaCommand::BaseChange(NumeralMode::Decimal)
+    );
+}
+
+#[test]
+fn test_metacommand_oct() {
+    assert_eq!(
+        parse_successfully_with("☛☛OCT", metacommand, no_state_setup),
+        MetaCommand::BaseChange(NumeralMode::Octal)
+    );
+}
+
+#[test]
+fn test_metacommand_octal() {
+    assert_eq!(
+        parse_successfully_with("☛☛OCTAL", metacommand, no_state_setup),
+        MetaCommand::BaseChange(NumeralMode::Octal)
+    );
+}
+
+#[test]
+fn test_metacommand_dec_changes_default_base() {
+    const INPUT: &str = concat!("10\n", "☛☛DECIMAL\n", "10\n");
+    let (directive, _) = assemble_nonempty_valid_input(INPUT);
+    match directive.as_slice() {
+        [ProgramInstruction {
+            tag: None,
+            parts: first_parts,
+        }, ProgramInstruction {
+            tag: mc_tag,
+            parts: mc_parts,
+        }, ProgramInstruction {
+            tag: None,
+            parts: second_parts,
+        }] => {
+            assert_eq!(
+                &first_parts.as_slice(),
+                &[InstructionFragment {
+                    elevation: Elevation::Normal,
+                    value: Unsigned36Bit::from(0o10_u32),
+                }],
+            );
+            // The metacommand ends up as an empty instruction.
+            assert!(mc_tag.is_none());
+            assert!(mc_parts.is_empty());
+            assert_eq!(
+                &second_parts.as_slice(),
+                &[InstructionFragment {
+                    elevation: Elevation::Normal,
+                    value: Unsigned36Bit::from(0o12_u32),
+                }],
+            );
+            return;
+        }
+        _ => (),
+    }
+    panic!(
+        "expected two items with value 10 octal and 12 octal, got {:?}",
+        &directive
     );
 }

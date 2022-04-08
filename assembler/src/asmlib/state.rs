@@ -3,7 +3,7 @@ use std::fmt::{self, Display, Formatter};
 
 use crate::parser::ErrorLocation;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NumeralMode {
     Octal,
     Decimal,
@@ -28,20 +28,21 @@ impl Display for Error {
 }
 
 #[derive(Clone, Debug)]
-pub struct State<'b> {
-    pub(crate) errors: &'b RefCell<Vec<Error>>,
+pub struct State {
+    pub(crate) errors: Vec<Error>,
     pub(crate) radix: NumeralMode,
 }
 
-impl<'b> State<'b> {
-    pub fn new(errors: &'b RefCell<Vec<Error>>) -> State {
+impl State {
+    pub fn new() -> State {
         State {
-            errors,
+            errors: Vec::new(),
             radix: NumeralMode::default(),
         }
     }
-    pub fn report_error(&self, error: Error) {
-        self.errors.borrow_mut().push(error);
+
+    pub fn report_error(&mut self, error: Error) {
+        self.errors.push(error);
     }
 
     pub fn radix(&self, alternate: bool) -> u32 {
@@ -53,5 +54,28 @@ impl<'b> State<'b> {
 
     pub fn set_numeral_mode(&mut self, numeral_mode: NumeralMode) {
         self.radix = numeral_mode
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct StateExtra<'b> {
+    inner: &'b RefCell<State>,
+}
+
+impl<'b> StateExtra<'b> {
+    pub fn new(state: &'b RefCell<State>) -> StateExtra<'b> {
+        StateExtra { inner: state }
+    }
+
+    pub fn report_error(&self, error: Error) {
+        self.inner.borrow_mut().report_error(error);
+    }
+
+    pub fn radix(&self, alternate: bool) -> u32 {
+        self.inner.borrow().radix(alternate)
+    }
+
+    pub fn set_numeral_mode(&self, numeral_mode: NumeralMode) {
+        self.inner.borrow_mut().set_numeral_mode(numeral_mode);
     }
 }

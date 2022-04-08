@@ -10,9 +10,9 @@ use nom::combinator::{all_consuming, map, not, rest};
 use nom::sequence::preceded;
 
 use crate::parser::ErrorLocation;
-use crate::state::{Error, State};
+use crate::state::{Error, State, StateExtra};
 
-pub type LocatedSpan<'a, 'b> = nom_locate::LocatedSpan<&'a str, State<'b>>;
+pub type LocatedSpan<'a, 'b> = nom_locate::LocatedSpan<&'a str, StateExtra<'b>>;
 pub type IResult<'a, 'b, T> = nom::IResult<LocatedSpan<'a, 'b>, T>;
 
 pub trait ToRange {
@@ -62,12 +62,12 @@ where
     F: for<'b> Fn(LocatedSpan<'a, 'b>) -> IResult<'a, 'b, T>,
     M: FnMut(&mut State),
 {
-    let errors = RefCell::new(Vec::new());
-    let mut state: State = State::new(&errors);
+    let mut state: State = State::new();
     state_setup(&mut state);
-    let input: LocatedSpan<'a, '_> = LocatedSpan::new_extra(input_text, state);
+    let rstate = RefCell::new(state);
+    let input: LocatedSpan<'a, '_> = LocatedSpan::new_extra(input_text, StateExtra::new(&rstate));
     let (_, output) = all_consuming(parser)(input).expect("parser cannot fail");
-    (output, errors.into_inner())
+    (output, rstate.into_inner().errors)
 }
 
 #[cfg(test)]
@@ -78,10 +78,10 @@ pub(crate) fn parse_partially_with<'a, T, F>(
 where
     F: for<'b> Fn(LocatedSpan<'a, 'b>) -> IResult<'a, 'b, T>,
 {
-    let errors = RefCell::new(Vec::new());
-    let state: State = State::new(&errors);
-    // TODO: add setup callback like parse_with().
-    let input: LocatedSpan<'a, '_> = LocatedSpan::new_extra(input_text, state);
+    let state: State = State::new();
+    //state_setup(&mut state.borrow_mut());
+    let rstate = RefCell::new(state);
+    let input: LocatedSpan<'a, '_> = LocatedSpan::new_extra(input_text, StateExtra::new(&rstate));
     let (tail, output) = parser(input).expect("parser cannot fail");
-    (tail.fragment(), output, errors.into_inner())
+    (tail.fragment(), output, rstate.into_inner().errors)
 }

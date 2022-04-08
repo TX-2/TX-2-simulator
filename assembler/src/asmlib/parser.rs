@@ -12,7 +12,7 @@ use nom::multi::{many0, many1};
 use nom::sequence::{pair, preceded, separated_pair, terminated, tuple};
 
 use crate::ek::{self, ToRange};
-use crate::state::{Error, NumeralMode, State};
+use crate::state::{Error, NumeralMode, State, StateExtra};
 use crate::types::*;
 use base::prelude::*;
 
@@ -38,6 +38,15 @@ impl<'a, 'b> From<&ek::LocatedSpan<'a, 'b>> for ErrorLocation {
 pub struct ProgramInstruction {
     pub(crate) tag: Option<SymbolName>,
     pub(crate) parts: Vec<InstructionFragment>,
+}
+
+impl ProgramInstruction {
+    fn empty() -> ProgramInstruction {
+        ProgramInstruction {
+            tag: None,
+            parts: Vec::new(),
+        }
+    }
 }
 
 pub(crate) fn maybe_superscript_sign<'a, 'b>(
@@ -727,6 +736,62 @@ pub(crate) fn tag_definition<'a, 'b>(
     terminated(symbol_name, arrow)(input)
 }
 
+pub(crate) fn double_hand<'a, 'b>(
+    input: ek::LocatedSpan<'a, 'b>,
+) -> ek::IResult<'a, 'b, Option<char>> {
+    fn hand<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, char> {
+        char('☛')(input)
+    }
+
+    preceded(
+        hand,
+        ek::expect(hand, "'☛' should be followed by another '☛'"),
+    )(input)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MetaCommand {
+    Invalid, // e.g."☛☛BOGUS"
+    BaseChange(NumeralMode),
+}
+
+fn base_change<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, MetaCommand> {
+    fn decimal<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, MetaCommand> {
+        map(alt((tag("DECIMAL"), tag("DEC"))), |_| {
+            MetaCommand::BaseChange(NumeralMode::Decimal)
+        })(input)
+    }
+    fn octal<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, MetaCommand> {
+        map(alt((tag("OCTAL"), tag("OCT"))), |_| {
+            MetaCommand::BaseChange(NumeralMode::Octal)
+        })(input)
+    }
+
+    alt((decimal, octal))(input)
+}
+
+fn metacommand_body<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, MetaCommand> {
+    base_change(input)
+}
+
+pub(crate) fn metacommand<'a, 'b>(
+    input: ek::LocatedSpan<'a, 'b>,
+) -> ek::IResult<'a, 'b, MetaCommand> {
+    map(
+        pair(
+            double_hand,
+            ek::expect(
+                metacommand_body,
+                "double meta hand '☛☛' must be followed by a valid meta command",
+            ),
+        ),
+        |got| match got {
+            (Some(_), Some(cmd)) => cmd,
+            _ => MetaCommand::Invalid,
+        },
+    )(input)
+}
+
 pub(crate) fn program_instruction<'a, 'b>(
     input: ek::LocatedSpan<'a, 'b>,
 ) -> ek::IResult<'a, 'b, ProgramInstruction> {
@@ -737,6 +802,33 @@ pub(crate) fn program_instruction<'a, 'b>(
             parts: fragments,
         },
     )(input)
+}
+
+fn execute_metacommand(state_extra: &StateExtra, cmd: MetaCommand) {
+    match cmd {
+        MetaCommand::Invalid => {
+            todo!("error reporting for invalid metacommands is not implemented")
+        }
+        MetaCommand::BaseChange(new_base) => state_extra.set_numeral_mode(new_base),
+    }
+}
+
+pub(crate) fn program_instruction_or_metacommand<'a, 'b>(
+    input: ek::LocatedSpan<'a, 'b>,
+) -> ek::IResult<'a, 'b, ProgramInstruction> {
+    fn parse_and_execute_metacommand<'a, 'b>(
+        input: ek::LocatedSpan<'a, 'b>,
+    ) -> ek::IResult<'a, 'b, ProgramInstruction> {
+        match metacommand(input) {
+            Ok((tail, cmd)) => {
+                execute_metacommand(&tail.extra, cmd);
+                Ok((tail, ProgramInstruction::empty()))
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    alt((program_instruction, parse_and_execute_metacommand))(input)
 }
 
 pub(crate) fn newline<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, char> {
@@ -753,7 +845,7 @@ pub(crate) fn parse_manuscript<'a, 'b>(
     // assembled code, because in between those things has to come the
     // execution of metacommands such as INSERT, DELETE, REPLACE.
     many0(terminated(
-        program_instruction,
+        program_instruction_or_metacommand,
         ek::expect(newline, "expected newline after a program instruction"),
     ))(input)
 }
