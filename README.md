@@ -62,19 +62,7 @@ We have quite a lot of [documentation about the operation and
 programming of the TX-2](https://tx-2.github.io/documentation.html).
 This is what our implementation is based on.
 
-Our [TX-2 project issues
-list](https://github.com/TX-2/TX-2-simulator/issues) includes feature
-requests for the things we need to implement next.  Some of these are
-labeled as [good first
-issue](https://github.com/TX-2/TX-2-simulator/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
-items, mainly because they implement a simple instruction and there is
-something in the existing code to guide you.
-
-If you are keen to contribute but not able or not inclined to use
-Github or Rust, email me at james@youngman.org so that we can discuss
-how you might be able to help.
-
-Contributions must use the [MIT
-license](https://github.com/TX-2/TX-2-simulator/blob/main/LICENSE-MIT).
-Please keep pull requests small, even if this means you don't fully
-implement the feature you have in mind in the first pull request.
+Please see our [Contributor's Guide](CONTRIBUTING.md) for information
+on what we need and how you can help.  The Guide also explains what
+non-coding contributions are needed and how to identify a good "first
+issue" to pick up.
