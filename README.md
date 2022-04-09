@@ -38,13 +38,13 @@ If you do want to see more detail, you can get it by setting the
 `RUST_LOG` environment variable when you run the code:
 
 ```
-RUST_LOG=debug cargo run
+RUST_LOG=debug cargo run --bin cli
 ```
 
 For even more detail:
 
 ```
-RUST_LOG=trace cargo run
+RUST_LOG=trace cargo run --bin cli
 ```
 
 Full details on how to configure the logging output are in the
