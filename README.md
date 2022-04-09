@@ -22,7 +22,7 @@ The current simulator is not yet advanced enough to be interactive.
 To try it out, simply run
 
 ```
-cargo run
+cargo run --bin cli
 ```
 
 This will build the code (if necessary) and then run it.
