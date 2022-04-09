@@ -34,11 +34,23 @@ think are good choices for fist-time contributors are [marked with the
 "good first issue"
 tag](https://github.com/TX-2/TX-2-simulator/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22).
 
+The "good first issue" tags are marked that way mainly because they
+implement a simple instruction and there is something in the existing
+code to guide you.
+
 If you are planning a significant contribution which doesn't already
 have an issue, please create one and outline what you hope to do.
 
 If you are unfamiliar with Github, or Git or Rust, please let us know
 so that we can help you to get started.
+
+### Guidelines for Code Contributions
+
+- [ ] Contributions must use the [MIT
+      license](https://github.com/TX-2/TX-2-simulator/blob/main/LICENSE-MIT).
+- [ ] Please keep pull requests small, even if this means you don't
+      fully implement the feature you have in mind in the first pull
+      request.
 
 ## Say Hello
 
