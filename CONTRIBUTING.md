@@ -12,10 +12,39 @@ explains how you can help.
 
 ## What Contributions are Needed?
 
-Most of all, we need TX-2 software and documentation.  These either in
-printed/scanned for or (even better) machine-readable form.  We're
-hoping to get these from [MIT Lincoln Lab](https://www.ll.mit.edu/)
-and from the people who worked on the TX-2.
+We need:
+
+* TX-2 Software
+* Additional documentation
+* Programming contributions to implement missing features
+
+We're hoping that we can get some of these things from [MIT Lincoln
+Lab](https://www.ll.mit.edu/) and from the people who worked on the
+TX-2.
+
+### TX-2 Software
+
+Our greatest need is for TX-2 software, either in printed/scanned for
+or (even better) machine-readable form.
+
+We know that Lincoln Lab holds no machine-readable software for the
+TX-2.
+
+Our most pressing need is for a copy of the Sketchpad code (binary or
+source).  We have a scanned copy of the Sketchpad code from the
+Computer History Museum (donated to them by Ivan Sutherland), but this
+is illegible in places.  If you have or know someone who might have a
+copy of this, please reach out to us.
+
+### Documentation
+
+While we have some documentation already, it will help to have more.
+Please see our [documentation
+page](https://tx-2.github.io/documentation.html) for a list of the
+documentation we already have.   If you know of documentation not
+already in that list, please let us know.
+
+### Safeguarding of Materials
 
 We understand that some of these materials are unique and
 irreplaceable.  You don't need to send them to us.  We could, for
@@ -44,13 +73,19 @@ have an issue, please create one and outline what you hope to do.
 If you are unfamiliar with Github, or Git or Rust, please let us know
 so that we can help you to get started.
 
-### Guidelines for Code Contributions
+## Guidelines for Code Contributions
 
 - [ ] Contributions must use the [MIT
       license](https://github.com/TX-2/TX-2-simulator/blob/main/LICENSE-MIT).
 - [ ] Please keep pull requests small, even if this means you don't
       fully implement the feature you have in mind in the first pull
       request.
+- [ ] When making code changes, please include in comments a reference
+      to the part of the documentation relevant to the code you're
+      writing.  For example, when you implement an opcode or hardware
+      device, please include a reference to the documentation which
+      describes it.
+- [ ] Please include tests.
 
 ## Say Hello
 
