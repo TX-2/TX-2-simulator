@@ -13,11 +13,11 @@ clap = "2"
 
 # nom has an MIT-style copyright license.
 # https://github.com/Geal/nom/blob/main/LICENSE
-nom = "5"
+nom = "6"
 
 # nom_locate has an MIT-style copyright license.
 # https://github.com/fflorent/nom_locate/blob/master/LICENSE
-nom_locate = "2.0"
+nom_locate = "3"
 
 # tracing has an MIT copyright license.
 # https://github.com/tokio-rs/tracing/blob/master/LICENSE

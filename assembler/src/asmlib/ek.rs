@@ -37,18 +37,22 @@ where
 {
     move |input| match parser(input) {
         Ok((remaining, out)) => Ok((remaining, Some(out))),
-        Err(nom::Err::Error((input, _))) | Err(nom::Err::Failure((input, _))) => {
-            let err = Error(ErrorLocation::from(&input), error_msg.to_string());
-            input.extra.report_error(err);
-            Ok((input, None))
+        Err(nom::Err::Error(e) | nom::Err::Failure(e)) => {
+            let err = Error(ErrorLocation::from(&e.input), error_msg.to_string());
+            e.input.extra.report_error(err);
+            Ok((e.input, None))
         }
         Err(err) => Err(err),
     }
 }
 
 pub(crate) fn expect_end_of_file<'a, 'b>(body: LocatedSpan<'a, 'b>) -> IResult<'a, 'b, ()> {
+    fn no_char<'a, 'b>(input: LocatedSpan<'a, 'b>) -> IResult<'a, 'b, ()> {
+        not(anychar)(input)
+    }
+
     map(
-        preceded(expect(not(anychar), "expected end-of-file"), rest),
+        preceded(expect(no_char, "expected end-of-file"), rest),
         |_| (),
     )(body)
 }
