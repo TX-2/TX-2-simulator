@@ -14,7 +14,20 @@ use cpu::{
     ResetMode,
 };
 
-pub fn run_until_alarm(
+fn run(
+    control: &mut ControlUnit,
+    mem: &mut MemoryUnit,
+    clk: &mut BasicClock,
+    multiplier: Option<f64>,
+) -> i32 {
+    control.codabo(&ResetMode::ResetTSP, mem);
+    if let Err(e) = run_until_alarm(control, mem, clk, multiplier) {
+        event!(Level::ERROR, "Execution stopped: {}", e);
+    }
+    1
+}
+
+fn run_until_alarm(
     control: &mut ControlUnit,
     mem: &mut MemoryUnit,
     clk: &mut BasicClock,
@@ -23,18 +36,6 @@ pub fn run_until_alarm(
     let mut elapsed_ns: u64 = 0;
     let mut sleeper = MinimalSleeper::new(Duration::from_millis(2));
     let mut next_hw_poll = clk.now();
-
-    fn time_passes(
-        clk: &mut BasicClock,
-        sleeper: &mut MinimalSleeper,
-        t: &Duration,
-        multiplier: Option<f64>,
-    ) {
-        clk.consume(t);
-        if let Some(m) = multiplier {
-            sleeper.sleep(&t.mul_f64(m));
-        }
-    }
 
     loop {
         let now = clk.now();
@@ -80,7 +81,7 @@ pub fn run_until_alarm(
                 "machine is in limbo, waiting {:?} for a flag to be raised",
                 &interval,
             );
-            time_passes(clk, &mut sleeper, &interval, multiplier);
+            cpu::time_passes(clk, &mut sleeper, &interval, multiplier);
             continue;
         }
         elapsed_ns += match control.execute_instruction(&clk.now(), mem) {
@@ -93,24 +94,11 @@ pub fn run_until_alarm(
                 return Err(e);
             }
             Ok(ns) => {
-                time_passes(clk, &mut sleeper, &Duration::from_nanos(ns), multiplier);
+                cpu::time_passes(clk, &mut sleeper, &Duration::from_nanos(ns), multiplier);
                 ns
             }
         };
     }
-}
-
-fn run(
-    control: &mut ControlUnit,
-    mem: &mut MemoryUnit,
-    clk: &mut BasicClock,
-    multiplier: Option<f64>,
-) -> i32 {
-    control.codabo(&ResetMode::ResetTSP, mem);
-    if let Err(e) = run_until_alarm(control, mem, clk, multiplier) {
-        event!(Level::ERROR, "Execution stopped: {}", e);
-    }
-    1
 }
 
 #[derive(Debug)]
