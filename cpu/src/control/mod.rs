@@ -77,18 +77,33 @@ impl SequenceFlags {
     }
 
     fn lower(&mut self, flag: &SequenceNumber) {
+        // We create a u16 from *flag in order to perform the
+        // comparison.  Otherwise we get the compilation error
+        // "error[E0277]: can't compare `base::prelude::Unsigned6Bit`
+        // with `u16`".
+        #![allow(clippy::cmp_owned)]
         assert!(u16::from(*flag) < 0o100_u16);
         event!(Level::INFO, "Lowering flag {}", flag,);
         self.flag_values &= !SequenceFlags::flagbit(flag);
     }
 
     fn raise(&mut self, flag: &SequenceNumber) {
+        // We create a u16 from *flag in order to perform the
+        // comparison.  Otherwise we get the compilation error
+        // "error[E0277]: can't compare `base::prelude::Unsigned6Bit`
+        // with `u16`".
+        #![allow(clippy::cmp_owned)]
         assert!(u16::from(*flag) < 0o100_u16);
         event!(Level::INFO, "Raising flag {}", flag,);
         self.flag_values |= SequenceFlags::flagbit(flag);
     }
 
     fn current_flag_state(&self, flag: &SequenceNumber) -> bool {
+        // We create a u16 from *flag in order to perform the
+        // comparison.  Otherwise we get the compilation error
+        // "error[E0277]: can't compare `base::prelude::Unsigned6Bit`
+        // with `u16`".
+        #![allow(clippy::cmp_owned)]
         assert!(u16::from(*flag) < 0o100_u16);
         self.flag_values | SequenceFlags::flagbit(flag) != 0
     }
@@ -255,6 +270,8 @@ impl ControlRegisters {
     }
 
     fn get_f_mem(&self, n: Unsigned5Bit) -> SystemConfiguration {
+        // Use u8::from in order to be able to compare an Unsigned5Bit.
+        #![allow(clippy::cmp_owned)]
         assert!(u8::from(n) < 0o37_u8);
         assert_eq!(self.f_memory[0], SystemConfiguration::zero());
         let pos: usize = n.into();
@@ -1032,7 +1049,7 @@ impl ControlUnit {
                             .alarm_unit
                             .always_fire(Alarm::DEFERLOOPAL { address: right }));
                     }
-                    Address::from(next)
+                    next
                 }
             };
 
