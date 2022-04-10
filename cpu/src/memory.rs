@@ -143,7 +143,7 @@ pub struct ExtraBits {
     pub parity: bool,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 struct MemoryWord(u64); // Not public.
 const WORD_BITS: u64 = 0x0FFFFFFFFF;
 const META_BIT: u64 = 0x1000000000;
@@ -224,12 +224,6 @@ impl MemoryWord {
     /// meta bit.
     fn set_value(&mut self, value: &Unsigned36Bit) {
         self.0 = (self.0 & META_BIT) | (u64::from(*value) & WORD_BITS);
-    }
-}
-
-impl Default for MemoryWord {
-    fn default() -> MemoryWord {
-        MemoryWord(0)
     }
 }
 
