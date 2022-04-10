@@ -699,10 +699,8 @@ impl ControlUnit {
             self.regs.n_sym = Some(symbolic);
             Ok(()) // valid instruction
         } else {
-            self.alarm_unit.fire_if_not_masked(Alarm::OCSAL(
-                self.regs.n,
-                format!("invalid opcode {:#o}", self.regs.n.opcode_number()),
-            ))?;
+            self.alarm_unit
+                .fire_if_not_masked(self.invalid_opcode_alarm())?;
             self.regs.n_sym = None;
             Ok(()) // invalid instruction, but OCSAL is masked.
         }
@@ -821,10 +819,8 @@ impl ControlUnit {
                 }
             }
         } else {
-            self.alarm_unit.fire_if_not_masked(Alarm::OCSAL(
-                self.regs.n,
-                format!("invalid opcode {:#o}", self.regs.n.opcode_number()),
-            ))?;
+            self.alarm_unit
+                .fire_if_not_masked(self.invalid_opcode_alarm())?;
             self.set_program_counter(ProgramCounterChange::CounterUpdate);
             let execution_time_ns = self.estimate_execute_time_ns(&Instruction::invalid());
             Ok(execution_time_ns)
