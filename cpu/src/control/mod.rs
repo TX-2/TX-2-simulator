@@ -317,7 +317,6 @@ impl ResetMode {
 #[derive(Debug)]
 pub struct ControlUnit {
     regs: ControlRegisters,
-    running: bool,
     trap: TrapCircuit,
     devices: DeviceManager,
     alarm_unit: AlarmUnit,
@@ -336,7 +335,6 @@ impl ControlUnit {
     pub fn new() -> ControlUnit {
         ControlUnit {
             regs: ControlRegisters::new(),
-            running: false,
             trap: TrapCircuit::new(),
             devices: DeviceManager::new(),
             alarm_unit: AlarmUnit::new(),
