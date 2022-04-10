@@ -1123,6 +1123,17 @@ mod tests {
                 case.form,
                 "non-matching subword form"
             );
+            for q in 0u8..4u8 {
+                let expect_active = case.active & (1 << q) != 0;
+                let got_active = sysconfig.active_quarters().is_active(&q);
+                assert_eq!(
+                    got_active,
+                    expect_active,
+                    "expected quarter activity {:?}, got quarter activity {:?}",
+                    case.active,
+                    sysconfig.active_quarters()
+                );
+            }
         }
     }
 }
