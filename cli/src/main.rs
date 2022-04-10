@@ -174,7 +174,7 @@ fn run_simulator() -> Result<(), Box<dyn std::error::Error>> {
     let tapes = TapeSequence::new(
         matches
             .values_of_os("PTAPE")
-            .unwrap_or_else(Default::default)
+            .unwrap_or_default()
             .into_iter()
             .map(OsString::from)
             .collect(),
