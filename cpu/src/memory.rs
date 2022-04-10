@@ -430,7 +430,8 @@ impl MemoryMapped for MemoryUnit {
                 match side_effect {
                     MetaBitChange::None => (),
                     MetaBitChange::Set => {
-                        if u32::from(addr) >= V_MEMORY_START {
+                        let a32 = u32::from(addr);
+                        if a32 >= V_MEMORY_START {
                             // The description of the SKM instruction doesn't state
                             // explicitly that SKM works on V-memory, but since
                             // arithmetic unit registers are mapped to it, it would
@@ -456,7 +457,8 @@ impl MemoryMapped for MemoryUnit {
         value: &Unsigned36Bit,
         meta: &MetaBitChange,
     ) -> Result<(), MemoryOpFailure> {
-        if u32::from(addr) >= V_MEMORY_START && matches!(meta, MetaBitChange::Set) {
+        let a32 = u32::from(addr);
+        if a32 >= V_MEMORY_START && matches!(meta, MetaBitChange::Set) {
             // This is an attempt to set a meta bit in V memory.
             //
             // The meta bits of registers A..E cannot be
