@@ -70,10 +70,9 @@ impl PollQueue {
     }
 
     pub fn push(&mut self, key: SequenceNumber, priority: Duration) -> Option<Duration> {
-        match self.items.push(key, ReverseOrdered::from(priority)) {
-            None => None,
-            Some(rd) => Some(rd.inner),
-        }
+        self.items
+            .push(key, ReverseOrdered::from(priority))
+            .map(|rd| rd.inner)
     }
 
     #[cfg(test)]
