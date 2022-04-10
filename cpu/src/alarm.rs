@@ -124,7 +124,7 @@ impl Error for Alarm {}
 
 /// The TX-2 can "mask" some alarms, and whether or not this is
 /// happening is controlled by the AlarmUnit.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct AlarmUnit {
     mask_psal: bool,
     mask_ocsal: bool,
@@ -133,18 +133,6 @@ pub struct AlarmUnit {
     mask_misal: bool,
     // BUGAL cannot be masked
     // DEFERLOOPAL cannot be masked.
-}
-
-impl Default for AlarmUnit {
-    fn default() -> AlarmUnit {
-        AlarmUnit {
-            mask_psal: false,
-            mask_ocsal: false,
-            mask_qsal: false,
-            mask_iosal: false,
-            mask_misal: false,
-        }
-    }
 }
 
 impl AlarmUnit {
