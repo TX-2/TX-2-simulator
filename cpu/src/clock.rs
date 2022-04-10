@@ -56,13 +56,6 @@ pub trait Clock {
 ///
 #[derive(Debug)]
 pub struct BasicClock {
-    /// The host time at which the clock started running.  At this
-    /// time, the "real" time and the "simulated" time coincided.  We
-    /// periodically move the origin in order to avoid subtracting
-    /// pairs of nearly-equal large numbers (which risks loss of
-    /// precision).
-    origin: Instant,
-
     /// Elapsed time as measured by the simulated clock.
     simulator_elapsed: Duration,
 }
@@ -70,7 +63,6 @@ pub struct BasicClock {
 impl BasicClock {
     pub fn new() -> BasicClock {
         BasicClock {
-            origin: Instant::now(),
             simulator_elapsed: Duration::new(0, 0),
         }
     }
