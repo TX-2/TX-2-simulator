@@ -4,8 +4,6 @@
 
 use std::time::Duration;
 
-use tracing::{event, Level};
-
 mod alarm;
 mod clock;
 mod control;
