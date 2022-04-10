@@ -463,6 +463,7 @@ impl DeviceManager {
     }
 
     /// Perform a TSD instruction.
+    #[allow(clippy::too_many_arguments)]
     pub fn transfer(
         &mut self,
         system_time: &Duration,
