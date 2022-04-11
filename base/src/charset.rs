@@ -1,9 +1,27 @@
 //! Character set conversions.
 //!
 //! Unicode to and from Lincoln Writer characters.  No support for
-//! colour shifting.  No support for overstrke characters (such as the
-//! LW circle (0o73 upper case) overstruck with logical or (0o22 lower
-//! case).
+//! colour shifting.  Limited support for overstrke characters (such
+//! as the LW circle (0o73 upper case) overstruck with logical or
+//! (0o22 lower case); these are currently supported only as Unicode
+//! combining characters.
+//!
+//! The Xerox printer uses a different character set but this code
+//! doesn't currently include a mapping for it.
+//!
+//! Controlling documentation:
+//!
+//! - [Table 7-6 in the User
+//!   Handbook](https://archive.org/details/tx-2-users-handbook-nov-63/page/n195)
+//!   describes the Lincoln Writer codes.
+//! - [Table 7-5 in the User
+//!   Handbook](https://archive.org/details/tx-2-users-handbook-nov-63/page/n195) describes the character codes for the Xerox printer.  This code doesn't yet implement this mapping.
+///! - [The Lincoln Keyboard - a typewriter keyboard designed for
+///!   computers imput flexibility. A. Vanderburgh.  Communications of
+///!   the ACM, Volume 1, Issue 7, July
+///!   1958.](https://dl.acm.org/doi/10.1145/368873.368879) describes
+///!   the Lincoln Writer keyboard and the fact that some characters
+///!   do not advance the print carriage.
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
