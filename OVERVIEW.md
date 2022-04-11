@@ -79,9 +79,9 @@ standard TX-2 assembler which was called M4.
 
 The reason for using Unicode as input is so that the input file can,
 as far as possible, look like the normal representation of M4 source
-code.  At some point we may also define a pure-ASCII equivalent (so
+code.  At some point we may also define a pure-ASCII equivalent so
 that something like `\\doublehand` would be understood to be a synonym
-for `☛☛`.   But nothing like this is implemented right now.
+for `☛☛`.  But nothing like this is implemented right now.
 
 ## Future Directions
 
