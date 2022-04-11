@@ -417,7 +417,6 @@ impl ControlUnit {
         self.regs.flags.lower_all();
         self.regs.current_sequence_is_runnable = false;
         self.startover();
-        // TODO: begin issuing clock cycles.
         event!(
             Level::DEBUG,
             "After CODABO, control unit contains {:#?}",

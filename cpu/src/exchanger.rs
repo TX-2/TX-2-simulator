@@ -751,7 +751,6 @@ fn permute(
     let mut result: u64 = (*dest).into();
     let source_bits: u64 = u64::from(*source);
     for target_quarter in 0_u8..4_u8 {
-        assert!(target_quarter < 4, "invalid quarter {}", target_quarter); // TODO: remove pointless assertion
         if active_quarters.is_active(&target_quarter) {
             // `value` will be the value from the quarter we want,
             // shifted to the correct position.

@@ -155,7 +155,7 @@ impl AlarmUnit {
             Alarm::QSAL(_, BadMemOp::Write(_), _) => {
                 // In one of the start-up routines run as a result of
                 // CODABO, memory is wiped by over-writing it with a
-                // repeating pattern, Starting from the top down.
+                // repeating pattern, starting from the top down.
                 // This causes writes to plugboard memory which we
                 // discard and to the unmapped gap below them.  We
                 // have to be able to completer this routine to start
