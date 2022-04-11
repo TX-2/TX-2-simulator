@@ -2,6 +2,7 @@
 name = "cpu"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
 # This is an open source project but not really intended to be
 # published on crates.io.  So we don't want to do that accidentally.
 publish = false

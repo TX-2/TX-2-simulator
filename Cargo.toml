@@ -1,5 +1,5 @@
 [workspace]
-
+license = "MIT"
 members = [
 	# base includes a representation for instructions (which could
 	# be shared for example between the emulator and a
