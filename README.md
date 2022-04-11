@@ -11,6 +11,9 @@ From [the Wikipedia entry for the TX-2](https://en.wikipedia.org/wiki/TX-2):
 > intelligence and human–computer interaction. Wesley A. Clark was the
 > chief architect of the TX-2.
 
+The [OVERVIEW](OVERVIEW.md) file explains the high-level design of the
+simulator.
+
 ## To Build The Code
 
 To be able to build the code, [install the Rust build
@@ -18,7 +21,10 @@ tools](https://doc.rust-lang.org/cargo/getting-started/installation.html).
 
 ## Trying It Out
 
-The current simulator is not yet advanced enough to be interactive.
+Right now the simulator doesn't have enough I/O support to be usable
+interactively, and only implements enough instructions to get part-way
+through the boot process.  So there is not much to see, yet.
+
 To try it out, simply run
 
 ```
@@ -30,9 +36,8 @@ This will build the code (if necessary) and then run it.
 
 ### Getting More Detail on the Internals
 
-Right now the simulator doesn't have enough I/O support to be usable
-interactively, and only implements enough instructions to get part-way
-through the boot process.  So there is not much to see, yet.
+This section of the document explains how to get information about
+what the simulator is doing as it runs.
 
 If you do want to see more detail, you can get it by setting the
 `RUST_LOG` environment variable when you run the code:
