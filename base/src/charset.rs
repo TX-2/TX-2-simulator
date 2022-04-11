@@ -312,8 +312,8 @@ pub fn lincoln_char_to_described_char(
         };
         Ok(Some(DescribedChar {
             base_char: base,
-            display: display,
-            attributes: state.clone(),
+            display,
+            attributes: *state,
             advance,
         }))
     } else {
@@ -496,6 +496,12 @@ impl UnicodeToLincolnMapping {
             }
         }
         Ok(result)
+    }
+}
+
+impl Default for UnicodeToLincolnMapping {
+    fn default() -> UnicodeToLincolnMapping {
+        UnicodeToLincolnMapping::new()
     }
 }
 
