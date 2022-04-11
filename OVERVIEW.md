@@ -7,7 +7,7 @@ For a more general introduction, see [README.md](README.md).
 
 We're in the early stages of implementation.  Most opcodes and most
 hardware are not implemented yet.  We have enough implemented opcodes
-and hardware that the boot code works and the machien tries to load a
+and hardware that the boot code works and the machine tries to load a
 binary from paper tape, in the normal boot process.  But so far that's
 it.
 
@@ -36,7 +36,7 @@ The base crate implements
 * Signed one's complement types for the TX-2 machine word
 * Signed one's complement types for sub-words
 * Unsigned types for TX-2 words and sub-words
-* Special-purpose signed or unsigned types used by the TX-2 (as filds
+* Special-purpose signed or unsigned types used by the TX-2 (as fields
   in the instruction for example).
 * A representation of the machine instruction suitable for use in the
   simulator or an assembler.
