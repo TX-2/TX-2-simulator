@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use clap::{App, Arg};
 use tracing::{event, Level};
+use tracing_subscriber::filter::{EnvFilter, LevelFilter};
 use tracing_subscriber::prelude::*;
 
 use base::prelude::*;
@@ -148,23 +149,15 @@ fn run_simulator() -> Result<(), Box<dyn std::error::Error>> {
         )
         .get_matches();
 
-    // See
-    // https://docs.rs/tracing-subscriber/0.2.19/tracing_subscriber/fmt/index.html#filtering-events-with-environment-variables
-    // for instructions on how to select which trace messages get
-    // printed.
-    let fmt_layer = tracing_subscriber::fmt::layer().with_target(true);
-    let filter_layer = match tracing_subscriber::EnvFilter::try_from_default_env()
-        .or_else(|_| tracing_subscriber::EnvFilter::try_new("info"))
-    {
-        Err(e) => {
-            return Err(Box::new(e));
-        }
-        Ok(layer) => layer,
-    };
+    // By default, display info messages.
+    let env_filter = EnvFilter::builder()
+        .with_default_directive(LevelFilter::INFO.into())
+        .from_env_lossy();
 
+    // See https://docs.rs/tracing-subscriber/0.3.11/tracing_subscriber/filter/struct.EnvFilter.html#examples
     tracing_subscriber::registry()
-        .with(filter_layer)
-        .with(fmt_layer)
+        .with(tracing_subscriber::fmt::layer())
+        .with(env_filter)
         .init();
 
     let mem_config = MemoryConfiguration {
