@@ -10,7 +10,7 @@ base = {path = "../base" }
 # Clap is dual-licensed MIT/Apache
 # https://github.com/clap-rs/clap/blob/master/LICENSE-MIT
 # https://github.com/clap-rs/clap/blob/master/LICENSE-APACHE
-clap = "2"
+clap = { version = "3", features = ["derive"] }
 
 # nom has an MIT-style copyright license.
 # https://github.com/Geal/nom/blob/main/LICENSE

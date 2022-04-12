@@ -1,30 +1,30 @@
 use std::ffi::OsString;
 
-use clap::{App, Arg};
+use clap::Parser;
 use tracing::{event, span, Level};
 use tracing_subscriber::prelude::*;
 
 use assembler::*;
 
+// Thanks to Google for allowing this code to be open-sourced.  I
+// generally prefer to correspond about this project using my
+// personal email address rather than my work one, though.
+const AUTHOR: &str = "James Youngman <james@youngman.org>";
+
+/// Assembler for the historical TX-2 computer
+#[derive(Parser, Debug)]
+#[clap(author = AUTHOR, version, about, long_about = None)]
+struct Cli {
+    /// File from which assembly source is read
+    input: OsString,
+
+    /// File to which assembler output is written
+    #[clap(short = 'o', long)]
+    output: OsString,
+}
+
 fn run_asembler() -> Result<(), Fail> {
-    let matches = App::new("TX-2 Assembler")
-        .author("James Youngman <youngman@google.com>")
-        .about("Assembler for the historic TX-2 computer")
-        .arg(
-            Arg::with_name("INPUT")
-                .help("File containing assembly source code")
-                .multiple(false)
-                .required(true),
-        )
-        .arg(
-            Arg::with_name("output-file")
-                .help("File to which assembler output is written")
-                .takes_value(true)
-                .short("o")
-                .long("output")
-                .required(true),
-        )
-        .get_matches();
+    let cli = Cli::parse();
 
     // See
     // https://docs.rs/tracing-subscriber/0.2.19/tracing_subscriber/fmt/index.html#filtering-events-with-environment-variables
@@ -46,12 +46,9 @@ fn run_asembler() -> Result<(), Fail> {
         .with(fmt_layer)
         .init();
 
-    let input_file: OsString = matches.value_of_os("INPUT").unwrap().to_owned();
-    let output_file: OsString = matches.value_of_os("output-file").unwrap().to_owned();
-
-    let span = span!(Level::ERROR, "assemble", input=?input_file, output=?output_file);
+    let span = span!(Level::ERROR, "assemble", input=?cli.input, output=?cli.output);
     let _enter = span.enter();
-    let result = assemble_file(&input_file, &output_file).map_err(Fail::AsmFail);
+    let result = assemble_file(&cli.input, &cli.output).map_err(Fail::AsmFail);
     if let Err(e) = &result {
         event!(Level::ERROR, "assembly failed: {:?}", e);
     } else {
