@@ -12,4 +12,4 @@ cpu = {path = "../cpu" }
 base = {path = "../base" }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-clap = "2"
+clap = { version = "3", features = ["derive"] }

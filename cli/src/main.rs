@@ -1,9 +1,10 @@
+/// Simulate the historic TX-2 computer
 use std::ffi::OsString;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::time::Duration;
 
-use clap::{App, Arg};
+use clap::Parser;
 use tracing::{event, Level};
 use tracing_subscriber::filter::{EnvFilter, LevelFilter};
 use tracing_subscriber::prelude::*;
@@ -14,6 +15,11 @@ use cpu::{
     Alarm, BasicClock, Clock, ControlUnit, MemoryConfiguration, MemoryUnit, MinimalSleeper,
     ResetMode,
 };
+
+// Thanks to Google for allowing this code to be open-sourced.  I
+// generally prefer to correspond about this project using my
+// personal email address rather than my work one, though.
+const AUTHOR: &str = "James Youngman <james@youngman.org>";
 
 fn run(
     control: &mut ControlUnit,
@@ -130,24 +136,20 @@ impl TapeIterator for TapeSequence {
     }
 }
 
+/// Command-line simulator for the historical TX-2 computer
+#[derive(Parser, Debug)]
+#[clap(author = AUTHOR, version, about, long_about = None)]
+struct Cli {
+    /// Run this many times faster than real-time ('MAX' for as-fast-as-possible)
+    #[clap(long = "speed-multiplier")]
+    speed_multiplier: Option<String>,
+
+    /// Files containing paper tape data
+    tape: Vec<OsString>,
+}
+
 fn run_simulator() -> Result<(), Box<dyn std::error::Error>> {
-    let matches = App::new("TX-2 Emulator")
-        .author("James Youngman <youngman@google.com>")
-        .about("Simulate the historic TX-2 computer")
-        .arg(
-            Arg::with_name("PTAPE")
-                .help("File containing paper tape data")
-                .multiple(true)
-                .required(false),
-        )
-        .arg(
-            Arg::with_name("speed-multiplier")
-                .help("Run this many times faster than real-time ('MAX' for as-fast-as-possible)")
-                .takes_value(true)
-                .long("speed-multiplier")
-                .required(false),
-        )
-        .get_matches();
+    let cli = Cli::parse();
 
     // By default, display info messages.
     let env_filter = EnvFilter::builder()
@@ -164,14 +166,7 @@ fn run_simulator() -> Result<(), Box<dyn std::error::Error>> {
         with_u_memory: false,
     };
 
-    let tapes = TapeSequence::new(
-        matches
-            .values_of_os("PTAPE")
-            .unwrap_or_default()
-            .into_iter()
-            .map(OsString::from)
-            .collect(),
-    );
+    let tapes = TapeSequence::new(cli.tape.clone());
     if tapes.is_empty() {
         event!(
             Level::WARN,
@@ -180,7 +175,7 @@ fn run_simulator() -> Result<(), Box<dyn std::error::Error>> {
     }
     let petr = Box::new(Petr::new(Box::new(tapes)));
 
-    let speed_multiplier: Option<f64> = match matches.value_of("speed-multiplier") {
+    let speed_multiplier: Option<f64> = match cli.speed_multiplier.as_ref() {
         None => {
             event!(
                 Level::WARN,
@@ -188,26 +183,28 @@ fn run_simulator() -> Result<(), Box<dyn std::error::Error>> {
             );
             None
         }
-        Some("MAX") => {
-            event!(
-                Level::INFO,
-                "--speed-multiplier=MAX, running at maximum speed"
-            );
-            None
-        }
-        Some(s) => match s.parse::<f64>() {
-            Ok(x) => {
+        Some(value) => match value.as_str() {
+            "MAX" => {
                 event!(
                     Level::INFO,
-                    "--speed-multiplier={}, running at speed multiplier {}",
-                    s,
-                    x
+                    "--speed-multiplier=MAX, running at maximum speed"
                 );
-                Some(x)
+                None
             }
-            Err(e) => {
-                return Err(Box::new(e));
-            }
+            some_number => match some_number.parse::<f64>() {
+                Ok(x) => {
+                    event!(
+                        Level::INFO,
+                        "--speed-multiplier={}, running at speed multiplier {}",
+                        some_number,
+                        x
+                    );
+                    Some(x)
+                }
+                Err(e) => {
+                    return Err(Box::new(e));
+                }
+            },
         },
     };
 
