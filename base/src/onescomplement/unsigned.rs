@@ -132,6 +132,26 @@ macro_rules! unsigned_ones_complement_impl {
             pub const ONE: Self = Self { bits: 1 };
             pub const MIN: Self = Self::ZERO;
 
+            // This will always fail at compile time, so no need to
+            // hide it.  It's pub so that it can be used in u36!() and
+            // similar.
+            pub const fn new<const N: $InnerT>() -> $SelfT {
+                type Word = $SelfT;
+                struct Helper<const M: $InnerT>;
+                impl<const M: $InnerT> Helper<M> {
+                    const U: Word = {
+                        if M > Word::MAX.bits {
+                            panic!("input value is out of range")
+                        } else {
+                            Word {
+                                bits: Word::MAX.bits & M,
+                            }
+                        }
+                    };
+                }
+                Helper::<N>::U
+            }
+
             pub const fn is_zero(&self) -> bool {
                 self.bits == 0
             }

@@ -1,6 +1,7 @@
 // Assembler tests.
 
 use base::prelude::*;
+use base::u36;
 use std::cell::RefCell;
 
 use nom::combinator::map;
@@ -105,7 +106,7 @@ fn test_normal_literal_instruction_fragment_oct_defaultmode() {
         parse_successfully_with("402", normal_literal_instruction_fragment, no_state_setup),
         InstructionFragment {
             elevation: Elevation::Normal,
-            value: Unsigned36Bit::from(0o402_u32),
+            value: u36!(0o402),
         }
     );
 }

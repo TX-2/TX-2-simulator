@@ -75,6 +75,10 @@ impl Address {
     pub const ZERO: Address = Address(Unsigned18Bit::ZERO);
     pub const MAX: Address = Address(Unsigned18Bit::MAX);
 
+    pub const fn new(a: Unsigned18Bit) -> Address {
+        Address(a)
+    }
+
     /// Apply a bitmask to an address.  This could also be done via
     /// [`std::ops::BitAnd`], but trait implementations cannot be
     /// const.  Implementing this const methods allows us to form

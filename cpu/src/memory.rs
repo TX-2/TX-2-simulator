@@ -42,7 +42,7 @@ pub const U_MEMORY_SIZE: u32 = 1 + 0o0217777 - 0o0210000;
 pub const V_MEMORY_START: u32 = 0o0377600;
 pub const V_MEMORY_SIZE: u32 = 1 + 0o0377777 - 0o0377600;
 
-pub const STANDARD_PROGRAM_CLEAR_MEMORY: Address = Address::MAX.and(0o0377770_u32);
+pub const STANDARD_PROGRAM_CLEAR_MEMORY: Address = Address::new(u18!(0o0377770));
 
 #[derive(Debug)]
 pub enum MemoryOpFailure {
