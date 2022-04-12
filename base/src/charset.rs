@@ -182,9 +182,12 @@ pub struct LincolnState {
 
 impl Default for LincolnState {
     fn default() -> Self {
+        // Carriage return sets the LW to lower case and normal script
+        // so those are the defaults.  See pages 4-37 to 4-42 of the
+        // User Handbook.
         Self {
             script: Script::Normal,
-            uppercase: true,
+            uppercase: false,
             colour: Colour::Black,
         }
     }
@@ -272,7 +275,23 @@ pub fn lincoln_char_to_described_char(
         0o55 => by_case('-', '='),
         0o56 => by_case(',', '\u{0027}'), // Single apostrophe, U+0027
         0o57 => by_case('.', '*'),
-        0o60 => Some('\r'),
+        0o60 => {
+            // CARRIAGE RETURN also has the side effect of setting the
+            // "keyboard" to lower case and "normal script".  This
+            // statement appears in the description if the Lincoln
+            // Writer in the Users Handbook (page 4-37 and again on
+            // 4-41).  The document explicitly states that a write of
+            // this code (from the TX-2 to the Lincoln Writer) also
+            // affects the state of the keyboard. On page 4-41 the
+            // document also states that carriage return written by
+            // the TX-2 to the Lincoln Writer has the same effect.
+            state.script = Script::Normal;
+            state.uppercase = false;
+            // Despite the state change, on input only the 060 is
+            // emitted by the Lincoln Writer.  Carriage Return also
+            // advances the paper (i.e. performs a line feed).
+            Some('\r')
+        }
         0o61 => Some('\t'),
         0o62 => Some('\u{0008}'), // backspace, U+0008
         0o63 => {
@@ -388,13 +407,18 @@ pub fn lincoln_to_unicode_strict(
 fn test_lincoln_to_unicode_strict() {
     // Regular script
     assert_eq!(
-        lincoln_to_unicode_strict(&[0o27, 0o24, 0o33, 0o33, 0o36]),
+        // Start in lower case.
+        lincoln_to_unicode_strict(&[
+            0o75, // upper case
+            0o27, 0o24, 0o33, 0o33, 0o36
+        ]),
         Ok("HELLO".to_string())
     );
 
     assert_eq!(
         lincoln_to_unicode_strict(&[
             0o64, // Superscript
+            0o75, // upper case
             0o27, 0o24, 0o33, 0o33, 0o36
         ]), // HELLO
         Ok("ᴴᴱᴸᴸᴼ".to_string())
@@ -402,6 +426,7 @@ fn test_lincoln_to_unicode_strict() {
 
     assert_eq!(
         lincoln_to_unicode_strict(&[
+            0o75, // upper case
             0o65, // Normal
             0o27, // H
             0o66, // Subscript
@@ -414,7 +439,6 @@ fn test_lincoln_to_unicode_strict() {
 
     assert_eq!(
         lincoln_to_unicode_strict(&[
-            0o74, // Lower case
             0o52, // { (when lower case)
             0o53, // } (when lower case)
             0o75, // Upper case
@@ -422,6 +446,24 @@ fn test_lincoln_to_unicode_strict() {
             0o53, // ) (when upper case)
         ]),
         Ok("{}()".to_string())
+    );
+}
+
+#[test]
+fn test_lincoln_to_unicode_carriage_return() {
+    assert_eq!(
+        lincoln_to_unicode_strict(&[
+            // Start on lower case.
+            0o06, // when lower case, '#'
+            0o75, // Upper case
+            0o06, // when upper case, '6'
+            0o64, // superscript
+            0o20, // A
+            0o60, // carriage return
+            // Now lower case, normal script
+            0o06, // when lower case, '#'
+        ]),
+        Ok("#6ᴬ\r#".to_string())
     );
 }
 
