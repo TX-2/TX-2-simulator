@@ -114,6 +114,10 @@ impl Instruction {
     pub fn invalid() -> Instruction {
         Instruction(Unsigned36Bit::ZERO)
     }
+
+    pub fn bits(&self) -> Unsigned36Bit {
+        self.0
+    }
 }
 
 impl From<Unsigned36Bit> for Instruction {
@@ -455,8 +459,9 @@ impl From<&SymbolicInstruction> for Instruction {
         let hold_bit: u64 = if s.is_held() { 1 << 35 } else { 0 };
         let cf_bits: u64 = (u64::from(s.configuration()) & 31_u64) << 30;
         let op_bits: u64 = (u64::from(s.opcode_number()) & 63) << 24;
+        let index_bits: u64 = (u64::from(s.index_address())) << 18;
         let address_and_defer_bits: u64 = s.operand_address_and_defer_bit().into();
-        let val: u64 = hold_bit | cf_bits | op_bits | address_and_defer_bits;
+        let val: u64 = hold_bit | cf_bits | op_bits | index_bits | address_and_defer_bits;
         Instruction(Unsigned36Bit::try_from(val).unwrap())
     }
 }
@@ -606,6 +611,26 @@ mod tests {
                 configuration: config_value(30),
                 held: false,
             })
+        );
+    }
+
+    #[test]
+    fn test_assemble_rsx() {
+        // This instruction is taken from position 0o3 of the standard
+        // reader leader on page 5-26 of the Users Handbook.
+        let sym = SymbolicInstruction {
+            held: false,
+            configuration: Unsigned5Bit::try_from(1_u8).expect("valid configuraiton field"),
+            opcode: Opcode::Rsx,
+            index: Unsigned6Bit::try_from(0o54_u8).expect("valid index field"),
+            operand_address: OperandAddress::Direct(Address::new(u18!(5))),
+        };
+        let got: u64 = u64::from(Instruction::from(&sym).bits());
+        const EXPECTED: u64 = 0o011_154_000_005_u64;
+        assert_eq!(
+            got, EXPECTED,
+            "Mismatch in assembly of {:?}: expected 0o{:012o}, got 0o{:012o}",
+            &sym, EXPECTED, got
         );
     }
 }
