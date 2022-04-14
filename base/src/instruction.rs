@@ -401,14 +401,20 @@ pub enum OperandAddress {
     Deferred(Address),
 }
 
+impl Default for OperandAddress {
+    fn default() -> OperandAddress {
+        OperandAddress::Direct(Address::ZERO)
+    }
+}
+
 /// A TX-2 instruction broken down into its component fields.
 #[derive(Debug, PartialEq, Eq)]
 pub struct SymbolicInstruction {
-    operand_address: OperandAddress,
-    index: Unsigned6Bit,
-    opcode: Opcode,
-    configuration: Unsigned5Bit,
-    held: bool,
+    pub held: bool,
+    pub configuration: Unsigned5Bit,
+    pub opcode: Opcode,
+    pub index: Unsigned6Bit,
+    pub operand_address: OperandAddress,
 }
 
 impl SymbolicInstruction {

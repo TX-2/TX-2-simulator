@@ -9,4 +9,4 @@ pub use crate::subword::join_halves;
 pub use crate::subword::join_quarters;
 pub use crate::types::IndexBy;
 pub use crate::types::*;
-pub use crate::{u18, u36};
+pub use crate::{u18, u36, u5, u6};
