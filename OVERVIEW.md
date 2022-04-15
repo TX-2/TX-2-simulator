@@ -55,7 +55,8 @@ do things like execute instructions or simulate I/O operations.
 
 In principle the simulator library should be non-blocking but right
 now it does perform blocking I/O for reads of the simulated paper
-tape.
+tape.  [We should fix
+this](https://github.com/TX-2/TX-2-simulator/issues/46).
 
 ### cli
 
@@ -87,8 +88,9 @@ for `☛☛`.  But nothing like this is implemented right now.
 
 Clearly, we hope to implement more of the missing features
 (e.g. remaining opcodes and hardware devices).  We'd like to end up
-with a working WASM-based simulator which people can try out over the
-web.  We're inspired by the example of
+with a working [WASM-based
+simulator](https://github.com/TX-2/TX-2-simulator/issues/45) which
+people can try out over the web.  We're inspired by the example of
 Matt Godbolt's [jsbeeb](https://bbc.godbolt.org/).
 
 ## Other Sources of Information
