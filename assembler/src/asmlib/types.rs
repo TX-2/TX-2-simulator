@@ -14,6 +14,7 @@ pub type LineNumber = u32;
 #[derive(Debug)]
 pub enum AssemblerFailure {
     Unimplemented(String),
+    BadTapeBlock(String),
     IoErrorOnStdout {
         error: IoError,
     },
@@ -21,6 +22,10 @@ pub enum AssemblerFailure {
         filename: OsString,
         error: IoError,
         line_number: Option<LineNumber>,
+    },
+    IoErrorOnOutput {
+        filename: OsString,
+        error: IoError,
     },
     SyntaxError {
         line: LineNumber,
@@ -43,6 +48,9 @@ fn write_os_string(f: &mut Formatter<'_>, s: &OsStr) -> Result<(), fmt::Error> {
 impl Display for AssemblerFailure {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         match self {
+            AssemblerFailure::BadTapeBlock(explanation) => {
+                write!(f, "bad tape block: {}", explanation)
+            }
             AssemblerFailure::Unimplemented(explanation) => {
                 write!(f, "use of unimplemented feature: {}", explanation)
             }
@@ -59,6 +67,11 @@ impl Display for AssemblerFailure {
                 if let Some(n) = line_number {
                     write!(f, " at line {}", n)?;
                 }
+                write!(f, ": {}", error)
+            }
+            AssemblerFailure::IoErrorOnOutput { filename, error } => {
+                f.write_str("I/O error writing output file ")?;
+                write_os_string(f, filename)?;
                 write!(f, ": {}", error)
             }
             AssemblerFailure::SyntaxError { line, columns, msg } => match columns {

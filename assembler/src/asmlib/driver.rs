@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
 use std::ffi::OsStr;
 use std::fs::OpenOptions;
-use std::io::{BufReader, Read};
+use std::io::{BufReader, BufWriter, Read, Write};
+
+use tracing::{event, span, Level};
 
 use crate::parser::{
     source_file, ErrorLocation, ManuscriptBlock, ManuscriptItem, ManuscriptMetaCommand, Origin,
@@ -9,7 +11,12 @@ use crate::parser::{
 };
 use crate::state::{Error, NumeralMode};
 use crate::types::*;
-use base::prelude::*;
+use base::prelude::{
+    join_halves, reader_leader, split_halves, u18, u5, unsplay, Address, Instruction, Opcode,
+    OperandAddress, SymbolicInstruction, Unsigned18Bit, Unsigned36Bit, Unsigned6Bit,
+};
+#[cfg(test)]
+use base::u36;
 
 /// Represents the meta commands which are still relevant in the
 /// directive.  Excludes things like the PUNCH meta command.
@@ -28,6 +35,10 @@ impl Block {
     fn push(&mut self, inst: ProgramInstruction) {
         self.items.push(inst);
     }
+
+    fn instruction_count(&self) -> usize {
+        self.items.len()
+    }
 }
 
 #[derive(Debug)]
@@ -45,6 +56,13 @@ impl Directive {
             symbols,
         }
     }
+
+    fn instruction_count(&self) -> usize {
+        self.items
+            .values()
+            .map(|block| block.instruction_count())
+            .sum()
+    }
 }
 
 impl Directive {
@@ -61,10 +79,124 @@ struct OutputOptions {
     list: bool,
 }
 
+/// Create a block of data ready to be punched to tape such that the
+/// standard reader leader can load it.
+///
+/// See reaaderleader.rs for documentation on the format of a block.
+///
+/// For the last block, the jump address is 0o26, which is the
+/// location within the reader leader which arranges to start the
+/// user's program.  For other blocks it is 3 (that is, we jump back
+/// to the start of the reader leader in order to load the next
+/// block).
+fn create_tape_block(
+    origin: Origin,
+    code: &[Unsigned36Bit],
+    last: bool,
+) -> Result<Vec<Unsigned36Bit>, AssemblerFailure> {
+    if code.is_empty() {
+        return Err(AssemblerFailure::BadTapeBlock(
+            "tape blocks are not allowed to be empty (the format does not support it)".to_string(),
+        ));
+    }
+    let mut block = Vec::with_capacity(code.len().saturating_add(2usize));
+    let len: Unsigned18Bit = match Unsigned18Bit::try_from(code.len()) {
+        Err(_) => {
+            return Err(AssemblerFailure::BadTapeBlock(
+                "block is too long for output format".to_string(),
+            ));
+        }
+        Ok(len) => len,
+    };
+    let end: Unsigned18Bit = match Unsigned18Bit::from(origin).checked_add(len) {
+        None => {
+            return Err(AssemblerFailure::BadTapeBlock(
+                "end of block does not fit into physical memory".to_string(),
+            ));
+        }
+        Some(end) => end,
+    };
+    let mut checksum = len.wrapping_add(end);
+    block.push(join_halves(len, end));
+    for (l, r) in block.iter().map(|w| split_halves(*w)) {
+        checksum = checksum.wrapping_add(l).wrapping_add(r);
+    }
+    block.extend(code);
+    let next: Unsigned18Bit = { if last { 0o27_u8 } else { 0o3_u8 }.into() };
+    checksum = checksum.wrapping_add(next);
+    checksum = Unsigned18Bit::ZERO.wrapping_sub(checksum);
+    block.push(join_halves(checksum, next));
+    Ok(block)
+}
+
+/// Assemble a single instruction to go into register 0o27,
+/// immediately after the reader leader.  This instruction calls the
+/// user's program.
+fn create_begin_block(
+    program_start: Option<Address>,
+    empty_program: bool,
+) -> Result<Vec<Unsigned36Bit>, AssemblerFailure> {
+    let instruction: SymbolicInstruction = if let Some(start) = program_start {
+        // When there is a known start address `start` we emit a `JPQ
+        // start` instruction into memory register 0o27.
+        SymbolicInstruction {
+            held: false,
+            configuration: u5!(0o14), // JPQ
+            opcode: Opcode::Jmp,
+            index: Unsigned6Bit::ZERO,
+            operand_address: OperandAddress::Direct(start),
+        }
+    } else {
+        // Emit a JPD (jump, dismiss) instruction which loops back to
+        // itself.  This puts the machine into the LIMBO state.
+        SymbolicInstruction {
+            held: false,
+            configuration: u5!(0o20), // JPD
+            opcode: Opcode::Jmp,
+            index: Unsigned6Bit::ZERO,
+            operand_address: OperandAddress::Direct(Address::from(u18!(0o27))),
+        }
+    };
+    let origin = Origin(Address::from(Unsigned18Bit::from(0o27_u8)));
+    let code = vec![Instruction::from(&instruction).bits()];
+    create_tape_block(origin, &code, !empty_program)
+}
+
+fn write_data<W: Write>(
+    writer: &mut W,
+    output_file_name: &OsStr,
+    data: &[Unsigned36Bit],
+) -> Result<(), AssemblerFailure> {
+    let mut inner = || -> Result<(), std::io::Error> {
+        const OUTPUT_CHUNK_SIZE: usize = 1024;
+        for chunk in data.chunks(OUTPUT_CHUNK_SIZE) {
+            let mut buf: Vec<u8> = Vec::with_capacity(chunk.len() * 6);
+            for word in chunk {
+                let unsplayed: [Unsigned6Bit; 6] = unsplay(*word);
+                event!(
+                    Level::DEBUG,
+                    "instruction word {:012o} unsplayed to {:?}",
+                    &word,
+                    &unsplayed
+                );
+                buf.extend(unsplayed.into_iter().map(|u| u8::from(u) | 1 << 7));
+            }
+            writer.write_all(&buf)?;
+        }
+        Ok(())
+    };
+    inner().map_err(|e| AssemblerFailure::IoErrorOnOutput {
+        filename: output_file_name.to_owned(),
+        error: e,
+    })
+}
+
 fn assemble_pass1(
     source_file_body: &str,
     errors: &mut Vec<Error>,
 ) -> Result<(Directive, OutputOptions), AssemblerFailure> {
+    let span = span!(Level::ERROR, "assembly pass 1");
+    let _enter = span.enter();
     let options = OutputOptions {
         // Because we don't parse the LIST etc. metacommands yet, we
         // simply hard-code the list option so that the symbol table isn't
@@ -74,14 +206,42 @@ fn assemble_pass1(
     let mut symbols = SymbolTable::new();
     let manuscript: Vec<ManuscriptBlock> = source_file(source_file_body, &mut symbols, errors)?;
     let mut directive: Directive = Directive::new(symbols);
+    let mut saw_punch: bool = false;
     for mblock in manuscript {
-        let effective_origin = mblock.origin.unwrap_or_default();
+        let effective_origin = match mblock.origin {
+            None => {
+                let address = Origin::default();
+                event!(
+                    Level::DEBUG,
+                    "Locating a block at default address {:o}",
+                    address
+                );
+                address
+            }
+            Some(address) => {
+                event!(
+                    Level::DEBUG,
+                    "Locating a block at specified address {:o}",
+                    address
+                );
+                address
+            }
+        };
         for manuscript_item in mblock.items {
             match manuscript_item {
                 ManuscriptItem::Instruction(inst) => {
                     directive.push(effective_origin, inst);
                 }
                 ManuscriptItem::MetaCommand(ManuscriptMetaCommand::Punch(address)) => {
+                    saw_punch = true;
+                    match address {
+                        Some(a) => {
+                            event!(Level::INFO, "program entry point was specified as {:o}", a);
+                        }
+                        None => {
+                            event!(Level::INFO, "program entry point was not specified");
+                        }
+                    }
                     directive.entry_point = address;
                     // Because the PUNCH instruction causes the assembler
                     // output to be punched to tape, this effectively
@@ -100,6 +260,12 @@ fn assemble_pass1(
                 ManuscriptItem::MetaCommand(_) => (),
             }
         }
+    }
+    if !saw_punch {
+        event!(
+            Level::WARN,
+            "No PUNCH directive was given, program has no start address"
+        );
     }
     // TODO: implement the PUNCH metacommand.
     // TODO: implement the SAVE metacommand.
@@ -137,9 +303,20 @@ fn test_assemble_pass1() {
     }
 }
 
+fn assemble_pass2(directive: &Directive) -> Vec<(Origin, Vec<Unsigned36Bit>)> {
+    let span = span!(Level::ERROR, "assembly pass 2");
+    let _enter = span.enter();
+    let mut result: Vec<(Origin, Vec<Unsigned36Bit>)> = Vec::new();
+    for (origin, block) in directive.items.iter() {
+        let words: Vec<Unsigned36Bit> = block.items.iter().map(|inst| inst.value()).collect();
+        result.push((*origin, words));
+    }
+    result
+}
+
 pub fn assemble_file(
     input_file_name: &OsStr,
-    _output_file: &OsStr,
+    output_file_name: &OsStr,
 ) -> Result<(), AssemblerFailure> {
     let input_file = OpenOptions::new()
         .read(true)
@@ -184,6 +361,12 @@ pub fn assemble_file(
                 }
             }
         };
+    event!(
+        Level::INFO,
+        "assembly pass1 generated {} instructions",
+        directive.instruction_count()
+    );
+
     // Now we do pass 2.
     if options.list {
         directive
@@ -191,5 +374,54 @@ pub fn assemble_file(
             .list()
             .map_err(|e| AssemblerFailure::IoErrorOnStdout { error: e })?;
     }
-    todo!("address resolution (and assembly pass 2) is not implemented")
+
+    let user_program: Vec<(Origin, Vec<Unsigned36Bit>)> = assemble_pass2(&directive);
+
+    // The Users Guide explains on page 6-23 how the punched binary
+    // is created (and read back in).
+    let output_file = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .open(output_file_name)
+        .map_err(|e| AssemblerFailure::IoErrorOnOutput {
+            filename: output_file_name.to_owned(),
+            error: e,
+        })?;
+    let mut writer = BufWriter::new(output_file);
+    // The boot code reads the paper tape in PETR mode 0o30106
+    // (see base/src/memory.rs) which looks for an END MARK
+    // (code 0o76, no seventh bit set).  But, our PETR device
+    // emulation currently "invents" the END MARK (coinciding
+    // with the beginnng of the tape file) so we don't need to
+    // write it.
+    write_data(&mut writer, output_file_name, &reader_leader())?;
+
+    // First we write the special block for register 27.
+    let program_is_empty = user_program.is_empty();
+    write_data(
+        &mut writer,
+        output_file_name,
+        &create_begin_block(directive.entry_point, program_is_empty)?,
+    )?;
+
+    let mut iter = user_program.iter().peekable();
+    loop {
+        match iter.next() {
+            None => {
+                break;
+            }
+            Some((origin, code)) => {
+                let this_is_the_last_block = iter.peek().is_none();
+                let block = create_tape_block(*origin, code, this_is_the_last_block)?;
+                write_data(&mut writer, output_file_name, &block)?;
+            }
+        }
+    }
+
+    writer
+        .flush()
+        .map_err(|e| AssemblerFailure::IoErrorOnOutput {
+            filename: output_file_name.to_owned(),
+            error: e,
+        })
 }
