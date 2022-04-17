@@ -881,6 +881,18 @@ pub(crate) fn metacommand<'a, 'b>(
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Hash)]
 pub struct Origin(pub Address);
 
+impl From<Origin> for Address {
+    fn from(orig: Origin) -> Address {
+        orig.0
+    }
+}
+
+impl From<Origin> for Unsigned18Bit {
+    fn from(orig: Origin) -> Unsigned18Bit {
+        Unsigned18Bit::from(Address::from(orig))
+    }
+}
+
 impl Default for Origin {
     fn default() -> Origin {
         Origin(Address::new(Unsigned18Bit::from(0o20000_u16)))

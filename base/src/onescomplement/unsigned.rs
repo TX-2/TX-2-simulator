@@ -680,6 +680,22 @@ impl TryFrom<Unsigned36Bit> for Unsigned18Bit {
     }
 }
 
+impl TryFrom<usize> for Unsigned18Bit {
+    type Error = ConversionFailed;
+    fn try_from(n: usize) -> Result<Self, ConversionFailed> {
+        match n.try_into() {
+            Ok(bits) => {
+                if bits > Unsigned18Bit::MAX.bits {
+                    Err(ConversionFailed::TooLarge)
+                } else {
+                    Ok(Unsigned18Bit { bits })
+                }
+            }
+            Err(_) => Err(ConversionFailed::TooLarge),
+        }
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////
 // Unsigned36Bit
 ////////////////////////////////////////////////////////////////////////
