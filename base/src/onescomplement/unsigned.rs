@@ -9,6 +9,7 @@ use std::cmp::Ordering;
 use std::fmt::{self, Debug, Display, Formatter, Octal};
 use std::hash::{Hash, Hasher};
 
+use super::super::subword::split_halves;
 use super::error::ConversionFailed;
 use super::signed::*;
 use super::{Sign, WordCommon};
@@ -647,6 +648,18 @@ impl From<Unsigned9Bit> for Unsigned18Bit {
     fn from(n: Unsigned9Bit) -> Self {
         Self {
             bits: n.bits.into(),
+        }
+    }
+}
+
+impl TryFrom<Unsigned36Bit> for Unsigned18Bit {
+    type Error = ConversionFailed;
+    fn try_from(n: Unsigned36Bit) -> Result<Self, ConversionFailed> {
+        let (high, low) = split_halves(n);
+        if high == Unsigned18Bit::ZERO {
+            Ok(low)
+        } else {
+            Err(ConversionFailed::TooLarge)
         }
     }
 }

@@ -277,7 +277,7 @@ fn test_program_instruction_fragment() {
 fn test_program_instruction() {
     assert_eq!(
         parse_successfully_with("⁶673₃₁", program_instruction, no_state_setup),
-        ProgramInstruction {
+        ManuscriptItem::Instruction(ProgramInstruction {
             tag: None,
             parts: vec![
                 InstructionFragment {
@@ -293,7 +293,7 @@ fn test_program_instruction() {
                     value: Unsigned36Bit::from(0o31_u32),
                 },
             ]
-        }
+        })
     );
 }
 
@@ -365,20 +365,20 @@ fn test_manuscript_without_tag() {
     assert_eq!(
         parse_successfully_with("673\n71\n", parse_manuscript, no_state_setup),
         vec![
-            ProgramInstruction {
+            ManuscriptItem::Instruction(ProgramInstruction {
                 tag: None,
                 parts: vec![InstructionFragment {
                     elevation: Elevation::Normal,
                     value: Unsigned36Bit::from(0o673_u32),
                 },]
-            },
-            ProgramInstruction {
+            }),
+            ManuscriptItem::Instruction(ProgramInstruction {
                 tag: None,
                 parts: vec![InstructionFragment {
                     elevation: Elevation::Normal,
                     value: Unsigned36Bit::from(0o71_u32),
                 },]
-            },
+            }),
         ]
     );
 }
@@ -409,7 +409,7 @@ fn test_symbol_name_two_syllables() {
 fn test_manuscript_with_single_syllable_tag() {
     assert_eq!(
         parse_successfully_with("START4  \t->\t205\n", parse_manuscript, no_state_setup),
-        vec![ProgramInstruction {
+        vec![ManuscriptItem::Instruction(ProgramInstruction {
             tag: Some(SymbolName {
                 canonical: "START4".to_string(),
                 as_used: "START4".to_string(),
@@ -418,7 +418,7 @@ fn test_manuscript_with_single_syllable_tag() {
                 elevation: Elevation::Normal,
                 value: Unsigned36Bit::from(0o205_u32),
             },]
-        },]
+        }),]
     );
 }
 
@@ -458,7 +458,7 @@ fn test_multi_syllable_tag() {
 fn test_manuscript_with_multi_syllable_tag() {
     assert_eq!(
         parse_successfully_with("CODE HERE->205\n", parse_manuscript, no_state_setup),
-        vec![ProgramInstruction {
+        vec![ManuscriptItem::Instruction(ProgramInstruction {
             tag: Some(SymbolName {
                 canonical: "CODEHERE".to_string(),
                 as_used: "CODE HERE".to_string(),
@@ -467,7 +467,7 @@ fn test_manuscript_with_multi_syllable_tag() {
                 elevation: Elevation::Normal,
                 value: Unsigned36Bit::from(0o205_u32),
             },]
-        },]
+        }),]
     );
 }
 
@@ -476,7 +476,7 @@ fn test_manuscript_with_real_arrow_tag() {
     const INPUT: &str = "HERE→207\n"; // real Unicode rightward arrow (U+2192).
     assert_eq!(
         parse_successfully_with(INPUT, parse_manuscript, no_state_setup),
-        vec![ProgramInstruction {
+        vec![ManuscriptItem::Instruction(ProgramInstruction {
             tag: Some(SymbolName {
                 canonical: "HERE".to_string(),
                 as_used: "HERE".to_string(),
@@ -485,7 +485,7 @@ fn test_manuscript_with_real_arrow_tag() {
                 elevation: Elevation::Normal,
                 value: Unsigned36Bit::from(0o207_u32),
             },]
-        },]
+        }),]
     );
 }
 
@@ -501,7 +501,7 @@ fn test_not_end_of_file() {
 }
 
 #[cfg(test)]
-fn assemble_nonempty_valid_input(input: &str) -> (Vec<ProgramInstruction>, SymbolTable) {
+fn assemble_nonempty_valid_input(input: &str) -> (Vec<ManuscriptItem>, SymbolTable) {
     let mut symtab = SymbolTable::new();
     let mut errors: Vec<Error> = Vec::new();
     let result = source_file(input, &mut symtab, &mut errors);
@@ -520,17 +520,25 @@ fn assemble_literal(input: &str, expected: &InstructionFragment) {
         panic!("no symbol should have been generated");
     }
     match directive.as_slice() {
-        [ProgramInstruction { tag: None, parts }] => match parts.as_slice() {
-            [only_frag] => {
-                if only_frag == expected {
-                    return;
+        [ManuscriptItem::MetaCommand(cmd), ..] => {
+            panic!(
+                "expected an instruction fragment, got metacommand {:?}",
+                &cmd
+            );
+        }
+        [ManuscriptItem::Instruction(ProgramInstruction { tag: None, parts })] => {
+            match parts.as_slice() {
+                [only_frag] => {
+                    if only_frag == expected {
+                        return;
+                    }
+                    panic!("expected fragment {:?}, got {:?}", expected, only_frag);
                 }
-                panic!("expected fragment {:?}, got {:?}", expected, only_frag);
+                _ => {
+                    panic!("expected fragment {:?}, got {:?}", expected, &parts);
+                }
             }
-            _ => {
-                panic!("expected fragment {:?}, got {:?}", expected, &parts);
-            }
-        },
+        }
         _ => {
             panic!(
                 "expected one instruction containing {:?}, got {:?}",
@@ -584,7 +592,7 @@ fn test_assemble_octal_subscript_literal() {
 fn test_metacommand_decimal() {
     assert_eq!(
         parse_successfully_with("☛☛DECIMAL", metacommand, no_state_setup),
-        MetaCommand::BaseChange(NumeralMode::Decimal)
+        ManuscriptMetaCommand::BaseChange(NumeralMode::Decimal)
     );
 }
 
@@ -592,7 +600,7 @@ fn test_metacommand_decimal() {
 fn test_metacommand_dec() {
     assert_eq!(
         parse_successfully_with("☛☛DEC", metacommand, no_state_setup),
-        MetaCommand::BaseChange(NumeralMode::Decimal)
+        ManuscriptMetaCommand::BaseChange(NumeralMode::Decimal)
     );
 }
 
@@ -600,7 +608,7 @@ fn test_metacommand_dec() {
 fn test_metacommand_oct() {
     assert_eq!(
         parse_successfully_with("☛☛OCT", metacommand, no_state_setup),
-        MetaCommand::BaseChange(NumeralMode::Octal)
+        ManuscriptMetaCommand::BaseChange(NumeralMode::Octal)
     );
 }
 
@@ -608,7 +616,7 @@ fn test_metacommand_oct() {
 fn test_metacommand_octal() {
     assert_eq!(
         parse_successfully_with("☛☛OCTAL", metacommand, no_state_setup),
-        MetaCommand::BaseChange(NumeralMode::Octal)
+        ManuscriptMetaCommand::BaseChange(NumeralMode::Octal)
     );
 }
 
@@ -617,16 +625,13 @@ fn test_metacommand_dec_changes_default_base() {
     const INPUT: &str = concat!("10\n", "☛☛DECIMAL\n", "10\n");
     let (directive, _) = assemble_nonempty_valid_input(INPUT);
     match directive.as_slice() {
-        [ProgramInstruction {
+        [ManuscriptItem::Instruction(ProgramInstruction {
             tag: None,
             parts: first_parts,
-        }, ProgramInstruction {
-            tag: mc_tag,
-            parts: mc_parts,
-        }, ProgramInstruction {
+        }), ManuscriptItem::MetaCommand(ManuscriptMetaCommand::BaseChange(NumeralMode::Decimal)), ManuscriptItem::Instruction(ProgramInstruction {
             tag: None,
             parts: second_parts,
-        }] => {
+        })] => {
             assert_eq!(
                 &first_parts.as_slice(),
                 &[InstructionFragment {
@@ -634,9 +639,6 @@ fn test_metacommand_dec_changes_default_base() {
                     value: Unsigned36Bit::from(0o10_u32),
                 }],
             );
-            // The metacommand ends up as an empty instruction.
-            assert!(mc_tag.is_none());
-            assert!(mc_parts.is_empty());
             assert_eq!(
                 &second_parts.as_slice(),
                 &[InstructionFragment {

@@ -40,13 +40,10 @@ pub struct ProgramInstruction {
     pub(crate) parts: Vec<InstructionFragment>,
 }
 
-impl ProgramInstruction {
-    fn empty() -> ProgramInstruction {
-        ProgramInstruction {
-            tag: None,
-            parts: Vec::new(),
-        }
-    }
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ManuscriptItem {
+    MetaCommand(ManuscriptMetaCommand),
+    Instruction(ProgramInstruction),
 }
 
 pub(crate) fn maybe_superscript_sign<'a, 'b>(
@@ -724,6 +721,25 @@ pub(crate) fn arrow<'a, 'b>(
     recognize(tuple((space0, just_arrow, space0)))(input)
 }
 
+pub(crate) fn expression<'a, 'b>(
+    input: ek::LocatedSpan<'a, 'b>,
+) -> ek::IResult<'a, 'b, Unsigned36Bit> {
+    // Expressions can contain literals, symexes and arithmetic operations,
+    // but right now we only support literals.
+    fn frag_to_value(f: InstructionFragment) -> Unsigned36Bit {
+        match f {
+            InstructionFragment {
+                elevation: Elevation::Normal,
+                value,
+            } => value,
+            _ => {
+                todo!("super/subscript values in expressions are not implemented")
+            }
+        }
+    }
+    map(normal_literal_instruction_fragment, frag_to_value)(input)
+}
+
 pub(crate) fn symbol_name<'a, 'b>(
     input: ek::LocatedSpan<'a, 'b>,
 ) -> ek::IResult<'a, 'b, SymbolName> {
@@ -750,33 +766,84 @@ pub(crate) fn double_hand<'a, 'b>(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MetaCommand {
+pub enum ManuscriptMetaCommand {
     Invalid, // e.g."☛☛BOGUS"
+    // TODO: implement the T= metacommand.
+    // TODO: implement the RC metacommand.
+    // TODO: implement the XXX metacommand.
     BaseChange(NumeralMode),
+    Punch(Option<Address>),
 }
 
-fn base_change<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, MetaCommand> {
-    fn decimal<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, MetaCommand> {
+fn base_change<'a, 'b>(
+    input: ek::LocatedSpan<'a, 'b>,
+) -> ek::IResult<'a, 'b, ManuscriptMetaCommand> {
+    fn decimal<'a, 'b>(
+        input: ek::LocatedSpan<'a, 'b>,
+    ) -> ek::IResult<'a, 'b, ManuscriptMetaCommand> {
         map(alt((tag("DECIMAL"), tag("DEC"))), |_| {
-            MetaCommand::BaseChange(NumeralMode::Decimal)
+            ManuscriptMetaCommand::BaseChange(NumeralMode::Decimal)
         })(input)
     }
-    fn octal<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, MetaCommand> {
+    fn octal<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, ManuscriptMetaCommand> {
         map(alt((tag("OCTAL"), tag("OCT"))), |_| {
-            MetaCommand::BaseChange(NumeralMode::Octal)
+            ManuscriptMetaCommand::BaseChange(NumeralMode::Octal)
         })(input)
     }
 
     alt((decimal, octal))(input)
 }
 
-fn metacommand_body<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, MetaCommand> {
-    base_change(input)
+fn punch<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, ManuscriptMetaCommand> {
+    fn punch_address(a: Option<Unsigned36Bit>) -> Result<ManuscriptMetaCommand, String> {
+        match a {
+            None => Ok(ManuscriptMetaCommand::Punch(None)),
+            Some(value) => match Unsigned18Bit::try_from(value) {
+                Err(e) => Err(format!(
+                    "PUNCH address value {:o} is not a valid address: {}",
+                    value, e
+                )),
+                Ok(halfword) => {
+                    let addr: Address = Address::from(halfword);
+                    if addr.mark_bit() != Unsigned18Bit::ZERO {
+                        Err(format!(
+                            "PUNCH address value {:o} must not be a deferred address",
+                            addr
+                        ))
+                    } else {
+                        Ok(ManuscriptMetaCommand::Punch(Some(addr)))
+                    }
+                }
+            },
+        }
+    }
+    match map_res(
+        preceded(preceded(tag("PUNCH"), spaces1), opt(expression)),
+        punch_address,
+    )(input)
+    {
+        Ok(cmd) => Ok(cmd),
+        Err(nom::Err::Error(e) | nom::Err::Failure(e)) => {
+            let err = Error(
+                ErrorLocation::from(&e.input),
+                "invalid PUNCH address".to_string(),
+            );
+            e.input.extra.report_error(err);
+            Ok((e.input, ManuscriptMetaCommand::Invalid))
+        }
+        Err(e) => Err(e),
+    }
+}
+
+fn metacommand_body<'a, 'b>(
+    input: ek::LocatedSpan<'a, 'b>,
+) -> ek::IResult<'a, 'b, ManuscriptMetaCommand> {
+    alt((base_change, punch))(input)
 }
 
 pub(crate) fn metacommand<'a, 'b>(
     input: ek::LocatedSpan<'a, 'b>,
-) -> ek::IResult<'a, 'b, MetaCommand> {
+) -> ek::IResult<'a, 'b, ManuscriptMetaCommand> {
     map(
         pair(
             double_hand,
@@ -787,48 +854,55 @@ pub(crate) fn metacommand<'a, 'b>(
         ),
         |got| match got {
             (Some(_), Some(cmd)) => cmd,
-            _ => MetaCommand::Invalid,
+            _ => ManuscriptMetaCommand::Invalid,
         },
     )(input)
 }
 
 pub(crate) fn program_instruction<'a, 'b>(
     input: ek::LocatedSpan<'a, 'b>,
-) -> ek::IResult<'a, 'b, ProgramInstruction> {
+) -> ek::IResult<'a, 'b, ManuscriptItem> {
     map(
         pair(opt(tag_definition), program_instruction_fragments),
-        |(maybe_tag, fragments)| ProgramInstruction {
-            tag: maybe_tag,
-            parts: fragments,
+        |(maybe_tag, fragments)| {
+            ManuscriptItem::Instruction(ProgramInstruction {
+                tag: maybe_tag,
+                parts: fragments,
+            })
         },
     )(input)
 }
 
-fn execute_metacommand(state_extra: &StateExtra, cmd: MetaCommand) {
+fn execute_metacommand(state_extra: &StateExtra, cmd: &ManuscriptMetaCommand) {
     match cmd {
-        MetaCommand::Invalid => {
+        ManuscriptMetaCommand::Invalid => {
             todo!("error reporting for invalid metacommands is not implemented")
         }
-        MetaCommand::BaseChange(new_base) => state_extra.set_numeral_mode(new_base),
+        ManuscriptMetaCommand::Punch(_) => {
+            // Instead of executing this metacommand as we parse it,
+            // we simply return it as part of the parser output, and
+            // it is executed by the driver.
+        }
+        ManuscriptMetaCommand::BaseChange(new_base) => state_extra.set_numeral_mode(*new_base),
     }
 }
 
 pub(crate) fn program_instruction_or_metacommand<'a, 'b>(
     input: ek::LocatedSpan<'a, 'b>,
-) -> ek::IResult<'a, 'b, ProgramInstruction> {
+) -> ek::IResult<'a, 'b, ManuscriptItem> {
     fn parse_and_execute_metacommand<'a, 'b>(
         input: ek::LocatedSpan<'a, 'b>,
-    ) -> ek::IResult<'a, 'b, ProgramInstruction> {
+    ) -> ek::IResult<'a, 'b, ManuscriptItem> {
         match metacommand(input) {
             Ok((tail, cmd)) => {
-                execute_metacommand(&tail.extra, cmd);
-                Ok((tail, ProgramInstruction::empty()))
+                execute_metacommand(&tail.extra, &cmd);
+                Ok((tail, ManuscriptItem::MetaCommand(cmd)))
             }
             Err(e) => Err(e),
         }
     }
 
-    alt((program_instruction, parse_and_execute_metacommand))(input)
+    alt((parse_and_execute_metacommand, program_instruction))(input)
 }
 
 pub(crate) fn newline<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, char> {
@@ -839,7 +913,7 @@ pub(crate) fn newline<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a,
 /// and assembly-language instructions).
 pub(crate) fn parse_manuscript<'a, 'b>(
     input: ek::LocatedSpan<'a, 'b>,
-) -> ek::IResult<'a, 'b, Vec<ProgramInstruction>> {
+) -> ek::IResult<'a, 'b, Vec<ManuscriptItem>> {
     // TODO: when we implement metacommands we will need to separate
     // the processing of the metacommands and the generation of the
     // assembled code, because in between those things has to come the
@@ -854,7 +928,7 @@ pub fn source_file(
     body: &str,
     _symtab: &mut SymbolTable,
     errors: &mut Vec<Error>,
-) -> Result<Vec<ProgramInstruction>, AssemblerFailure> {
+) -> Result<Vec<ManuscriptItem>, AssemblerFailure> {
     fn setup(state: &mut State) {
         // Octal is actually the default numeral mode, we just call
         // set_numeral_mode here to keep Clippy happy until we
@@ -865,13 +939,13 @@ pub fn source_file(
 
     fn parse_empty_file<'a, 'b>(
         body: ek::LocatedSpan<'a, 'b>,
-    ) -> ek::IResult<'a, 'b, Vec<ProgramInstruction>> {
+    ) -> ek::IResult<'a, 'b, Vec<ManuscriptItem>> {
         map(take(0usize), |_| Vec::new())(body)
     }
 
     fn parse_source_file<'a, 'b>(
         body: ek::LocatedSpan<'a, 'b>,
-    ) -> ek::IResult<'a, 'b, Vec<ProgramInstruction>> {
+    ) -> ek::IResult<'a, 'b, Vec<ManuscriptItem>> {
         terminated(
             alt((parse_manuscript, parse_empty_file)),
             ek::expect_end_of_file,

@@ -14,6 +14,9 @@ pub type LineNumber = u32;
 #[derive(Debug)]
 pub enum AssemblerFailure {
     Unimplemented(String),
+    IoErrorOnStdout {
+        error: IoError,
+    },
     IoErrorOnInput {
         filename: OsString,
         error: IoError,
@@ -42,6 +45,9 @@ impl Display for AssemblerFailure {
         match self {
             AssemblerFailure::Unimplemented(explanation) => {
                 write!(f, "use of unimplemented feature: {}", explanation)
+            }
+            AssemblerFailure::IoErrorOnStdout { error } => {
+                write!(f, "error writing on stdout: {}", error)
             }
             AssemblerFailure::IoErrorOnInput {
                 filename,
@@ -150,5 +156,10 @@ impl SymbolTable {
     pub fn is_empty(&self) -> bool {
         // self.syms.is_empty()
         true
+    }
+
+    pub fn list(&self) -> Result<(), std::io::Error> {
+        // There are no fields, so nothing to do.
+        Ok(())
     }
 }
