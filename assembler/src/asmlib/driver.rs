@@ -114,6 +114,7 @@ fn test_assemble_pass1() {
     let mut errors: Vec<Error> = Vec::new();
     let expected_directive = Directive {
         items: vec![DirectiveItem::Instruction(ProgramInstruction {
+            origin: None,
             tag: None,
             parts: vec![InstructionFragment {
                 elevation: Elevation::Normal,
