@@ -1,4 +1,4 @@
-use std::fmt::Write;
+use std::fmt::{self, Display, Formatter, Octal, Write};
 use std::num::IntErrorKind;
 use std::ops::Range;
 
@@ -36,7 +36,6 @@ impl<'a, 'b> From<&ek::LocatedSpan<'a, 'b>> for ErrorLocation {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProgramInstruction {
-    pub(crate) origin: Option<Address>,
     pub(crate) tag: Option<SymbolName>,
     pub(crate) parts: Vec<InstructionFragment>,
 }
@@ -871,27 +870,50 @@ pub(crate) fn metacommand<'a, 'b>(
     )(input)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Hash)]
+pub struct Origin(pub Address);
+
+impl Default for Origin {
+    fn default() -> Origin {
+        Origin(Address::new(Unsigned18Bit::from(0o20000_u16)))
+    }
+}
+
+impl Display for Origin {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        fmt::Display::fmt(&self.0, f)
+    }
+}
+
+impl Octal for Origin {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{:o}", self.0)
+    }
+}
+
 fn tag_definition_or_origin<'a, 'b>(
     input: ek::LocatedSpan<'a, 'b>,
-) -> ek::IResult<'a, 'b, (Option<SymbolName>, Option<Address>)> {
+) -> ek::IResult<'a, 'b, (Option<SymbolName>, Option<Origin>)> {
     alt((
         map(tag_definition, |name| (Some(name), None)),
-        map(origin, |addr| (None, Some(addr))),
+        map(origin, |addr| (None, Some(Origin(addr)))),
     ))(input)
 }
 
 pub(crate) fn program_instruction<'a, 'b>(
     input: ek::LocatedSpan<'a, 'b>,
-) -> ek::IResult<'a, 'b, ManuscriptItem> {
+) -> ek::IResult<'a, 'b, (Option<Origin>, ManuscriptItem)> {
     map(
         pair(opt(tag_definition_or_origin), program_instruction_fragments),
         |(maybe_tag_or_origin, fragments)| {
             let (tag, origin) = maybe_tag_or_origin.unwrap_or((None, None));
-            ManuscriptItem::Instruction(ProgramInstruction {
+            (
                 origin,
-                tag,
-                parts: fragments,
-            })
+                ManuscriptItem::Instruction(ProgramInstruction {
+                    tag,
+                    parts: fragments,
+                }),
+            )
         },
     )(input)
 }
@@ -912,14 +934,14 @@ fn execute_metacommand(state_extra: &StateExtra, cmd: &ManuscriptMetaCommand) {
 
 pub(crate) fn program_instruction_or_metacommand<'a, 'b>(
     input: ek::LocatedSpan<'a, 'b>,
-) -> ek::IResult<'a, 'b, ManuscriptItem> {
+) -> ek::IResult<'a, 'b, (Option<Origin>, ManuscriptItem)> {
     fn parse_and_execute_metacommand<'a, 'b>(
         input: ek::LocatedSpan<'a, 'b>,
-    ) -> ek::IResult<'a, 'b, ManuscriptItem> {
+    ) -> ek::IResult<'a, 'b, (Option<Origin>, ManuscriptItem)> {
         match metacommand(input) {
             Ok((tail, cmd)) => {
                 execute_metacommand(&tail.extra, &cmd);
-                Ok((tail, ManuscriptItem::MetaCommand(cmd)))
+                Ok((tail, (None, ManuscriptItem::MetaCommand(cmd))))
             }
             Err(e) => Err(e),
         }
@@ -936,7 +958,7 @@ pub(crate) fn newline<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a,
 /// and assembly-language instructions).
 pub(crate) fn parse_manuscript<'a, 'b>(
     input: ek::LocatedSpan<'a, 'b>,
-) -> ek::IResult<'a, 'b, Vec<ManuscriptItem>> {
+) -> ek::IResult<'a, 'b, Vec<(Option<Origin>, ManuscriptItem)>> {
     // TODO: when we implement metacommands we will need to separate
     // the processing of the metacommands and the generation of the
     // assembled code, because in between those things has to come the
@@ -947,11 +969,23 @@ pub(crate) fn parse_manuscript<'a, 'b>(
     ))(input)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ManuscriptBlock {
+    pub origin: Option<Origin>,
+    pub items: Vec<ManuscriptItem>,
+}
+
+impl ManuscriptBlock {
+    fn new(origin: Option<Origin>, items: Vec<ManuscriptItem>) -> ManuscriptBlock {
+        ManuscriptBlock { origin, items }
+    }
+}
+
 pub fn source_file(
     body: &str,
     _symtab: &mut SymbolTable,
     errors: &mut Vec<Error>,
-) -> Result<Vec<ManuscriptItem>, AssemblerFailure> {
+) -> Result<Vec<ManuscriptBlock>, AssemblerFailure> {
     fn setup(state: &mut State) {
         // Octal is actually the default numeral mode, we just call
         // set_numeral_mode here to keep Clippy happy until we
@@ -962,13 +996,13 @@ pub fn source_file(
 
     fn parse_empty_file<'a, 'b>(
         body: ek::LocatedSpan<'a, 'b>,
-    ) -> ek::IResult<'a, 'b, Vec<ManuscriptItem>> {
+    ) -> ek::IResult<'a, 'b, Vec<(Option<Origin>, ManuscriptItem)>> {
         map(take(0usize), |_| Vec::new())(body)
     }
 
     fn parse_source_file<'a, 'b>(
         body: ek::LocatedSpan<'a, 'b>,
-    ) -> ek::IResult<'a, 'b, Vec<ManuscriptItem>> {
+    ) -> ek::IResult<'a, 'b, Vec<(Option<Origin>, ManuscriptItem)>> {
         terminated(
             alt((parse_manuscript, parse_empty_file)),
             ek::expect_end_of_file,
@@ -979,5 +1013,21 @@ pub fn source_file(
     if !new_errors.is_empty() {
         errors.extend(new_errors.into_iter());
     }
-    Ok(prog_instr)
+
+    // Separate the instuctions into blocks, each with an origin.
+    let mut result: Vec<ManuscriptBlock> = Vec::new();
+    let mut current_items: Vec<ManuscriptItem> = Vec::new();
+    let mut current_origin: Option<Origin> = None;
+    for (maybe_origin, item) in prog_instr {
+        if let Some(origin) = maybe_origin {
+            result.push(ManuscriptBlock::new(current_origin, current_items.clone()));
+            current_items.clear();
+            current_origin = Some(origin);
+        }
+        current_items.push(item);
+    }
+    if !current_items.is_empty() {
+        result.push(ManuscriptBlock::new(current_origin, current_items));
+    }
+    Ok(result)
 }
