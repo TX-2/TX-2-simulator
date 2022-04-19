@@ -40,6 +40,14 @@ pub struct ProgramInstruction {
     pub(crate) parts: Vec<InstructionFragment>,
 }
 
+impl ProgramInstruction {
+    pub fn value(&self) -> Unsigned36Bit {
+        self.parts
+            .iter()
+            .fold(Unsigned36Bit::ZERO, |acc, frag| acc | frag.value())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ManuscriptItem {
     MetaCommand(ManuscriptMetaCommand),
