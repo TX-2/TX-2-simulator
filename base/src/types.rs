@@ -155,6 +155,14 @@ impl From<Address> for Unsigned36Bit {
     }
 }
 
+impl TryFrom<Unsigned36Bit> for Address {
+    type Error = ConversionFailed;
+    fn try_from(n: Unsigned36Bit) -> Result<Address, ConversionFailed> {
+        let a: Unsigned18Bit = Unsigned18Bit::try_from(n)?;
+        Ok(Address::from(a))
+    }
+}
+
 impl IndexBy<u8> for Address {
     fn index_by(&self, index: u8) -> Address {
         let offset: Unsigned18Bit = index.into();

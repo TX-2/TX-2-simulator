@@ -278,6 +278,7 @@ fn test_program_instruction() {
     assert_eq!(
         parse_successfully_with("⁶673₃₁", program_instruction, no_state_setup),
         ManuscriptItem::Instruction(ProgramInstruction {
+            origin: None,
             tag: None,
             parts: vec![
                 InstructionFragment {
@@ -366,6 +367,7 @@ fn test_manuscript_without_tag() {
         parse_successfully_with("673\n71\n", parse_manuscript, no_state_setup),
         vec![
             ManuscriptItem::Instruction(ProgramInstruction {
+                origin: None,
                 tag: None,
                 parts: vec![InstructionFragment {
                     elevation: Elevation::Normal,
@@ -373,6 +375,7 @@ fn test_manuscript_without_tag() {
                 },]
             }),
             ManuscriptItem::Instruction(ProgramInstruction {
+                origin: None,
                 tag: None,
                 parts: vec![InstructionFragment {
                     elevation: Elevation::Normal,
@@ -410,6 +413,7 @@ fn test_manuscript_with_single_syllable_tag() {
     assert_eq!(
         parse_successfully_with("START4  \t->\t205\n", parse_manuscript, no_state_setup),
         vec![ManuscriptItem::Instruction(ProgramInstruction {
+            origin: None,
             tag: Some(SymbolName {
                 canonical: "START4".to_string(),
                 as_used: "START4".to_string(),
@@ -417,6 +421,21 @@ fn test_manuscript_with_single_syllable_tag() {
             parts: vec![InstructionFragment {
                 elevation: Elevation::Normal,
                 value: Unsigned36Bit::from(0o205_u32),
+            },]
+        }),]
+    );
+}
+
+#[test]
+fn test_manuscript_with_origin() {
+    assert_eq!(
+        parse_successfully_with("100 | 202\n", parse_manuscript, no_state_setup),
+        vec![ManuscriptItem::Instruction(ProgramInstruction {
+            origin: Some(Address::new(u18!(0o100))),
+            tag: None,
+            parts: vec![InstructionFragment {
+                elevation: Elevation::Normal,
+                value: Unsigned36Bit::from(0o202_u32),
             },]
         }),]
     );
@@ -459,6 +478,7 @@ fn test_manuscript_with_multi_syllable_tag() {
     assert_eq!(
         parse_successfully_with("CODE HERE->205\n", parse_manuscript, no_state_setup),
         vec![ManuscriptItem::Instruction(ProgramInstruction {
+            origin: None,
             tag: Some(SymbolName {
                 canonical: "CODEHERE".to_string(),
                 as_used: "CODE HERE".to_string(),
@@ -477,6 +497,7 @@ fn test_manuscript_with_real_arrow_tag() {
     assert_eq!(
         parse_successfully_with(INPUT, parse_manuscript, no_state_setup),
         vec![ManuscriptItem::Instruction(ProgramInstruction {
+            origin: None,
             tag: Some(SymbolName {
                 canonical: "HERE".to_string(),
                 as_used: "HERE".to_string(),
@@ -526,19 +547,21 @@ fn assemble_literal(input: &str, expected: &InstructionFragment) {
                 &cmd
             );
         }
-        [ManuscriptItem::Instruction(ProgramInstruction { tag: None, parts })] => {
-            match parts.as_slice() {
-                [only_frag] => {
-                    if only_frag == expected {
-                        return;
-                    }
-                    panic!("expected fragment {:?}, got {:?}", expected, only_frag);
+        [ManuscriptItem::Instruction(ProgramInstruction {
+            origin: None,
+            tag: None,
+            parts,
+        })] => match parts.as_slice() {
+            [only_frag] => {
+                if only_frag == expected {
+                    return;
                 }
-                _ => {
-                    panic!("expected fragment {:?}, got {:?}", expected, &parts);
-                }
+                panic!("expected fragment {:?}, got {:?}", expected, only_frag);
             }
-        }
+            _ => {
+                panic!("expected fragment {:?}, got {:?}", expected, &parts);
+            }
+        },
         _ => {
             panic!(
                 "expected one instruction containing {:?}, got {:?}",
@@ -626,9 +649,11 @@ fn test_metacommand_dec_changes_default_base() {
     let (directive, _) = assemble_nonempty_valid_input(INPUT);
     match directive.as_slice() {
         [ManuscriptItem::Instruction(ProgramInstruction {
+            origin: None,
             tag: None,
             parts: first_parts,
         }), ManuscriptItem::MetaCommand(ManuscriptMetaCommand::BaseChange(NumeralMode::Decimal)), ManuscriptItem::Instruction(ProgramInstruction {
+            origin: None,
             tag: None,
             parts: second_parts,
         })] => {
