@@ -599,6 +599,9 @@ const fn standard_plugboard_internal() -> [MemoryWord; 32] {
     }
     // This data has not yet been double-checked and no tests
     // validate it, so it might be quite wrong.
+    //
+    // This is taken from the listing in section 5-5.2 (page 5-27) of
+    // the Users Handbook.
     [
         // Plugboard memory starts with Plugboard B at 0o3777740.
         //
@@ -614,24 +617,36 @@ const fn standard_plugboard_internal() -> [MemoryWord; 32] {
         mw(0o_604331_330333),
         // 0o377750: standard program to load the F-memory settings
         // (this is not verified by the test in the exchanger code).
-        mw(0o_002200_377740),
-        mw(0o_042200_377741),
-        mw(0o_102200_377742),
-        mw(0o_142200_377743),
-        mw(0o_202200_377744),
-        mw(0o_242200_377745),
-        mw(0o_302200_377746),
-        mw(0o_342200_377747),
+        mw(0o_002200_377740), // ⁰⁰SPG 377740
+        mw(0o_042200_377741), // ⁰⁴SPG 377741
+        mw(0o_102200_377742), // ¹⁰SPG 277742
+        mw(0o_142200_377743), // ¹⁴SPG 277743
+        mw(0o_202200_377744), // ²⁰SPG 277744
+        mw(0o_242200_377745), // ²⁴SPG 277745
+        mw(0o_302200_377746), // ³⁰SPG 277746
+        mw(0o_342200_377747), // ³⁴SPG 277747
         // Plugboard A, 0o377760-0o377777
         // 0o0377760: Standard program: read in reader leader from paper tape
-        mw(0o011254_000023),
-        mw(0o001252_377763),
-        mw(0o210452_030106),
-        mw(0o001253_000005),
-        mw(0o405754_000026),
-        mw(0o760653_377764),
-        mw(0o410754_377763),
-        mw(0o140500_000003),
+        //
+        // This code uses 3 index registers:
+        // X₅₂: start address for sequence 52, for PETR (paper tape) device
+        // X₅₃: counts the number of TSD operations needed to fill a word
+        // X₅₄: starts at -23, counts upward; we add this to 26 to get the
+        //      address into which we perform tape transfers (with TSD),
+        //      so that the standard reader leader is read into locations 3 to 26
+        mw(0o011254_000023), // ¹SKX₅₄ 23        ** X₅₄=-23, length of reader leader
+        mw(0o001252_377763), // REX₅₂ 377763     ** Load 37763 into X₅₂ (seq 52 start point)
+        mw(0o210452_030106), // ²¹IOS₅₂ 30106    ** PETR: Load bin, read assembly mode
+        // 0o0377763
+        mw(0o001253_000005), // REX₅₃ 5          ** Load 5 into X₅₃
+        // 0o0377764
+        mw(0o405754_000026), // h TSD₅₄ 26       ** Load into 26+X₅₄ (which is negative)
+        mw(0o760653_377764), // h ³⁶JPX₅₃ 377764 ** loop if X₅₃>0, decrement it
+        mw(0o410754_377763), // h ¹JNX₅₄ 377763  ** loop if X₅₄<0, increment it
+        mw(0o140500_000003), // ¹⁴JPQ 3          ** Jump to start of reader leader
+        // At the time we jump, sequence 0o52 is executing, with
+        // X₅₂ = 0o377763, X₅₃ = 0, X₅₄ = 0.
+        //
         // 0o0377770: Standard program: clear memory
         mw(0o001277_207777),
         mw(0o001677_777776),
