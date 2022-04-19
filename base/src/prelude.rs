@@ -5,6 +5,7 @@ pub use crate::instruction::*;
 pub use crate::onescomplement::error::*;
 pub use crate::onescomplement::signed::*;
 pub use crate::onescomplement::unsigned::*;
+pub use crate::splay::{cycle_and_splay, unsplay};
 pub use crate::subword::join_halves;
 pub use crate::subword::join_quarters;
 pub use crate::types::IndexBy;

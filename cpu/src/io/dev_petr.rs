@@ -24,7 +24,6 @@ use std::cmp;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::fs::File;
 use std::io::Read;
-use std::ops::Shl;
 use std::time::Duration;
 
 use tracing::{event, Level};
@@ -314,20 +313,7 @@ impl Unit for Petr {
                 let value_read = Unsigned6Bit::try_from(byte & 0o77).unwrap();
                 let assemby_mode: bool = self.mode & 0o02 != 0;
                 if assemby_mode {
-                    // The data goes into the following bit positions:
-                    // bit 1 (0 counting from 0) goes to 1.1 = 1 <<  0 (dec)
-                    // bit 2 (1 counting from 0) goes to 1.7 = 1 <<  6 (dec)
-                    // bit 3 (2 counting from 0) goes to 2.4 = 1 << 12 (dec)
-                    // bit 4 (3 counting from 0) goes to 3.1 = 1 << 18 (dec)
-                    // bit 5 (4 counting from 0) goes to 3.7 = 1 << 24 (dec)
-                    // bit 6 (5 counting from 0) goes to 4.4 = 1 << 30 (dec)
-                    let mut updated = target.shl(1);
-                    for srcbit in 0_u8..=5_u8 {
-                        let destbit: u32 = (srcbit * 6).into();
-                        updated = updated & !(Unsigned36Bit::ONE.shl(destbit))
-                            | (Unsigned36Bit::from(value_read) & 1 << srcbit).shl(destbit);
-                    }
-                    *target = updated;
+                    *target = cycle_and_splay(*target, value_read);
                     Ok(())
                 } else {
                     let (left, right) = subword::split_halves(*target);

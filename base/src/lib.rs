@@ -11,6 +11,7 @@ pub mod charset;
 pub mod instruction;
 pub mod prelude;
 pub mod readerleader;
+pub mod splay;
 pub mod subword;
 pub use crate::onescomplement::unsigned::*;
 
