@@ -36,6 +36,7 @@ impl<'a, 'b> From<&ek::LocatedSpan<'a, 'b>> for ErrorLocation {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProgramInstruction {
+    pub(crate) origin: Option<Address>,
     pub(crate) tag: Option<SymbolName>,
     pub(crate) parts: Vec<InstructionFragment>,
 }
@@ -299,11 +300,14 @@ pub(crate) fn subscript_literal_instruction_fragment<'a, 'b>(
 pub(crate) fn program_instruction_fragment<'a, 'b>(
     input: ek::LocatedSpan<'a, 'b>,
 ) -> ek::IResult<'a, 'b, InstructionFragment> {
-    alt((
-        normal_literal_instruction_fragment,
-        superscript_literal_instruction_fragment,
-        subscript_literal_instruction_fragment,
-    ))(input)
+    preceded(
+        space0,
+        alt((
+            normal_literal_instruction_fragment,
+            superscript_literal_instruction_fragment,
+            subscript_literal_instruction_fragment,
+        )),
+    )(input)
 }
 
 pub(crate) fn program_instruction_fragments<'a, 'b>(
@@ -740,6 +744,10 @@ pub(crate) fn expression<'a, 'b>(
     map(normal_literal_instruction_fragment, frag_to_value)(input)
 }
 
+fn address_expression<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, Address> {
+    map_res(expression, Address::try_from)(input)
+}
+
 pub(crate) fn symbol_name<'a, 'b>(
     input: ek::LocatedSpan<'a, 'b>,
 ) -> ek::IResult<'a, 'b, SymbolName> {
@@ -750,6 +758,10 @@ pub(crate) fn tag_definition<'a, 'b>(
     input: ek::LocatedSpan<'a, 'b>,
 ) -> ek::IResult<'a, 'b, SymbolName> {
     terminated(symbol_name, arrow)(input)
+}
+
+fn origin<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, Address> {
+    terminated(address_expression, pair(space0, tag("|")))(input)
 }
 
 pub(crate) fn double_hand<'a, 'b>(
@@ -859,14 +871,25 @@ pub(crate) fn metacommand<'a, 'b>(
     )(input)
 }
 
+fn tag_definition_or_origin<'a, 'b>(
+    input: ek::LocatedSpan<'a, 'b>,
+) -> ek::IResult<'a, 'b, (Option<SymbolName>, Option<Address>)> {
+    alt((
+        map(tag_definition, |name| (Some(name), None)),
+        map(origin, |addr| (None, Some(addr))),
+    ))(input)
+}
+
 pub(crate) fn program_instruction<'a, 'b>(
     input: ek::LocatedSpan<'a, 'b>,
 ) -> ek::IResult<'a, 'b, ManuscriptItem> {
     map(
-        pair(opt(tag_definition), program_instruction_fragments),
-        |(maybe_tag, fragments)| {
+        pair(opt(tag_definition_or_origin), program_instruction_fragments),
+        |(maybe_tag_or_origin, fragments)| {
+            let (tag, origin) = maybe_tag_or_origin.unwrap_or((None, None));
             ManuscriptItem::Instruction(ProgramInstruction {
-                tag: maybe_tag,
+                origin,
+                tag,
                 parts: fragments,
             })
         },
