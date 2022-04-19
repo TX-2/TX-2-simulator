@@ -107,6 +107,22 @@ pub struct InstructionFragment {
     pub value: Unsigned36Bit,
 }
 
+impl InstructionFragment {
+    pub fn value(&self) -> Unsigned36Bit {
+        match self.elevation {
+            Elevation::Superscript => {
+                // This is a config value.
+                self.value << 30
+            }
+            Elevation::Subscript => {
+                // This is an index value
+                self.value << 18
+            }
+            Elevation::Normal => self.value,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Eq)]
 pub struct SymbolName {
     pub canonical: String,
