@@ -520,7 +520,14 @@ impl DeviceManager {
                                 Ok((mut word, extra_bits)) => {
                                     match attached.inner.read(system_time, &mut word) {
                                         Ok(()) => match mem.store(address, &word, meta_op) {
-                                            Ok(()) => Ok(TransferOutcome::Success(extra_bits.meta)),
+                                            Ok(()) => {
+                                                event!(
+                                                    Level::TRACE,
+                                                    "Read TSD succeeded on unit {:o} (stored word at {:o} is {:o})",
+                                                    *device, &address, &word,
+                                                );
+                                                Ok(TransferOutcome::Success(extra_bits.meta))
+                                            }
                                             Err(MemoryOpFailure::ReadOnly(_)) => {
                                                 event!(
 							Level::WARN,
@@ -540,6 +547,7 @@ impl DeviceManager {
                                             }
                                         },
                                         Err(TransferFailed::BufferNotFree) => {
+                                            event!(Level::TRACE, "Read TSD on unit {:o} resulted in dismiss and wait", *device);
                                             Ok(TransferOutcome::DismissAndWait)
                                         }
                                     }

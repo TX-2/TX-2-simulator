@@ -181,7 +181,7 @@ impl Petr {
     fn do_read(&mut self) {
         // A line of the simulated tape should have appeared under the
         // read head.
-        let mut buf: [u8; 1] = [0];
+        let mut buf: [u8; 1] = [0o377]; // deliberately > Unsigned6Bit::MAX.
         match self.data_file.as_mut() {
             Some(f) => match f.read(&mut buf) {
                 Err(_) => {
@@ -196,7 +196,12 @@ impl Petr {
                     event!(Level::DEBUG, "paper tape: reading at end-of-file");
                     self.data = None;
                 }
-                Ok(_) => {
+                Ok(read_len) => {
+                    match read_len {
+                        0 => event!(Level::DEBUG, "read nothing"),
+                        1 => event!(Level::DEBUG, "read 1 byte: {:04o}", buf[0]),
+                        n => event!(Level::DEBUG, "read {} bytes: {:?}", n, &buf),
+                    }
                     self.overrun = self.data.is_some();
                     self.data = Some(buf[0]);
                 }
@@ -212,6 +217,11 @@ impl Petr {
     }
 
     fn maybe_simulate_event(&mut self, system_time: &Duration) {
+        event!(
+            Level::TRACE,
+            "maybe_simulate_event: activity={:?}",
+            &self.activity
+        );
         match self.activity {
             Activity::Started => {
                 if let Some(t) = self.time_of_next_read {
@@ -306,20 +316,30 @@ impl Unit for Petr {
         system_time: &Duration,
         target: &mut Unsigned36Bit,
     ) -> Result<(), TransferFailed> {
-        match self.data {
-            None => Err(TransferFailed::BufferNotFree),
+        match self.data.take() {
+            None => {
+                event!(Level::DEBUG, "no data is ready yet");
+                Err(TransferFailed::BufferNotFree)
+            }
             Some(byte) => {
                 self.time_of_next_read = Some(next_line_time(self.direction, system_time));
                 let value_read = Unsigned6Bit::try_from(byte & 0o77).unwrap();
+                event!(Level::DEBUG, "read value {:03o}", &value_read);
                 let assemby_mode: bool = self.mode & 0o02 != 0;
                 if assemby_mode {
                     *target = cycle_and_splay(*target, value_read);
+                    event!(
+                        Level::DEBUG,
+                        "assemble-mode target word is now {:012o}",
+                        target
+                    );
                     Ok(())
                 } else {
                     let (left, right) = subword::split_halves(*target);
                     let (q2, _) = subword::split_halfword(right);
                     let right = subword::join_quarters(q2, Unsigned9Bit::from(value_read));
                     *target = subword::join_halves(left, right);
+                    event!(Level::DEBUG, "normal-mode target word is now {:o}", target);
                     Ok(())
                 }
             }

@@ -48,7 +48,11 @@ fn run_until_alarm(
         let now = clk.now();
         if now >= next_hw_poll {
             // check for I/O alarms, flag changes.
-            event!(Level::TRACE, "polling hardware for updates");
+            event!(
+                Level::TRACE,
+                "polling hardware for updates (now={:?})",
+                &now
+            );
             match control.poll_hardware(&now) {
                 Ok(Some(next)) => {
                     next_hw_poll = next;
@@ -65,6 +69,12 @@ fn run_until_alarm(
                     return Err(e);
                 }
             }
+        } else {
+            event!(
+                Level::TRACE,
+                "not polling hardware for updates (remaining wait: {:?})",
+                next_hw_poll - now,
+            );
         }
         let in_limbo = match control.fetch_instruction(mem) {
             Err(e) => {

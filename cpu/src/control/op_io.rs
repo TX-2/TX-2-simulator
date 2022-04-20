@@ -151,8 +151,15 @@ impl ControlUnit {
                             // current address.  The P register will
                             // be saved in the relevant index register
                             // by fetch_instruction().
-                            let dismissed: bool = self.dismiss_unless_held();
-                            increment_pc = !dismissed;
+                            //
+                            // In the dismiss and wait case, the
+                            // sequence is dismissed even if the hold
+                            // bit is set (Users Handbook, section
+                            // 4-3.2).  The hold bit only governs what
+                            // happens following the completion of an
+                            // instruction.
+                            self.dismiss();
+                            increment_pc = false;
                         }
                     }
                     Ok(increment_pc)
