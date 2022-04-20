@@ -1,7 +1,7 @@
 use crate::instruction::{Instruction, Opcode, OperandAddress, SymbolicInstruction};
 use crate::onescomplement::unsigned::*;
 use crate::types::Address;
-use crate::{u18, u36, u5, u6};
+use crate::{u18, u5, u6};
 
 /// Convert a bit designator (as described in the documentation for
 /// the SKM opcode on page 3-34 of the User Handbook) into an
@@ -167,282 +167,289 @@ fn test_bit_index() {
 /// `☛☛PUNCH` directive includes a start address.  This may in fact be
 /// the case shown in the diagram on page 6-23.
 pub fn reader_leader() -> Vec<Unsigned36Bit> {
-    // The first 3 words of the leader are zero, and are used as
-    // temporary storage.  These have no symbolic equivalent because
-    // there is no opcode 0.
-    let mut result: Vec<Unsigned36Bit> = vec![u36!(0), u36!(1), u36!(2)];
-
-    fn build(b: SymbolicInstruction) -> Unsigned36Bit {
-        Instruction::from(&b).bits()
-    }
-
-    const ZERO_ADDR: Address = Address::new(u18!(0));
-    result.extend(
-        [
-            // These instructions are taken from the middle column of
-            // page 5-26 of the Users Handbook.
+    (&[
+        // These instructions are taken from the middle column of
+        // page 5-26 of the Users Handbook.
+        //
+        // They are called by the boot code (the routine starting
+        // at 0o377760, see listing in section 5-5.2 of the Users
+        // Handbook).  The active sequence is 0o52, with X₅₂ =
+        // 0o377763, X₅₃ = 0, X₅₄ = 0.
+        //
+        // ¹²³⁴⁵⁶⁷ ₀₁₂₃₃₄₅₆₇
+        SymbolicInstruction {
+            // 003: ¹RSX₅₄ 5   ** set X₅₄=-5
+            held: false,
+            configuration: u5!(1),
+            opcode: Opcode::Rsx,
+            index: u6!(0o54),
+            operand_address: OperandAddress::Direct(Address::new(u18!(0o05))),
+        },
+        SymbolicInstruction {
+            // 004: ³⁶JMP₅₄ 20
+            held: false,
+            configuration: u5!(0o36), // binary 011110
+            /* Saves return address (which is 0o5) in X₅₄ and in
+                   R(E) and last memory reference in L(E), dismiss (lower
+                   the flag of sequence 52).  I believe that even though
+                   we dismiss sequence 52, there is no other runnable
+                   sequence, so execution continues.
+            */
+            opcode: Opcode::Jmp,
+            index: u6!(0o54),
+            operand_address: OperandAddress::Direct(Address::new(u18!(0o20))),
+        },
+        SymbolicInstruction {
+            // 005: h²RSX₅₃ 0      ** Set X₅₃ = R([0])  ([0] is saved in E)
+            /* R[0] was read (by the call to 0o20 just above) from
+             * the first word of the tape block. */
+            held: true,
+            configuration: u5!(2),
+            opcode: Opcode::Rsx,
+            index: u6!(0o53),
+            operand_address: OperandAddress::Direct(Address::new(u18!(0))),
+        },
+        SymbolicInstruction {
+            // 006: ¹STE 11        ** Set [11] to the word we read from tape.
+            held: false,
+            configuration: u5!(1),
+            opcode: Opcode::Ste,
+            index: u6!(0),
+            operand_address: OperandAddress::Direct(Address::new(u18!(0o11))),
+        },
+        SymbolicInstruction {
+            // 007: : ³⁶JMP₅₄ 17  ** Call procedure at 17
+            /* Saves return address (which is 0o10) in X₅₄ and in
+                   R(E) and last memory reference in L(E), dismiss
+                   (lower the flag of sequence 52 - but this has
+                   no effect since this already happened the first
+                   time we executed the instruction at 004).  I
+                   believe that even though we dismiss sequence
+                   52, there is no other runnable sequence, so
+                   execution continues.
+            */
+            held: false,
+            configuration: u5!(0o36),
+            opcode: Opcode::Jmp,
+            index: u6!(0o54),
+            operand_address: OperandAddress::Direct(Address::new(u18!(0o17))),
+        },
+        /* On return from the procedure at 0o17, [0] contains the
+         * word we read. */
+        SymbolicInstruction {
+            // 010: hLDE 0        ** Load new word into E.
+            held: true,
+            configuration: u5!(0),
+            opcode: Opcode::Lde,
+            index: u6!(0),
+            operand_address: OperandAddress::Direct(Address::new(u18!(0o00))),
+        },
+        SymbolicInstruction {
+            // 011: STE₅₃ 34       ** Store new word at [X₅₃+34]
+            /* X₅₃ was initialised to the RHS of the first word in
+             * the block and is incremented by the JNX instruction
+             * at the next location, 0o12.
+             */
+            held: false,
+            configuration: u5!(0),
+            opcode: Opcode::Ste,
+            index: u6!(0o53),
+            operand_address: OperandAddress::Direct(Address::new(u18!(0o34))),
+        },
+        SymbolicInstruction {
+            // 012: h¹JNX₅₃ 7     ** Loop to 7 when X₅₃<0. Postincrement X₅₃.
+            held: true,
+            configuration: u5!(1),
+            opcode: Opcode::Jnx,
+            index: u6!(0o53),
+            operand_address: OperandAddress::Direct(Address::new(u18!(0o07))),
+        },
+        SymbolicInstruction {
+            // 013: ³⁶JMP₅₄ 20     ** Call procedure to read another word into [0]
+            held: false,
+            configuration: u5!(0o36),
+            opcode: Opcode::Jmp,
+            index: u6!(0o54),
+            operand_address: OperandAddress::Direct(Address::new(u18!(0o20))),
+        },
+        SymbolicInstruction {
+            // 014: hJPX₅₆ 377760 ** if X₅₆ > 0, restart tape loading
+            held: true,
+            configuration: u5!(0),
+            opcode: Opcode::Jpx,
+            index: u6!(0o56),
+            operand_address: OperandAddress::Direct(Address::new(u18!(0o377_760))),
+        },
+        SymbolicInstruction {
+            // 015: hJNX₅₆ 377760 ** if X₅₆ < 0, restart tape loading
+            held: true,
+            configuration: u5!(0),
+            opcode: Opcode::Jnx,
+            index: u6!(0o56),
+            operand_address: OperandAddress::Direct(Address::new(u18!(0o377760))),
+        },
+        SymbolicInstruction {
+            // 016: ¹⁴JPQ 27
             //
-            // They are called by the boot code (the routine starting
-            // at 0o377760, see listing in section 5-5.2 of the Users
-            // Handbook).  The active sequence is 0o52, with X₅₂ =
-            // 0o377763, X₅₃ = 0, X₅₄ = 0.
+            // We arrive at this location (from 15) if X₅₆ is zero
+            // - that is, if the checksum is correct.
             //
-            // ¹²³⁴⁵⁶⁷ ₀₁₂₃₃₄₅₆₇
-            SymbolicInstruction {
-                // 003: ¹RSX₅₄ 5   ** set X₅₄=-5
-                held: false,
-                configuration: u5!(1),
-                opcode: Opcode::Rsx,
-                index: u6!(0o54),
-                operand_address: OperandAddress::Direct(Address::new(u18!(0o05))),
-            },
-            SymbolicInstruction {
-                // 004: ³⁶JMP₅₄ 20
-                held: false,
-                configuration: u5!(0o36), // binary 011110
-                /* Saves return address (which is 0o5) in X₅₄ and in
-                       R(E) and last memory reference in L(E), dismiss (lower
-                       the flag of sequence 52).  I believe that even though
-                       we dismiss sequence 52, there is no other runnable
-                       sequence, so execution continues.
-                */
-                opcode: Opcode::Jmp,
-                index: u6!(0o54),
-                operand_address: OperandAddress::Direct(Address::new(u18!(0o20))),
-            },
-            SymbolicInstruction {
-                // 005: h²RSX₅₃ 0      ** Set X₅₃ = R([0])  ([0] is saved in E)
-                /* R[0] was read (by the call to 0o20 just above) from
-                 * the first word of the tape block. */
-                held: true,
-                configuration: u5!(2),
-                opcode: Opcode::Rsx,
-                index: u6!(0o53),
-                operand_address: OperandAddress::Direct(ZERO_ADDR),
-            },
-            SymbolicInstruction {
-                // 006: ¹STE 11        ** Set [11] to the word we read from tape.
-                held: false,
-                configuration: u5!(1),
-                opcode: Opcode::Ste,
-                index: u6!(0),
-                operand_address: OperandAddress::Direct(Address::new(u18!(0o11))),
-            },
-            SymbolicInstruction {
-                // 007: : ³⁶JMP₅₄ 17  ** Call procedure at 17
-                /* Saves return address (which is 0o10) in X₅₄ and in
-                       R(E) and last memory reference in L(E), dismiss
-                       (lower the flag of sequence 52 - but this has
-                       no effect since this already happened the first
-                       time we executed the instruction at 004).  I
-                       believe that even though we dismiss sequence
-                       52, there is no other runnable sequence, so
-                       execution continues.
-                */
-                held: false,
-                configuration: u5!(0o36),
-                opcode: Opcode::Jmp,
-                index: u6!(0o54),
-                operand_address: OperandAddress::Direct(Address::new(u18!(0o17))),
-            },
-            /* On return from the procedure at 0o17, [0] contains the
-             * word we read. */
-            SymbolicInstruction {
-                // 010: hLDE 0        ** Load new word into E.
-                held: true,
-                configuration: u5!(0),
-                opcode: Opcode::Lde,
-                index: u6!(0),
-                operand_address: OperandAddress::Direct(Address::new(u18!(0o00))),
-            },
-            SymbolicInstruction {
-                // 011: STE₅₃ 34       ** Store new word at [X₅₃+34]
-                /* X₅₃ was initialised to the RHS of the first word in
-                 * the block and is incremented by the JNX instruction
-                 * at the next location, 0o12.
-                 */
-                held: false,
-                configuration: u5!(0),
-                opcode: Opcode::Ste,
-                index: u6!(0o53),
-                operand_address: OperandAddress::Direct(Address::new(u18!(0o34))),
-            },
-            SymbolicInstruction {
-                // 012: h¹JNX₅₃ 7     ** Loop to 7 when X₅₃<0. Postincrement X₅₃.
-                held: true,
-                configuration: u5!(1),
-                opcode: Opcode::Jnx,
-                index: u6!(0o53),
-                operand_address: OperandAddress::Direct(Address::new(u18!(0o07))),
-            },
-            SymbolicInstruction {
-                // 013: ³⁶JMP₅₄ 20     ** Call procedure to read another word into [0]
-                held: false,
-                configuration: u5!(0o36),
-                opcode: Opcode::Jmp,
-                index: u6!(0o54),
-                operand_address: OperandAddress::Direct(Address::new(u18!(0o20))),
-            },
-            SymbolicInstruction {
-                // 014: hJPX₅₆ 377760 ** if X₅₆ > 0, restart tape loading
-                held: true,
-                configuration: u5!(0),
-                opcode: Opcode::Jpx,
-                index: u6!(0o56),
-                operand_address: OperandAddress::Direct(Address::new(u18!(0o377_760))),
-            },
-            SymbolicInstruction {
-                // 015: hJNX₅₆ 377760 ** if X₅₆ < 0, restart tape loading
-                held: true,
-                configuration: u5!(0),
-                opcode: Opcode::Jnx,
-                index: u6!(0o56),
-                operand_address: OperandAddress::Direct(Address::new(u18!(0o377760))),
-            },
-            SymbolicInstruction {
-                // 016: ¹⁴JPQ 27
-                //
-                // We arrive at this location (from 15) if X₅₆ is zero
-                // - that is, if the checksum is correct.
-                //
-                // Jump to register 27, which holds another jump
-                // instruction; that jumps to the user's code entry
-                // point.
-                held: false,
-                configuration: u5!(0o14),
-                // ¹⁴JMP = JPQ, see page 3-31 of Users Handbook
-                opcode: Opcode::Jmp,
-                index: u6!(0o0),
-                operand_address: OperandAddress::Direct(Address::new(u18!(0o27))),
-            },
-            SymbolicInstruction {
-                // 017: ²MKZ₄.₁₂ 400011     ** Reset meta bit of [11]
-                held: false,
-                configuration: u5!(0o2),
-                opcode: Opcode::Skm,       // ²SKM is Mkz (p 3-34) "make zero"
-                index: bit_index(4, 0o12), // 4.12
-                operand_address: OperandAddress::Deferred(Address::new(u18!(0o11))),
-            },
-            /* At 0o20 we have a procedure which loads a word from
-             * tape, adds it to our running checksum and leaves the
-             * word at [0]. */
-            SymbolicInstruction {
-                // 020: ¹RSX₅₇ 3     ** Set R(X₅₇)=R(3) which is 5.
-                held: false,
-                configuration: u5!(0o1),
-                opcode: Opcode::Rsx,
-                index: u6!(0o57),
-                operand_address: OperandAddress::Direct(Address::new(u18!(3))),
-            },
-            SymbolicInstruction {
-                // 021: hTSD 0        ** Read tape bits into [0].
-                held: true,
-                configuration: u5!(0), // ignored anyway in ASSEMBLY mode
-                opcode: Opcode::Tsd,
-                index: u6!(0),
-                operand_address: OperandAddress::Direct(Address::new(u18!(0))),
-            },
-            SymbolicInstruction {
-                // 022: ³⁶JPX₅₇ 21     ** Loop (to TSD) when X₅₇>0 (i.e. do whole word)
-                held: false,
-                configuration: u5!(0o36),
-                opcode: Opcode::Jpx,
-                index: u6!(0o57),
-                operand_address: OperandAddress::Direct(Address::new(u18!(0o21))),
-            },
-            SymbolicInstruction {
-                // 023: ¹AUX₅₆ 0        ** Add R[0] to X₅₆
-                held: false,
-                configuration: u5!(1),
-                opcode: Opcode::Aux,
-                index: u6!(0o56),
-                operand_address: OperandAddress::Direct(Address::new(u18!(0))),
-            },
-            SymbolicInstruction {
-                // 024: h²AUX₅₆ 0        ** Add L[0] to X₅₆
-                //                       ** This also sets E to [0].
-                held: true,
-                configuration: u5!(2),
-                opcode: Opcode::Aux,
-                index: u6!(0o56),
-                operand_address: OperandAddress::Direct(Address::new(u18!(0))),
-            },
-            SymbolicInstruction {
-                // 025: ¹STE 16         ** Set R[16] to E (which we loaded from [0]).
-                held: false,
-                configuration: u5!(1),
-                opcode: Opcode::Ste,
-                index: u6!(0),
-                operand_address: OperandAddress::Direct(Address::new(u18!(0o16))),
-            },
-            SymbolicInstruction {
-                // 026: ¹⁵BPQ₅₄ 0       ** Branch to X₅₄ (no offset)
-                //                      ** This is return from procedure call,
-                //                      ** e.g. from the call at 004.
-                //                      ** Overwrites E with saved return point, mem ref
-                held: false,
-                configuration: u5!(0o15),
-                opcode: Opcode::Jmp, // 0o05 is JMP (p 3-30); ¹⁵JMP = BPQ
-                index: u6!(0o54),
-                operand_address: OperandAddress::Direct(Address::new(u18!(0))),
-            },
-            SymbolicInstruction {
-                // 027: ¹IOS₅₂ 20000     ** Disconnect PETR, load report word into E.
-                held: false,
-                configuration: u5!(1), // signals that PETR report word should be loaded into E
-                opcode: Opcode::Ios,
-                index: u6!(0o52),
-                operand_address: OperandAddress::Direct(Address::new(u18!(0o020_000))),
-            },
-        ]
-        .into_iter()
-        .map(build),
-    );
-    result
+            // Jump to register 27, which holds another jump
+            // instruction; that jumps to the user's code entry
+            // point.
+            held: false,
+            configuration: u5!(0o14),
+            // ¹⁴JMP = JPQ, see page 3-31 of Users Handbook
+            opcode: Opcode::Jmp,
+            index: u6!(0o0),
+            operand_address: OperandAddress::Direct(Address::new(u18!(0o27))),
+        },
+        SymbolicInstruction {
+            // 017: ²MKZ₄.₁₂ 400011     ** Reset meta bit of [11]
+            held: false,
+            configuration: u5!(0o2),
+            opcode: Opcode::Skm,       // ²SKM is Mkz (p 3-34) "make zero"
+            index: bit_index(4, 0o12), // 4.12
+            operand_address: OperandAddress::Deferred(Address::new(u18!(0o11))),
+        },
+        /* At 0o20 we have a procedure which loads a word from
+         * tape, adds it to our running checksum and leaves the
+         * word at [0]. */
+        SymbolicInstruction {
+            // 020: ¹RSX₅₇ 3     ** Set R(X₅₇)=R(3) which is 5.
+            held: false,
+            configuration: u5!(0o1),
+            opcode: Opcode::Rsx,
+            index: u6!(0o57),
+            operand_address: OperandAddress::Direct(Address::new(u18!(3))),
+        },
+        SymbolicInstruction {
+            // 021: hTSD 0        ** Read tape bits into [0].
+            held: true,
+            configuration: u5!(0), // ignored anyway in ASSEMBLY mode
+            opcode: Opcode::Tsd,
+            index: u6!(0),
+            operand_address: OperandAddress::Direct(Address::new(u18!(0))),
+        },
+        SymbolicInstruction {
+            // 022: ³⁶JPX₅₇ 21     ** Loop (to TSD) when X₅₇>0 (i.e. do whole word)
+            held: false,
+            configuration: u5!(0o36),
+            opcode: Opcode::Jpx,
+            index: u6!(0o57),
+            operand_address: OperandAddress::Direct(Address::new(u18!(0o21))),
+        },
+        SymbolicInstruction {
+            // 023: ¹AUX₅₆ 0        ** Add R[0] to X₅₆
+            held: false,
+            configuration: u5!(1),
+            opcode: Opcode::Aux,
+            index: u6!(0o56),
+            operand_address: OperandAddress::Direct(Address::new(u18!(0))),
+        },
+        SymbolicInstruction {
+            // 024: h²AUX₅₆ 0        ** Add L[0] to X₅₆
+            //                       ** This also sets E to [0].
+            held: true,
+            configuration: u5!(2),
+            opcode: Opcode::Aux,
+            index: u6!(0o56),
+            operand_address: OperandAddress::Direct(Address::new(u18!(0))),
+        },
+        SymbolicInstruction {
+            // 025: ¹STE 16         ** Set R[16] to E (which we loaded from [0]).
+            held: false,
+            configuration: u5!(1),
+            opcode: Opcode::Ste,
+            index: u6!(0),
+            operand_address: OperandAddress::Direct(Address::new(u18!(0o16))),
+        },
+        SymbolicInstruction {
+            // 026: ¹⁵BPQ₅₄ 0       ** Branch to X₅₄ (no offset)
+            //                      ** This is return from procedure call,
+            //                      ** e.g. from the call at 004.
+            //                      ** Overwrites E with saved return point, mem ref
+            held: false,
+            configuration: u5!(0o15),
+            opcode: Opcode::Jmp, // 0o05 is JMP (p 3-30); ¹⁵JMP = BPQ
+            index: u6!(0o54),
+            operand_address: OperandAddress::Direct(Address::new(u18!(0))),
+        },
+        SymbolicInstruction {
+            // 027: ¹IOS₅₂ 20000     ** Disconnect PETR, load report word into E.
+            held: false,
+            configuration: u5!(1), // signals that PETR report word should be loaded into E
+            opcode: Opcode::Ios,
+            index: u6!(0o52),
+            operand_address: OperandAddress::Direct(Address::new(u18!(0o020_000))),
+        },
+    ])
+        .iter()
+        .map(|symbolic| -> Unsigned36Bit { Instruction::from(symbolic).bits() })
+        .collect()
 }
 
 #[test]
 fn test_reader_leader() {
     let leader = reader_leader();
-    assert_eq!(leader.len(), 0o30);
     let expected: &[u64] = &[
         // These values are taken from the right-hand column of page
         // 5-26 of the Users Handbook.
         //
         // That table shows the first three words, but if you look at
-        // the plugboard code at 03777760, it loads 23 words of reader
-        // leader ending at location 26.  So we start at the word for
-        // address 3.
+        // the plugboard code at 03777760, it loads 0o25 words of
+        // reader leader ending at location 0o27.  So we start at the
+        // word for address 3.
         //
-        // Instruction (oct)  Position (oct)
-        0o011_154_000_005, //  3
-        0o360_554_000_020, //  4
-        0o421_153_000_000, //  5
-        0o013_000_000_011, //  6
-        0o360_554_000_017, //  7
-        0o402_000_000_000, // 10
-        0o003_053_000_034, // 11
-        0o410_753_000_007, // 12
-        0o360_554_000_020, // 13
-        0o400_656_377_760, // 14
-        0o400_756_377_760, // 15
-        0o140_500_000_027, // 16
-        0o021_712_400_011, // 17
-        0o011_157_000_003, // 20
-        0o405_700_000_000, // 21
-        0o360_657_000_021, // 22
-        0o011_056_000_000, // 23
-        0o421_056_000_000, // 24
-        0o013_000_000_016, // 25
-        0o150_554_000_000, // 26
-        0o010_452_020_000, // 27
+        // In our comments below "Position" describes a word's
+        // position within the tape and "Final address" describes the
+        // memory location it gets loaded to.  Each word will occupy
+        // six consecutive lines of the tape because like the rest of
+        // the binary, the leader is punched in splayed mode.
+        //
+        // Instruction (oct)  Position (oct) Final address (oct)
+        // temporary storage               -                   0
+        // apparently unused               -                   1
+        // apparently unused               -                   2
+        0o011_154_000_005, //              0                   3
+        0o360_554_000_020, //              1                   4
+        0o421_153_000_000, //              2                   5
+        0o013_000_000_011, //              3                   6
+        0o360_554_000_017, //              4                   7
+        0o402_000_000_000, //              5                  10
+        0o003_053_000_034, //              6                  11
+        0o410_753_000_007, //              7                  12
+        0o360_554_000_020, //             10                  13
+        0o400_656_377_760, //             11                  14
+        0o400_756_377_760, //             12                  15
+        0o140_500_000_027, //             13                  16
+        0o021_712_400_011, //             14                  17
+        0o011_157_000_003, //             15                  20
+        0o405_700_000_000, //             16                  21
+        0o360_657_000_021, //             17                  22
+        0o011_056_000_000, //             20                  23
+        0o421_056_000_000, //             21                  24
+        0o013_000_000_016, //             22                  25
+        0o150_554_000_000, //             23                  26
+        0o010_452_020_000, //             24                  27
     ];
+    assert_eq!(expected.len(), 0o25);
+    assert_eq!(leader.len(), expected.len());
     for (i, expected_value) in expected.iter().copied().map(u64::from).enumerate() {
-        // 20
         assert_eq!(
-            leader[i], expected_value,
-            "Mismatch in reader leader at position {:#3o}: expected 0o{:012o}, got 0o{:012o}; got instruction disassembles to {:?}",
-            i, expected_value, leader[i], &SymbolicInstruction::try_from(&Instruction::from(leader[i])),
+            leader[i],
+            expected_value,
+            concat!(
+                "Mismatch in reader leader ",
+                "at file position {:#3o} (final memory address {:#3o}): ",
+                "expected 0o{:012o}, got 0o{:012o}; ",
+                "got instruction disassembles to {:?}"
+            ),
+            i,
+            i + 3,
+            expected_value,
+            leader[i],
+            &SymbolicInstruction::try_from(&Instruction::from(leader[i])),
         );
     }
 }
