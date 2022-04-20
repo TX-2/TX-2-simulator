@@ -635,7 +635,7 @@ const fn standard_plugboard_internal() -> [MemoryWord; 32] {
         //      address into which we perform tape transfers (with TSD),
         //      so that the standard reader leader is read into locations 3 to 26
         mw(0o011254_000023), // ¹SKX₅₄ 23        ** X₅₄=-23, length of reader leader
-        mw(0o001252_377763), // REX₅₂ 377763     ** Load 37763 into X₅₂ (seq 52 start point)
+        mw(0o001252_377763), // REX₅₂ 377763     ** Load 377763 into X₅₂ (seq 52 start point)
         mw(0o210452_030106), // ²¹IOS₅₂ 30106    ** PETR: Load bin, read assembly mode
         // 0o0377763
         mw(0o001253_000005), // REX₅₃ 5          ** Load 5 into X₅₃
