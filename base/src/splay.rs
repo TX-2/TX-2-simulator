@@ -63,7 +63,6 @@ pub fn unsplay(source: Unsigned36Bit) -> [Unsigned6Bit; 6] {
                 val |= 1 << destbit;
             }
         }
-        dbg!(&val);
         *r = Unsigned6Bit::try_from(val).unwrap();
     }
     result
