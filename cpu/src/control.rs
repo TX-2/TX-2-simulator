@@ -208,6 +208,7 @@ struct ControlRegisters {
     f_memory: [SystemConfiguration; 32], // the F memory
     flags: SequenceFlags,
     current_sequence_is_runnable: bool,
+    prev_hold: bool,
 }
 
 impl ControlRegisters {
@@ -227,6 +228,7 @@ impl ControlRegisters {
             f_memory: fmem,
             flags: SequenceFlags::new(),
             current_sequence_is_runnable: false,
+            prev_hold: false,
             spr: Address::default(),
         };
         // Index register 0 always contains 0.  This should still be
@@ -237,7 +239,12 @@ impl ControlRegisters {
     }
 
     fn previous_instruction_hold(&self) -> bool {
-        self.n.is_held()
+        // We cannot just check the N register for this, because when
+        // a TSD instruction ends in "dismiss and wait", the N
+        // register contains the (possibly held) TSD instruction, but
+        // it's the hold bit of the _previous_ instruction that
+        // matters.
+        self.prev_hold
     }
 
     fn set_spr(&mut self, addr: &Address) {
@@ -590,7 +597,15 @@ impl ControlUnit {
         // the flags.  This follows the description of how control
         // handles flags in section 4-3.5 of the User Handbook (page
         // 4-8).
-        if !self.regs.previous_instruction_hold() {
+        if self.regs.previous_instruction_hold() {
+            event!(
+                Level::DEBUG,
+                concat!(
+                    "Hold bit of previous instruction was set, ",
+                    "so we will not consider a sequence change"
+                )
+            );
+        } else {
             // Handle any possible change of sequence.
             match self.regs.flags.highest_priority_raised_flag() {
                 None => {
@@ -602,18 +617,28 @@ impl ControlUnit {
                     // latter case, the current sequence should continue
                     // to run until another sequence's flag is raised.
                     if !self.regs.current_sequence_is_runnable {
+                        event!(
+                            Level::DEBUG,
+                            "No flags raised and current sequence is not runnable: in LIMBO"
+                        );
                         return Ok(false);
                     }
+                    event!(
+                        Level::DEBUG,
+                        "No flag is raised, but the current sequence is still runnable"
+                    );
                 }
                 Some(seq) => {
                     event!(Level::TRACE, "Highest-priority sequence is {}", seq);
-                    if Some(seq) == self.regs.k {
-                        // just carry on.
-                    } else {
-                        // Change of sequence.  Either seq is a higher
-                        // priority than the current sequence, or the
-                        // (previously) current sequence dropped out.
+                    if Some(seq) > self.regs.k
+                        || (!self.regs.current_sequence_is_runnable && Some(seq) < self.regs.k)
+                    {
+                        // The (previously) current sequence dropped
+                        // out, or seq is a higher priority than the
+                        // current sequence
                         self.change_sequence(self.regs.k, seq);
+                    } else {
+                        // just carry on.
                     }
                 }
             }
@@ -820,7 +845,9 @@ impl ControlUnit {
                         inst,
                         ns
                     );
-                    if !increment_program_counter {
+                    if increment_program_counter {
+                        self.regs.prev_hold = self.regs.n.is_held()
+                    } else {
                         // Restore the pre-increment value of the P
                         // register, so that dismiss-and-wait will
                         // cause execution of the current sequence to
@@ -1094,15 +1121,19 @@ impl ControlUnit {
         Ok(self.regs.q)
     }
 
+    fn dismiss(&mut self) {
+        if let Some(current_seq) = self.regs.k {
+            event!(Level::INFO, "dismissing current sequence");
+            self.regs.flags.lower(&current_seq);
+            self.regs.current_sequence_is_runnable = false;
+        }
+    }
+
     fn dismiss_unless_held(&mut self) -> bool {
         if self.regs.n.is_held() {
             false
         } else {
-            if let Some(current_seq) = self.regs.k {
-                event!(Level::INFO, "dismissing current sequence");
-                self.regs.flags.lower(&current_seq);
-                self.regs.current_sequence_is_runnable = false;
-            }
+            self.dismiss();
             true
         }
     }
