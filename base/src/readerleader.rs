@@ -408,10 +408,13 @@ fn test_reader_leader() {
     let expected: &[u64] = &[
         // These values are taken from the right-hand column of page
         // 5-26 of the Users Handbook.
+        //
+        // That table shows the first three words, but if you look at
+        // the plugboard code at 03777760, it loads 23 words of reader
+        // leader ending at location 26.  So we start at the word for
+        // address 3.
+        //
         // Instruction (oct)  Position (oct)
-        0o000_000_000_000, //  0
-        0o000_000_000_001, //  1
-        0o000_000_000_002, //  2
         0o011_154_000_005, //  3
         0o360_554_000_020, //  4
         0o421_153_000_000, //  5
