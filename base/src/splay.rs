@@ -17,15 +17,15 @@ pub fn cycle_and_splay(target: Unsigned36Bit, bits: Unsigned6Bit) -> Unsigned36B
     // bit 4 (3 counting from 0) goes to 3.1 = 1 << 18 (dec)
     // bit 5 (4 counting from 0) goes to 3.7 = 1 << 24 (dec)
     // bit 6 (5 counting from 0) goes to 4.4 = 1 << 30 (dec)
-    let bits: Unsigned36Bit = bits.into();
-    let mut updated = target.shl(1);
-    for src_bit_pos in 0_u8..=5_u8 {
-        let dest_bit_pos: Unsigned36Bit = (src_bit_pos * 6_u8).into();
-        let srcmask: Unsigned36Bit = Unsigned36Bit::ONE.shl(Unsigned36Bit::from(src_bit_pos));
-        let newbit: Unsigned36Bit = (bits & srcmask).shl(Unsigned36Bit::from(src_bit_pos * 5_u8));
-        updated = updated & !(Unsigned36Bit::ONE.shl(dest_bit_pos)) | newbit;
-    }
-    updated
+    let src = u64::from(bits);
+    let lowest_bits = Unsigned36Bit::from(0o010101010101_u32);
+    let newbits: u64 = (src & 1)
+        | ((src & 0o2) << 5)
+        | ((src & 0o4) << 10)
+        | ((src & 0o10) << 15)
+        | ((src & 0o20) << 20)
+        | ((src & 0o40) << 25);
+    (target.shl(1) & !lowest_bits) | newbits
 }
 
 #[test]
@@ -49,49 +49,142 @@ fn test_cycle_and_splay() {
     }
 }
 
-/// This function reverses the effect of perfoming six calsl to
+/// This function reverses the effect of perfoming six calls to
 /// cycle_and_splay().
 pub fn unsplay(source: Unsigned36Bit) -> [Unsigned6Bit; 6] {
-    const ZERO: Unsigned6Bit = Unsigned6Bit::ZERO;
-    let source = i64::from(source);
-    let mut result: [Unsigned6Bit; 6] = [ZERO, ZERO, ZERO, ZERO, ZERO, ZERO];
-    for (i, r) in result.iter_mut().enumerate() {
-        let offset = (i + 1) % 6;
-        let mut val = 0;
-        for (destbit, srcbit) in (0..6).map(|destbit| (destbit, destbit * 6 + offset)) {
-            if source & (1 << srcbit) != 0 {
-                val |= 1 << destbit;
-            }
-        }
-        *r = Unsigned6Bit::try_from(val).unwrap();
+    fn bits(
+        b0: Unsigned36Bit,
+        b1: Unsigned36Bit,
+        b2: Unsigned36Bit,
+        b3: Unsigned36Bit,
+        b4: Unsigned36Bit,
+        b5: Unsigned36Bit,
+    ) -> Unsigned6Bit {
+        let result: u8 = (if b0 == 0 { 0 } else { 0o01 })
+            | (if b1 == 0 { 0 } else { 0o02 })
+            | (if b2 == 0 { 0 } else { 0o04 })
+            | (if b3 == 0 { 0 } else { 0o10 })
+            | (if b4 == 0 { 0 } else { 0o20 })
+            | (if b5 == 0 { 0 } else { 0o40 });
+        Unsigned6Bit::try_from(result).unwrap()
     }
-    result
+
+    let getbit = |n: u32| -> Unsigned36Bit { source & (1 << n) };
+    [
+        bits(
+            getbit(5),
+            getbit(11),
+            getbit(17),
+            getbit(23),
+            getbit(29),
+            getbit(35),
+        ),
+        bits(
+            getbit(4),
+            getbit(10),
+            getbit(16),
+            getbit(22),
+            getbit(28),
+            getbit(34),
+        ),
+        bits(
+            getbit(3),
+            getbit(9),
+            getbit(15),
+            getbit(21),
+            getbit(27),
+            getbit(33),
+        ),
+        bits(
+            getbit(2),
+            getbit(8),
+            getbit(14),
+            getbit(20),
+            getbit(26),
+            getbit(32),
+        ),
+        bits(
+            getbit(1),
+            getbit(7),
+            getbit(13),
+            getbit(19),
+            getbit(25),
+            getbit(31),
+        ),
+        bits(
+            getbit(0),
+            getbit(6),
+            getbit(12),
+            getbit(18),
+            getbit(24),
+            getbit(30),
+        ),
+    ]
 }
 
 #[test]
 fn test_unsplay() {
     const ZERO: Unsigned6Bit = Unsigned6Bit::ZERO;
+    const MAX: Unsigned6Bit = Unsigned6Bit::MAX;
     assert_eq!(
-        unsplay(Unsigned36Bit::try_from(0o010101_010101_u64).expect("test data should be valid")),
-        [ZERO, ZERO, ZERO, ZERO, ZERO, Unsigned6Bit::MAX]
+        unsplay(Unsigned36Bit::try_from(0_u64).expect("test data should be valid")),
+        [ZERO, ZERO, ZERO, ZERO, ZERO, ZERO]
     );
     assert_eq!(
-        unsplay(Unsigned36Bit::try_from(0o020202_020202_u64).expect("test data should be valid")),
-        [Unsigned6Bit::MAX, ZERO, ZERO, ZERO, ZERO, ZERO]
+        unsplay(Unsigned36Bit::try_from(0o777_777_777_777_u64).expect("test data should be valid")),
+        [MAX, MAX, MAX, MAX, MAX, MAX]
     );
-    assert_eq!(
-        unsplay(Unsigned36Bit::try_from(0o040404_040404_u64).expect("test data should be valid")),
-        [ZERO, Unsigned6Bit::MAX, ZERO, ZERO, ZERO, ZERO]
-    );
-    assert_eq!(
-        unsplay(Unsigned36Bit::try_from(1_u64 << 8).expect("test data should be valid")),
-        [
-            ZERO,
-            Unsigned6Bit::try_from(2).expect("test data should be valid"),
-            ZERO,
-            ZERO,
-            ZERO,
-            ZERO
-        ]
-    );
+}
+
+#[cfg(test)]
+fn round_trip(input: Unsigned36Bit) -> Result<(), String> {
+    let unsplayed = unsplay(input);
+    dbg!(&input);
+    dbg!(&unsplayed);
+    let mut output = Unsigned36Bit::ZERO;
+    for (i, component) in unsplayed.into_iter().enumerate() {
+        let next = cycle_and_splay(output, component);
+        println!(
+            "round_trip: splay iteration {}: value {:03o} changed word from {:012o} to {:012o}",
+            i, component, output, next
+        );
+        output = next;
+    }
+    dbg!(&output);
+    if input == output {
+        Ok(())
+    } else {
+        Err(format!("mismatch: input word {:012o} unsplayed to {:?}, which splayed to {:012o}, which doesn't match",
+		    input, unsplayed, output))
+    }
+}
+
+#[test]
+fn test_round_trip_selected() {
+    for value in [
+        Unsigned36Bit::ZERO,
+        Unsigned36Bit::ONE,
+        Unsigned36Bit::from(0o2_u32),
+        Unsigned36Bit::from(0o4_u32),
+        Unsigned36Bit::from(0o3_u32),
+        Unsigned36Bit::from(0o7_u32),
+        Unsigned36Bit::from(0o77_u32),
+        Unsigned36Bit::from(0o7700_u32),
+        Unsigned36Bit::MAX,
+        Unsigned36Bit::from(0o23574373_u32),
+    ] {
+        if let Err(e) = round_trip(value) {
+            panic!("round_trip failed for {:012o}: {}", value, e);
+        }
+    }
+}
+
+#[test]
+fn test_round_trip_bitcycle() {
+    for bitpos in 0..36 {
+        let input: Unsigned36Bit = Unsigned36Bit::ONE.shl(bitpos);
+        if let Err(e) = round_trip(input) {
+            panic!("round_trip failed for {:012o}: {}", input, e);
+        }
+    }
 }
