@@ -96,7 +96,7 @@ impl ControlUnit {
 
     /// Implements the JPX (jump on positive index) opcode (06).
     pub fn op_jpx(&mut self, mem: &mut MemoryUnit) -> Result<(), Alarm> {
-        let is_positive_address = |xj: &Signed18Bit| xj.is_positive();
+        let is_positive_address = |xj: &Signed18Bit| !xj.is_zero() && xj.is_positive();
         self.impl_op_jpx_jnx(is_positive_address, mem)
     }
 
