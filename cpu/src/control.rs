@@ -83,7 +83,7 @@ impl SequenceFlags {
         // with `u16`".
         #![allow(clippy::cmp_owned)]
         assert!(u16::from(*flag) < 0o100_u16);
-        event!(Level::INFO, "Lowering flag {}", flag,);
+        event!(Level::DEBUG, "Lowering flag {}", flag,);
         self.flag_values &= !SequenceFlags::flagbit(flag);
     }
 
@@ -94,7 +94,7 @@ impl SequenceFlags {
         // with `u16`".
         #![allow(clippy::cmp_owned)]
         assert!(u16::from(*flag) < 0o100_u16);
-        event!(Level::INFO, "Raising flag {}", flag,);
+        event!(Level::DEBUG, "Raising flag {}", flag,);
         self.flag_values |= SequenceFlags::flagbit(flag);
     }
 
@@ -1123,7 +1123,7 @@ impl ControlUnit {
 
     fn dismiss(&mut self) {
         if let Some(current_seq) = self.regs.k {
-            event!(Level::INFO, "dismissing current sequence");
+            event!(Level::DEBUG, "dismissing current sequence");
             self.regs.flags.lower(&current_seq);
             self.regs.current_sequence_is_runnable = false;
         }
