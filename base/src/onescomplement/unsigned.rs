@@ -362,6 +362,22 @@ macro_rules! unsigned_ones_complement_impl {
             }
         }
 
+        impl std::ops::BitXor<$InnerT> for $SelfT {
+            type Output = Self;
+            fn bitxor(self, mask: $InnerT) -> Self {
+                Self {
+                    bits: self.bits ^ mask,
+                }
+            }
+        }
+
+        impl std::ops::BitXor for $SelfT {
+            type Output = Self;
+            fn bitxor(self, rhs: Self) -> Self {
+                self.bitxor(rhs.bits)
+            }
+        }
+
         impl std::ops::Shr<$SelfT> for $SelfT {
             type Output = $SelfT;
             fn shr(self, rhs: Self) -> Self {

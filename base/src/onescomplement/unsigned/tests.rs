@@ -436,3 +436,13 @@ fn test_unsigned9bit_shl() {
         Unsigned9Bit::ONE << Unsigned9Bit::from(2_u8)
     );
 }
+
+#[test]
+fn test_unsigned9bit_xor() {
+    let zero: Unsigned9Bit = Unsigned9Bit::from(0_u8);
+    let one: Unsigned9Bit = Unsigned9Bit::from(1_u8);
+    assert_eq!(zero ^ zero, zero);
+    assert_eq!(one ^ one, zero);
+    assert_eq!(one ^ zero, one);
+    assert_eq!(zero ^ one, one);
+}
