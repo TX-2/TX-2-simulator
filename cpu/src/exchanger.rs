@@ -148,7 +148,7 @@ impl SystemConfiguration {
     /// active is given in Table 12-4 in the technical manual (volume
     /// 2, page 12-22).
     ///
-    fn active_quarters(&self) -> QuarterActivity {
+    pub fn active_quarters(&self) -> QuarterActivity {
         // CF7 CF6 CF5 CF4
         //   x   x   x   0 => ACT 1
         //   x   x   0   x => ACT 2

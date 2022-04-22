@@ -797,6 +797,7 @@ impl ControlUnit {
             let saved_inst: Instruction = control.regs.n;
             let mut increment_program_counter: bool = true;
             match opcode {
+                Opcode::Aux => control.op_aux(mem),
                 Opcode::Rsx => control.op_rsx(mem),
                 Opcode::Skx => control.op_skx(),
                 Opcode::Dpx => control.op_dpx(mem),
@@ -956,11 +957,22 @@ impl ControlUnit {
         )
     }
 
+    /// Determine the address of the operand for instructions that use
+    /// indexing.
     fn operand_address_with_optional_defer_and_index(
         self: &mut ControlUnit,
         mem: &mut MemoryUnit,
     ) -> Result<Address, Alarm> {
         self.resolve_operand_address(mem, None)
+    }
+
+    /// Determine the address of the operand for instructions that do
+    /// not use indexing.
+    fn operand_address_with_optional_defer_without_index(
+        self: &mut ControlUnit,
+        mem: &mut MemoryUnit,
+    ) -> Result<Address, Alarm> {
+        self.resolve_operand_address(mem, Some(Unsigned6Bit::ZERO))
     }
 
     /// Resolve the address of the operand of the current instruction,

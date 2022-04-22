@@ -43,6 +43,13 @@ macro_rules! u6 {
     };
 }
 
+#[macro_export]
+macro_rules! u9 {
+    ($n:expr) => {
+        $crate::prelude::Unsigned9Bit::new::<{ $n }>()
+    };
+}
+
 #[test]
 fn test_u36() {
     use prelude::Unsigned36Bit;
@@ -106,4 +113,9 @@ fn test_u6() {
     assert_eq!(u6!(0o30), Unsigned6Bit::try_from(0o30_u8).unwrap());
     assert_eq!(u6!(0o70), Unsigned6Bit::try_from(0o70_u8).unwrap());
     assert_eq!(u6!(0o77), Unsigned6Bit::try_from(0o77_u8).unwrap());
+}
+
+#[test]
+fn test_u9() {
+    assert_eq!(u9!(0o750), Unsigned9Bit::try_from(0o750_u16).unwrap());
 }

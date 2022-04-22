@@ -2,7 +2,7 @@
 //! - RSX [`ControlUnit::op_rsx`]
 //! - DPX: [`ControlUnit::op_dpx`]
 //! - EXX (unimplemented)
-//! - AUX (unimplemented)
+//! - AUX [`ControlUnit::op_aux`]
 //! - ADX (unimplemented)
 //! - SKX: [`ControlUnit::op_skx`]
 //! - JPX: [`ControlUnit::op_jpx`]
@@ -19,8 +19,7 @@ use crate::memory::{MemoryUnit, MetaBitChange};
 ///
 /// - RSX: [`ControlUnit::op_rsx`]
 /// - DPX: [`ControlUnit::op_dpx`]
-/// - EXX (unimplemented)
-/// - AUX (unimplemented)
+/// - AUX [`ControlUnit::op_aux`]
 /// - ADX (unimplemented)
 /// - SKX: [`ControlUnit::op_skx`]
 /// - JPX: [`ControlUnit::op_jpx`]
@@ -53,6 +52,46 @@ impl ControlUnit {
             }
             Err(other) => Err(other),
         }
+    }
+
+    /// Implements the AUX instruction (Opcode 010, User Handbook,
+    /// page 3-22).
+    pub fn op_aux(&mut self, mem: &mut MemoryUnit) -> Result<(), Alarm> {
+        let j = self.regs.n.index_address();
+        // The AUX instruction is not indexed.
+        let source: Address = self.operand_address_with_optional_defer_without_index(mem)?;
+        // If j == 0 nothing is going to happen (X₀ is always 0) but
+        // we still need to make sure we raise an alarm if the memory
+        // access is invalid.
+        let (word, _extra) = self.fetch_operand_from_address(mem, &source)?;
+        if !j.is_zero() {
+            let xj: Signed18Bit = self.regs.get_index_register(j);
+            let m: Signed18Bit = subword::right_half(word).reinterpret_as_signed();
+            let mut newvalue = xj.wrapping_add(m);
+            // If the system configuration states that only some
+            // quarters are active, the other quarters of the index
+            // register are set to zero (Users Handbook, page 3-22).
+            // The call to [`ControlUnit::fetch_operand_from_address`]
+            // will already have applied the correct subword form to
+            // `word`.
+            let quarter_activity = self.get_config().active_quarters();
+            if !quarter_activity.is_active(&0) {
+                // Zero out the right quarter of newvalue.
+                newvalue = newvalue
+                    .reinterpret_as_unsigned()
+                    .and(0o777000)
+                    .reinterpret_as_signed();
+            }
+            if !quarter_activity.is_active(&1) {
+                // Zero out the left quarter of newvalue.
+                newvalue = newvalue
+                    .reinterpret_as_unsigned()
+                    .and(0o0777)
+                    .reinterpret_as_signed();
+            }
+            self.regs.set_index_register(j, &newvalue);
+        }
+        Ok(())
     }
 
     /// Implements the RSX instruction (Opcode 011, User Handbook,
@@ -169,5 +208,168 @@ impl ControlUnit {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::exchanger::SystemConfiguration;
+    use crate::memory::MetaBitChange;
+    use crate::{MemoryConfiguration, MemoryUnit};
+    use base::instruction::{Opcode, SymbolicInstruction};
+    use base::prelude::*;
+
+    use super::ControlUnit;
+
+    /// Simulate some AUX instructions and return the result
+    /// of the addition, and the final value in the E register.
+    ///
+    /// # Arguments
+    ///
+    /// * `j` - which index register to use
+    /// * `initial` - initial value of the X-register
+    /// * `addends` - items to add to `initial`
+    /// * `addend_lhs` - contents for the left subword of all added items
+    /// * `defer` - whether the operand should be deferred
+    /// * `cfg` - the system configuration to use when adding
+    fn simulate_aux(
+        j: Unsigned6Bit,
+        initial: Signed18Bit,
+        addends: &[Signed18Bit],
+        addend_lhs: Unsigned18Bit,
+        defer: bool,
+        cfg: SystemConfiguration,
+    ) -> (Signed18Bit, Unsigned36Bit) {
+        const COMPLAIN: &str = "failed to set up AUX test data";
+
+        // Given...
+        let mut control = ControlUnit::new();
+        let mut mem = MemoryUnit::new(&MemoryConfiguration {
+            with_u_memory: false,
+        });
+        control.regs.set_index_register(j, &initial);
+        control.regs.f_memory[1] = cfg;
+        let defer_address = OperandAddress::Deferred(Address::from(u18!(0o100)));
+        const ADDEND_BASE: u32 = 0o101;
+        for (offset, addend) in addends.iter().enumerate() {
+            let addend_address = Address::from(
+                u18!(ADDEND_BASE).wrapping_add(Unsigned18Bit::try_from(offset).expect(COMPLAIN)),
+            );
+            let memval = join_halves(addend_lhs, addend.reinterpret_as_unsigned());
+            control
+                .memory_store_without_exchange(
+                    &mut mem,
+                    &addend_address,
+                    &memval,
+                    &MetaBitChange::None,
+                )
+                .expect(COMPLAIN);
+        }
+
+        // When... we perform a sequence of AUX instructions
+        for offset in 0..(addends.len()) {
+            let operand_address = if defer {
+                let pos: u32 = ADDEND_BASE + u32::try_from(offset).expect(COMPLAIN);
+                let deferred = Unsigned18Bit::try_from(pos).expect(COMPLAIN);
+                let ignored_lhs = u18!(0o500);
+                // Set up the word at the deferred address
+                control
+                    .memory_store_without_exchange(
+                        &mut mem,
+                        &Address::from(u18!(0o100)),
+                        &join_halves(ignored_lhs, deferred),
+                        &MetaBitChange::None,
+                    )
+                    .expect(COMPLAIN);
+                defer_address
+            } else {
+                OperandAddress::Direct(Address::from(
+                    Unsigned18Bit::try_from(ADDEND_BASE + u32::try_from(offset).expect(COMPLAIN))
+                        .expect(COMPLAIN),
+                ))
+            };
+            let inst = SymbolicInstruction {
+                held: false,
+                configuration: Unsigned5Bit::ONE,
+                opcode: Opcode::Aux,
+                index: j,
+                operand_address,
+            };
+            control
+                .update_n_register(Instruction::from(&inst).bits())
+                .expect(COMPLAIN);
+            if let Err(e) = control.op_aux(&mut mem) {
+                panic!("AUX instruction failed: {}", e);
+            }
+        }
+        (control.regs.get_index_register(j), control.regs.e)
+    }
+
+    /// Check that AUX thinks that 0 + 1 = 1.
+    #[test]
+    fn op_aux_zero_plus_one_equals_one() {
+        let ignored_lhs = u18!(300);
+        let (sum, e) = simulate_aux(
+            Unsigned6Bit::ONE, // Use register X₁
+            Signed18Bit::ZERO,
+            &[Signed18Bit::ONE],
+            ignored_lhs,
+            false,
+            SystemConfiguration::from(0_u8),
+        );
+        assert_eq!(sum, Signed18Bit::ONE);
+        assert_eq!(
+            e,
+            join_halves(ignored_lhs, Signed18Bit::ONE.reinterpret_as_unsigned())
+        );
+    }
+
+    /// Check that AUX can correctly add negative values.
+    #[test]
+    fn op_aux_negative() {
+        const COMPLAIN: &str = "failed to set up AUX test data";
+        let ignored_lhs = u18!(503);
+        let minus_three = Signed18Bit::try_from(-3).expect(COMPLAIN);
+        let items_to_add = [Signed18Bit::try_from(-1).expect(COMPLAIN), minus_three];
+        let (sum, e) = simulate_aux(
+            Unsigned6Bit::ONE,                                // Use register X₁
+            Signed18Bit::try_from(0o250077).expect(COMPLAIN), // initial value
+            &items_to_add,
+            ignored_lhs,
+            false,
+            // System configuration 0o340 uses only the right-hand
+            // subword, which is how AUX behaves anyway - so this
+            // should make no difference.
+            SystemConfiguration::from(0o340_u8),
+        );
+        assert_eq!(sum, Signed18Bit::try_from(0o250073).expect(COMPLAIN));
+        assert_eq!(
+            e,
+            join_halves(ignored_lhs, minus_three.reinterpret_as_unsigned()),
+        );
+    }
+
+    /// Check that AUX applies a configuration in which only q2 is
+    /// active.
+    #[test]
+    fn op_aux_q2_only() {
+        let ignored_lhs = u18!(507);
+        let items_to_add = [
+            // q2 is 0o020, q1 is 0o010
+            u18!(0o020_010).reinterpret_as_signed(),
+        ];
+        let (sum, _e) = simulate_aux(
+            Unsigned6Bit::ONE,                       // Use register X₁
+            u18!(0o300_555).reinterpret_as_signed(), // initial value
+            &items_to_add,
+            ignored_lhs,
+            false,
+            SystemConfiguration::from(u9!(0o750)), // 0o750: q2 only
+        );
+        // The sum should be formed from q2 of the initial value
+        // (0o300) plus q2 of the addend (0o020), yielding 0o320.  The
+        // inactive quarter (q1) should be zeroed.  This is explained
+        // on page 3-22 of the Users Handbook.
+        assert_eq!(sum, u18!(0o320_000).reinterpret_as_signed());
     }
 }
