@@ -1,5 +1,5 @@
 //! Implementations of "Index Register Class" opcodes
-//! - RSX (unimplemented)
+//! - RSX [`ControlUnit::op_rsx`]
 //! - DPX: [`ControlUnit::op_dpx`]
 //! - EXX (unimplemented)
 //! - AUX (unimplemented)
@@ -17,7 +17,7 @@ use crate::memory::{MemoryUnit, MetaBitChange};
 
 /// ## "Index Register Class" opcodes
 ///
-/// - RSX (unimplemented)
+/// - RSX: [`ControlUnit::op_rsx`]
 /// - DPX: [`ControlUnit::op_dpx`]
 /// - EXX (unimplemented)
 /// - AUX (unimplemented)
@@ -53,6 +53,22 @@ impl ControlUnit {
             }
             Err(other) => Err(other),
         }
+    }
+
+    /// Implements the RSX instruction (Opcode 011, User Handbook,
+    /// page 3-14).
+    pub fn op_rsx(&mut self, mem: &mut MemoryUnit) -> Result<(), Alarm> {
+        let j = self.regs.n.index_address();
+        // If j == 0 nothing is going to happen (X₀ is always 0) but
+        // we still need to make sure we raise an alarm if the memory
+        // access is invalid.
+        let source: Address = self.operand_address_with_optional_defer_and_index(mem)?;
+        let (word, _extra) = self.fetch_operand_from_address(mem, &source)?;
+        if !j.is_zero() {
+            let xj: Signed18Bit = subword::right_half(word).reinterpret_as_signed();
+            self.regs.set_index_register(j, &xj);
+        }
+        Ok(())
     }
 
     /// Implements the SKX instruction (Opcode 012, User Handbook,

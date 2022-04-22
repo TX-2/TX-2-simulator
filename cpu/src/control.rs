@@ -797,6 +797,7 @@ impl ControlUnit {
             let saved_inst: Instruction = control.regs.n;
             let mut increment_program_counter: bool = true;
             match opcode {
+                Opcode::Rsx => control.op_rsx(mem),
                 Opcode::Skx => control.op_skx(),
                 Opcode::Dpx => control.op_dpx(mem),
                 Opcode::Jmp => control.op_jmp(),
