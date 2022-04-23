@@ -891,6 +891,7 @@ impl ControlUnit {
                 if extra_bits.meta && self.trap.trap_on_operand() {
                     self.raise_trap();
                 }
+                self.regs.e = word;
                 Ok((word, extra_bits))
             }
             Err(MemoryOpFailure::NotMapped) => {
