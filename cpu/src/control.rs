@@ -21,6 +21,7 @@ mod op_configuration;
 mod op_index;
 mod op_io;
 mod op_jump;
+mod op_loadstore;
 pub mod timing;
 mod trap;
 
@@ -353,6 +354,13 @@ fn sign_extend_index_value(index_val: &Signed18Bit) -> Unsigned36Bit {
         Unsigned18Bit::ZERO
     };
     subword::join_halves(left, index_val.reinterpret_as_unsigned())
+}
+
+/// Determines whether a memory operation updates the E register.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum UpdateE {
+    No,
+    Yes,
 }
 
 impl ControlUnit {
@@ -798,6 +806,7 @@ impl ControlUnit {
             let mut increment_program_counter: bool = true;
             match opcode {
                 Opcode::Aux => control.op_aux(mem),
+                Opcode::Ste => control.op_ste(mem),
                 Opcode::Rsx => control.op_rsx(mem),
                 Opcode::Skx => control.op_skx(),
                 Opcode::Dpx => control.op_dpx(mem),
@@ -882,9 +891,10 @@ impl ControlUnit {
         mem: &mut MemoryUnit,
         operand_address: &Address,
         existing_dest: &Unsigned36Bit,
+        update_e: &UpdateE,
     ) -> Result<(Unsigned36Bit, ExtraBits), Alarm> {
         let (memword, extra) =
-            self.fetch_operand_from_address_without_exchange(mem, operand_address)?;
+            self.fetch_operand_from_address_without_exchange(mem, operand_address, update_e)?;
         let exchanged = exchanged_value_for_load(&self.get_config(), &memword, existing_dest);
         Ok((exchanged, extra))
     }
@@ -893,6 +903,7 @@ impl ControlUnit {
         &mut self,
         mem: &mut MemoryUnit,
         operand_address: &Address,
+        update_e: &UpdateE,
     ) -> Result<(Unsigned36Bit, ExtraBits), Alarm> {
         let meta_op: MetaBitChange = if self.trap.set_metabits_of_operands() {
             MetaBitChange::Set
@@ -904,7 +915,9 @@ impl ControlUnit {
                 if extra_bits.meta && self.trap.trap_on_operand() {
                     self.raise_trap();
                 }
-                self.regs.e = word;
+                if update_e == &UpdateE::Yes {
+                    self.regs.e = word;
+                }
                 Ok((word, extra_bits))
             }
             Err(MemoryOpFailure::NotMapped) => {
@@ -929,10 +942,11 @@ impl ControlUnit {
     }
 
     fn memory_store_without_exchange(
-        &self,
+        &mut self,
         mem: &mut MemoryUnit,
         target: &Address,
         value: &Unsigned36Bit,
+        update_e: &UpdateE,
         meta_op: &MetaBitChange,
     ) -> Result<(), Alarm> {
         event!(
@@ -941,6 +955,12 @@ impl ControlUnit {
             target,
             value,
         );
+        if &UpdateE::Yes == update_e {
+            // The E register gets updated to the value we want to
+            // write, even if we cannot actually write it (see example
+            // 10 on page 3-17 of the Users Handbook).
+            self.regs.e = *value;
+        }
         if let Err(e) = mem.store(target, value, meta_op) {
             self.alarm_unit.fire_if_not_masked(Alarm::QSAL(
                 self.regs.n,
@@ -954,17 +974,19 @@ impl ControlUnit {
     }
 
     fn memory_store_with_exchange(
-        &self,
+        &mut self,
         mem: &mut MemoryUnit,
         target: &Address,
         value: &Unsigned36Bit,
         existing: &Unsigned36Bit,
+        update_e: &UpdateE,
         meta_op: &MetaBitChange,
     ) -> Result<(), Alarm> {
         self.memory_store_without_exchange(
             mem,
             target,
             &exchanged_value_for_store(&self.get_config(), value, existing),
+            update_e,
             meta_op,
         )
     }
@@ -1145,6 +1167,52 @@ impl ControlUnit {
         // "TX-2 Introductory Notes" states that this happens, but the
         // question is whether the programmer can detect it.
         Ok(self.regs.q)
+    }
+
+    fn memory_read_and_update_with_exchange<F>(
+        &mut self,
+        mem: &mut MemoryUnit,
+        target: &Address,
+        update_e: &UpdateE,
+        transform: F,
+    ) -> Result<(), Alarm>
+    where
+        F: FnOnce(Unsigned36Bit) -> Unsigned36Bit,
+    {
+        // We unconditionally perform the memory read.  But in the
+        // real TX-2 there are cases where the read may not actually
+        // need to happen.  For example the instruction `⁰STA T` is
+        // implemented by a call to this function but does not need to
+        // read from `target` although similar instructions might.
+        // For example, `²STA T` modifies L(T) but not R(T) and so if
+        // there were a hardware parity error affecting T, this
+        // instruction would likely fail on the real hardware.
+        match self.fetch_operand_from_address_without_exchange(mem, target, &UpdateE::No) {
+            Ok((existing, _meta)) => {
+                let newval = transform(existing);
+                // TODO: handle "memory" stores to AE registers.
+                self.memory_store_with_exchange(
+                    mem,
+                    target,
+                    &newval,
+                    &existing,
+                    update_e,
+                    &MetaBitChange::None,
+                )
+            }
+            Err(Alarm::QSAL(inst, BadMemOp::Read(addr), msg)) => {
+                // That read operation just failed.  So we handle this
+                // as a _write_ failure, meaning that we change
+                // BadMemOp::Read to BadMemOp::Write.
+                self.alarm_unit.fire_if_not_masked(Alarm::QSAL(
+                    inst,
+                    BadMemOp::Write(addr),
+                    msg,
+                ))?;
+                Ok(()) // QSAL is masked, we just carry on (the DPX instruction has no effect).
+            }
+            Err(other) => Err(other),
+        }
     }
 
     fn dismiss(&mut self) {

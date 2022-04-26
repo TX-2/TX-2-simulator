@@ -12,7 +12,7 @@ use base::prelude::*;
 use base::subword;
 
 use crate::alarm::{Alarm, BadMemOp};
-use crate::control::{sign_extend_index_value, ControlUnit, ProgramCounterChange};
+use crate::control::{sign_extend_index_value, ControlUnit, ProgramCounterChange, UpdateE};
 use crate::memory::{MemoryUnit, MetaBitChange};
 
 /// ## "Index Register Class" opcodes
@@ -35,10 +35,15 @@ impl ControlUnit {
 
         // DPX is trying to perform a write.  But to do this in some
         // subword configurations, we need to read the existing value.
-        match self.fetch_operand_from_address_without_exchange(mem, &target) {
-            Ok((dest, _meta)) => {
-                self.memory_store_with_exchange(mem, &target, &xj, &dest, &MetaBitChange::None)
-            }
+        match self.fetch_operand_from_address_without_exchange(mem, &target, &UpdateE::Yes) {
+            Ok((dest, _meta)) => self.memory_store_with_exchange(
+                mem,
+                &target,
+                &xj,
+                &dest,
+                &UpdateE::Yes,
+                &MetaBitChange::None,
+            ),
             Err(Alarm::QSAL(inst, BadMemOp::Read(addr), msg)) => {
                 // That read operation just failed.  So we handle this
                 // as a _write_ failure, meaning that we change
@@ -63,7 +68,8 @@ impl ControlUnit {
         // If j == 0 nothing is going to happen (X₀ is always 0) but
         // we still need to make sure we raise an alarm if the memory
         // access is invalid.
-        let (word, _extra) = self.fetch_operand_from_address_without_exchange(mem, &source)?;
+        let (word, _extra) =
+            self.fetch_operand_from_address_without_exchange(mem, &source, &UpdateE::Yes)?;
         if !j.is_zero() {
             let xj: Signed18Bit = self.regs.get_index_register(j);
             let m: Signed18Bit = subword::right_half(word).reinterpret_as_signed();
@@ -113,7 +119,7 @@ impl ControlUnit {
         // indexing.
         let source: Address = self.operand_address_with_optional_defer_without_index(mem)?;
         let (word, _extra) =
-            self.fetch_operand_from_address_with_exchange(mem, &source, &existing)?;
+            self.fetch_operand_from_address_with_exchange(mem, &source, &existing, &UpdateE::Yes)?;
         if !j.is_zero() {
             let xj: Signed18Bit = subword::right_half(word).reinterpret_as_signed();
             self.regs.set_index_register(j, &xj);
@@ -224,6 +230,7 @@ impl ControlUnit {
 
 #[cfg(test)]
 mod tests {
+    use crate::control::UpdateE;
     use crate::exchanger::SystemConfiguration;
     use crate::memory::MetaBitChange;
     use crate::{MemoryConfiguration, MemoryUnit};
@@ -250,7 +257,13 @@ mod tests {
         }
         for (address, value) in mem_setup.iter() {
             control
-                .memory_store_without_exchange(&mut mem, address, value, &MetaBitChange::None)
+                .memory_store_without_exchange(
+                    &mut mem,
+                    address,
+                    value,
+                    &UpdateE::No,
+                    &MetaBitChange::None,
+                )
                 .expect(COMPLAIN);
         }
         if let Some(f_mem_setup) = f_memory_setup {
@@ -313,6 +326,7 @@ mod tests {
                         &mut mem,
                         &Address::from(u18!(0o100)),
                         &join_halves(ignored_lhs, deferred),
+                        &UpdateE::No,
                         &MetaBitChange::None,
                     )
                     .expect(COMPLAIN);

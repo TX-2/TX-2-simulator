@@ -9,7 +9,7 @@ use base::prelude::*;
 use base::subword;
 
 use crate::alarm::Alarm;
-use crate::control::ControlUnit;
+use crate::control::{ControlUnit, UpdateE};
 use crate::exchanger::SystemConfiguration;
 use crate::memory::MemoryUnit;
 
@@ -27,7 +27,8 @@ impl ControlUnit {
     pub fn op_spg(&mut self, mem: &mut MemoryUnit) -> Result<(), Alarm> {
         let c = usize::from(self.regs.n.configuration());
         let target = self.operand_address_with_optional_defer_and_index(mem)?;
-        let (word, _meta) = self.fetch_operand_from_address_without_exchange(mem, &target)?;
+        let (word, _meta) =
+            self.fetch_operand_from_address_without_exchange(mem, &target, &UpdateE::Yes)?;
         for (quarter_number, cfg_value) in subword::quarters(word).iter().rev().enumerate() {
             let pos = c + quarter_number;
             let newvalue = (*cfg_value).into();
@@ -47,6 +48,7 @@ impl ControlUnit {
 
 #[cfg(test)]
 mod tests {
+    use crate::control::UpdateE;
     use crate::exchanger::SystemConfiguration;
     use crate::memory::MetaBitChange;
     use crate::{MemoryConfiguration, MemoryUnit};
@@ -82,6 +84,7 @@ mod tests {
                 &mut mem,
                 &configdata_address,
                 &configdata,
+                &UpdateE::Yes,
                 &MetaBitChange::None,
             )
             .expect(COMPLAIN);

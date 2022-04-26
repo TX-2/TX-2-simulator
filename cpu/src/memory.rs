@@ -144,7 +144,7 @@ pub struct ExtraBits {
 }
 
 #[derive(Clone, Copy, Default)]
-struct MemoryWord(u64); // Not public.
+pub(crate) struct MemoryWord(u64); // Not public.
 const WORD_BITS: u64 = 0x0FFFFFFFFF;
 const META_BIT: u64 = 0x1000000000;
 
@@ -238,7 +238,7 @@ fn default_filled_memory_vec(size: u32) -> Vec<MemoryWord> {
 
 #[derive(Debug)]
 pub struct MemoryUnit {
-    s_memory: Vec<MemoryWord>,
+    pub(crate) s_memory: Vec<MemoryWord>,
     t_memory: Vec<MemoryWord>,
     u_memory: Option<Vec<MemoryWord>>,
     v_memory: VMemory,
@@ -703,13 +703,14 @@ impl VMemory {
         addr: &Address,
     ) -> Result<Option<&mut MemoryWord>, MemoryOpFailure> {
         if access_type == &MemoryAccess::Write {
-            // TODO: there appear to be some instructions which
-            // special-case attempts to write to arithmetic unit
-            // registers, so we may need a more sophisticated approach
-            // here.
-            //
             // For now, we handle writes to Vₜ and Vff memory the same
             // way, which is to ignore them.
+            //
+            // That's a bug, based on the comment in example 10 on
+            // page 3-17 of the Users Handbook, which says "V memory,
+            // except the A, B, C, D and E registers cannot be changed
+            // by any instruction".  See also
+            // https://github.com/TX-2/TX-2-simulator/issues/53.
             return Ok(None);
         }
         match u32::from(addr) {

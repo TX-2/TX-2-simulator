@@ -233,6 +233,10 @@ macro_rules! assert_octal_eq {
 /// which the values for `target_quarter` (also starting at 0) would
 /// be taken if it were active.
 ///
+/// The numbering is for the load direction (i.e. data is travelling
+/// _downwards_ in the standard permutation diagram in table 7-2 of
+/// the Users Handbook).
+///
 /// Permutation behaviour is described in Volume 2 of the Technnical
 /// Manual.  In particular see section 12-6.4 and figure 12-45 (page
 /// 12-75), and figures 13-12 and 13-13 (pages 13-24 and 13-25).
@@ -241,35 +245,39 @@ fn permutation_source(
     direction: &ExchangeDirection,
     target_quarter: u8,
 ) -> u8 {
-    let d: u8 = match *direction {
-        ExchangeDirection::ME => 0,
-        ExchangeDirection::EM => 3,
-    };
     match permutation {
         Permutation::P0 => target_quarter % 4,
-        Permutation::P1 => (target_quarter + 1 + d) % 4,
-        Permutation::P2 => (target_quarter + 2 + d) % 4,
-        Permutation::P3 => (target_quarter + 3 + d) % 4,
+        Permutation::P1 => match *direction {
+            ExchangeDirection::ME => (target_quarter + 3) % 4,
+            ExchangeDirection::EM => (target_quarter + 1) % 4,
+        },
+        Permutation::P2 => (target_quarter + 2) % 4,
+        Permutation::P3 => match *direction {
+            ExchangeDirection::ME => (target_quarter + 1) % 4,
+            ExchangeDirection::EM => (target_quarter + 3) % 4,
+        },
         Permutation::P4 => target_quarter ^ 0b01,
         Permutation::P5 => target_quarter ^ 0b11,
         Permutation::P6 => match (direction, target_quarter) {
             (&ExchangeDirection::ME, 3) => 2,
             (&ExchangeDirection::ME, 2) => 1,
             (&ExchangeDirection::ME, 1) => 3,
+            (&ExchangeDirection::ME, 0) => 0,
             (&ExchangeDirection::EM, 3) => 1,
             (&ExchangeDirection::EM, 2) => 3,
             (&ExchangeDirection::EM, 1) => 2,
-            (_, 0) => 0,
+            (&ExchangeDirection::EM, 0) => 0,
             (_, _) => unreachable!(),
         },
         Permutation::P7 => match (direction, target_quarter) {
             (&ExchangeDirection::ME, 3) => 1,
             (&ExchangeDirection::ME, 2) => 3,
             (&ExchangeDirection::ME, 1) => 2,
+            (&ExchangeDirection::ME, 0) => 0,
             (&ExchangeDirection::EM, 3) => 2,
             (&ExchangeDirection::EM, 2) => 1,
             (&ExchangeDirection::EM, 1) => 3,
-            (_, 0) => 0,
+            (&ExchangeDirection::EM, 0) => 0,
             (_, _) => unreachable!(),
         },
     }
@@ -792,23 +800,14 @@ fn test_sign_extend_halves() {
 /// Determine which quarter of `source` gets permuted into
 /// `target_quarter` (numbered from zero), without regard to activity.
 /// Return the value of that quarter, shifted down into the lowest
-/// quarter.
-fn fetch_permuted_quarter(
-    permutation: &Permutation,
-    direction: &ExchangeDirection,
-    target_quarter: u8,
-    source: &u64,
-) -> u64 {
-    let source_quarter = permutation_source(permutation, direction, target_quarter);
+/// quarter (Q1, aka. quarter 0 when using u8 to indicate quarters).
+fn fetch_quarter(source_quarter: u8, source: &u64) -> u64 {
     (source & quarter_mask(source_quarter)) >> (source_quarter * 9)
 }
 
 #[test]
-fn test_fetch_permuted_quarter() {
-    assert_octal_eq!(
-        fetch_permuted_quarter(&Permutation::P0, &ExchangeDirection::ME, 2, &0o444333222111),
-        0o333
-    );
+fn test_fetch_quarter() {
+    assert_octal_eq!(fetch_quarter(2, &0o444333222111), 0o333);
 }
 
 /// Copy bits from `source` to `dest`, permuting them according to
@@ -822,13 +821,24 @@ fn permute(
 ) -> Unsigned36Bit {
     let mut result: u64 = (*dest).into();
     let source_bits: u64 = u64::from(*source);
+    dbg!(&active_quarters);
     for target_quarter in 0_u8..4_u8 {
-        if active_quarters.is_active(&target_quarter) {
+        let source_quarter: u8 = permutation_source(permutation, direction, target_quarter);
+
+        // The active quarters are specified according to the quarter
+        // number in the E register.  Hence for M->E (load-type)
+        // transfers, they are the quarters of the destination, but
+        // for E->M (store-type) transfers, they are the quarters of
+        // the source.  See the descriptions in the Users Handbook,
+        // sections 13-4.1 and 13-4.2.
+        let e_quarter: u8 = match *direction {
+            ExchangeDirection::ME => target_quarter,
+            ExchangeDirection::EM => source_quarter,
+        };
+        if active_quarters.is_active(&e_quarter) {
             // `value` will be the value from the quarter we want,
             // shifted to the correct position.
-            let value =
-                fetch_permuted_quarter(permutation, direction, target_quarter, &source_bits)
-                    << (target_quarter * 9);
+            let value = fetch_quarter(source_quarter, &source_bits) << (target_quarter * 9);
             let target_mask: u64 = quarter_mask(target_quarter);
             result &= !target_mask;
             result |= target_mask & value;
@@ -871,13 +881,15 @@ fn test_permute_p0() {
     }
 }
 
-/// Perform an exchange operation suitable for a store operation; that
+/// Perform an exchange operation suitable for a load operation; that
 /// is, emulate the operation of the exchange unit diring e.g. LDA.
 pub fn exchanged_value_for_load(
     cfg: &SystemConfiguration,
     source: &Unsigned36Bit,
     dest: &Unsigned36Bit,
 ) -> Unsigned36Bit {
+    dbg!(&source);
+    dbg!(&dest);
     let active_quarters = cfg.active_quarters();
     let permuted_target = permute(
         &cfg.permutation(),
