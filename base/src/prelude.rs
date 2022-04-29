@@ -7,7 +7,7 @@ pub use crate::onescomplement::signed::*;
 pub use crate::onescomplement::unsigned::*;
 pub use crate::readerleader::reader_leader;
 pub use crate::splay::{cycle_and_splay, unsplay};
-pub use crate::subword::{join_halves, join_quarters, split_halves};
+pub use crate::subword::{join_halves, join_quarters, left_half, right_half, split_halves};
 pub use crate::types::IndexBy;
 pub use crate::types::*;
 pub use crate::{u18, u36, u5, u6, u9};

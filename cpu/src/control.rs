@@ -29,7 +29,7 @@ use base::prelude::*;
 use base::subword;
 
 use crate::alarm::{Alarm, AlarmUnit, BadMemOp};
-use crate::exchanger::{exchanged_value, SystemConfiguration};
+use crate::exchanger::{exchanged_value_for_load, exchanged_value_for_store, SystemConfiguration};
 use crate::io::{DeviceManager, Unit};
 use crate::memory::{self, ExtraBits, MemoryMapped, MemoryOpFailure, MemoryUnit, MetaBitChange};
 
@@ -877,7 +877,19 @@ impl ControlUnit {
         self.regs.get_f_mem(cf)
     }
 
-    fn fetch_operand_from_address(
+    fn fetch_operand_from_address_with_exchange(
+        &mut self,
+        mem: &mut MemoryUnit,
+        operand_address: &Address,
+        existing_dest: &Unsigned36Bit,
+    ) -> Result<(Unsigned36Bit, ExtraBits), Alarm> {
+        let (memword, extra) =
+            self.fetch_operand_from_address_without_exchange(mem, operand_address)?;
+        let exchanged = exchanged_value_for_load(&self.get_config(), &memword, existing_dest);
+        Ok((exchanged, extra))
+    }
+
+    fn fetch_operand_from_address_without_exchange(
         &mut self,
         mem: &mut MemoryUnit,
         operand_address: &Address,
@@ -952,7 +964,7 @@ impl ControlUnit {
         self.memory_store_without_exchange(
             mem,
             target,
-            &exchanged_value(&self.get_config(), value, existing),
+            &exchanged_value_for_store(&self.get_config(), value, existing),
             meta_op,
         )
     }

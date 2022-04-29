@@ -35,7 +35,7 @@ impl ControlUnit {
 
         // DPX is trying to perform a write.  But to do this in some
         // subword configurations, we need to read the existing value.
-        match self.fetch_operand_from_address(mem, &target) {
+        match self.fetch_operand_from_address_without_exchange(mem, &target) {
             Ok((dest, _meta)) => {
                 self.memory_store_with_exchange(mem, &target, &xj, &dest, &MetaBitChange::None)
             }
@@ -63,7 +63,7 @@ impl ControlUnit {
         // If j == 0 nothing is going to happen (X₀ is always 0) but
         // we still need to make sure we raise an alarm if the memory
         // access is invalid.
-        let (word, _extra) = self.fetch_operand_from_address(mem, &source)?;
+        let (word, _extra) = self.fetch_operand_from_address_without_exchange(mem, &source)?;
         if !j.is_zero() {
             let xj: Signed18Bit = self.regs.get_index_register(j);
             let m: Signed18Bit = subword::right_half(word).reinterpret_as_signed();
@@ -98,11 +98,22 @@ impl ControlUnit {
     /// page 3-14).
     pub fn op_rsx(&mut self, mem: &mut MemoryUnit) -> Result<(), Alarm> {
         let j = self.regs.n.index_address();
+        let existing = join_halves(
+            Unsigned18Bit::ZERO,
+            self.regs.get_index_register(j).reinterpret_as_unsigned(),
+        );
         // If j == 0 nothing is going to happen (X₀ is always 0) but
         // we still need to make sure we raise an alarm if the memory
-        // access is invalid.
-        let source: Address = self.operand_address_with_optional_defer_and_index(mem)?;
-        let (word, _extra) = self.fetch_operand_from_address(mem, &source)?;
+        // access is invalid.  Se we need to perform the memory fetch
+        // even when j=0.
+        //
+        // As shown in the RSX opcode documentation (Users Handbook,
+        // page 3-14), the index bits in the instruction identify
+        // which index register we're modifying, so cannot be used for
+        // indexing.
+        let source: Address = self.operand_address_with_optional_defer_without_index(mem)?;
+        let (word, _extra) =
+            self.fetch_operand_from_address_with_exchange(mem, &source, &existing)?;
         if !j.is_zero() {
             let xj: Signed18Bit = subword::right_half(word).reinterpret_as_signed();
             self.regs.set_index_register(j, &xj);
@@ -221,6 +232,36 @@ mod tests {
 
     use super::ControlUnit;
 
+    fn setup(
+        j: Unsigned6Bit,
+        initial: Signed18Bit,
+        mem_setup: &[(Address, Unsigned36Bit)],
+        f_memory_setup: Option<&[(usize, SystemConfiguration)]>,
+    ) -> (ControlUnit, MemoryUnit) {
+        const COMPLAIN: &str = "failed to set up initial state";
+        let mut control = ControlUnit::new();
+        let mut mem = MemoryUnit::new(&MemoryConfiguration {
+            with_u_memory: false,
+        });
+        if j == 0 {
+            assert_eq!(initial, 0, "Cannot set X₀ to a nonzero value");
+        } else {
+            control.regs.set_index_register(j, &initial);
+        }
+        for (address, value) in mem_setup.iter() {
+            control
+                .memory_store_without_exchange(&mut mem, address, value, &MetaBitChange::None)
+                .expect(COMPLAIN);
+        }
+        if let Some(f_mem_setup) = f_memory_setup {
+            for (config_num, config) in f_mem_setup.iter() {
+                control.regs.f_memory[*config_num] = *config;
+            }
+        }
+
+        (control, mem)
+    }
+
     /// Simulate some AUX instructions and return the result
     /// of the addition, and the final value in the E register.
     ///
@@ -238,35 +279,29 @@ mod tests {
         addends: &[Signed18Bit],
         addend_lhs: Unsigned18Bit,
         defer: bool,
-        cfg: SystemConfiguration,
+        f_memory_setup: Option<&[(usize, SystemConfiguration)]>,
+        config_num: usize,
     ) -> (Signed18Bit, Unsigned36Bit) {
         const COMPLAIN: &str = "failed to set up AUX test data";
 
         // Given...
-        let mut control = ControlUnit::new();
-        let mut mem = MemoryUnit::new(&MemoryConfiguration {
-            with_u_memory: false,
-        });
-        control.regs.set_index_register(j, &initial);
-        control.regs.f_memory[1] = cfg;
-        let defer_address = OperandAddress::Deferred(Address::from(u18!(0o100)));
         const ADDEND_BASE: u32 = 0o101;
-        for (offset, addend) in addends.iter().enumerate() {
-            let addend_address = Address::from(
-                u18!(ADDEND_BASE).wrapping_add(Unsigned18Bit::try_from(offset).expect(COMPLAIN)),
-            );
-            let memval = join_halves(addend_lhs, addend.reinterpret_as_unsigned());
-            control
-                .memory_store_without_exchange(
-                    &mut mem,
-                    &addend_address,
-                    &memval,
-                    &MetaBitChange::None,
-                )
-                .expect(COMPLAIN);
-        }
+        let mem_setup: Vec<(Address, Unsigned36Bit)> = addends
+            .iter()
+            .enumerate()
+            .map(|(offset, addend)| {
+                let addend_address = Address::from(
+                    u18!(ADDEND_BASE)
+                        .wrapping_add(Unsigned18Bit::try_from(offset).expect(COMPLAIN)),
+                );
+                let memval = join_halves(addend_lhs, addend.reinterpret_as_unsigned());
+                (addend_address, memval)
+            })
+            .collect();
+        let (mut control, mut mem) = setup(j, initial, &mem_setup, f_memory_setup);
 
         // When... we perform a sequence of AUX instructions
+        let defer_address = Address::from(u18!(0o100));
         for offset in 0..(addends.len()) {
             let operand_address = if defer {
                 let pos: u32 = ADDEND_BASE + u32::try_from(offset).expect(COMPLAIN);
@@ -281,7 +316,7 @@ mod tests {
                         &MetaBitChange::None,
                     )
                     .expect(COMPLAIN);
-                defer_address
+                OperandAddress::Deferred(defer_address)
             } else {
                 OperandAddress::Direct(Address::from(
                     Unsigned18Bit::try_from(ADDEND_BASE + u32::try_from(offset).expect(COMPLAIN))
@@ -290,7 +325,7 @@ mod tests {
             };
             let inst = SymbolicInstruction {
                 held: false,
-                configuration: Unsigned5Bit::ONE,
+                configuration: Unsigned5Bit::try_from(config_num).expect(COMPLAIN),
                 opcode: Opcode::Aux,
                 index: j,
                 operand_address,
@@ -315,7 +350,8 @@ mod tests {
             &[Signed18Bit::ONE],
             ignored_lhs,
             false,
-            SystemConfiguration::from(0_u8),
+            Some(&vec![(1usize, SystemConfiguration::from(0_u8))]),
+            1,
         );
         assert_eq!(sum, Signed18Bit::ONE);
         assert_eq!(
@@ -340,7 +376,8 @@ mod tests {
             // System configuration 0o340 uses only the right-hand
             // subword, which is how AUX behaves anyway - so this
             // should make no difference.
-            SystemConfiguration::from(0o340_u8),
+            Some(&vec![(1usize, SystemConfiguration::from(0o340_u8))]),
+            1usize,
         );
         assert_eq!(sum, Signed18Bit::try_from(0o250073).expect(COMPLAIN));
         assert_eq!(
@@ -364,12 +401,207 @@ mod tests {
             &items_to_add,
             ignored_lhs,
             false,
-            SystemConfiguration::from(u9!(0o750)), // 0o750: q2 only
+            Some(&vec![(1usize, SystemConfiguration::from(u9!(0o750)))]), // 0o750: q2 only
+            1usize,
         );
         // The sum should be formed from q2 of the initial value
         // (0o300) plus q2 of the addend (0o020), yielding 0o320.  The
         // inactive quarter (q1) should be zeroed.  This is explained
         // on page 3-22 of the Users Handbook.
         assert_eq!(sum, u18!(0o320_000).reinterpret_as_signed());
+    }
+
+    fn simulate_rsx(
+        j: Unsigned6Bit,
+        initial: Signed18Bit,
+        mem_word: &Unsigned36Bit,
+        defer: bool,
+        f_memory_setup: Option<&[(usize, SystemConfiguration)]>,
+        config_num: usize,
+    ) -> (Signed18Bit, Unsigned36Bit) {
+        const COMPLAIN: &str = "failed to set up RSX test data";
+        let deferred = Unsigned18Bit::try_from(0o200).expect(COMPLAIN);
+        let mem_setup: Vec<(Address, Unsigned36Bit)> = vec![
+            (Address::from(u18!(0o100)), *mem_word),
+            (
+                Address::from(deferred),
+                join_halves(Unsigned18Bit::ZERO, u18!(0o100)),
+            ), // for deferred case
+        ];
+        let (mut control, mut mem) = setup(j, initial, &mem_setup, f_memory_setup);
+
+        let operand_address = if defer {
+            OperandAddress::Deferred(Address::from(u18!(0o200)))
+        } else {
+            OperandAddress::Direct(Address::from(u18!(0o100)))
+        };
+        let inst = SymbolicInstruction {
+            held: false,
+            configuration: Unsigned5Bit::try_from(config_num).expect(COMPLAIN),
+            opcode: Opcode::Rsx,
+            index: j,
+            operand_address,
+        };
+        control
+            .update_n_register(Instruction::from(&inst).bits())
+            .expect(COMPLAIN);
+        if let Err(e) = control.op_rsx(&mut mem) {
+            panic!("RSX instruction failed: {}", e);
+        }
+        (control.regs.get_index_register(j), control.regs.e)
+    }
+
+    /// Test case taken from example 1 on page 3-14 of the Users Handbook.
+    #[test]
+    fn op_rsx_example_1() {
+        const COMPLAIN: &str = "test data should be valid";
+        let w: Unsigned36Bit = u36!(0o444_333_222_111);
+        let (xj, e) = simulate_rsx(
+            Unsigned6Bit::ONE,
+            Signed18Bit::from(20_i8),
+            &w,
+            false,
+            Some(&[(1, SystemConfiguration::from(u9!(0o340)))]),
+            1,
+        );
+        assert_eq!(xj, Signed18Bit::try_from(0o222_111_i32).expect(COMPLAIN));
+        assert_eq!(e, w);
+    }
+
+    /// Test case taken from example 2 on page 3-14 of the Users Handbook.
+    #[test]
+    fn op_rsx_example_2() {
+        let w: Unsigned36Bit = u36!(0o444_333_222_111);
+        let (xj, e) = simulate_rsx(
+            Unsigned6Bit::ONE,
+            Signed18Bit::from(20_i8),
+            &w,
+            false,
+            Some(&[(2, SystemConfiguration::from(u9!(0o342)))]),
+            2,
+        );
+        assert_eq!(xj, u18!(0o444_333).reinterpret_as_signed());
+        assert_eq!(e, w);
+    }
+
+    /// Test case taken from example 3 on page 3-14 of the Users Handbook.
+    #[test]
+    fn op_rsx_example_3() {
+        let w: Unsigned36Bit = u36!(0o444_333_222_111);
+        let (xj, e) = simulate_rsx(
+            Unsigned6Bit::ONE,
+            u18!(0o505_404).reinterpret_as_signed(),
+            &w,
+            false,
+            Some(&[(3, SystemConfiguration::from(u9!(0o760)))]),
+            3,
+        );
+        assert_eq!(xj, u18!(0o505_111).reinterpret_as_signed());
+        assert_eq!(e, w);
+    }
+
+    /// Test case taken from example 4 on page 3-14 of the Users
+    /// Handbook, in this case with a quarter having the top bit set
+    #[test]
+    fn op_rsx_example_4_negative() {
+        // Because q1 has the top bit set, the `1` sign bit is
+        // extended through q2 of the destination index register.
+        let w: Unsigned36Bit = u36!(0o454_453_452_451);
+        let (xj, e) = simulate_rsx(
+            Unsigned6Bit::ONE,
+            u18!(0o202_101).reinterpret_as_signed(),
+            &w,
+            false,
+            Some(&[(13, SystemConfiguration::from(u9!(0o160)))]),
+            13,
+        );
+        assert_eq!(xj, u18!(0o777_451).reinterpret_as_signed());
+        assert_eq!(e, w);
+    }
+
+    /// Test case taken from example 4 on page 3-14 of the Users
+    /// Handbook, in this case with a quarter having the top bit clear
+    #[test]
+    fn op_rsx_example_4_positive() {
+        // Because q1 has the top bit unset, the `0` sign bit is
+        // extended through q2 of the destination index register.
+        let w: Unsigned36Bit = u36!(0o454_453_452_251);
+        let (xj, e) = simulate_rsx(
+            Unsigned6Bit::ONE,
+            u18!(0o402_101).reinterpret_as_signed(),
+            &w,
+            false,
+            Some(&[(13, SystemConfiguration::from(u9!(0o160)))]),
+            13,
+        );
+        assert_eq!(xj, u18!(0o000_251).reinterpret_as_signed());
+        assert_eq!(e, w);
+    }
+
+    /// Test case taken from example 5 on page 3-14 of the Users Handbook.
+    #[test]
+    fn op_rsx_example_5() {
+        let w: Unsigned36Bit = u36!(0o454_453_452_451);
+        let orig_xj = u18!(0o202_101).reinterpret_as_signed();
+        let (xj, e) = simulate_rsx(
+            Unsigned6Bit::ONE,
+            orig_xj,
+            &w,
+            false,
+            Some(&[(21, SystemConfiguration::from(u9!(0o230)))]),
+            21,
+        );
+        assert_eq!(xj, orig_xj); // unchanged
+        assert_eq!(e, w);
+    }
+
+    /// Test case taken from example 6 on page 3-15 of the Users Handbook.
+    #[test]
+    fn op_rsx_example_6() {
+        let w: Unsigned36Bit = u36!(0o454_453_452_451);
+        let orig_xj = u18!(0o202_101).reinterpret_as_signed();
+        let (xj, e) = simulate_rsx(
+            Unsigned6Bit::ONE,
+            orig_xj,
+            &w,
+            false,
+            // Nonstandard configuration
+            Some(&[(1, SystemConfiguration::from(u9!(0o030)))]),
+            1,
+        );
+        assert_eq!(xj, u18!(0o777_777).reinterpret_as_signed());
+        assert_eq!(e, w);
+    }
+
+    /// Test case taken from example 7 on page 3-15 of the Users Handbook.
+    #[test]
+    fn op_rsx_example_7() {
+        let w: Unsigned36Bit = u36!(0o454_453_452_251);
+        let (xj, e) = simulate_rsx(
+            Unsigned6Bit::ONE,
+            u18!(0o402_101).reinterpret_as_signed(),
+            &w,
+            true,
+            Some(&[(1, SystemConfiguration::from(u9!(0o340)))]),
+            1,
+        );
+        assert_eq!(xj, u18!(0o452_251).reinterpret_as_signed());
+        assert_eq!(e, w);
+    }
+
+    /// Test case taken from example 8 on page 3-15 of the Users Handbook.
+    #[test]
+    fn op_rsx_example_8() {
+        let w: Unsigned36Bit = u36!(0o454_453_452_451);
+        let (xj, e) = simulate_rsx(
+            Unsigned6Bit::ZERO, // X₀
+            Signed18Bit::ZERO,
+            &w,
+            false,
+            Some(&[(1, SystemConfiguration::from(u9!(0o340)))]),
+            1,
+        );
+        assert_eq!(xj, 0); // X₀ cannot be changed.
+        assert_eq!(e, w);
     }
 }
