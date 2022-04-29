@@ -10,11 +10,21 @@
 //!
 //! The standard set-up of the F-memory is described in Table 7-2 of
 //! the User Guide.
-use std::fmt::{self, Display, Formatter, Octal};
+use std::fmt::{self, Binary, Display, Formatter, Octal};
 
 use tracing::{event, Level};
 
 use base::prelude::*;
+
+/// The Exchange Element behaves differently in the M->E (i.e. load)
+/// direction and the E->M (i.e. store) direction.  This enumeration
+/// specifies the direction of the current transfer.
+pub(crate) enum ExchangeDirection {
+    /// Memory (M register) to AE (E register)
+    ME,
+    /// AE (E register) to Memory (M register)
+    EM,
+}
 
 // QuarterActivity has a 1 where a quarter is active (unlike the sense
 // in the configuration values, which are 0 for active).  Quarters in
@@ -34,17 +44,40 @@ impl QuarterActivity {
         self.0 & mask != 0
     }
 
-    pub fn first_active_quarter(&self) -> u8 {
-        self.0.trailing_zeros() as u8
+    pub fn first_active_quarter(&self) -> Option<u8> {
+        let n = self.0.trailing_zeros() as u8;
+        if n < 4 {
+            Some(n)
+        } else {
+            None
+        }
     }
 
     pub fn masked_by(&self, mask: u8) -> QuarterActivity {
         QuarterActivity::new(self.0 & mask)
     }
+}
 
-    pub fn is_empty(&self) -> bool {
-        self.0 == 0
+impl Binary for QuarterActivity {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{:b}", self.0)
     }
+}
+
+#[test]
+fn test_quarteractivity_first_active_quarter() {
+    fn first_active_quarter(n: u8) -> Option<u8> {
+        QuarterActivity(n).first_active_quarter()
+    }
+    assert_eq!(first_active_quarter(0), None);
+    assert_eq!(first_active_quarter(0b0001), Some(0));
+    assert_eq!(first_active_quarter(0b0011), Some(0));
+    assert_eq!(first_active_quarter(0b1111), Some(0));
+    assert_eq!(first_active_quarter(0b1110), Some(1));
+    assert_eq!(first_active_quarter(0b0010), Some(1));
+    assert_eq!(first_active_quarter(0b1100), Some(2));
+    assert_eq!(first_active_quarter(0b0100), Some(2));
+    assert_eq!(first_active_quarter(0b1000), Some(3));
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -200,29 +233,44 @@ macro_rules! assert_octal_eq {
 /// which the values for `target_quarter` (also starting at 0) would
 /// be taken if it were active.
 ///
-/// Permutation behaviour is described in section 12-6.4 of Volume 2
-/// of the Technical Manual.
-fn permutation_source(permutation: &Permutation, target_quarter: u8) -> u8 {
+/// Permutation behaviour is described in Volume 2 of the Technnical
+/// Manual.  In particular see section 12-6.4 and figure 12-45 (page
+/// 12-75), and figures 13-12 and 13-13 (pages 13-24 and 13-25).
+fn permutation_source(
+    permutation: &Permutation,
+    direction: &ExchangeDirection,
+    target_quarter: u8,
+) -> u8 {
+    let d: u8 = match *direction {
+        ExchangeDirection::ME => 0,
+        ExchangeDirection::EM => 3,
+    };
     match permutation {
         Permutation::P0 => target_quarter % 4,
-        Permutation::P1 => (target_quarter + 1) % 4,
-        Permutation::P2 => (target_quarter + 2) % 4,
-        Permutation::P3 => (target_quarter + 3) % 4,
+        Permutation::P1 => (target_quarter + 1 + d) % 4,
+        Permutation::P2 => (target_quarter + 2 + d) % 4,
+        Permutation::P3 => (target_quarter + 3 + d) % 4,
         Permutation::P4 => target_quarter ^ 0b01,
         Permutation::P5 => target_quarter ^ 0b11,
-        Permutation::P6 => match target_quarter {
-            3 => 2,
-            2 => 1,
-            1 => 3,
-            0 => 0,
-            _ => unreachable!(),
+        Permutation::P6 => match (direction, target_quarter) {
+            (&ExchangeDirection::ME, 3) => 2,
+            (&ExchangeDirection::ME, 2) => 1,
+            (&ExchangeDirection::ME, 1) => 3,
+            (&ExchangeDirection::EM, 3) => 1,
+            (&ExchangeDirection::EM, 2) => 3,
+            (&ExchangeDirection::EM, 1) => 2,
+            (_, 0) => 0,
+            (_, _) => unreachable!(),
         },
-        Permutation::P7 => match target_quarter {
-            3 => 1,
-            2 => 3,
-            1 => 2,
-            0 => 0,
-            _ => unreachable!(),
+        Permutation::P7 => match (direction, target_quarter) {
+            (&ExchangeDirection::ME, 3) => 1,
+            (&ExchangeDirection::ME, 2) => 3,
+            (&ExchangeDirection::ME, 1) => 2,
+            (&ExchangeDirection::EM, 3) => 2,
+            (&ExchangeDirection::EM, 2) => 1,
+            (&ExchangeDirection::EM, 1) => 3,
+            (_, 0) => 0,
+            (_, _) => unreachable!(),
         },
     }
 }
@@ -237,7 +285,7 @@ fn quarter_mask(n: u8) -> u64 {
 }
 
 fn apply_sign(word: u64, quarter_number_from: u8, quarter_number_to: u8) -> u64 {
-    let signbit = word & (0o300 << (quarter_number_from * 9));
+    let signbit = word & (0o400 << (quarter_number_from * 9));
     let mask = quarter_mask(quarter_number_to);
     if signbit == 0 {
         word & !mask
@@ -247,87 +295,102 @@ fn apply_sign(word: u64, quarter_number_from: u8, quarter_number_to: u8) -> u64 
 }
 
 fn sign_extend_quarters(
-    w: &Unsigned36Bit,
-    active_quarters: QuarterActivity,
-    quarters: &[u8],
+    w: Unsigned36Bit,
+    activity: QuarterActivity,
+    ordering: &[u8],
 ) -> Unsigned36Bit {
-    let mut word: Unsigned36Bit = *w;
-    if !active_quarters.is_empty() {
-        let first_active = active_quarters.first_active_quarter();
-        assert!(first_active < 4);
-        let mut last_active = first_active;
-        for q in quarters {
-            if active_quarters.is_active(q) {
+    let mut word: u64 = u64::from(w);
+    if let Some(mut last_active) = activity.first_active_quarter() {
+        for q in ordering {
+            if activity.is_active(q) {
                 last_active = *q;
             } else {
-                let mut w64 = u64::from(word); // TODO: eliminate conversion
-                w64 = apply_sign(w64, last_active, *q);
-                word = Unsigned36Bit::try_from(w64).unwrap(); // TODO: eliminate conversion
+                word = apply_sign(word, last_active, *q);
             }
         }
+        Unsigned36Bit::try_from(word).expect("result should be in range (this is a bug)")
+    } else {
+        w
     }
-    word
 }
 
+/// Perform sign extension.  From User Handbook, figure 13-14, "The
+/// sign bit of an active quarter of a partially-active subword is
+/// extended to the left until an active quarter is again met, this
+/// must be interpreted in terms of the possible partially active
+/// subwords".  I don't know what the second part of this sentence
+/// means.  The accompanying diagram shows the sign bit being extended
+/// into quarters that are to the right of an active quarter (in order
+/// words the leftward extension wraps after it hits q4).
 pub fn sign_extend(
     form: &SubwordForm,
-    mut word: Unsigned36Bit,
-    active: QuarterActivity,
+    word: Unsigned36Bit,
+    quarter_activity: QuarterActivity,
 ) -> Unsigned36Bit {
     match form {
         SubwordForm::FullWord => {
-            let first = active.first_active_quarter();
-            let quarters = &[first, (first + 1) % 4, (first + 2) % 4, (first + 3) % 4];
-            sign_extend_quarters(&word, active, quarters)
-        }
-        SubwordForm::ThreeOne => {
-            fn next(q: u8) -> u8 {
-                match q {
-                    1 | 2 => q + 1,
-                    3 => 1,
-                    _ => unreachable!(),
+            // sign extension happens across all quarters.
+            match quarter_activity.first_active_quarter() {
+                Some(q) => {
+                    let extend_order: Vec<u8> = (q..(q + 4)).map(|q| q % 4).collect();
+                    sign_extend_quarters(word, quarter_activity, &extend_order)
                 }
-            }
-            if active.is_empty() {
-                word
-            } else {
-                let first = active.first_active_quarter();
-                let quarters = &[first, next(first), next(next(first))];
-                sign_extend_quarters(&word, active.masked_by(0b1110), quarters)
+                None => word,
             }
         }
         SubwordForm::Halves => {
-            let a = active.masked_by(0b0011);
-            if !a.is_empty() {
-                fn next_right(q: u8) -> u8 {
-                    match q {
-                        0 => 1,
-                        1 => 0,
+            // AABB: sign extension happens within AA and separately in BB
+            let left_activity = quarter_activity.masked_by(0b1100);
+            let sign_extended_on_lhs = match left_activity.first_active_quarter() {
+                None => word,
+                Some(first_active) => sign_extend_quarters(
+                    word,
+                    left_activity,
+                    match first_active {
+                        2 => &[2, 3],
+                        3 => &[3, 2],
                         _ => unreachable!(),
-                    }
-                }
-                let first = a.first_active_quarter();
-                word = sign_extend_quarters(&word, a, &[first, next_right(first)]);
-            }
-            let a = active.masked_by(0b1100);
-            if !a.is_empty() {
-                fn next_left(q: u8) -> u8 {
-                    match q {
-                        3 => 2,
-                        2 => 3,
+                    },
+                ),
+            };
+            let right_activity = quarter_activity.masked_by(0b0011);
+            let sign_extended_on_rhs = match right_activity.first_active_quarter() {
+                None => word,
+                Some(first_active) => sign_extend_quarters(
+                    word,
+                    right_activity,
+                    match first_active {
+                        0 => &[0, 1],
+                        1 => &[1, 0],
                         _ => unreachable!(),
-                    }
-                }
-                let first = a.first_active_quarter();
-                word = sign_extend_quarters(
-                    &word,
-                    active.masked_by(0b1100),
-                    &[first, next_left(first)],
-                );
-            }
-            word
+                    },
+                ),
+            };
+            join_halves(
+                left_half(sign_extended_on_lhs),
+                right_half(sign_extended_on_rhs),
+            )
         }
-        SubwordForm::Quarters => word,
+        SubwordForm::ThreeOne => {
+            // AAAB: sign extension happens within AAA
+            let left_activity = quarter_activity.masked_by(0b1110);
+            match left_activity.first_active_quarter() {
+                None => word,
+                Some(first_active) => sign_extend_quarters(
+                    word,
+                    left_activity,
+                    match first_active {
+                        1 => &[1, 2, 3],
+                        2 => &[2, 3, 1],
+                        3 => &[3, 1, 2],
+                        _ => unreachable!(),
+                    },
+                ),
+            }
+        }
+        SubwordForm::Quarters => {
+            word // ABCD: Nothing to do.
+        }
     }
 }
 
@@ -429,34 +492,34 @@ fn test_sign_extend_full_word() {
     assert_octal_eq!(
         sign_extend(
             &FullWord,
-            word(0o272_303_002_001_u64),
+            word(0o272_403_002_001_u64),
             QuarterActivity::new(0b0111)
         ),
-        word(0o777_303_002_001_u64)
+        word(0o777_403_002_001_u64)
     );
     assert_octal_eq!(
         sign_extend(
             &FullWord,
-            word(0o004_272_302_001_u64),
+            word(0o004_272_402_001_u64),
             QuarterActivity::new(0b1011)
         ),
-        word(0o004_777_302_001_u64)
+        word(0o004_777_402_001_u64)
     );
     assert_octal_eq!(
         sign_extend(
             &FullWord,
-            word(0o004_003_272_301_u64),
+            word(0o004_003_272_401_u64),
             QuarterActivity::new(0b1101)
         ),
-        word(0o004_003_777_301_u64)
+        word(0o004_003_777_401_u64)
     );
     assert_octal_eq!(
         sign_extend(
             &FullWord,
-            word(0o304_003_002_272_u64),
+            word(0o404_003_002_272_u64),
             QuarterActivity::new(0b1110)
         ),
-        word(0o304_003_002_777_u64)
+        word(0o404_003_002_777_u64)
     );
 
     // We should be able to sign-extend over two consecutive quarters.
@@ -531,34 +594,34 @@ fn test_sign_extend_full_word() {
     assert_octal_eq!(
         sign_extend(
             &FullWord,
-            word(0o727_727_727_301_u64),
+            word(0o727_727_727_401_u64),
             QuarterActivity::new(0b0001)
         ),
-        word(0o777_777_777_301_u64)
+        word(0o777_777_777_401_u64)
     );
     assert_octal_eq!(
         sign_extend(
             &FullWord,
-            word(0o727_727_302_727_u64),
+            word(0o727_727_402_727_u64),
             QuarterActivity::new(0b0010)
         ),
-        word(0o777_777_302_777_u64)
+        word(0o777_777_402_777_u64)
     );
     assert_octal_eq!(
         sign_extend(
             &FullWord,
-            word(0o727_303_727_727_u64),
+            word(0o727_403_727_727_u64),
             QuarterActivity::new(0b0100)
         ),
-        word(0o777_303_777_777_u64)
+        word(0o777_403_777_777_u64)
     );
     assert_octal_eq!(
         sign_extend(
             &FullWord,
-            word(0o304_727_727_727_u64),
+            word(0o404_727_727_727_u64),
             QuarterActivity::new(0b1000)
         ),
-        word(0o304_777_777_777_u64),
+        word(0o404_777_777_777_u64),
     );
 }
 
@@ -577,44 +640,44 @@ fn test_sign_extend_halves() {
     assert_octal_eq!(
         sign_extend(
             &Halves,
-            word(0o300_000_000_000_u64),
+            word(0o400_000_000_000_u64),
             QuarterActivity::new(0b1111)
         ),
-        word(0o300_000_000_000_u64)
+        word(0o400_000_000_000_u64)
     );
     assert_octal_eq!(
         sign_extend(
             &Halves,
-            word(0o000_300_000_000),
+            word(0o000_400_000_000),
             QuarterActivity::new(0b1111)
         ),
-        word(0o000_300_000_000),
+        word(0o000_400_000_000),
     );
     assert_octal_eq!(
         sign_extend(
             &Halves,
-            word(0o000_000_300_000_u64),
+            word(0o000_000_400_000_u64),
             QuarterActivity::new(0b1111)
         ),
-        word(0o000_000_300_000_u64)
+        word(0o000_000_400_000_u64)
     );
     assert_octal_eq!(
         sign_extend(
             &Halves,
-            word(0o000_000_000_300_u64),
+            word(0o000_000_000_400_u64),
             QuarterActivity::new(0b1111)
         ),
-        word(0o000_000_000_300_u64)
+        word(0o000_000_000_400_u64)
     );
 
     // If no quarters are active, there is nothing to sign-extend from, so sign extension is a no-op.
     assert_octal_eq!(
         sign_extend(
             &Halves,
-            word(0o444333222111_u64),
+            word(0o444_333_222_111_u64),
             QuarterActivity::new(0b0000)
         ),
-        word(0o444333222111_u64)
+        word(0o444_333_222_111_u64)
     );
 
     // Sign-extending a positive quantity into a quarter should zero it.
@@ -655,38 +718,41 @@ fn test_sign_extend_halves() {
     assert_octal_eq!(
         sign_extend(
             &Halves,
-            word(0o004_303_302_001_u64),
+            // Q3 is negative, so Q4 is set to 777
+            // Q1 is positive, so Q2 is set to 000
+            word(0o004_403_202_001_u64),
             QuarterActivity::new(0b0110)
         ),
-        word(0o777_303_302_777_u64)
+        word(0o777_403_202_000_u64)
     );
     assert_octal_eq!(
         sign_extend(
             &Halves,
-            word(0o304_003_302_001_u64),
+            word(0o404_003_402_001_u64),
             QuarterActivity::new(0b1010)
         ),
-        word(0o304_777_302_777_u64)
+        word(0o404_777_402_777_u64)
     );
     assert_octal_eq!(
         sign_extend(
             &Halves,
-            word(0o004_303_002_301_u64),
+            word(0o004_403_002_401_u64),
             QuarterActivity::new(0b0101)
         ),
-        word(0o777_303_777_301_u64)
+        word(0o777_403_777_401_u64)
     );
     assert_octal_eq!(
         sign_extend(
             &Halves,
-            word(0o004_003_002_301_u64),
+            word(0o004_003_002_401_u64),
             QuarterActivity::new(0b0001)
         ),
-        word(0o004_003_777_301_u64)
+        word(0o004_003_777_401_u64)
     );
 
-    // We should not be able to sign-extend over two consecutive
-    // quarters (because the halves are only two quarters long).
+    // We should not be able to sign-extend over more than two
+    // consecutive quarters (e.g. from Q1 to Q2 and then Q3), because
+    // the halves are only two quarters long.
     assert_octal_eq!(
         sign_extend(
             &Halves,
@@ -727,15 +793,20 @@ fn test_sign_extend_halves() {
 /// `target_quarter` (numbered from zero), without regard to activity.
 /// Return the value of that quarter, shifted down into the lowest
 /// quarter.
-fn fetch_permuted_quarter(permutation: &Permutation, target_quarter: u8, source: &u64) -> u64 {
-    let source_quarter = permutation_source(permutation, target_quarter);
+fn fetch_permuted_quarter(
+    permutation: &Permutation,
+    direction: &ExchangeDirection,
+    target_quarter: u8,
+    source: &u64,
+) -> u64 {
+    let source_quarter = permutation_source(permutation, direction, target_quarter);
     (source & quarter_mask(source_quarter)) >> (source_quarter * 9)
 }
 
 #[test]
 fn test_fetch_permuted_quarter() {
     assert_octal_eq!(
-        fetch_permuted_quarter(&Permutation::P0, 2, &0o444333222111),
+        fetch_permuted_quarter(&Permutation::P0, &ExchangeDirection::ME, 2, &0o444333222111),
         0o333
     );
 }
@@ -744,6 +815,7 @@ fn test_fetch_permuted_quarter() {
 /// `permutation`.  Only active quarters are modified.
 fn permute(
     permutation: &Permutation,
+    direction: &ExchangeDirection,
     active_quarters: &QuarterActivity,
     source: &Unsigned36Bit,
     dest: &Unsigned36Bit,
@@ -754,8 +826,9 @@ fn permute(
         if active_quarters.is_active(&target_quarter) {
             // `value` will be the value from the quarter we want,
             // shifted to the correct position.
-            let value = fetch_permuted_quarter(permutation, target_quarter, &source_bits)
-                << (target_quarter * 9);
+            let value =
+                fetch_permuted_quarter(permutation, direction, target_quarter, &source_bits)
+                    << (target_quarter * 9);
             let target_mask: u64 = quarter_mask(target_quarter);
             result &= !target_mask;
             result |= target_mask & value;
@@ -765,43 +838,80 @@ fn permute(
 }
 
 #[test]
-fn test_permute() {
+fn test_permute_p0() {
     fn word(val: u64) -> Unsigned36Bit {
         Unsigned36Bit::try_from(val).expect("valid test data")
     }
 
-    assert_octal_eq!(
-        permute(
-            &Permutation::P0,
-            &QuarterActivity::new(0b1111),
-            &word(0o444333222111_u64),
-            &word(0o777666555444_u64),
-        ),
-        word(0o444333222111_u64),
-    );
-    assert_octal_eq!(
-        permute(
-            &Permutation::P0,
-            &QuarterActivity::new(0b1110),
-            &word(0o444333222111_u64),
-            &word(0o777666555444_u64),
-        ),
-        word(0o444333222444_u64),
-    );
+    // P0 behaves the same in the ME and EM directions (q0<->q0,
+    // q1<->q1 etc.). Our choice of quarter activity here means that
+    // sign extension won't make a difference, so we get the same
+    // result for ME and EM.
+    for direction in &[ExchangeDirection::ME, ExchangeDirection::EM] {
+        assert_octal_eq!(
+            permute(
+                &Permutation::P0,
+                direction,
+                &QuarterActivity::new(0b1111),
+                &word(0o444333222111_u64),
+                &word(0o777666555444_u64),
+            ),
+            word(0o444333222111_u64),
+        );
+        assert_octal_eq!(
+            permute(
+                &Permutation::P0,
+                direction,
+                &QuarterActivity::new(0b1110),
+                &word(0o444333222111_u64),
+                &word(0o777666555444_u64),
+            ),
+            word(0o444333222444_u64),
+        );
+    }
 }
 
-/// Perform an exchange operation; that is, emulate the operation of
-/// the exchange unit. The operation of this unit is described in
-/// section 12 (volume 2) of the Technical Manual.
-pub fn exchanged_value(
+/// Perform an exchange operation suitable for a store operation; that
+/// is, emulate the operation of the exchange unit diring e.g. LDA.
+pub fn exchanged_value_for_load(
     cfg: &SystemConfiguration,
     source: &Unsigned36Bit,
     dest: &Unsigned36Bit,
 ) -> Unsigned36Bit {
     let active_quarters = cfg.active_quarters();
-    let permutation = cfg.permutation();
-    let permuted_target = permute(&permutation, &active_quarters, source, dest);
+    let permuted_target = permute(
+        &cfg.permutation(),
+        &ExchangeDirection::ME,
+        &active_quarters,
+        source,
+        dest,
+    );
     sign_extend(&cfg.subword_form(), permuted_target, active_quarters)
+}
+
+/// Perform an exchange operation suitable for a store operation; that
+/// is, emulate the operation of the exchange unit diring e.g. STE.
+///
+/// I believe that in this direction there is no sign extension.  This
+/// is based on my reading of Chapter 13 of the Technical Manual.
+/// Section 13-4.1 (covering loads) says "The sign extension process
+/// which follows step 4 is described in 13-4.3.". But section 13-4.2
+/// (covering stores) contains no similar statement. I suspect this
+/// means that sign extension does not happen for stores.
+pub fn exchanged_value_for_store(
+    cfg: &SystemConfiguration,
+    source: &Unsigned36Bit,
+    dest: &Unsigned36Bit,
+) -> Unsigned36Bit {
+    permute(
+        &cfg.permutation(),
+        &ExchangeDirection::EM,
+        &cfg.active_quarters(),
+        source,
+        dest,
+    )
+    // No sign extension in this direction, see doc comment for
+    // rationale.
 }
 
 #[cfg(test)]

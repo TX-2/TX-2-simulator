@@ -27,7 +27,7 @@ impl ControlUnit {
     pub fn op_spg(&mut self, mem: &mut MemoryUnit) -> Result<(), Alarm> {
         let c = usize::from(self.regs.n.configuration());
         let target = self.operand_address_with_optional_defer_and_index(mem)?;
-        let (word, _meta) = self.fetch_operand_from_address(mem, &target)?;
+        let (word, _meta) = self.fetch_operand_from_address_without_exchange(mem, &target)?;
         for (quarter_number, cfg_value) in subword::quarters(word).iter().rev().enumerate() {
             let pos = c + quarter_number;
             let newvalue = (*cfg_value).into();

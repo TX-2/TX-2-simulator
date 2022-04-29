@@ -218,6 +218,15 @@ macro_rules! unsigned_ones_complement_impl {
                     bits: self.bits & mask,
                 }
             }
+
+            // We cannot call std::ops::BitOr in a const because trait
+            // methods cannot be const.  So we have this work-alike in
+            // impl, since it can be called in a const context.
+            pub const fn bitor(self, mask: $InnerT) -> Self {
+                Self {
+                    bits: self.bits | mask,
+                }
+            }
         }
 
         impl WordCommon for $SelfT {
