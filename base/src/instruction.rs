@@ -576,9 +576,7 @@ mod tests {
     #[test]
     fn test_disassemble_jmp() {
         assert_eq!(
-            disassemble_word(
-                Unsigned36Bit::try_from(0o000_500_377_750).expect("test data should be in range")
-            ),
+            disassemble_word(u36!(0o000_500_377_750)),
             Ok(SymbolicInstruction {
                 operand_address: OperandAddress::Direct(addr(0o0377750)),
                 index: Unsigned6Bit::ZERO,

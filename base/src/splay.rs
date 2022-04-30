@@ -1,6 +1,8 @@
 use std::ops::Shl;
 
 use crate::onescomplement::unsigned::{Unsigned36Bit, Unsigned6Bit};
+#[cfg(test)]
+use crate::u36;
 
 /// Loading a line of data from PETR in assembly mode has the effect
 /// of first cycling the target word left by one bit position, and
@@ -127,11 +129,11 @@ fn test_unsplay() {
     const ZERO: Unsigned6Bit = Unsigned6Bit::ZERO;
     const MAX: Unsigned6Bit = Unsigned6Bit::MAX;
     assert_eq!(
-        unsplay(Unsigned36Bit::try_from(0_u64).expect("test data should be valid")),
+        unsplay(Unsigned36Bit::ZERO),
         [ZERO, ZERO, ZERO, ZERO, ZERO, ZERO]
     );
     assert_eq!(
-        unsplay(Unsigned36Bit::try_from(0o777_777_777_777_u64).expect("test data should be valid")),
+        unsplay(u36!(0o777_777_777_777)),
         [MAX, MAX, MAX, MAX, MAX, MAX]
     );
 }
