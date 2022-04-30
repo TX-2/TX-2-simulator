@@ -339,7 +339,7 @@ impl DeviceManager {
             match self.poll_queue.pop() {
                 None => unreachable!(),
                 Some((devno, poll_time)) => {
-                    let span = span!(Level::ERROR, "poll", unit=?devno);
+                    let span = span!(Level::ERROR, "poll", unit=%devno);
                     let _enter = span.enter();
 
                     event!(

@@ -842,9 +842,13 @@ impl ControlUnit {
 
         if let Some(sym) = self.regs.n_sym.as_ref() {
             let inst = sym.to_string();
+            let seq = match self.regs.k {
+                None => "none".to_string(),
+                Some(n) => format!("{:02o}", n),
+            };
             let span = span!(Level::INFO,
 			     "xop",
-			     seq=u8::from(self.regs.k.unwrap()),
+			     seq=%seq,
 			     p=?p,
 			     op=%sym.opcode());
             let _enter = span.enter();
