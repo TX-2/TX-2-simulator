@@ -101,6 +101,7 @@ pub struct Petr {
     data_file: Option<File>,
     tapes: Box<dyn TapeIterator>,
     data: Option<u8>,
+    already_warned_eof: bool,
     read_failed: bool,
     overrun: bool,
     time_of_next_read: Option<Duration>,
@@ -115,6 +116,7 @@ impl Debug for Petr {
             .field("direction", &self.direction)
             .field("data_file", &self.data_file)
             .field("data", &self.data)
+            .field("already_warned_eof", &self.already_warned_eof)
             .field("read_failed", &self.read_failed)
             .field("overrun", &self.overrun)
             .field("time_of_next_read", &self.time_of_next_read)
@@ -132,6 +134,7 @@ impl Petr {
             data_file: None,
             tapes,
             data: None,
+            already_warned_eof: false,
             read_failed: false,
             overrun: false,
             time_of_next_read: None,
@@ -193,15 +196,21 @@ impl Petr {
                     // At EOF.  We don't stop the motor, but if the
                     // real PETR device can detect when the whole tape
                     // has already passed through, perhaps we should.
-                    event!(Level::DEBUG, "paper tape: reading at end-of-file");
+                    if self.already_warned_eof {
+                        event!(Level::DEBUG, "reading again at end-of-file");
+                    } else {
+                        self.already_warned_eof = true;
+                        event!(Level::WARN, "end-of-file on tape input file");
+                    }
                     self.data = None;
                 }
                 Ok(read_len) => {
                     match read_len {
-                        0 => event!(Level::DEBUG, "read nothing"),
+                        0 => unreachable!(),
                         1 => event!(Level::DEBUG, "read 1 byte: {:04o}", buf[0]),
                         n => event!(Level::DEBUG, "read {} bytes: {:?}", n, &buf),
                     }
+                    self.already_warned_eof = false;
                     self.overrun = self.data.is_some();
                     self.data = Some(buf[0]);
                 }
