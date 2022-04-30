@@ -814,7 +814,6 @@ fn permute(
 ) -> Unsigned36Bit {
     let mut result: u64 = (*dest).into();
     let source_bits: u64 = u64::from(*source);
-    dbg!(&active_quarters);
     for target_quarter in 0_u8..4_u8 {
         let source_quarter: u8 = permutation_source(permutation, direction, target_quarter);
 
@@ -877,8 +876,6 @@ pub fn exchanged_value_for_load(
     source: &Unsigned36Bit,
     dest: &Unsigned36Bit,
 ) -> Unsigned36Bit {
-    dbg!(&source);
-    dbg!(&dest);
     let active_quarters = cfg.active_quarters();
     let permuted_target = permute(
         &cfg.permutation(),
