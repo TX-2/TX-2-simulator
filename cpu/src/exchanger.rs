@@ -406,10 +406,6 @@ pub fn sign_extend(
 fn test_sign_extend_full_word() {
     use SubwordForm::*;
 
-    fn word(val: u64) -> Unsigned36Bit {
-        Unsigned36Bit::try_from(val).expect("valid test data")
-    }
-
     // When all quarters are active, sign extension should make no difference.
     assert_octal_eq!(
         sign_extend(
@@ -417,309 +413,306 @@ fn test_sign_extend_full_word() {
             Unsigned36Bit::from(0_u8),
             QuarterActivity::new(0b1111)
         ),
-        word(0)
+        u36!(0)
     );
     assert_octal_eq!(
         sign_extend(
             &FullWord,
-            word(0o300_000_000_000_u64),
+            u36!(0o300_000_000_000),
             QuarterActivity::new(0b1111)
         ),
-        word(0o300_000_000_000_u64)
+        u36!(0o300_000_000_000)
     );
     assert_octal_eq!(
         sign_extend(
             &FullWord,
-            word(0o000_300_000_000_u64),
+            u36!(0o000_300_000_000),
             QuarterActivity::new(0b1111)
         ),
-        word(0o000_300_000_000_u64)
+        u36!(0o000_300_000_000)
     );
     assert_octal_eq!(
         sign_extend(
             &FullWord,
-            word(0o000_000_300_000_u64),
+            u36!(0o000_000_300_000),
             QuarterActivity::new(0b1111)
         ),
-        word(0o000_000_300_000_u64)
+        u36!(0o000_000_300_000)
     );
     assert_octal_eq!(
         sign_extend(
             &FullWord,
-            word(0o000_000_000_300_u64),
+            u36!(0o000_000_000_300),
             QuarterActivity::new(0b1111)
         ),
-        word(0o000_000_000_300_u64)
+        u36!(0o000_000_000_300)
     );
 
     // If no quarters are active, there is nothing to sign-extend from, so sign extension is a no-op.
     assert_octal_eq!(
         sign_extend(
             &FullWord,
-            word(0o444333222111_u64),
+            u36!(0o444333222111),
             QuarterActivity::new(0b0000)
         ),
-        word(0o444333222111_u64)
+        u36!(0o444333222111)
     );
 
     // Sign-extending a positive quantity into a quarter should zero it.
     assert_octal_eq!(
         sign_extend(
             &FullWord,
-            word(0o727_003_002_001_u64),
+            u36!(0o727_003_002_001),
             QuarterActivity::new(0b0111)
         ),
-        word(0o000_003_002_001_u64)
+        u36!(0o000_003_002_001)
     );
     assert_octal_eq!(
         sign_extend(
             &FullWord,
-            word(0o004_727_002_001_u64),
+            u36!(0o004_727_002_001),
             QuarterActivity::new(0b1011)
         ),
-        word(0o004_000_002_001_u64)
+        u36!(0o004_000_002_001)
     );
     assert_octal_eq!(
         sign_extend(
             &FullWord,
-            word(0o004_003_727_001_u64),
+            u36!(0o004_003_727_001),
             QuarterActivity::new(0b1101)
         ),
-        word(0o004_003_000_001_u64)
+        u36!(0o004_003_000_001)
     );
     assert_octal_eq!(
         sign_extend(
             &FullWord,
-            word(0o004_003_002_727_u64),
+            u36!(0o004_003_002_727),
             QuarterActivity::new(0b1110)
         ),
-        word(0o004_003_002_000_u64)
+        u36!(0o004_003_002_000)
     );
 
     // Sign-extending a negative quantity into a quarter should fill it with ones.
     assert_octal_eq!(
         sign_extend(
             &FullWord,
-            word(0o272_403_002_001_u64),
+            u36!(0o272_403_002_001),
             QuarterActivity::new(0b0111)
         ),
-        word(0o777_403_002_001_u64)
+        u36!(0o777_403_002_001)
     );
     assert_octal_eq!(
         sign_extend(
             &FullWord,
-            word(0o004_272_402_001_u64),
+            u36!(0o004_272_402_001),
             QuarterActivity::new(0b1011)
         ),
-        word(0o004_777_402_001_u64)
+        u36!(0o004_777_402_001)
     );
     assert_octal_eq!(
         sign_extend(
             &FullWord,
-            word(0o004_003_272_401_u64),
+            u36!(0o004_003_272_401),
             QuarterActivity::new(0b1101)
         ),
-        word(0o004_003_777_401_u64)
+        u36!(0o004_003_777_401)
     );
     assert_octal_eq!(
         sign_extend(
             &FullWord,
-            word(0o404_003_002_272_u64),
+            u36!(0o404_003_002_272),
             QuarterActivity::new(0b1110)
         ),
-        word(0o404_003_002_777_u64)
+        u36!(0o404_003_002_777)
     );
 
     // We should be able to sign-extend over two consecutive quarters.
     assert_octal_eq!(
         sign_extend(
             &FullWord,
-            word(0o727_003_002_727_u64),
+            u36!(0o727_003_002_727),
             QuarterActivity::new(0b0110)
         ),
-        word(0o000_003_002_000_u64)
+        u36!(0o000_003_002_000)
     );
     assert_octal_eq!(
         sign_extend(
             &FullWord,
-            word(0o727_727_002_001_u64),
+            u36!(0o727_727_002_001),
             QuarterActivity::new(0b0011)
         ),
-        word(0o000_000_002_001_u64)
+        u36!(0o000_000_002_001)
     );
     assert_octal_eq!(
         sign_extend(
             &FullWord,
-            word(0o004_727_727_001_u64),
+            u36!(0o004_727_727_001),
             QuarterActivity::new(0b1001)
         ),
-        word(0o004_000_000_001_u64)
+        u36!(0o004_000_000_001)
     );
     assert_octal_eq!(
         sign_extend(
             &FullWord,
-            word(0o004_003_727_727_u64),
+            u36!(0o004_003_727_727),
             QuarterActivity::new(0b1100)
         ),
-        word(0o004_003_000_000_u64)
+        u36!(0o004_003_000_000)
     );
 
     // We should be able to sign-extend a positive value over three consecutive quarters.
     assert_octal_eq!(
         sign_extend(
             &FullWord,
-            word(0o727_727_727_001_u64),
+            u36!(0o727_727_727_001),
             QuarterActivity::new(0b0001)
         ),
-        word(0o000_000_000_001_u64)
+        u36!(0o000_000_000_001)
     );
     assert_octal_eq!(
         sign_extend(
             &FullWord,
-            word(0o727_727_002_727_u64),
+            u36!(0o727_727_002_727),
             QuarterActivity::new(0b0010)
         ),
-        word(0o000_000_002_000_u64)
+        u36!(0o000_000_002_000)
     );
     assert_octal_eq!(
         sign_extend(
             &FullWord,
-            word(0o727_003_727_727_u64),
+            u36!(0o727_003_727_727),
             QuarterActivity::new(0b0100)
         ),
-        word(0o000_003_000_000_u64),
+        u36!(0o000_003_000_000),
     );
     assert_octal_eq!(
         sign_extend(
             &FullWord,
-            word(0o004_727_727_727_u64),
+            u36!(0o004_727_727_727),
             QuarterActivity::new(0b1000)
         ),
-        word(0o004_000_000_000_u64)
+        u36!(0o004_000_000_000)
     );
 
     // We should be able to sign-extend a negative value over three consecutive quarters.
     assert_octal_eq!(
         sign_extend(
             &FullWord,
-            word(0o727_727_727_401_u64),
+            u36!(0o727_727_727_401),
             QuarterActivity::new(0b0001)
         ),
-        word(0o777_777_777_401_u64)
+        u36!(0o777_777_777_401)
     );
     assert_octal_eq!(
         sign_extend(
             &FullWord,
-            word(0o727_727_402_727_u64),
+            u36!(0o727_727_402_727),
             QuarterActivity::new(0b0010)
         ),
-        word(0o777_777_402_777_u64)
+        u36!(0o777_777_402_777)
     );
     assert_octal_eq!(
         sign_extend(
             &FullWord,
-            word(0o727_403_727_727_u64),
+            u36!(0o727_403_727_727),
             QuarterActivity::new(0b0100)
         ),
-        word(0o777_403_777_777_u64)
+        u36!(0o777_403_777_777)
     );
     assert_octal_eq!(
         sign_extend(
             &FullWord,
-            word(0o404_727_727_727_u64),
+            u36!(0o404_727_727_727),
             QuarterActivity::new(0b1000)
         ),
-        word(0o404_777_777_777_u64),
+        u36!(0o404_777_777_777),
     );
 }
 
 #[test]
 fn test_sign_extend_halves() {
     use SubwordForm::*;
-    fn word(val: u64) -> Unsigned36Bit {
-        Unsigned36Bit::try_from(val).expect("valid test data")
-    }
 
     // When all quarters are active, sign extension should make no difference.
     assert_octal_eq!(
-        sign_extend(&Halves, word(0), QuarterActivity::new(0b1111)),
-        word(0)
+        sign_extend(&Halves, u36!(0), QuarterActivity::new(0b1111)),
+        u36!(0)
     );
     assert_octal_eq!(
         sign_extend(
             &Halves,
-            word(0o400_000_000_000_u64),
+            u36!(0o400_000_000_000),
             QuarterActivity::new(0b1111)
         ),
-        word(0o400_000_000_000_u64)
+        u36!(0o400_000_000_000)
     );
     assert_octal_eq!(
         sign_extend(
             &Halves,
-            word(0o000_400_000_000),
+            u36!(0o000_400_000_000),
             QuarterActivity::new(0b1111)
         ),
-        word(0o000_400_000_000),
+        u36!(0o000_400_000_000),
     );
     assert_octal_eq!(
         sign_extend(
             &Halves,
-            word(0o000_000_400_000_u64),
+            u36!(0o000_000_400_000),
             QuarterActivity::new(0b1111)
         ),
-        word(0o000_000_400_000_u64)
+        u36!(0o000_000_400_000)
     );
     assert_octal_eq!(
         sign_extend(
             &Halves,
-            word(0o000_000_000_400_u64),
+            u36!(0o000_000_000_400),
             QuarterActivity::new(0b1111)
         ),
-        word(0o000_000_000_400_u64)
+        u36!(0o000_000_000_400)
     );
 
     // If no quarters are active, there is nothing to sign-extend from, so sign extension is a no-op.
     assert_octal_eq!(
         sign_extend(
             &Halves,
-            word(0o444_333_222_111_u64),
+            u36!(0o444_333_222_111),
             QuarterActivity::new(0b0000)
         ),
-        word(0o444_333_222_111_u64)
+        u36!(0o444_333_222_111)
     );
 
     // Sign-extending a positive quantity into a quarter should zero it.
     assert_octal_eq!(
         sign_extend(
             &Halves,
-            word(0o004_003_002_001_u64),
+            u36!(0o004_003_002_001),
             QuarterActivity::new(0b0101)
         ),
-        word(0o000_003_000_001_u64)
+        u36!(0o000_003_000_001)
     );
     assert_octal_eq!(
         sign_extend(
             &Halves,
-            word(0o004_003_002_001_u64),
+            u36!(0o004_003_002_001),
             QuarterActivity::new(0b0001)
         ),
-        word(0o004_003_000_001_u64)
+        u36!(0o004_003_000_001)
     );
     assert_octal_eq!(
         sign_extend(
             &Halves,
-            word(0o004_003_002_001_u64),
+            u36!(0o004_003_002_001),
             QuarterActivity::new(0b1010)
         ),
-        word(0o004_000_002_000_u64)
+        u36!(0o004_000_002_000)
     );
     assert_octal_eq!(
         sign_extend(
             &Halves,
-            word(0o004_003_002_001_u64),
+            u36!(0o004_003_002_001),
             QuarterActivity::new(0b0110)
         ),
-        word(0o000_003_002_000_u64)
+        u36!(0o000_003_002_000)
     );
 
     // Sign-extending a negative quantity into a quarter should fill it with ones.
@@ -728,34 +721,34 @@ fn test_sign_extend_halves() {
             &Halves,
             // Q3 is negative, so Q4 is set to 777
             // Q1 is positive, so Q2 is set to 000
-            word(0o004_403_202_001_u64),
+            u36!(0o004_403_202_001),
             QuarterActivity::new(0b0110)
         ),
-        word(0o777_403_202_000_u64)
+        u36!(0o777_403_202_000)
     );
     assert_octal_eq!(
         sign_extend(
             &Halves,
-            word(0o404_003_402_001_u64),
+            u36!(0o404_003_402_001),
             QuarterActivity::new(0b1010)
         ),
-        word(0o404_777_402_777_u64)
+        u36!(0o404_777_402_777)
     );
     assert_octal_eq!(
         sign_extend(
             &Halves,
-            word(0o004_403_002_401_u64),
+            u36!(0o004_403_002_401),
             QuarterActivity::new(0b0101)
         ),
-        word(0o777_403_777_401_u64)
+        u36!(0o777_403_777_401)
     );
     assert_octal_eq!(
         sign_extend(
             &Halves,
-            word(0o004_003_002_401_u64),
+            u36!(0o004_003_002_401),
             QuarterActivity::new(0b0001)
         ),
-        word(0o004_003_777_401_u64)
+        u36!(0o004_003_777_401)
     );
 
     // We should not be able to sign-extend over more than two
@@ -764,34 +757,34 @@ fn test_sign_extend_halves() {
     assert_octal_eq!(
         sign_extend(
             &Halves,
-            word(0o004_003_002_001_u64),
+            u36!(0o004_003_002_001),
             QuarterActivity::new(0b0001)
         ),
-        word(0o004_003_000_001_u64)
+        u36!(0o004_003_000_001)
     );
     assert_octal_eq!(
         sign_extend(
             &Halves,
-            word(0o004_003_002_001_u64),
+            u36!(0o004_003_002_001),
             QuarterActivity::new(0b0010)
         ),
-        word(0o004_003_002_000_u64)
+        u36!(0o004_003_002_000)
     );
     assert_octal_eq!(
         sign_extend(
             &Halves,
-            word(0o004_003_002_001_u64),
+            u36!(0o004_003_002_001),
             QuarterActivity::new(0b0100)
         ),
-        word(0o000_003_002_001_u64)
+        u36!(0o000_003_002_001)
     );
     assert_octal_eq!(
         sign_extend(
             &Halves,
-            word(0o004_003_002_001_u64),
+            u36!(0o004_003_002_001),
             QuarterActivity::new(0b1000)
         ),
-        word(0o004_000_002_001_u64)
+        u36!(0o004_000_002_001)
     );
 }
 
@@ -849,10 +842,6 @@ fn permute(
 
 #[test]
 fn test_permute_p0() {
-    fn word(val: u64) -> Unsigned36Bit {
-        Unsigned36Bit::try_from(val).expect("valid test data")
-    }
-
     // P0 behaves the same in the ME and EM directions (q0<->q0,
     // q1<->q1 etc.). Our choice of quarter activity here means that
     // sign extension won't make a difference, so we get the same
@@ -863,20 +852,20 @@ fn test_permute_p0() {
                 &Permutation::P0,
                 direction,
                 &QuarterActivity::new(0b1111),
-                &word(0o444333222111_u64),
-                &word(0o777666555444_u64),
+                &u36!(0o444333222111),
+                &u36!(0o777666555444),
             ),
-            word(0o444333222111_u64),
+            u36!(0o444333222111),
         );
         assert_octal_eq!(
             permute(
                 &Permutation::P0,
                 direction,
                 &QuarterActivity::new(0b1110),
-                &word(0o444333222111_u64),
-                &word(0o777666555444_u64),
+                &u36!(0o444333222111),
+                &u36!(0o777666555444),
             ),
-            word(0o444333222444_u64),
+            u36!(0o444333222444),
         );
     }
 }
