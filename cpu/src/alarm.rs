@@ -1,6 +1,8 @@
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 
+use tracing::{event, Level};
+
 use base::instruction::Instruction;
 use base::prelude::*;
 
@@ -165,6 +167,7 @@ impl Error for Alarm {}
 /// happening is controlled by the AlarmUnit.
 #[derive(Debug, Default)]
 pub struct AlarmUnit {
+    panic_on_unmasked_alarm: bool,
     mask_psal: bool,
     mask_ocsal: bool,
     mask_qsal: bool,
@@ -177,6 +180,13 @@ pub struct AlarmUnit {
 impl AlarmUnit {
     pub fn new() -> AlarmUnit {
         AlarmUnit::default()
+    }
+
+    pub fn new_with_panic() -> AlarmUnit {
+        AlarmUnit {
+            panic_on_unmasked_alarm: true,
+            ..AlarmUnit::new()
+        }
     }
 
     fn is_never_masked(alarm_instance: &Alarm) -> bool {
@@ -219,8 +229,22 @@ impl AlarmUnit {
         masked
     }
 
+    fn maybe_panic(&self, alarm_instance: &Alarm) {
+        if self.panic_on_unmasked_alarm {
+            // We log an error event here primarily because the
+            // current tracing span includes the program counter
+            // value.
+            event!(Level::ERROR, "panicing with alarm {}", alarm_instance);
+            panic!(
+                "unmasked alarm and panic_on_unmasked_alarm={}: {}",
+                self.panic_on_unmasked_alarm, alarm_instance
+            );
+        }
+    }
+
     pub fn always_fire(&self, alarm_instance: Alarm) -> Alarm {
         if AlarmUnit::is_never_masked(&alarm_instance) {
+            self.maybe_panic(&alarm_instance);
             alarm_instance
         } else {
             panic!(
@@ -234,6 +258,7 @@ impl AlarmUnit {
         if self.is_masked(&alarm_instance) {
             Ok(())
         } else {
+            self.maybe_panic(&alarm_instance);
             Err(alarm_instance)
         }
     }

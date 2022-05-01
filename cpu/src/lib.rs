@@ -13,7 +13,7 @@ mod memory;
 
 pub use alarm::Alarm;
 pub use clock::{BasicClock, Clock, MinimalSleeper};
-pub use control::{ControlUnit, ResetMode};
+pub use control::{ControlUnit, ResetMode, RunMode};
 pub use memory::{MemoryConfiguration, MemoryUnit};
 
 pub fn time_passes(

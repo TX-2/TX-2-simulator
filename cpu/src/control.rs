@@ -36,11 +36,29 @@ use crate::memory::{self, ExtraBits, MemoryMapped, MemoryOpFailure, MemoryUnit, 
 
 use trap::TrapCircuit;
 
-#[derive(Debug)]
-enum ProgramCounterChange {
+#[derive(Debug, PartialEq, Eq)]
+pub enum RunMode {
+    Running,
+    InLimbo,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum ProgramCounterChange {
+    /// Change of current sequence.
     SequenceChange(Unsigned6Bit),
+
+    // A TSD instruction ends in dismiss-and-wait.  That is, the
+    // sequence is dismissed without its sequence number changing.
     DismissAndWait(Address),
+
+    /// Immediate stop of execution, such as when an unmasked alarm is raised.
+    Stop(Address),
+
+    // Normal increment of the program counter.
     CounterUpdate,
+
+    // Transfer control to another address (but without changing
+    // sequence).
     Jump(Address),
 }
 
@@ -367,13 +385,22 @@ enum UpdateE {
     Yes,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SequenceSelection {
+    Continue,
+    Change(SequenceNumber),
+    InLimbo,
+}
+
+pub type OpcodeResult = Result<Option<ProgramCounterChange>, Alarm>;
+
 impl ControlUnit {
     pub fn new() -> ControlUnit {
         ControlUnit {
             regs: ControlRegisters::new(),
             trap: TrapCircuit::new(),
             devices: DeviceManager::new(),
-            alarm_unit: AlarmUnit::new(),
+            alarm_unit: AlarmUnit::new_with_panic(),
         }
     }
 
@@ -462,19 +489,29 @@ impl ControlUnit {
     /// CODABO).
     pub fn startover(&mut self) {
         self.regs.flags.raise(&SequenceNumber::ZERO);
+        self.change_sequence(None, SequenceNumber::ZERO);
     }
 
     /// Return the value in the Toggle Start Register.  It is possible
     /// that this was memory-mapped in the real machine, but if that's
     /// the case the user guide doesn't specify where.  For now, we
     /// haven't made it configurable (i.e. have not emulated the
-    /// hardware) yet, either.  We just hard-code it to point at the
-    /// "Memory Clear / Memory Smear" program in the plugboard.
+    /// hardware) yet, either.
+    ///
+    /// We just hard-code it to point at the F-memory confgiguration
+    /// routine (which does its job and then invokes the standard tape
+    /// reader).
+    ///
+    /// We used to set this to point at the "Memory Clear / Memory
+    /// Smear" program in the plugboard, but that accesses addresses
+    /// which are not mapped (e.g. the gap between U-memory and
+    /// V-memory) and so should only be run qith QSAL disabled, which
+    /// is not our default config.
     fn tsp(&self) -> Address {
         // The operation of RESET (or CODABO) will copy this value
         // into the zeroth index register (which the program counter
         // placeholder for sequence 0).
-        memory::STANDARD_PROGRAM_CLEAR_MEMORY
+        memory::STANDARD_PROGRAM_INIT_CONFIG
     }
 
     fn trap_seq() -> Unsigned6Bit {
@@ -548,6 +585,12 @@ impl ControlUnit {
 
     fn set_program_counter(&mut self, change: ProgramCounterChange) {
         match change {
+            ProgramCounterChange::Stop(p) => {
+                let old_mark = self.regs.p.split().1;
+                let new_mark: bool = p.split().1;
+                assert_eq!(old_mark, new_mark);
+                self.regs.p = p;
+            }
             ProgramCounterChange::SequenceChange(next_seq) => {
                 // According to the Technical Manual, page 12-6,
                 // change of seqeuence is the only time in which P₂.₉
@@ -604,23 +647,10 @@ impl ControlUnit {
         }
     }
 
-    pub fn fetch_instruction(&mut self, mem: &mut MemoryUnit) -> Result<bool, Alarm> {
-        // TODO: This implementation begins the instruction fetch
-        // operation by considering a possible change of sequence.
-        // The TX-2 itself considers a sequence change as the PK cycle
-        // is completed, in the resting state PK⁰⁰.  So it might make
-        // more sense to move the sequence-change logig to the end of
-        // the instructino-execution implementation. That will likely
-        // make it simpler to implement the "hold" bit and
-        // dismiss-and-wait (i.e. cases where we don't increment the
-        // sequence's program counter).  When considering this option,
-        // it's a good idea to re-read section 9-4 of Volume 2 of the
-        // Technical Manual.
-
-        // If the previous instruction was held, we don't even scan
-        // the flags.  This follows the description of how control
-        // handles flags in section 4-3.5 of the User Handbook (page
-        // 4-8).
+    /// Consider whether a change of sequence is needed.  Return true
+    /// if some sequence is runnable, or false if we are in the LIMBO
+    /// state.
+    fn select_sequence(&mut self) -> SequenceSelection {
         if self.regs.previous_instruction_hold() {
             event!(
                 Level::DEBUG,
@@ -629,6 +659,7 @@ impl ControlUnit {
                     "so we will not consider a sequence change"
                 )
             );
+            SequenceSelection::Continue
         } else {
             // Handle any possible change of sequence.
             match self.regs.flags.highest_priority_raised_flag() {
@@ -645,35 +676,55 @@ impl ControlUnit {
                             Level::DEBUG,
                             "No flags raised and current sequence is not runnable: in LIMBO"
                         );
-                        return Ok(false);
+                        SequenceSelection::InLimbo
+                    } else {
+                        event!(
+                            Level::DEBUG,
+                            "No flag is raised, but the current sequence is still runnable"
+                        );
+                        SequenceSelection::Continue
                     }
-                    event!(
-                        Level::DEBUG,
-                        "No flag is raised, but the current sequence is still runnable"
-                    );
                 }
                 Some(seq) => {
                     event!(Level::TRACE, "Highest-priority sequence is {}", seq);
                     if Some(seq) > self.regs.k
                         || (!self.regs.current_sequence_is_runnable && Some(seq) < self.regs.k)
                     {
-                        // The (previously) current sequence dropped
-                        // out, or seq is a higher priority than the
-                        // current sequence
-                        self.change_sequence(self.regs.k, seq);
+                        SequenceSelection::Change(seq)
                     } else {
-                        // just carry on.
+                        // No sequence change, just carry on.
+                        SequenceSelection::Continue
                     }
                 }
             }
         }
+    }
 
-        // self.regs.k now identifies the sequence we should be
-        // running and self.regs.p contains its program counter.
+    fn fetch_instruction(&mut self, mem: &mut MemoryUnit) -> Result<(), Alarm> {
+        // TODO: This implementation begins the instruction fetch
+        // operation by considering a possible change of sequence.
+        // The TX-2 itself considers a sequence change as the PK cycle
+        // is completed, in the resting state PK⁰⁰.  So it might make
+        // more sense to move the sequence-change logig to the end of
+        // the instructino-execution implementation. That will likely
+        // make it simpler to implement the "hold" bit and
+        // dismiss-and-wait (i.e. cases where we don't increment the
+        // sequence's program counter).  When considering this option,
+        // it's a good idea to re-read section 9-4 of Volume 2 of the
+        // Technical Manual.
 
+        // If the previous instruction was held, we don't even scan
+        // the flags.  This follows the description of how control
+        // handles flags in section 4-3.5 of the User Handbook (page
+        // 4-8).
         // Calculate the address from which we will fetch the
         // instruction, and the increment the program counter.
         let p_physical_address = Address::from(self.regs.p.split().0);
+        event!(
+            Level::TRACE,
+            "Fetching instruction from physical address {}",
+            p_physical_address
+        );
 
         // Actually fetch the instruction.
         let meta_op = if self.trap.set_metabits_of_instructions() {
@@ -689,9 +740,9 @@ impl ControlUnit {
                 inst
             }
             Err(e) => match e {
-                MemoryOpFailure::NotMapped => {
+                MemoryOpFailure::NotMapped(addr) => {
                     self.alarm_unit.fire_if_not_masked(Alarm::PSAL(
-                        u32::from(p_physical_address),
+                        u32::from(addr),
                         "memory unit indicated physical address is not mapped".to_string(),
                     ))?;
                     // PSAL is masked, but we don't know what
@@ -703,7 +754,7 @@ impl ControlUnit {
                     // valid.
                     Unsigned36Bit::from(Instruction::invalid())
                 }
-                MemoryOpFailure::ReadOnly(_) => unreachable!(),
+                MemoryOpFailure::ReadOnly(_, _) => unreachable!(),
             },
         };
         event!(
@@ -713,11 +764,25 @@ impl ControlUnit {
             p_physical_address
         );
         self.update_n_register(instruction_word)?;
-        Ok(true) // not in Limbo (i.e. a sequence should run)
+        Ok(())
     }
 
-    pub fn poll_hardware(&mut self, system_time: &Duration) -> Result<Option<Duration>, Alarm> {
+    pub fn poll_hardware(
+        &mut self,
+        mut run_mode: RunMode,
+        system_time: &Duration,
+    ) -> Result<(RunMode, Option<Duration>), Alarm> {
         let (mut raised_flags, alarm, next_poll) = self.devices.poll(system_time);
+        // If there are no hardware flags being raised, we may still
+        // not be in limbo if there were already runnable sequences.
+        // That is, if some sequence's flag was raised.  The hardware
+        // devices can raise flags but not lower them.  Therefore if
+        // run_mode was RunMode::Running on entry to this function, we
+        // must return RunMode::Running.
+        if raised_flags != 0 {
+            run_mode = RunMode::Running;
+        }
+
         // For each newly-raised flag, raise the flag in self.flags.
         event!(
             Level::TRACE,
@@ -754,7 +819,7 @@ impl ControlUnit {
             );
             Err(active)
         } else {
-            Ok(next_poll)
+            Ok((run_mode, next_poll))
         }
     }
 
@@ -797,29 +862,21 @@ impl ControlUnit {
         )
     }
 
-    /// Execute the instruction in the N register (i.e. the
-    /// instruction just fetched by fetch_instruction().  The P
-    /// register already points to the next instruction.  Returns the
-    /// estimated number of nanoseconds needed to execute the
-    /// instruction.
+    /// Fetch and execute the next instruction pointed to by the P
+    /// register.  Returns the estimated number of nanoseconds needed
+    /// to execute the instruction.
     pub fn execute_instruction(
         &mut self,
         system_time: &Duration,
         mem: &mut MemoryUnit,
-    ) -> Result<u64, Alarm> {
+    ) -> Result<(u64, RunMode), (Alarm, Address)> {
         fn execute(
+            prev_program_counter: Address,
             opcode: &Opcode,
             control: &mut ControlUnit,
             system_time: &Duration,
             mem: &mut MemoryUnit,
-        ) -> Result<(u64, bool), Alarm> {
-            // Execution of the instruction will change self.regs.n, but
-            // we want to preserve the original value so that we know
-            // whether the original version of the instruction used
-            // deferred addressing, since this affects our estimate of the
-            // execution time.
-            let saved_inst: Instruction = control.regs.n;
-            let mut increment_program_counter: bool = true;
+        ) -> OpcodeResult {
             match opcode {
                 Opcode::Aux => control.op_aux(mem),
                 Opcode::Ste => control.op_ste(mem),
@@ -832,73 +889,98 @@ impl ControlUnit {
                 Opcode::Skm => control.op_skm(mem),
                 Opcode::Spg => control.op_spg(mem),
                 Opcode::Ios => control.op_ios(system_time),
-                Opcode::Tsd => match control.op_tsd(system_time, mem) {
-                    Ok(increment_pc) => {
-                        increment_program_counter = increment_pc;
-                        Ok(())
-                    }
-                    Err(e) => Err(e),
-                },
+                Opcode::Tsd => control.op_tsd(prev_program_counter, system_time, mem),
                 _ => Err(Alarm::ROUNDTUITAL(format!(
                     "The emulator does not yet implement opcode {}",
                     opcode,
                 ))),
             }
-            .map(|()| {
-                (
-                    control.estimate_execute_time_ns(&saved_inst),
-                    increment_program_counter,
-                )
-            })
+        }
+
+        let seq_desc = match self.regs.k {
+            None => "none".to_string(),
+            Some(n) => format!("{:02o}", n),
+        };
+
+        // Fetch the current instruction into the N register.
+        {
+            let span = span!(Level::INFO,
+			     "fetch",
+			     seq=%seq_desc,
+			     p=?self.regs.p);
+            let _enter = span.enter();
+            event!(Level::TRACE, "current sequence is {}", seq_desc);
+            self.fetch_instruction(mem)
+                .map_err(|alarm| (alarm, self.regs.p))?;
         }
 
         // Save the old program counter.
         let p = self.regs.p;
         self.set_program_counter(ProgramCounterChange::CounterUpdate);
 
-        if let Some(sym) = self.regs.n_sym.as_ref() {
+        let elapsed_time = self.estimate_execute_time_ns(&self.regs.n);
+
+        let result = if let Some(sym) = self.regs.n_sym.as_ref() {
             let inst = sym.to_string();
-            let seq = match self.regs.k {
-                None => "none".to_string(),
-                Some(n) => format!("{:02o}", n),
-            };
             let span = span!(Level::INFO,
 			     "xop",
-			     seq=%seq,
+			     seq=%seq_desc,
 			     p=?p,
 			     op=%sym.opcode());
             let _enter = span.enter();
-            match execute(&sym.opcode(), self, system_time, mem) {
-                Ok((ns, increment_program_counter)) => {
-                    event!(
-                        Level::DEBUG,
-                        "instruction {} executed in simulated {}ns",
-                        inst,
-                        ns
-                    );
-                    if increment_program_counter {
-                        self.regs.prev_hold = self.regs.n.is_held()
-                    } else {
-                        // Restore the pre-increment value of the P
-                        // register, so that dismiss-and-wait will
-                        // cause execution of the current sequence to
-                        // resume at the TSD instruction.
-                        self.set_program_counter(ProgramCounterChange::DismissAndWait(p));
-                    }
-                    Ok(ns)
+            event!(Level::TRACE, "executing instruction {}", &sym);
+            match execute(p, &sym.opcode(), self, system_time, mem) {
+                Ok(None) => {
+                    // This is the usual case; the call to
+                    // set_program_counter above will have incremented
+                    // P.
+                    Ok(())
+                }
+                Ok(Some(pc_change)) => {
+                    // Instructions which return
+                    // ProgramCounterChange::CounterUpdate do so in
+                    // order perform a skip over the next instruction.
+                    event!(Level::TRACE, "program counter change: {:?}", &pc_change);
+                    self.set_program_counter(pc_change);
+                    Ok(())
                 }
                 Err(e) => {
                     event!(Level::WARN, "instruction {} raised alarm {}", inst, e);
-                    Err(e)
+                    self.set_program_counter(ProgramCounterChange::Stop(p));
+                    Err((e, p))
                 }
             }
         } else {
+            event!(
+                Level::DEBUG,
+                "fetched instruction {:?} is invalid",
+                &self.regs.n
+            );
             self.alarm_unit
-                .fire_if_not_masked(self.invalid_opcode_alarm())?;
-            self.set_program_counter(ProgramCounterChange::CounterUpdate);
-            let execution_time_ns = self.estimate_execute_time_ns(&Instruction::invalid());
-            Ok(execution_time_ns)
+                .fire_if_not_masked(self.invalid_opcode_alarm())
+                .map_err(|e| (e, p))
+        };
+
+        // We have completed an attempt to execute instruction.  It
+        // may not have been successful, so we cannot set the value of
+        // prev_hold unconditionally. Determine whether this
+        // instruction should be followed by a change of sequence.
+        match result {
+            Ok(()) => match self.select_sequence() {
+                SequenceSelection::Continue => Ok((elapsed_time, RunMode::Running)),
+                SequenceSelection::InLimbo => Ok((elapsed_time, RunMode::InLimbo)),
+                SequenceSelection::Change(seq) => {
+                    // The (previously) current sequence dropped
+                    // out, or seq is a higher priority than the
+                    // current sequence
+                    self.change_sequence(self.regs.k, seq);
+                    Ok((elapsed_time, RunMode::Running))
+                }
+            },
+            Err((alarm, address)) => Err((alarm, address)),
         }
+        // self.regs.k now identifies the sequence we should be
+        // running and self.regs.p contains its program counter.
     }
 
     fn get_config(&self) -> SystemConfiguration {
@@ -940,10 +1022,10 @@ impl ControlUnit {
                 }
                 Ok((word, extra_bits))
             }
-            Err(MemoryOpFailure::NotMapped) => {
+            Err(MemoryOpFailure::NotMapped(addr)) => {
                 self.alarm_unit.fire_if_not_masked(Alarm::QSAL(
                     self.regs.n,
-                    BadMemOp::Read(Unsigned36Bit::from(*operand_address)),
+                    BadMemOp::Read(Unsigned36Bit::from(addr)),
                     format!(
                         "memory unit indicated address {:o} is not mapped",
                         operand_address
@@ -957,7 +1039,7 @@ impl ControlUnit {
 			    operand_address
 			))));
             }
-            Err(MemoryOpFailure::ReadOnly(_)) => unreachable!(),
+            Err(MemoryOpFailure::ReadOnly(_, _)) => unreachable!(),
         }
     }
 
@@ -1235,19 +1317,23 @@ impl ControlUnit {
         }
     }
 
-    fn dismiss(&mut self) {
+    fn dismiss(&mut self, reason: &str) {
         if let Some(current_seq) = self.regs.k {
-            event!(Level::DEBUG, "dismissing current sequence");
+            event!(
+                Level::DEBUG,
+                "dismissing current sequence (reason: {})",
+                reason
+            );
             self.regs.flags.lower(&current_seq);
             self.regs.current_sequence_is_runnable = false;
         }
     }
 
-    fn dismiss_unless_held(&mut self) -> bool {
+    fn dismiss_unless_held(&mut self, reason: &str) -> bool {
         if self.regs.n.is_held() {
             false
         } else {
-            self.dismiss();
+            self.dismiss(reason);
             true
         }
     }

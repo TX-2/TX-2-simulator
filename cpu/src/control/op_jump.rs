@@ -2,7 +2,7 @@ use base::prelude::*;
 use base::subword;
 
 use crate::alarm::{Alarm, BadMemOp};
-use crate::control::{ControlUnit, ProgramCounterChange};
+use crate::control::{ControlUnit, OpcodeResult, ProgramCounterChange};
 use crate::memory::{BitChange, MemoryMapped, MemoryOpFailure, MemoryUnit, WordChange};
 
 /// ## "Jump Skip Class" opcodes
@@ -15,7 +15,7 @@ use crate::memory::{BitChange, MemoryMapped, MemoryOpFailure, MemoryUnit, WordCh
 /// - SED (unimplemented)
 impl ControlUnit {
     /// Implements the JMP opcode and its variations (all of which are unconditional jumps).
-    pub fn op_jmp(&mut self) -> Result<(), Alarm> {
+    pub fn op_jmp(&mut self) -> OpcodeResult {
         // For JMP the configuration field in the instruction controls
         // the behaviour of the instruction, without involving
         // a load from F-memory.
@@ -23,7 +23,6 @@ impl ControlUnit {
             !value.is_zero()
         }
         let cf = self.regs.n.configuration();
-        let dismiss = nonzero(cf & 0b10000_u8);
         let save_q = nonzero(cf & 0b01000_u8);
         let savep_e = nonzero(cf & 0b00100_u8);
         let savep_ix = nonzero(cf & 0b00010_u8);
@@ -76,11 +75,10 @@ impl ControlUnit {
         } else {
             physical
         };
-        self.set_program_counter(ProgramCounterChange::Jump(new_pc));
-        if dismiss {
-            self.dismiss_unless_held();
+        if nonzero(cf & 0b10000_u8) {
+            self.dismiss_unless_held("JMP has dismiss bit set in config syllable");
         }
-        Ok(())
+        Ok(Some(ProgramCounterChange::Jump(new_pc)))
     }
 
     /// Implement the SKM instruction.  This has a number of
@@ -92,7 +90,7 @@ impl ControlUnit {
     ///
     /// The SKM instruction is documented on pages 7-34 and 7-35 of
     /// the User Handbook.
-    pub fn op_skm(&mut self, mem: &mut MemoryUnit) -> Result<(), Alarm> {
+    pub fn op_skm(&mut self, mem: &mut MemoryUnit) -> OpcodeResult {
         let bit = index_address_to_bit_selection(self.regs.n.index_address());
         // Determine the operand address; any initial deferred cycle
         // must use 0 as the indexation, as the index address of the
@@ -112,19 +110,19 @@ impl ControlUnit {
         };
         let prev_bit_value: Option<bool> = match mem.change_bit(&target, &change) {
             Ok(prev) => prev,
-            Err(MemoryOpFailure::NotMapped) => {
+            Err(MemoryOpFailure::NotMapped(addr)) => {
                 self.alarm_unit.fire_if_not_masked(Alarm::QSAL(
                     self.regs.n,
                     BadMemOp::Write(target.into()),
                     format!(
                         "SKM instruction attempted to access address {:o} but it is not mapped",
-                        target,
+                        addr,
                     ),
                 ))?;
                 // The alarm is masked.  We turn the memory mutation into a no-op.
-                return Ok(());
+                return Ok(None);
             }
-            Err(MemoryOpFailure::ReadOnly(_)) => {
+            Err(MemoryOpFailure::ReadOnly(_, _)) => {
                 self.alarm_unit.fire_if_not_masked(
                     Alarm::QSAL(
 			self.regs.n,
@@ -136,7 +134,7 @@ impl ControlUnit {
                     ),
                     ))?;
                 // The alarm is masked.  We turn the memory mutation into a no-op.
-                return Ok(());
+                return Ok(None);
             }
         };
         let skip: bool = if let Some(prevbit) = prev_bit_value {
@@ -155,9 +153,10 @@ impl ControlUnit {
         // The location of the currently executing instruction is referred to by M4
         // as '#'.  The next instruction would be '#+1' and that's where the P register
         // currently points.  But "skip" means to set P=#+2.
-        if skip {
-            self.set_program_counter(ProgramCounterChange::CounterUpdate);
-        }
-        Ok(())
+        Ok(if skip {
+            Some(ProgramCounterChange::CounterUpdate)
+        } else {
+            None
+        })
     }
 }

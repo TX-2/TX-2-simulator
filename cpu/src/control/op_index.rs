@@ -8,11 +8,15 @@
 //! - JPX: [`ControlUnit::op_jpx`]
 //! - JNX: [`ControlUnit::op_jnx`]
 
+use tracing::{event, Level};
+
 use base::prelude::*;
 use base::subword;
 
 use crate::alarm::{Alarm, BadMemOp};
-use crate::control::{sign_extend_index_value, ControlUnit, ProgramCounterChange, UpdateE};
+use crate::control::{
+    sign_extend_index_value, ControlUnit, OpcodeResult, ProgramCounterChange, UpdateE,
+};
 use crate::memory::{MemoryUnit, MetaBitChange};
 
 /// ## "Index Register Class" opcodes
@@ -28,7 +32,7 @@ use crate::memory::{MemoryUnit, MetaBitChange};
 impl ControlUnit {
     /// Implements the DPX instruction (Opcode 016, User Handbook,
     /// page 3-16).
-    pub fn op_dpx(&mut self, mem: &mut MemoryUnit) -> Result<(), Alarm> {
+    pub fn op_dpx(&mut self, mem: &mut MemoryUnit) -> OpcodeResult {
         let j = self.regs.n.index_address();
         let xj: Unsigned36Bit = sign_extend_index_value(&self.regs.get_index_register(j));
         let target: Address = self.operand_address_with_optional_defer_and_index(mem)?;
@@ -36,14 +40,16 @@ impl ControlUnit {
         // DPX is trying to perform a write.  But to do this in some
         // subword configurations, we need to read the existing value.
         match self.fetch_operand_from_address_without_exchange(mem, &target, &UpdateE::Yes) {
-            Ok((dest, _meta)) => self.memory_store_with_exchange(
-                mem,
-                &target,
-                &xj,
-                &dest,
-                &UpdateE::Yes,
-                &MetaBitChange::None,
-            ),
+            Ok((dest, _meta)) => self
+                .memory_store_with_exchange(
+                    mem,
+                    &target,
+                    &xj,
+                    &dest,
+                    &UpdateE::Yes,
+                    &MetaBitChange::None,
+                )
+                .map(|()| None),
             Err(Alarm::QSAL(inst, BadMemOp::Read(addr), msg)) => {
                 // That read operation just failed.  So we handle this
                 // as a _write_ failure, meaning that we change
@@ -53,7 +59,7 @@ impl ControlUnit {
                     BadMemOp::Write(addr),
                     msg,
                 ))?;
-                Ok(()) // QSAL is masked, we just carry on (the DPX instruction has no effect).
+                Ok(None) // QSAL is masked, we just carry on (the DPX instruction has no effect).
             }
             Err(other) => Err(other),
         }
@@ -61,7 +67,7 @@ impl ControlUnit {
 
     /// Implements the AUX instruction (Opcode 010, User Handbook,
     /// page 3-22).
-    pub fn op_aux(&mut self, mem: &mut MemoryUnit) -> Result<(), Alarm> {
+    pub fn op_aux(&mut self, mem: &mut MemoryUnit) -> OpcodeResult {
         let j = self.regs.n.index_address();
         // The AUX instruction is not indexed.
         let source: Address = self.operand_address_with_optional_defer_without_index(mem)?;
@@ -97,12 +103,12 @@ impl ControlUnit {
             }
             self.regs.set_index_register(j, &newvalue);
         }
-        Ok(())
+        Ok(None)
     }
 
     /// Implements the RSX instruction (Opcode 011, User Handbook,
     /// page 3-14).
-    pub fn op_rsx(&mut self, mem: &mut MemoryUnit) -> Result<(), Alarm> {
+    pub fn op_rsx(&mut self, mem: &mut MemoryUnit) -> OpcodeResult {
         let j = self.regs.n.index_address();
         let existing = join_halves(
             Unsigned18Bit::ZERO,
@@ -124,12 +130,12 @@ impl ControlUnit {
             let xj: Signed18Bit = subword::right_half(word).reinterpret_as_signed();
             self.regs.set_index_register(j, &xj);
         }
-        Ok(())
+        Ok(None)
     }
 
     /// Implements the SKX instruction (Opcode 012, User Handbook,
     /// page 3-24).
-    pub fn op_skx(&mut self) -> Result<(), Alarm> {
+    pub fn op_skx(&mut self) -> OpcodeResult {
         let inst = &self.regs.n;
         let j = inst.index_address();
         // SKX does not cause an access to STUV memory; instead the
@@ -148,7 +154,7 @@ impl ControlUnit {
                 if config & 0o10 != 0 {
                     self.regs.flags.raise(&j);
                 }
-                Ok(())
+                Ok(None)
             }
             0o1 => {
                 if j != 0 {
@@ -157,7 +163,7 @@ impl ControlUnit {
                     let t_negated = Signed18Bit::ZERO.wrapping_sub(operand.reinterpret_as_signed());
                     self.regs.set_index_register(j, &t_negated);
                 }
-                Ok(())
+                Ok(None)
             }
             _ => Err(self.alarm_unit.always_fire(Alarm::ROUNDTUITAL(format!(
                 "SKX configuration {:#o} is not implemented yet",
@@ -167,13 +173,13 @@ impl ControlUnit {
     }
 
     /// Implements the JPX (jump on positive index) opcode (06).
-    pub fn op_jpx(&mut self, mem: &mut MemoryUnit) -> Result<(), Alarm> {
+    pub fn op_jpx(&mut self, mem: &mut MemoryUnit) -> OpcodeResult {
         let is_positive_address = |xj: &Signed18Bit| !xj.is_zero() && xj.is_positive();
         self.impl_op_jpx_jnx(is_positive_address, mem)
     }
 
     /// Implements the JNX (jump on positive index) opcode (07).
-    pub fn op_jnx(&mut self, mem: &mut MemoryUnit) -> Result<(), Alarm> {
+    pub fn op_jnx(&mut self, mem: &mut MemoryUnit) -> OpcodeResult {
         let is_negative_address = |xj: &Signed18Bit| xj.is_negative();
         self.impl_op_jpx_jnx(is_negative_address, mem)
     }
@@ -191,11 +197,18 @@ impl ControlUnit {
         &mut self,
         predicate: F,
         mem: &mut MemoryUnit,
-    ) -> Result<(), Alarm> {
-        let dismiss = !self.regs.n.is_held();
+    ) -> OpcodeResult {
         let j = self.regs.n.index_address();
         let xj = self.regs.get_index_register(j);
         let do_jump: bool = predicate(&xj);
+        event!(
+            Level::TRACE,
+            "Index register {:?} contains {:?}={} (decimal), we {} jump",
+            &j,
+            &xj,
+            i32::from(xj),
+            if do_jump { "will" } else { "won't" },
+        );
 
         // Compute the jump target (which possibly involves indexing)
         // before modifying Xj.  See note 3 on page 3-27 of the User
@@ -208,23 +221,31 @@ impl ControlUnit {
         let target: Address = self.resolve_operand_address(mem, Some(Unsigned6Bit::ZERO))?;
         let cf: Signed5Bit = self.regs.n.configuration().reinterpret_as_signed();
         let new_xj: Signed18Bit = xj.wrapping_add(Signed18Bit::from(cf));
-        self.regs.set_index_register(j, &new_xj);
-
+        if !j.is_zero() {
+            event!(
+                Level::TRACE,
+                "Updating index register {:?} to {:?}",
+                &j,
+                &new_xj
+            );
+            self.regs.set_index_register(j, &new_xj);
+        }
         if do_jump {
-            self.dismiss_unless_held();
+            if !self.regs.n.is_held() {
+                self.dismiss("JPX/JNX; did jump, hold bit is clear");
+                if let Some(current_seq) = self.regs.k {
+                    self.regs.flags.lower(&current_seq);
+                    self.regs.current_sequence_is_runnable = false;
+                }
+            }
             self.regs.e = subword::join_halves(
                 subword::left_half(self.regs.e),
                 Unsigned18Bit::from(self.regs.p),
             );
-            self.set_program_counter(ProgramCounterChange::Jump(target));
+            Ok(Some(ProgramCounterChange::Jump(target)))
+        } else {
+            Ok(None)
         }
-        if dismiss {
-            if let Some(current_seq) = self.regs.k {
-                self.regs.flags.lower(&current_seq);
-                self.regs.current_sequence_is_runnable = false;
-            }
-        }
-        Ok(())
     }
 }
 

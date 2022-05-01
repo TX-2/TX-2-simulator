@@ -42,26 +42,31 @@ pub const U_MEMORY_SIZE: u32 = 1 + 0o0217777 - 0o0210000;
 pub const V_MEMORY_START: u32 = 0o0377600;
 pub const V_MEMORY_SIZE: u32 = 1 + 0o0377777 - 0o0377600;
 
-pub const STANDARD_PROGRAM_CLEAR_MEMORY: Address = Address::new(u18!(0o0377770));
+//pub const STANDARD_PROGRAM_CLEAR_MEMORY: Address = Address::new(u18!(0o0377770));
+pub const STANDARD_PROGRAM_INIT_CONFIG: Address = Address::new(u18!(0o0377750));
 
 #[derive(Debug)]
 pub enum MemoryOpFailure {
-    NotMapped,
+    NotMapped(Address),
 
     // I have no idea whether the real TX-2 alarmed on writes to
     // things that aren't really writeable (e.g. shaft encoder
     // registers).  But by implemeting this we may be able to answer
     // that question if some real (recovered) program writes to a
     // location we assumed would be read-only.
-    ReadOnly(ExtraBits),
+    ReadOnly(Address, ExtraBits),
 }
 
 impl Display for MemoryOpFailure {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        f.write_str(match self {
-            MemoryOpFailure::NotMapped => "address is not mapped to functioning memory",
-            MemoryOpFailure::ReadOnly(_) => "address is mapped to read-only memory",
-        })
+        match self {
+            MemoryOpFailure::NotMapped(addr) => {
+                write!(f, "address {:o} is not mapped to functioning memory", addr)
+            }
+            MemoryOpFailure::ReadOnly(addr, _extra) => {
+                write!(f, "address {:o}is mapped to read-only memory", addr)
+            }
+        }
     }
 }
 
@@ -335,11 +340,11 @@ impl MemoryUnit {
                 if let Some(u) = &mut self.u_memory {
                     Ok(Some(&mut u[offset]))
                 } else {
-                    Err(MemoryOpFailure::NotMapped)
+                    Err(MemoryOpFailure::NotMapped(*addr))
                 }
             }
             Some(MemoryDecode::V(_)) => self.v_memory.access(access_type, addr),
-            None => Err(MemoryOpFailure::NotMapped),
+            None => Err(MemoryOpFailure::NotMapped(*addr)),
         }
     }
 
@@ -350,8 +355,8 @@ impl MemoryUnit {
         on_read: FR,
     ) -> Result<R, MemoryOpFailure>
     where
-        FW: FnOnce(&mut MemoryWord) -> Result<R, MemoryOpFailure>,
-        FR: FnOnce(&MemoryWord) -> Result<R, MemoryOpFailure>,
+        FW: FnOnce(Address, &mut MemoryWord) -> Result<R, MemoryOpFailure>,
+        FR: FnOnce(Address, &MemoryWord) -> Result<R, MemoryOpFailure>,
     {
         // If the memory address is not mapped at all, access will
         // return Err, causing the next line to bail out of this
@@ -366,11 +371,11 @@ impl MemoryUnit {
                 // be, but the memory-write is inhibited.
                 match self.access(&MemoryAccess::Read, addr) {
                     Ok(None) => unreachable!(),
-                    Ok(Some(mem_word)) => on_read(mem_word),
+                    Ok(Some(mem_word)) => on_read(*addr, mem_word),
                     Err(e) => Err(e),
                 }
             }
-            Ok(Some(mem_word)) => on_write(mem_word),
+            Ok(Some(mem_word)) => on_write(*addr, mem_word),
             Err(e) => Err(e),
         }
     }
@@ -440,7 +445,7 @@ impl MemoryMapped for MemoryUnit {
                             if *side_effect != MetaBitChange::None {
                                 // Changng meta bits in V memory is not allowed,
                                 // see the longer comment in the store() method.
-                                return Err(MemoryOpFailure::ReadOnly(extra_bits));
+                                return Err(MemoryOpFailure::ReadOnly(*addr, extra_bits));
                             }
                         }
                         mem_word.set_meta_bit(&true)
@@ -505,15 +510,21 @@ impl MemoryMapped for MemoryUnit {
     }
 
     fn cycle_word(&mut self, addr: &Address) -> Result<ExtraBits, MemoryOpFailure> {
-        fn on_write_cycle(mem_word: &mut MemoryWord) -> Result<ExtraBits, MemoryOpFailure> {
+        fn on_write_cycle(
+            _address: Address,
+            mem_word: &mut MemoryWord,
+        ) -> Result<ExtraBits, MemoryOpFailure> {
             let (value, extra_bits) = mem_word.into();
             mem_word.set_value(&(value << 1));
             Ok(extra_bits)
         }
-        fn on_read_only_fail(mem_word: &MemoryWord) -> Result<ExtraBits, MemoryOpFailure> {
+        fn on_read_only_fail(
+            address: Address,
+            mem_word: &MemoryWord,
+        ) -> Result<ExtraBits, MemoryOpFailure> {
             event!(Level::DEBUG, "Cannot cycle read-only memory location");
             let (_word, extra_bits) = mem_word.into();
-            Err(MemoryOpFailure::ReadOnly(extra_bits))
+            Err(MemoryOpFailure::ReadOnly(address, extra_bits))
         }
         self.write_with_read_fallback(addr, on_write_cycle, on_read_only_fail)
     }
@@ -591,6 +602,13 @@ struct VMemory {
     rtc_start: SystemTime,
     codabo_start_point: [MemoryWord; 8],
     plugboard: [MemoryWord; 32],
+
+    /// Writes to unknown locations are required to be ignored, but
+    /// reads have to return a value.  If permit_unknown_reads is set,
+    /// a special value is returned.  If not, a QSAL alarm will be
+    /// raised (though that alarm may in turn be suppressed).
+    permit_unknown_reads: bool,
+    sacrificial_word_for_unknown_reads: MemoryWord,
 }
 
 const fn standard_plugboard_internal() -> [MemoryWord; 32] {
@@ -641,8 +659,11 @@ const fn standard_plugboard_internal() -> [MemoryWord; 32] {
         mw(0o001253_000005), // REX₅₃ 5          ** Load 5 into X₅₃
         // 0o0377764
         mw(0o405754_000026), // h TSD₅₄ 26       ** Load into 26+X₅₄ (which is negative)
+        // 0o0377765
         mw(0o760653_377764), // h ³⁶JPX₅₃ 377764 ** loop if X₅₃>0, decrement it
+        // 0o0377766
         mw(0o410754_377763), // h ¹JNX₅₄ 377763  ** loop if X₅₄<0, increment it
+        // 0o0377767
         mw(0o140500_000003), // ¹⁴JPQ 3          ** Jump to start of reader leader
         // At the time we jump, sequence 0o52 is executing, with
         // X₅₂ = 0o377763, X₅₃ = 0, X₅₄ = 0.
@@ -668,6 +689,8 @@ pub fn get_standard_plugboard() -> Vec<Unsigned36Bit> {
         .collect()
 }
 
+const RESULT_OF_VMEMORY_UNKNOWN_READ: MemoryWord = MemoryWord(0o404_404_404_404_u64);
+
 impl VMemory {
     fn new() -> VMemory {
         let now = SystemTime::now();
@@ -692,6 +715,8 @@ impl VMemory {
             unimplemented_external_input_register: MemoryWord::default(),
             rtc: MemoryWord::default(),
             rtc_start: now,
+            permit_unknown_reads: true,
+            sacrificial_word_for_unknown_reads: RESULT_OF_VMEMORY_UNKNOWN_READ,
         };
         result.reset_rtc(&now);
         result
@@ -756,7 +781,19 @@ impl VMemory {
                     unreachable!()
                 }
             }
-            _ => Err(MemoryOpFailure::NotMapped),
+            _ => {
+                if self.permit_unknown_reads {
+                    self.sacrificial_word_for_unknown_reads = RESULT_OF_VMEMORY_UNKNOWN_READ;
+                    Ok(Some(&mut self.sacrificial_word_for_unknown_reads))
+                } else {
+                    event!(
+                        Level::ERROR,
+                        "V-memory read of unknown location {:o} is not allowed",
+                        addr
+                    );
+                    Err(MemoryOpFailure::NotMapped(*addr))
+                }
+            }
         }
     }
 
@@ -843,7 +880,7 @@ fn test_write_all_mem() {
                 // TODO: implement and test writes to toggle memory
                 // (Vₜ).
             }
-            Err(MemoryOpFailure::NotMapped) => (),
+            Err(MemoryOpFailure::NotMapped(_)) => (),
             Err(e) => {
                 panic!("Failure {:?} during write of memory address {:o}", e, addr);
             }
@@ -871,7 +908,7 @@ fn test_read_all_mem() {
                     addr
                 );
             }
-            Err(MemoryOpFailure::NotMapped) => (),
+            Err(MemoryOpFailure::NotMapped(_)) => (),
             Err(e) => {
                 panic!("Failure {:?} during read of memory address {:o}", e, addr);
             }

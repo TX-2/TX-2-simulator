@@ -523,12 +523,12 @@ impl DeviceManager {
                                             Ok(()) => {
                                                 event!(
                                                     Level::TRACE,
-                                                    "Read TSD succeeded on unit {:o} (stored word at {:o} is {:o})",
+                                                    "Read TSD succeeded on unit {:o} (stored word at {:>06o} is {:o})",
                                                     *device, &address, &word,
                                                 );
                                                 Ok(TransferOutcome::Success(extra_bits.meta))
                                             }
-                                            Err(MemoryOpFailure::ReadOnly(_)) => {
+                                            Err(MemoryOpFailure::ReadOnly(_, _)) => {
                                                 event!(
 							Level::WARN,
 							"Read TSD attempted to write into read-only location {} (this is valid but unusual)",
@@ -536,12 +536,12 @@ impl DeviceManager {
 						    );
                                                 Ok(TransferOutcome::Success(extra_bits.meta))
                                             }
-                                            Err(MemoryOpFailure::NotMapped) => {
+                                            Err(MemoryOpFailure::NotMapped(addr)) => {
                                                 return Err(Alarm::BUGAL {
                                                     instr: Some(*inst),
                                                     message: format!(
 							    "Read TSD found memory location {} was mapped on read but not write" ,
-							    address,
+							    addr,
 							),
                                                 });
                                             }
@@ -552,8 +552,8 @@ impl DeviceManager {
                                         }
                                     }
                                 }
-                                Err(MemoryOpFailure::ReadOnly(_)) => unreachable!(),
-                                Err(MemoryOpFailure::NotMapped) => {
+                                Err(MemoryOpFailure::ReadOnly(_, _)) => unreachable!(),
+                                Err(MemoryOpFailure::NotMapped(_)) => {
                                     alarm_unit.fire_if_not_masked(not_mapped(bad_read))?;
                                     // QSAL is masked, carry on.
                                     Ok(TransferOutcome::Success(false)) // act as if metabit unset
@@ -568,8 +568,8 @@ impl DeviceManager {
                                         Err(e) => Err(e),
                                     }
                                 }
-                                Err(MemoryOpFailure::ReadOnly(_)) => unreachable!(),
-                                Err(MemoryOpFailure::NotMapped) => {
+                                Err(MemoryOpFailure::ReadOnly(_, _)) => unreachable!(),
+                                Err(MemoryOpFailure::NotMapped(_)) => {
                                     alarm_unit.fire_if_not_masked(not_mapped(bad_write))?;
                                     // QSAL is masked, carry on.
                                     Ok(TransferOutcome::Success(false)) // act as if metabit unset
@@ -596,14 +596,14 @@ impl DeviceManager {
                 // place to the left (Users Handbook, page 4-2).
                 match mem.cycle_word(address) {
                     Ok(extra_bits) => Ok(TransferOutcome::Success(extra_bits.meta)),
-                    Err(MemoryOpFailure::ReadOnly(extra_bits)) => {
+                    Err(MemoryOpFailure::ReadOnly(_address, extra_bits)) => {
                         // The read-only case is not an error, it's
                         // normal.  The TSD instruction simply has no
                         // effect when the target address is
                         // read-only.
                         Ok(TransferOutcome::Success(extra_bits.meta))
                     }
-                    Err(MemoryOpFailure::NotMapped) => {
+                    Err(MemoryOpFailure::NotMapped(_)) => {
                         alarm_unit.fire_if_not_masked(not_mapped(bad_write))?;
                         // QSAL is masked, carry on.
                         Ok(TransferOutcome::Success(false)) // act as if metabit unset

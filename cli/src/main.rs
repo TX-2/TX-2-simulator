@@ -13,7 +13,7 @@ use base::prelude::*;
 use cpu::io::{Petr, TapeIterator};
 use cpu::{
     Alarm, BasicClock, Clock, ControlUnit, MemoryConfiguration, MemoryUnit, MinimalSleeper,
-    ResetMode,
+    ResetMode, RunMode,
 };
 
 // Thanks to Google for allowing this code to be open-sourced.  I
@@ -28,8 +28,19 @@ fn run(
     multiplier: Option<f64>,
 ) -> i32 {
     control.codabo(&ResetMode::ResetTSP, mem);
-    if let Err(e) = run_until_alarm(control, mem, clk, multiplier) {
-        event!(Level::ERROR, "Execution stopped: {}", e);
+    let (alarm, maybe_address) = run_until_alarm(control, mem, clk, multiplier);
+    match maybe_address {
+        Some(addr) => {
+            event!(
+                Level::ERROR,
+                "Execution stopped at address  {:o}: {}",
+                addr,
+                alarm
+            );
+        }
+        None => {
+            event!(Level::ERROR, "Execution stopped: {}", alarm);
+        }
     }
     1
 }
@@ -39,10 +50,11 @@ fn run_until_alarm(
     mem: &mut MemoryUnit,
     clk: &mut BasicClock,
     multiplier: Option<f64>,
-) -> Result<(), Alarm> {
+) -> (Alarm, Option<Address>) {
     let mut elapsed_ns: u64 = 0;
     let mut sleeper = MinimalSleeper::new(Duration::from_millis(2));
     let mut next_hw_poll = clk.now();
+    let mut run_mode = RunMode::Running;
 
     loop {
         let now = clk.now();
@@ -53,20 +65,22 @@ fn run_until_alarm(
                 "polling hardware for updates (now={:?})",
                 &now
             );
-            match control.poll_hardware(&now) {
-                Ok(Some(next)) => {
+            match control.poll_hardware(run_mode, &now) {
+                Ok((mode, Some(next))) => {
+                    run_mode = mode;
                     next_hw_poll = next;
                 }
-                Ok(None) => {
+                Ok((mode, None)) => {
+                    run_mode = mode;
                     next_hw_poll = now + Duration::from_micros(5);
                 }
-                Err(e) => {
+                Err(alarm) => {
                     event!(
                         Level::INFO,
                         "Alarm raised during hardware polling after {}ns",
                         elapsed_ns
                     );
-                    return Err(e);
+                    return (alarm, None);
                 }
             }
         } else {
@@ -76,18 +90,7 @@ fn run_until_alarm(
                 next_hw_poll - now,
             );
         }
-        let in_limbo = match control.fetch_instruction(mem) {
-            Err(e) => {
-                event!(
-                    Level::INFO,
-                    "Alarm raised during instruction fetch after {}ns",
-                    elapsed_ns
-                );
-                return Err(e);
-            }
-            Ok(some_sequence_is_runnable) => !some_sequence_is_runnable,
-        };
-        if in_limbo {
+        if run_mode == RunMode::InLimbo {
             // No sequence is active, so there is no CPU instruction
             // to execute.  Therefore we can only leave the limbo
             // state in response to a hardware event.  We already know
@@ -102,15 +105,17 @@ fn run_until_alarm(
             continue;
         }
         elapsed_ns += match control.execute_instruction(&clk.now(), mem) {
-            Err(e) => {
+            Err((alarm, address)) => {
                 event!(
                     Level::INFO,
-                    "Alarm raised during instruction execution after {}ns",
+                    "Alarm raised during instruction execution at {:o} after {}ns",
+                    address,
                     elapsed_ns
                 );
-                return Err(e);
+                return (alarm, Some(address));
             }
-            Ok(ns) => {
+            Ok((ns, new_run_mode)) => {
+                run_mode = new_run_mode;
                 cpu::time_passes(clk, &mut sleeper, &Duration::from_nanos(ns), multiplier);
                 ns
             }

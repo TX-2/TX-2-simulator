@@ -4,13 +4,15 @@ use std::time::Duration;
 use tracing::{event, Level};
 
 use crate::alarm::{Alarm, AlarmUnit};
-use crate::control::{ControlRegisters, ControlUnit, DeviceManager, TrapCircuit};
+use crate::control::{
+    ControlRegisters, ControlUnit, DeviceManager, OpcodeResult, ProgramCounterChange, TrapCircuit,
+};
 use crate::io::{FlagChange, TransferOutcome, Unit};
 use crate::memory::{MemoryUnit, MetaBitChange};
 
 impl ControlUnit {
     /// Implements the IOS opcode
-    pub fn op_ios(&mut self, system_time: &Duration) -> Result<(), Alarm> {
+    pub fn op_ios(&mut self, system_time: &Duration) -> OpcodeResult {
         let j = self.regs.n.index_address();
         let cf = self.regs.n.configuration();
 
@@ -24,7 +26,11 @@ impl ControlUnit {
                 .devices
                 .report(system_time, j, flag_raised, &self.alarm_unit)?;
         }
-        let mut dismiss: bool = cf & 0o20 != 0;
+        let mut dismiss_reason: Option<&str> = if cf & 0o20 != 0 {
+            Some("dismiss bit set in config")
+        } else {
+            None
+        };
 
         let operand = self.regs.n.operand_address_and_defer_bit();
         let result = match u32::from(operand) {
@@ -54,7 +60,7 @@ impl ControlUnit {
             0o50_000 => {
                 self.regs.flags.raise(&j);
                 if Some(j) == self.regs.k {
-                    dismiss = false;
+                    dismiss_reason = None;
                 }
                 Ok(())
             }
@@ -79,10 +85,10 @@ impl ControlUnit {
                 Ok(())
             }
         };
-        if dismiss {
-            self.dismiss_unless_held();
+        if let Some(reason) = dismiss_reason {
+            self.dismiss_unless_held(reason);
         }
-        result
+        result.map(|()| None)
     }
 
     fn connect_unit(
@@ -114,8 +120,12 @@ impl ControlUnit {
         }
     }
 
-    pub fn op_tsd(&mut self, system_time: &Duration, mem: &mut MemoryUnit) -> Result<bool, Alarm> {
-        let mut increment_pc: bool = true;
+    pub fn op_tsd(
+        &mut self,
+        execution_address: Address,
+        system_time: &Duration,
+        mem: &mut MemoryUnit,
+    ) -> OpcodeResult {
         if let Some(unit) = self.regs.k {
             let cf = self.regs.n.configuration();
             let target: Address = self.operand_address_with_optional_defer_and_index(mem)?;
@@ -138,31 +148,24 @@ impl ControlUnit {
                     if meta_bit_set && self.trap.trap_on_operand() {
                         self.raise_trap();
                     }
-                    Ok(true)
+                    Ok(None)
                 }
                 Ok(TransferOutcome::DismissAndWait) => {
-                    if let Some(current_seq) = self.regs.k {
-                        if current_seq == Unsigned6Bit::ZERO {
-                            event!(Level::WARN, "Ignoring TSD dismiss and wait for sequence 0",);
-                        } else {
-                            // The program counter has not yet been
-                            // incremented, which is good, because
-                            // this sequence should resume at the
-                            // current address.  The P register will
-                            // be saved in the relevant index register
-                            // by fetch_instruction().
-                            //
-                            // In the dismiss and wait case, the
-                            // sequence is dismissed even if the hold
-                            // bit is set (Users Handbook, section
-                            // 4-3.2).  The hold bit only governs what
-                            // happens following the completion of an
-                            // instruction.
-                            self.dismiss();
-                            increment_pc = false;
-                        }
+                    if unit == Unsigned6Bit::ZERO {
+                        event!(Level::WARN, "Ignoring TSD dismiss and wait for sequence 0",);
+                        Ok(None)
+                    } else {
+                        // In the dismiss and wait case, the
+                        // sequence is dismissed even if the hold
+                        // bit is set (Users Handbook, section
+                        // 4-3.2).  The hold bit only governs what
+                        // happens following the completion of an
+                        // instruction.
+                        self.dismiss("TSD while data was not ready caused dismiss-and-wait");
+                        Ok(Some(ProgramCounterChange::DismissAndWait(
+                            execution_address,
+                        )))
                     }
-                    Ok(increment_pc)
                 }
                 Err(e) => Err(e),
             }

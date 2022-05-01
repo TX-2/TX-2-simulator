@@ -11,14 +11,13 @@
 //! - STE: [`ControlUnit::op_ste`]
 //! - EXA: (unimplemented)
 
-use crate::alarm::Alarm;
-use crate::control::{ControlUnit, MemoryUnit, UpdateE};
+use crate::control::{ControlUnit, MemoryUnit, OpcodeResult, UpdateE};
 use base::prelude::*;
 
 impl ControlUnit {
     /// Implements the STE instruction (Opcode 030, User Handbook,
     /// page 3-8).
-    pub fn op_ste(&mut self, mem: &mut MemoryUnit) -> Result<(), Alarm> {
+    pub fn op_ste(&mut self, mem: &mut MemoryUnit) -> OpcodeResult {
         // STE is a special case in that it does not itself modify the
         // E register.  See paragraph 1 on page 3-8 of the Users
         // Handbook.
@@ -31,9 +30,10 @@ impl ControlUnit {
         register_value: Unsigned36Bit,
         mem: &mut MemoryUnit,
         update_e: &UpdateE,
-    ) -> Result<(), Alarm> {
+    ) -> OpcodeResult {
         let target: Address = self.operand_address_with_optional_defer_and_index(mem)?;
         self.memory_read_and_update_with_exchange(mem, &target, update_e, |_| register_value)
+            .map(|()| None)
     }
 }
 
