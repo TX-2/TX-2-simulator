@@ -99,6 +99,7 @@ pub struct Petr {
     activity: Activity,
     direction: Direction,
     data_file: Option<File>,
+    tape_pos: usize,
     tapes: Box<dyn TapeIterator>,
     data: Option<u8>,
     already_warned_eof: bool,
@@ -115,6 +116,7 @@ impl Debug for Petr {
             .field("activity", &self.activity)
             .field("direction", &self.direction)
             .field("data_file", &self.data_file)
+            .field("tape_pos", &self.tape_pos)
             .field("data", &self.data)
             .field("already_warned_eof", &self.already_warned_eof)
             .field("read_failed", &self.read_failed)
@@ -132,6 +134,7 @@ impl Petr {
             activity: Activity::Stopped,
             direction: Direction::Bin,
             data_file: None,
+            tape_pos: 0,
             tapes,
             data: None,
             already_warned_eof: false,
@@ -145,12 +148,14 @@ impl Petr {
 
     fn close_data_file(&mut self) {
         self.data_file = None;
+        self.tape_pos = 0;
     }
 
     fn open_data_file(&mut self) {
         if self.data_file.is_some() {
             return; // already open
         }
+        self.tape_pos = 0;
         self.data_file = self.tapes.next_tape();
     }
 
@@ -197,22 +202,42 @@ impl Petr {
                     // real PETR device can detect when the whole tape
                     // has already passed through, perhaps we should.
                     if self.already_warned_eof {
-                        event!(Level::DEBUG, "reading again at end-of-file");
+                        event!(
+                            Level::DEBUG,
+                            "reading again at end-of-file at position {}",
+                            self.tape_pos
+                        );
                     } else {
                         self.already_warned_eof = true;
-                        event!(Level::WARN, "end-of-file on tape input file");
+                        event!(
+                            Level::WARN,
+                            "end-of-file on tape input file at position {}",
+                            self.tape_pos
+                        );
                     }
                     self.data = None;
                 }
                 Ok(read_len) => {
                     match read_len {
                         0 => unreachable!(),
-                        1 => event!(Level::DEBUG, "read 1 byte: {:04o}", buf[0]),
-                        n => event!(Level::DEBUG, "read {} bytes: {:?}", n, &buf),
+                        1 => event!(
+                            Level::DEBUG,
+                            "read 1 byte: {:04o} at file position {}",
+                            buf[0],
+                            self.tape_pos
+                        ),
+                        n => event!(
+                            Level::DEBUG,
+                            "read {} bytes at file position {}: {:?}",
+                            n,
+                            self.tape_pos,
+                            &buf
+                        ),
                     }
                     self.already_warned_eof = false;
                     self.overrun = self.data.is_some();
                     self.data = Some(buf[0]);
+                    self.tape_pos += read_len;
                 }
             },
             None => {
