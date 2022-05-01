@@ -15,7 +15,7 @@
 //! at the same speed.
 //!
 //! We do not currently simulate acceleration/deceleration of the
-//! tape.  On start, reading beings immediately at full speed, and on
+//! tape.  On start, reading begins immediately at full speed, and on
 //! stop, the tape movement stops immediately.  This will likely
 //! change in the future.
 use base::prelude::*;
@@ -196,6 +196,7 @@ impl Petr {
                     self.read_failed = true;
                     self.overrun = false;
                     self.data = None;
+                    self.time_of_next_read = None;
                 }
                 Ok(0) => {
                     // At EOF.  We don't stop the motor, but if the
@@ -215,7 +216,7 @@ impl Petr {
                             self.tape_pos
                         );
                     }
-                    self.data = None;
+                    self.time_of_next_read = None;
                 }
                 Ok(read_len) => {
                     match read_len {
@@ -235,7 +236,12 @@ impl Petr {
                         ),
                     }
                     self.already_warned_eof = false;
-                    self.overrun = self.data.is_some();
+                    if !self.overrun {
+                        self.overrun = self.data.is_some();
+                        if self.overrun {
+                            event!(Level::WARN, "input overrun");
+                        }
+                    }
                     self.data = Some(buf[0]);
                     self.tape_pos += read_len;
                 }
@@ -293,6 +299,7 @@ impl Petr {
                 // The motor is not running.  So no events (of lines
                 // passing under the photodetector) will happen.
                 event!(Level::TRACE, "motor stopped, nothing more to simulate");
+                self.time_of_next_read = None;
             }
         }
     }
@@ -369,6 +376,9 @@ impl Unit for Petr {
                 Err(TransferFailed::BufferNotFree)
             }
             Some(byte) => {
+                // This calculation of time_of_next_read is not right,
+                // as the interval is between physical paper-tape
+                // lines, not between I/O instrucitons.
                 self.time_of_next_read = Some(next_line_time(self.direction, system_time));
                 event!(Level::DEBUG, "read value {:03o}", byte & 0o77);
                 Ok(MaskedWord {
