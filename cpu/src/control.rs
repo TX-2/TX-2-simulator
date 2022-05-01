@@ -553,7 +553,7 @@ impl ControlUnit {
         }
 
         event!(
-            Level::INFO,
+            Level::DEBUG,
             "Changing sequence to {:>02o}",
             u8::from(next_seq),
         );
@@ -609,6 +609,12 @@ impl ControlUnit {
                 // is altered.
                 if next_seq != 0 {
                     self.regs.p = self.regs.get_index_register_as_address(next_seq);
+                    event!(
+                        Level::INFO,
+                        "Changed sequence to {:>02o} with P={:>06o}",
+                        u8::from(next_seq),
+                        self.regs.p
+                    );
                 } else {
                     // Index register 0 is always 0, but by setting
                     // the Toggle Status Register, the user can run
@@ -619,6 +625,11 @@ impl ControlUnit {
                     // RESET/CODABO buttons.  Here, we copy that saved
                     // value into P.
                     self.regs.p = self.regs.spr;
+                    event!(
+                        Level::INFO,
+                        "Starting sequence 0 with P={:>06o}",
+                        self.regs.p
+                    );
                 }
             }
             ProgramCounterChange::CounterUpdate => {
