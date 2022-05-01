@@ -27,6 +27,7 @@ impl ControlUnit {
         let savep_e = nonzero(cf & 0b00100_u8);
         let savep_ix = nonzero(cf & 0b00010_u8);
         let indexed = nonzero(cf & 0b00001_u8);
+        let j = self.regs.n.index_address();
         let left: Unsigned18Bit = if save_q {
             Unsigned18Bit::from(self.regs.q)
         } else {
@@ -39,13 +40,10 @@ impl ControlUnit {
         };
         self.regs.e = subword::join_halves(left, right);
 
-        if savep_ix {
-            let j = self.regs.n.index_address();
-            if j != 0 {
-                // Xj is fixed at 0.
-                let p = self.regs.p;
-                self.regs.set_index_register_from_address(j, &p);
-            }
+        // Xj is fixed at 0.
+        if savep_ix && j != 0 {
+            let p = self.regs.p;
+            self.regs.set_index_register_from_address(j, &p);
         }
 
         let physical: Address = match self.regs.n.operand_address() {
@@ -69,9 +67,8 @@ impl ControlUnit {
             }
             OperandAddress::Direct(phys) => phys,
         };
-
         let new_pc: Address = if indexed {
-            physical.index_by(self.regs.n.index_address().reinterpret_as_signed())
+            physical.index_by(self.regs.get_index_register(j))
         } else {
             physical
         };
