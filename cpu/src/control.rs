@@ -209,6 +209,10 @@ struct ControlRegisters {
     f_memory: [SystemConfiguration; 32], // the F memory
     flags: SequenceFlags,
     current_sequence_is_runnable: bool,
+    // TODO: we may be able to eliminate prev_hold by moving the logic
+    // that's currently at the beginning of fetch_instruction() so
+    // that it occurs at the end of execute_instruction() instead.
+    // See the comment at the top of fetch_instruction().
     prev_hold: bool,
 }
 
@@ -601,6 +605,18 @@ impl ControlUnit {
     }
 
     pub fn fetch_instruction(&mut self, mem: &mut MemoryUnit) -> Result<bool, Alarm> {
+        // TODO: This implementation begins the instruction fetch
+        // operation by considering a possible change of sequence.
+        // The TX-2 itself considers a sequence change as the PK cycle
+        // is completed, in the resting state PK⁰⁰.  So it might make
+        // more sense to move the sequence-change logig to the end of
+        // the instructino-execution implementation. That will likely
+        // make it simpler to implement the "hold" bit and
+        // dismiss-and-wait (i.e. cases where we don't increment the
+        // sequence's program counter).  When considering this option,
+        // it's a good idea to re-read section 9-4 of Volume 2 of the
+        // Technical Manual.
+
         // If the previous instruction was held, we don't even scan
         // the flags.  This follows the description of how control
         // handles flags in section 4-3.5 of the User Handbook (page
