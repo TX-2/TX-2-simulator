@@ -322,14 +322,14 @@ impl ControlRegisters {
 #[derive(Clone, Copy, Debug)]
 pub enum ResetMode {
     ResetTSP = 0,
-    Reset0 = 0o03777710,
-    Reset1 = 0o03777711,
-    Reset2 = 0o03777712,
-    Reset3 = 0o03777713,
-    Reset4 = 0o03777714,
-    Reset5 = 0o03777715,
-    Reset6 = 0o03777716,
-    Reset7 = 0o03777717,
+    Reset0 = 0o0377710,
+    Reset1 = 0o0377711,
+    Reset2 = 0o0377712,
+    Reset3 = 0o0377713,
+    Reset4 = 0o0377714,
+    Reset5 = 0o0377715,
+    Reset6 = 0o0377716,
+    Reset7 = 0o0377717,
 }
 
 impl ResetMode {
@@ -452,6 +452,12 @@ impl ControlUnit {
     /// from the address specified by the program.  The program
     /// executes as sequence 52 (PETR) with the PETR unit initially
     /// turned off.
+    ///
+    /// The Users Handbook (page 5-18) states that flags are cleared
+    /// but it doesn't state anywhere that any registers are reset.
+    /// So we don't do that.  But there's no unit test for that, since
+    /// I haven't found (or cannot recall) a piece of documentation
+    /// which states that this is so.
     pub fn codabo(&mut self, reset_mode: &ResetMode, mem: &mut MemoryUnit) {
         // TODO: clear alarms.
         // We probably don't need an equivalent of resetting the
@@ -469,10 +475,8 @@ impl ControlUnit {
         let _enter = span.enter();
         event!(Level::INFO, "Starting CODABO {:?}", &reset_mode);
         self.disconnect_io_devices();
-        self.reset(reset_mode, mem);
         self.regs.flags.lower_all();
-        self.regs.current_sequence_is_runnable = false;
-        self.startover();
+        self.startover(reset_mode, mem);
         event!(
             Level::DEBUG,
             "After CODABO, control unit contains {:#?}",
@@ -496,8 +500,10 @@ impl ControlUnit {
     }
 
     /// Handle press of STARTOVER (or part of the operation of
-    /// CODABO).
-    pub fn startover(&mut self) {
+    /// CODABO).  STARTOVER does RESET and then raises flag zero.
+    pub fn startover(&mut self, reset_mode: &ResetMode, mem: &mut MemoryUnit) {
+        self.reset(reset_mode, mem);
+        self.regs.current_sequence_is_runnable = false;
         self.regs.flags.raise(&SequenceNumber::ZERO);
         self.change_sequence(None, SequenceNumber::ZERO);
     }
