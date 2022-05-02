@@ -124,7 +124,7 @@ impl SequenceFlags {
         // with `u16`".
         #![allow(clippy::cmp_owned)]
         assert!(u16::from(*flag) < 0o100_u16);
-        self.flag_values | SequenceFlags::flagbit(flag) != 0
+        self.flag_values & SequenceFlags::flagbit(flag) != 0
     }
 
     /// Return the index of the highest-priority (lowest-numbered)
@@ -174,6 +174,16 @@ fn test_sequence_flags() {
     assert_eq!(flags.highest_priority_raised_flag(), Some(four));
     flags.lower(&four);
     assert_eq!(flags.highest_priority_raised_flag(), Some(six));
+}
+
+#[test]
+fn test_sequence_flags_current_flag_state() {
+    let mut flags = SequenceFlags::new();
+    let s52: SequenceNumber = u6!(0o52);
+    flags.lower_all();
+    assert!(!flags.current_flag_state(&s52), "flag 52 should be lowered");
+    flags.raise(&s52);
+    assert!(flags.current_flag_state(&s52), "flag 52 should be raised");
 }
 
 #[derive(Debug)]
