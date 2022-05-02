@@ -75,10 +75,8 @@ impl ControlUnit {
         }
 
         if nonzero(cf & 0b10000_u8) {
-            println!("dismissing current sequence");
             self.dismiss_unless_held("JMP has dismiss bit set in config syllable");
         } else {
-            println!("not current sequence");
         }
         Ok(Some(ProgramCounterChange::Jump(new_pc)))
     }
