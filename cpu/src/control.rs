@@ -736,12 +736,6 @@ impl ControlUnit {
         // Calculate the address from which we will fetch the
         // instruction, and the increment the program counter.
         let p_physical_address = Address::from(self.regs.p.split().0);
-        event!(
-            Level::TRACE,
-            "Fetching instruction from physical address {}",
-            p_physical_address
-        );
-
         // Actually fetch the instruction.
         let meta_op = if self.trap.set_metabits_of_instructions() {
             MetaBitChange::Set
@@ -925,7 +919,6 @@ impl ControlUnit {
 			     seq=%seq_desc,
 			     p=?self.regs.p);
             let _enter = span.enter();
-            event!(Level::TRACE, "current sequence is {}", seq_desc);
             self.fetch_instruction(mem)
                 .map_err(|alarm| (alarm, self.regs.p))?;
         }
