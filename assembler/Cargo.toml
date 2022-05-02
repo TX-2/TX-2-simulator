@@ -35,3 +35,7 @@ path = "src/asmlib/lib.rs"
 [[bin]]
 name = "tx2m4as"
 path = "src/tx2m4as/main.rs"
+
+[[bin]]
+name = "tx2dis"
+path = "src/tx2dis/main.rs"
