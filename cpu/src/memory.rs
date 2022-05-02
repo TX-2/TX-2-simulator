@@ -179,6 +179,16 @@ impl From<&MemoryWord> for (Unsigned36Bit, ExtraBits) {
     }
 }
 
+impl From<MemoryWord> for (Unsigned36Bit, ExtraBits) {
+    fn from(w: MemoryWord) -> (Unsigned36Bit, ExtraBits) {
+        let valuebits: u64 = w.0 & WORD_BITS;
+        (
+            Unsigned36Bit::try_from(valuebits).unwrap(),
+            compute_extra_bits(w.0),
+        )
+    }
+}
+
 impl From<&mut MemoryWord> for (Unsigned36Bit, ExtraBits) {
     fn from(w: &mut MemoryWord) -> (Unsigned36Bit, ExtraBits) {
         let valuebits: u64 = w.0 & WORD_BITS;
@@ -326,6 +336,38 @@ impl MemoryUnit {
             },
             v_memory: VMemory::new(),
         }
+    }
+
+    pub fn get_a_register(&self) -> Unsigned36Bit {
+        self.v_memory.get_a_register()
+    }
+
+    pub fn get_b_register(&self) -> Unsigned36Bit {
+        self.v_memory.get_b_register()
+    }
+
+    pub fn get_c_register(&self) -> Unsigned36Bit {
+        self.v_memory.get_c_register()
+    }
+
+    pub fn get_d_register(&self) -> Unsigned36Bit {
+        self.v_memory.get_d_register()
+    }
+
+    pub fn set_a_register(&mut self, value: Unsigned36Bit) {
+        self.v_memory.set_a_register(value);
+    }
+
+    pub fn set_b_register(&mut self, value: Unsigned36Bit) {
+        self.v_memory.set_b_register(value);
+    }
+
+    pub fn set_c_register(&mut self, value: Unsigned36Bit) {
+        self.v_memory.set_c_register(value);
+    }
+
+    pub fn set_d_register(&mut self, value: Unsigned36Bit) {
+        self.v_memory.set_d_register(value);
     }
 
     fn access(
@@ -587,14 +629,12 @@ struct VMemory {
     // example, there is a push-button on the console that acts as the
     // value of the meta bit of the shaft encoder register.
     //
-    // Hence we store registers as MemoryWord values.  It's not clear
-    // to me yet how to implement the behaviour described on page
-    // 5-23.
-    a_register: MemoryWord,
-    b_register: MemoryWord,
-    c_register: MemoryWord,
-    d_register: MemoryWord,
-    e_register: MemoryWord,
+    // See also https://github.com/TX-2/TX-2-simulator/issues/59.
+    a_register: MemoryWord, // TODO: should share metabit, see above
+    b_register: MemoryWord, // TODO: should share metabit, see above
+    c_register: MemoryWord, // TODO: should share metabit, see above
+    d_register: MemoryWord, // TODO: should share metabit, see above
+    e_register: MemoryWord, // TODO: should share metabit, see above
 
     unimplemented_shaft_encoder: MemoryWord,
     unimplemented_external_input_register: MemoryWord,
@@ -720,6 +760,58 @@ impl VMemory {
         };
         result.reset_rtc(&now);
         result
+    }
+
+    fn get_a_register(&self) -> Unsigned36Bit {
+        let (w, _extra): (Unsigned36Bit, ExtraBits) = self.a_register.into();
+        w
+    }
+
+    fn get_b_register(&self) -> Unsigned36Bit {
+        let (w, _extra) = self.b_register.into();
+        w
+    }
+
+    fn get_c_register(&self) -> Unsigned36Bit {
+        let (w, _extra) = self.c_register.into();
+        w
+    }
+
+    fn get_d_register(&self) -> Unsigned36Bit {
+        let (w, _extra) = self.d_register.into();
+        w
+    }
+
+    fn set_a_register(&mut self, value: Unsigned36Bit) {
+        // This register actually shares the meta bit with the
+        // other AE registers, so this is currently wrong.
+        // See
+        // https://github.com/TX-2/TX-2-simulator/issues/53.
+        self.a_register.set_value(&value)
+    }
+
+    fn set_b_register(&mut self, value: Unsigned36Bit) {
+        // This register actually shares the meta bit with the
+        // other AE registers, so this is currently wrong.
+        // See
+        // https://github.com/TX-2/TX-2-simulator/issues/53.
+        self.b_register.set_value(&value)
+    }
+
+    fn set_c_register(&mut self, value: Unsigned36Bit) {
+        // This register actually shares the meta bit with the
+        // other AE registers, so this is currently wrong.
+        // See
+        // https://github.com/TX-2/TX-2-simulator/issues/53.
+        self.c_register.set_value(&value)
+    }
+
+    fn set_d_register(&mut self, value: Unsigned36Bit) {
+        // This register actually shares the meta bit with the
+        // other AE registers, so this is currently wrong.
+        // See
+        // https://github.com/TX-2/TX-2-simulator/issues/53.
+        self.d_register.set_value(&value)
     }
 
     fn access(
