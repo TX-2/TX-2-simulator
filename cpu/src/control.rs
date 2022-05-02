@@ -188,7 +188,12 @@ fn test_sequence_flags_current_flag_state() {
 
 #[derive(Debug)]
 struct ControlRegisters {
+    // TODO: the E register actually shares the meta bit with the
+    // other AE registers, but our implementaiton of the E register
+    // lacks this feature.  See
+    // https://github.com/TX-2/TX-2-simulator/issues/53.
     pub e: Unsigned36Bit,
+
     pub n: Instruction,
     pub n_sym: Option<SymbolicInstruction>,
     pub p: Address,
@@ -889,6 +894,11 @@ impl ControlUnit {
         ) -> OpcodeResult {
             match opcode {
                 Opcode::Aux => control.op_aux(mem),
+                Opcode::Lda => control.op_lda(mem),
+                Opcode::Ldb => control.op_ldb(mem),
+                Opcode::Ldc => control.op_ldc(mem),
+                Opcode::Ldd => control.op_ldd(mem),
+                Opcode::Lde => control.op_lde(mem),
                 Opcode::Ste => control.op_ste(mem),
                 Opcode::Rsx => control.op_rsx(mem),
                 Opcode::Skx => control.op_skx(),
