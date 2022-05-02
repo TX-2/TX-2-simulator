@@ -248,13 +248,13 @@ fn permutation_source(
     match permutation {
         Permutation::P0 => target_quarter % 4,
         Permutation::P1 => match *direction {
-            ExchangeDirection::ME => (target_quarter + 3) % 4,
-            ExchangeDirection::EM => (target_quarter + 1) % 4,
+            ExchangeDirection::ME => (target_quarter + 1) % 4,
+            ExchangeDirection::EM => (target_quarter + 3) % 4,
         },
         Permutation::P2 => (target_quarter + 2) % 4,
         Permutation::P3 => match *direction {
-            ExchangeDirection::ME => (target_quarter + 1) % 4,
-            ExchangeDirection::EM => (target_quarter + 3) % 4,
+            ExchangeDirection::ME => (target_quarter + 3) % 4,
+            ExchangeDirection::EM => (target_quarter + 1) % 4,
         },
         Permutation::P4 => target_quarter ^ 0b01,
         Permutation::P5 => target_quarter ^ 0b11,
