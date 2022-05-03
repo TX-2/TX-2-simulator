@@ -12,7 +12,7 @@ use crate::parser::{
 use crate::state::{Error, NumeralMode};
 use crate::types::*;
 use base::prelude::{
-    join_halves, reader_leader, split_halves, u18, u5, unsplay, Address, Instruction, Opcode,
+    join_halves, reader_leader, split_halves, u18, u5, u6, unsplay, Address, Instruction, Opcode,
     OperandAddress, SymbolicInstruction, Unsigned18Bit, Unsigned36Bit, Unsigned6Bit,
 };
 #[cfg(test)]
@@ -136,7 +136,15 @@ fn create_begin_block(
     program_start: Option<Address>,
     empty_program: bool,
 ) -> Result<Vec<Unsigned36Bit>, AssemblerFailure> {
-    let instruction: SymbolicInstruction = if let Some(start) = program_start {
+    let disconnect_tape = SymbolicInstruction {
+        // 027: ¹IOS₅₂ 20000     ** Disconnect PETR, load report word into E.
+        held: false,
+        configuration: u5!(1), // signals that PETR report word should be loaded into E
+        opcode: Opcode::Ios,
+        index: u6!(0o52),
+        operand_address: OperandAddress::Direct(Address::new(u18!(0o020_000))),
+    };
+    let jump: SymbolicInstruction = if let Some(start) = program_start {
         // When there is a known start address `start` we emit a `JPQ
         // start` instruction into memory register 0o27.
         SymbolicInstruction {
@@ -158,7 +166,10 @@ fn create_begin_block(
         }
     };
     let origin = Origin(Address::from(Unsigned18Bit::from(0o27_u8)));
-    let code = vec![Instruction::from(&instruction).bits()];
+    let code = vec![
+        Instruction::from(&disconnect_tape).bits(),
+        Instruction::from(&jump).bits(),
+    ];
     create_tape_block(origin, &code, !empty_program)
 }
 
@@ -395,28 +406,22 @@ pub fn assemble_file(
     // with the beginnng of the tape file) so we don't need to
     // write it.
     write_data(&mut writer, output_file_name, &reader_leader())?;
+    for (origin, code) in &user_program {
+        let block = create_tape_block(*origin, code, false)?;
+        write_data(&mut writer, output_file_name, &block)?;
+    }
 
-    // First we write the special block for register 27.
-    let program_is_empty = user_program.is_empty();
+    // After the rest of the program is punched, we write the special
+    // block for register 27.  This has to be last, becaause the
+    // standard reader leader uses the "next" field of the header to
+    // determine which is the last block.  When the "next" field
+    // points at 0o27 instead of 0o3, that means this is the final
+    // block.  WSo we have to emit this one last.
     write_data(
         &mut writer,
         output_file_name,
-        &create_begin_block(directive.entry_point, program_is_empty)?,
+        &create_begin_block(directive.entry_point, user_program.is_empty())?,
     )?;
-
-    let mut iter = user_program.iter().peekable();
-    loop {
-        match iter.next() {
-            None => {
-                break;
-            }
-            Some((origin, code)) => {
-                let this_is_the_last_block = iter.peek().is_none();
-                let block = create_tape_block(*origin, code, this_is_the_last_block)?;
-                write_data(&mut writer, output_file_name, &block)?;
-            }
-        }
-    }
 
     writer
         .flush()
