@@ -74,33 +74,20 @@ impl ControlUnit {
         // If j == 0 nothing is going to happen (X₀ is always 0) but
         // we still need to make sure we raise an alarm if the memory
         // access is invalid.
-        let (word, _extra) =
-            self.fetch_operand_from_address_without_exchange(mem, &source, &UpdateE::Yes)?;
+        let (word, _extra) = self.fetch_operand_from_address_with_exchange(
+            mem,
+            &source,
+            &Unsigned36Bit::ZERO,
+            &UpdateE::Yes,
+        )?;
         if !j.is_zero() {
+            let m: Unsigned18Bit = subword::right_half(word);
             let xj: Signed18Bit = self.regs.get_index_register(j);
-            let m: Signed18Bit = subword::right_half(word).reinterpret_as_signed();
-            let mut newvalue = xj.wrapping_add(m);
-            // If the system configuration states that only some
-            // quarters are active, the other quarters of the index
-            // register are set to zero (Users Handbook, page 3-22).
-            // The call to [`ControlUnit::fetch_operand_from_address`]
-            // will already have applied the correct subword form to
-            // `word`.
-            let quarter_activity = self.get_config().active_quarters();
-            if !quarter_activity.is_active(&0) {
-                // Zero out the right quarter of newvalue.
-                newvalue = newvalue
-                    .reinterpret_as_unsigned()
-                    .and(0o777000)
-                    .reinterpret_as_signed();
-            }
-            if !quarter_activity.is_active(&1) {
-                // Zero out the left quarter of newvalue.
-                newvalue = newvalue
-                    .reinterpret_as_unsigned()
-                    .and(0o0777)
-                    .reinterpret_as_signed();
-            }
+            let newvalue = xj.wrapping_add(m.reinterpret_as_signed());
+            event!(
+                Level::TRACE,
+                "added current operand {m:o} to current value {xj:o} yielding {newvalue:o}",
+            );
             self.regs.set_index_register(j, &newvalue);
         }
         Ok(None)
@@ -310,8 +297,7 @@ mod tests {
     fn simulate_aux(
         j: Unsigned6Bit,
         initial: Signed18Bit,
-        addends: &[Signed18Bit],
-        addend_lhs: Unsigned18Bit,
+        addends: &[Unsigned36Bit],
         defer: bool,
         f_memory_setup: Option<&[(usize, SystemConfiguration)]>,
         config_num: usize,
@@ -328,8 +314,7 @@ mod tests {
                     u18!(ADDEND_BASE)
                         .wrapping_add(Unsigned18Bit::try_from(offset).expect(COMPLAIN)),
                 );
-                let memval = join_halves(addend_lhs, addend.reinterpret_as_unsigned());
-                (addend_address, memval)
+                (addend_address, *addend)
             })
             .collect();
         let (mut control, mut mem) = setup(j, initial, &mem_setup, f_memory_setup);
@@ -378,35 +363,35 @@ mod tests {
     /// Check that AUX thinks that 0 + 1 = 1.
     #[test]
     fn op_aux_zero_plus_one_equals_one() {
-        let ignored_lhs = u18!(300);
         let (sum, e) = simulate_aux(
             Unsigned6Bit::ONE, // Use register X₁
             Signed18Bit::ZERO,
-            &[Signed18Bit::ONE],
-            ignored_lhs,
+            &[Unsigned36Bit::ONE],
             false,
             Some(&vec![(1usize, SystemConfiguration::from(0_u8))]),
             1,
         );
         assert_eq!(sum, Signed18Bit::ONE);
-        assert_eq!(
-            e,
-            join_halves(ignored_lhs, Signed18Bit::ONE.reinterpret_as_unsigned())
-        );
+        assert_eq!(e, Unsigned36Bit::ONE);
     }
 
     /// Check that AUX can correctly add negative values.
     #[test]
     fn op_aux_negative() {
         const COMPLAIN: &str = "failed to set up AUX test data";
-        let ignored_lhs = u18!(503);
-        let minus_three = Signed18Bit::try_from(-3).expect(COMPLAIN);
-        let items_to_add = [Signed18Bit::try_from(-1).expect(COMPLAIN), minus_three];
+        let minus_three = Signed36Bit::try_from(-3)
+            .expect(COMPLAIN)
+            .reinterpret_as_unsigned();
+        let items_to_add = [
+            Signed36Bit::try_from(-1)
+                .expect(COMPLAIN)
+                .reinterpret_as_unsigned(),
+            minus_three,
+        ];
         let (sum, e) = simulate_aux(
             Unsigned6Bit::ONE,                                // Use register X₁
             Signed18Bit::try_from(0o250077).expect(COMPLAIN), // initial value
             &items_to_add,
-            ignored_lhs,
             false,
             // System configuration 0o340 uses only the right-hand
             // subword, which is how AUX behaves anyway - so this
@@ -415,35 +400,158 @@ mod tests {
             1usize,
         );
         assert_eq!(sum, Signed18Bit::try_from(0o250073).expect(COMPLAIN));
-        assert_eq!(
-            e,
-            join_halves(ignored_lhs, minus_three.reinterpret_as_unsigned()),
-        );
+        assert_eq!(e, minus_three)
     }
+
+    /// This test is derived from example 1 on page 3-20 of the Users
+    /// Handbook.
+    #[test]
+    fn op_aux_example_1() {
+        let (sum, e) = simulate_aux(
+            Unsigned6Bit::ONE, // Use register X₁
+            u18!(0o000_111).reinterpret_as_signed(),
+            &[u36!(0o444_000_222_010)],
+            false,
+            Some(&vec![(1usize, SystemConfiguration::from(0_u8))]),
+            1,
+        );
+        assert_eq!(sum, u18!(0o222_121).reinterpret_as_signed());
+        assert_eq!(e, u36!(0o444_000_222_010));
+    }
+
+    /// This test is derived from example 2 on page 3-20 of the Users
+    /// Handbook.
+    #[test]
+    fn op_aux_example_2() {
+        let (sum, e) = simulate_aux(
+            Unsigned6Bit::ONE,               // Use register X₁
+            u18!(0).reinterpret_as_signed(), // initial
+            &[u36!(0o444_333_222_111)],
+            false,
+            Some(&[(2usize, SystemConfiguration::from(0o342_u8))]),
+            2,
+        );
+        assert_eq!(sum, u18!(0o444_333).reinterpret_as_signed());
+        assert_eq!(e, u36!(0o444_333_222_111));
+
+        let (sum, e) = simulate_aux(
+            Unsigned6Bit::ONE, // Use register X₁
+            u18!(0o010_111).reinterpret_as_signed(),
+            &[u36!(0o444_003_222_010)],
+            false,
+            Some(&[(2usize, SystemConfiguration::from(0o342_u8))]),
+            2,
+        );
+        assert_eq!(sum, u18!(0o454_114).reinterpret_as_signed());
+        assert_eq!(e, u36!(0o444_003_222_010));
+    }
+
+    /// This test is derived from example 3 on page 3-20 of the Users
+    /// Handbook.
+    #[test]
+    fn op_aux_example_3() {
+        let xj = Signed18Bit::from(3_i8);
+        // Q1(w) is 777, sign extended this is 777_776, which is -1.
+        // Adding that to X₁ which is 3, gives 2.
+        let w = u36!(0o444_333_000_776);
+        let (sum, e) = simulate_aux(
+            Unsigned6Bit::ONE, // Use register X₁
+            xj,
+            &[w],
+            false,
+            Some(&[(0o13usize, SystemConfiguration::from(0o160_u8))]),
+            0o13,
+        );
+        assert_eq!(sum, u18!(0o000_002).reinterpret_as_signed());
+        assert_eq!(e, u36!(0o444_333_000_776));
+    }
+
+    /// This test is derived from example 4 on page 3-20 of the Users
+    /// Handbook.
+    #[test]
+    fn op_aux_example_4() {
+        let xj = u18!(0o006_000).reinterpret_as_signed();
+        // Q2(w) is -2, sign extended though the value is 775_777,
+        // which is -2000 octal.
+        let w = u36!(0o044_333_775_000);
+        let (sum, e) = simulate_aux(
+            Unsigned6Bit::ONE, // Use register X₁
+            xj,
+            &[w],
+            false,
+            Some(&[(0o1usize, SystemConfiguration::from(0o350_u8))]),
+            1,
+        );
+        assert_eq!(
+            sum,
+            u18!(0o004_000).reinterpret_as_signed(),
+            "sum is incorrect"
+        );
+        assert_eq!(e, u36!(0o044_333_775_000), "Register E is incorrect");
+    }
+
+    /// This test is derived from example 5 on page 3-21 of the Users
+    /// Handbook.
+    #[test]
+    fn op_aux_example_5() {
+        let xj = u18!(0o654_321).reinterpret_as_signed(); // X₁
+        let w = u36!(0o040_030_020_010);
+        let (sum, e) = simulate_aux(
+            Unsigned6Bit::ONE, // Use register X₁
+            xj,                // value of X₁
+            &[w],
+            false,
+            // standard configuration 0o21 is 0o230.
+            Some(&[(0o21usize, SystemConfiguration::from(0o230_u8))]),
+            0o21,
+        );
+        // X₁ is unchanged
+        assert_eq!(sum, xj, "sum is incorrect");
+        assert_eq!(e, u36!(0o040_030_020_010), "Register E is incorrect");
+    }
+
+    /// This test is derived from example 6 on page 3-21 of the Users
+    /// Handbook.
+    #[test]
+    fn op_aux_example_6() {
+        let xj = u18!(0o222_111).reinterpret_as_signed(); // X₁
+        let w = u36!(0o242_232_000_212);
+        let (sum, e) = simulate_aux(
+            Unsigned6Bit::ONE, // Use register X₁
+            xj,                // value of X₁
+            &[w],
+            true, // deferred
+            // standard configuration 1 is 0o340.
+            Some(&[(0o1usize, SystemConfiguration::from(0o340_u8))]),
+            0o1,
+        );
+        assert_eq!(
+            sum,
+            u18!(0o222_323).reinterpret_as_signed(),
+            "sum is incorrect"
+        );
+        assert_eq!(e, w, "Register E is incorrect");
+    }
+
+    // TODO: add a test for AUX in which the operand is accessed via
+    // deferred addressing.
 
     /// Check that AUX applies a configuration in which only q2 is
     /// active.
     #[test]
     fn op_aux_q2_only() {
-        let ignored_lhs = u18!(507);
-        let items_to_add = [
-            // q2 is 0o020, q1 is 0o010
-            u18!(0o020_010).reinterpret_as_signed(),
-        ];
         let (sum, _e) = simulate_aux(
             Unsigned6Bit::ONE,                       // Use register X₁
             u18!(0o300_555).reinterpret_as_signed(), // initial value
-            &items_to_add,
-            ignored_lhs,
+            &[u36!(0o020_010)],
             false,
             Some(&vec![(1usize, SystemConfiguration::from(u9!(0o750)))]), // 0o750: q2 only
             1usize,
         );
         // The sum should be formed from q2 of the initial value
-        // (0o300) plus q2 of the addend (0o020), yielding 0o320.  The
-        // inactive quarter (q1) should be zeroed.  This is explained
-        // on page 3-22 of the Users Handbook.
-        assert_eq!(sum, u18!(0o320_000).reinterpret_as_signed());
+        // (0o300) plus q2 of the addend (0o020), yielding 0o320.
+        // q1 should be unchanged.
+        assert_eq!(sum, u18!(0o320_555).reinterpret_as_signed());
     }
 
     fn simulate_rsx(
