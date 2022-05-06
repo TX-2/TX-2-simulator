@@ -375,14 +375,17 @@ pub fn reader_leader() -> Vec<Unsigned36Bit> {
             index: u6!(0o54),
             operand_address: OperandAddress::Direct(Address::new(u18!(0))),
         },
-        SymbolicInstruction {
-            // 027: ¹IOS₅₂ 20000     ** Disconnect PETR, load report word into E.
-            held: false,
-            configuration: u5!(1), // signals that PETR report word should be loaded into E
-            opcode: Opcode::Ios,
-            index: u6!(0o52),
-            operand_address: OperandAddress::Direct(Address::new(u18!(0o020_000))),
-        },
+        // Binaries have two insructions following this.  The first is
+        // `¹IOS₅₂ 20000` which therefore gets loaded at location 27.
+        // This is not included in the reader leader (as the last
+        // location the plugboard code loads is 0o26) but we know it
+        // needs to be here as the Users Handbook points out that the
+        // tape gets disconnected, and the instruction appears on page
+        // 5-26.
+        //
+        // The second instruction is a jump responsible for launching
+        // the user program.  The latter is added by the assembler
+        // (i.e. M4's PUNCH meta-command).
     ])
         .iter()
         .map(|symbolic| -> Unsigned36Bit { Instruction::from(symbolic).bits() })
