@@ -11,6 +11,8 @@
 //! - STE: [`ControlUnit::op_ste`]
 //! - EXA: (unimplemented)
 
+use tracing::{event, Level};
+
 use crate::alarm::Alarm;
 use crate::control::{ControlUnit, MemoryUnit, OpcodeResult, UpdateE};
 use crate::exchanger::exchanged_value_for_load;
@@ -79,6 +81,10 @@ impl ControlUnit {
         update_e: &UpdateE,
     ) -> OpcodeResult {
         let target: Address = self.operand_address_with_optional_defer_and_index(mem)?;
+        event!(
+            Level::TRACE,
+            "storing register value {register_value:o} at {target:o}"
+        );
         self.memory_read_and_update_with_exchange(mem, &target, update_e, |_| register_value)
             .map(|()| None)
     }

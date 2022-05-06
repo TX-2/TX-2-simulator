@@ -86,7 +86,7 @@ impl ControlUnit {
             let newvalue = xj.wrapping_add(m.reinterpret_as_signed());
             event!(
                 Level::TRACE,
-                "added current operand {m:o} to current value {xj:o} yielding {newvalue:o}",
+                "added current operand {m:o} to current value {xj:o} yielding value {newvalue:o} for X{j:o}",
             );
             self.regs.set_index_register(j, &newvalue);
         }
