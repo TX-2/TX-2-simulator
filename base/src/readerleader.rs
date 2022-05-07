@@ -53,10 +53,11 @@ fn test_bit_index() {
 ///
 /// 07  ³⁶JMP₅₄ 17       ** Call procedure at 17 (clear metabit, read word)
 /// 10 h  LDE   0        ** Load new word into E.
+///
 ///                      ** R([11]) is the end address of the current
 ///                      ** block (this insruction is modified by the
 ///                      ** instruction at 06).
-/// 11    STE₅₃ 34       ** Store new word at [X₅₃+34]
+/// 11    STE₅₃ 34       ** Store new word at [X₅₃+end]
 /// 12 h ¹JNX₅₃ 7        ** Loop to 7 when X₅₃<0. Postincrement X₅₃.
 /// 13  ³⁶JMP₅₄ 20       ** Call procedure to read another word into [0]
 /// 14 h  JPX₅₆ 377760   ** if X₅₆ > 0, restart tape loading
@@ -76,6 +77,10 @@ fn test_bit_index() {
 /// 25   ¹STE 16         ** Set R[16] to E (which we loaded from [0]).
 /// 26  ¹⁵BPQ₅₄ 0        ** Branch to X₅₄ (no offset) - in other words, return.
 ///
+/// Location 26 is the last word of the standard reader leader as
+/// loaded by the boot code, but the assembler includes the
+/// instructions after it in a special block loaded at location 27:
+///
 /// 27 ¹IOS₅₂ 20000    ** Disconnect PETR, load report word into E.
 ///                    ** This instruction is replaced by `JPQ AA` when
 ///                    ** a start address is used with ☛☛PUNCH.
@@ -88,14 +93,14 @@ fn test_bit_index() {
 ///
 /// <pre>
 /// header word: len,,end
-/// len bytes of body
+/// The header is followed by (1-len) words of body
 /// trailer word: sum,,next
 /// </pre>
 ///
-/// All blocks start with `len,,end` where `len` is the negated value
-/// of the actual length of the block in words (not including first
-/// and last).  end is the address of the last word which should be
-/// written by this block.
+/// All blocks start with `len,,end` where `len` is one plus the
+/// negated value of the actual length of the block in words (not
+/// including first and last).  end is the address of the last word
+/// which should be written by this block.
 ///
 /// Neither the header word nor the trailer word is written into the
 /// memory area identified by `end`.
@@ -187,22 +192,34 @@ pub fn reader_leader() -> Vec<Unsigned36Bit> {
         },
         SymbolicInstruction {
             // 004: ³⁶JMP₅₄ 20
+            //
+            // Save return address (which is 0o5) in X₅₄ and in R(E)
+            // and last memory reference in L(E), dismiss (lower the
+            // flag of sequence 52).  I believe that even though we
+            // dismiss sequence 52, there is no other runnable
+            // sequence, so execution continues.
+            //
+            // The called procedure reads the block header word from
+            // tape into [0], updates the checksum in X₅₆, and copies
+            // the right half of the loaded word into R[16].  E is
+            // overwritten.  The block header word is (1-len),,end as
+            // described in the comment above.  The fact that we load
+            // end into R[16] isn't important; we load R[word] into
+            // R[16] for every word we read (the right half of the
+            // last word in the block is the "next" address).
             held: false,
             configuration: u5!(0o36), // binary 011110
-            /* Saves return address (which is 0o5) in X₅₄ and in
-                   R(E) and last memory reference in L(E), dismiss (lower
-                   the flag of sequence 52).  I believe that even though
-                   we dismiss sequence 52, there is no other runnable
-                   sequence, so execution continues.
-            */
             opcode: Opcode::Jmp,
             index: u6!(0o54),
             operand_address: OperandAddress::Direct(Address::new(u18!(0o20))),
         },
         SymbolicInstruction {
-            // 005: h²RSX₅₃ 0      ** Set X₅₃ = R([0])  ([0] is saved in E)
-            /* R[0] was read (by the call to 0o20 just above) from
-             * the first word of the tape block. */
+            // 005: h²RSX₅₃ 0      ** Set X₅₃ = L([0])  ([0] is saved in E)
+            //
+            // L[0] was read (by the call to 0o20 just above) from the
+            // first word of the tape block. X₅₃ holds (1-n) where n
+            // is the number of words still to be loaded for this
+            // block.
             held: true,
             configuration: u5!(2),
             opcode: Opcode::Rsx,
@@ -210,7 +227,8 @@ pub fn reader_leader() -> Vec<Unsigned36Bit> {
             operand_address: OperandAddress::Direct(Address::new(u18!(0))),
         },
         SymbolicInstruction {
-            // 006: ¹STE 11        ** Set [11] to the word we read from tape.
+            // 006: ¹STE 11        ** Set R([11]) to the right half of the word we read from tape.
+            //                     ** That's the block's end address.
             held: false,
             configuration: u5!(1),
             opcode: Opcode::Ste,
@@ -237,7 +255,7 @@ pub fn reader_leader() -> Vec<Unsigned36Bit> {
         /* On return from the procedure at 0o17, [0] contains the
          * word we read. */
         SymbolicInstruction {
-            // 010: hLDE 0        ** Load new word into E.
+            // 010: h LDE 0        ** Load new word into E.
             held: true,
             configuration: u5!(0),
             opcode: Opcode::Lde,
@@ -246,9 +264,12 @@ pub fn reader_leader() -> Vec<Unsigned36Bit> {
         },
         SymbolicInstruction {
             // 011: STE₅₃ 34       ** Store new word at [X₅₃+34]
-            /* X₅₃ was initialised to the RHS of the first word in
-             * the block and is incremented by the JNX instruction
-             * at the next location, 0o12.
+            /* X₅₃ was initialised to the LHS of the first word in the
+             * block and is incremented by the JNX instruction at the
+             * next location, 0o12.  The 034 here (being the right
+             * half of this instruction) is updated by the instruction
+             * at 006 to be the right half of the word we read from
+             * tape.
              */
             held: false,
             configuration: u5!(0),
@@ -434,9 +455,13 @@ fn test_reader_leader() {
         0o421_056_000_000, //             21                  24
         0o013_000_000_016, //             22                  25
         0o150_554_000_000, //             23                  26
-        0o010_452_020_000, //             24                  27
     ];
-    assert_eq!(expected.len(), 0o25);
+
+    // The final word 0o010_452_020_000 apears in the assembly listing
+    // on page 5-26 but it is not loaded by the boot code in the
+    // plugboard (the last memory address that code loads is 0o26).
+
+    assert_eq!(expected.len(), 0o24);
     assert_eq!(leader.len(), expected.len());
     for (i, expected_value) in expected.iter().copied().map(u64::from).enumerate() {
         assert_eq!(
