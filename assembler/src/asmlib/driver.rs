@@ -13,7 +13,7 @@ use crate::state::{Error, NumeralMode};
 use crate::types::*;
 use base::prelude::{
     join_halves, reader_leader, split_halves, u18, u5, u6, unsplay, Address, Instruction, Opcode,
-    OperandAddress, SymbolicInstruction, Unsigned18Bit, Unsigned36Bit, Unsigned6Bit,
+    OperandAddress, Signed18Bit, SymbolicInstruction, Unsigned18Bit, Unsigned36Bit, Unsigned6Bit,
 };
 #[cfg(test)]
 use base::u36;
@@ -79,6 +79,23 @@ struct OutputOptions {
     list: bool,
 }
 
+fn update_checksum_by_halfword(sum: Signed18Bit, halfword: Signed18Bit) -> Signed18Bit {
+    let result = sum.wrapping_add(halfword);
+    event!(
+        Level::DEBUG,
+        "updating checksum {sum:>06o} with {halfword:>06o} yielding {result:>06o}",
+    );
+    result
+}
+
+fn update_checksum(sum: Signed18Bit, word: Unsigned36Bit) -> Signed18Bit {
+    let (l, r) = split_halves(word);
+    update_checksum_by_halfword(
+        update_checksum_by_halfword(l.reinterpret_as_signed(), sum),
+        r.reinterpret_as_signed(),
+    )
+}
+
 /// Create a block of data ready to be punched to tape such that the
 /// standard reader leader can load it.
 ///
@@ -99,7 +116,6 @@ fn create_tape_block(
             "tape blocks are not allowed to be empty (the format does not support it)".to_string(),
         ));
     }
-    let mut block = Vec::with_capacity(code.len().saturating_add(2usize));
     let len: Unsigned18Bit = match Unsigned18Bit::try_from(code.len()) {
         Err(_) => {
             return Err(AssemblerFailure::BadTapeBlock(
@@ -108,7 +124,10 @@ fn create_tape_block(
         }
         Ok(len) => len,
     };
-    let end: Unsigned18Bit = match Unsigned18Bit::from(origin).checked_add(len) {
+    let end: Unsigned18Bit = match Unsigned18Bit::from(origin)
+        .checked_add(len)
+        .and_then(|n| n.checked_sub(Unsigned18Bit::ONE))
+    {
         None => {
             return Err(AssemblerFailure::BadTapeBlock(
                 "end of block does not fit into physical memory".to_string(),
@@ -116,16 +135,43 @@ fn create_tape_block(
         }
         Some(end) => end,
     };
-    let mut checksum = len.wrapping_add(end);
-    block.push(join_halves(len, end));
-    for (l, r) in block.iter().map(|w| split_halves(*w)) {
-        checksum = checksum.wrapping_add(l).wrapping_add(r);
+    event!(
+        Level::INFO,
+        "creating a tape block with origin={origin:>06o}, len={len:o}, end={end:>06o}"
+    );
+    let mut block = Vec::with_capacity(code.len().saturating_add(2usize));
+    let encoded_len: Unsigned18Bit = match Signed18Bit::try_from(len) {
+        Ok(n) => Signed18Bit::ONE.checked_sub(n),
+        Err(_) => None,
     }
+    .expect("overflow in length encoding")
+    .reinterpret_as_unsigned();
+    let mut checksum = Signed18Bit::ZERO;
+    event!(
+        Level::INFO,
+        "for this tape block encoded_len={encoded_len:>06o}"
+    );
+    block.push(join_halves(encoded_len, end));
     block.extend(code);
+
+    for (pos, w) in block.iter().enumerate() {
+        event!(Level::DEBUG, "block position {pos:>03}: w={w:>012o} ");
+        checksum = update_checksum(checksum, *w);
+    }
     let next: Unsigned18Bit = { if last { 0o27_u8 } else { 0o3_u8 }.into() };
-    checksum = checksum.wrapping_add(next);
-    checksum = Unsigned18Bit::ZERO.wrapping_sub(checksum);
-    block.push(join_halves(checksum, next));
+    checksum = update_checksum_by_halfword(checksum, next.reinterpret_as_signed());
+    let balance = Signed18Bit::ZERO.wrapping_sub(checksum);
+    event!(
+        Level::INFO,
+        "computed checksum-balancer for block is {balance:>06o}"
+    );
+    checksum = update_checksum_by_halfword(checksum, balance);
+    event!(
+        Level::INFO,
+        "computed checksum for block is {checksum:>06o}"
+    );
+    block.push(join_halves(balance.reinterpret_as_unsigned(), next));
+    assert_eq!(checksum, Signed18Bit::ZERO);
     Ok(block)
 }
 
@@ -185,7 +231,7 @@ fn write_data<W: Write>(
             for word in chunk {
                 let unsplayed: [Unsigned6Bit; 6] = unsplay(*word);
                 event!(
-                    Level::DEBUG,
+                    Level::TRACE,
                     "instruction word {:012o} unsplayed to {:?}",
                     &word,
                     &unsplayed
