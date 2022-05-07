@@ -11,10 +11,9 @@ use tracing_subscriber::filter::{EnvFilter, LevelFilter};
 use tracing_subscriber::prelude::*;
 
 use base::prelude::*;
-use cpu::io::{Petr, TapeIterator};
 use cpu::{
-    self, Alarm, BasicClock, Clock, ControlUnit, MemoryConfiguration, MemoryUnit, MinimalSleeper,
-    ResetMode, RunMode,
+    self, set_up_peripherals, Alarm, BasicClock, Clock, ControlUnit, MemoryConfiguration,
+    MemoryUnit, MinimalSleeper, ResetMode, RunMode, TapeIterator,
 };
 
 // Thanks to Google for allowing this code to be open-sourced.  I
@@ -222,8 +221,6 @@ fn run_simulator() -> Result<(), Box<dyn std::error::Error>> {
             "No paper tapes were specified on the command line, so no program will be loaded"
         );
     }
-    let petr = Box::new(Petr::new(Box::new(tapes)));
-
     let speed_multiplier: Option<f64> = match cli.speed_multiplier.as_ref() {
         None => {
             event!(
@@ -267,8 +264,8 @@ fn run_simulator() -> Result<(), Box<dyn std::error::Error>> {
     );
     let mut clk: BasicClock = BasicClock::new();
 
-    let petr_unit: Unsigned6Bit = Unsigned6Bit::try_from(0o52_u8).unwrap();
-    control.attach(&clk.now(), petr_unit, false, petr);
+    set_up_peripherals(&mut control, &clk, Box::new(tapes));
+
     event!(
         Level::DEBUG,
         "Initial control unit state iis {:?}",

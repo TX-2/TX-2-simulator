@@ -14,6 +14,7 @@ mod memory;
 pub use alarm::Alarm;
 pub use clock::{BasicClock, Clock, MinimalSleeper};
 pub use control::{ControlUnit, PanicOnUnmaskedAlarm, ResetMode, RunMode};
+pub use io::{set_up_peripherals, TapeIterator};
 pub use memory::{MemoryConfiguration, MemoryUnit};
 
 pub fn time_passes(

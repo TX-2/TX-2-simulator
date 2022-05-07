@@ -44,6 +44,7 @@ use tracing::{event, span, Level};
 
 use crate::alarm::{Alarm, AlarmUnit, BadMemOp};
 use crate::memory::{MemoryMapped, MemoryOpFailure, MemoryUnit, MetaBitChange};
+use crate::{Clock, ControlUnit};
 use base::prelude::*;
 
 mod dev_petr;
@@ -619,4 +620,13 @@ impl Default for DeviceManager {
     fn default() -> DeviceManager {
         Self::new()
     }
+}
+
+pub fn set_up_peripherals<C: Clock>(
+    control: &mut ControlUnit,
+    clock: &C,
+    tapes: Box<dyn TapeIterator>,
+) {
+    let now = clock.now();
+    control.attach(&now, u6!(0o52_u8), false, Box::new(Petr::new(tapes)));
 }
