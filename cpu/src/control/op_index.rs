@@ -238,7 +238,7 @@ impl ControlUnit {
 
 #[cfg(test)]
 mod tests {
-    use crate::control::UpdateE;
+    use crate::control::{PanicOnUnmaskedAlarm, UpdateE};
     use crate::exchanger::SystemConfiguration;
     use crate::memory::MetaBitChange;
     use crate::{MemoryConfiguration, MemoryUnit};
@@ -254,7 +254,7 @@ mod tests {
         f_memory_setup: Option<&[(usize, SystemConfiguration)]>,
     ) -> (ControlUnit, MemoryUnit) {
         const COMPLAIN: &str = "failed to set up initial state";
-        let mut control = ControlUnit::new();
+        let mut control = ControlUnit::new(PanicOnUnmaskedAlarm::Yes);
         let mut mem = MemoryUnit::new(&MemoryConfiguration {
             with_u_memory: false,
         });

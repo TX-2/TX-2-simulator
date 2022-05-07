@@ -409,13 +409,22 @@ enum SequenceSelection {
 
 pub type OpcodeResult = Result<Option<ProgramCounterChange>, Alarm>;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PanicOnUnmaskedAlarm {
+    No,
+    Yes,
+}
+
 impl ControlUnit {
-    pub fn new() -> ControlUnit {
+    pub fn new(panic_on_unmasked_alarm: PanicOnUnmaskedAlarm) -> ControlUnit {
         ControlUnit {
             regs: ControlRegisters::new(),
             trap: TrapCircuit::new(),
             devices: DeviceManager::new(),
-            alarm_unit: AlarmUnit::new_with_panic(),
+            alarm_unit: AlarmUnit::new_with_panic(match panic_on_unmasked_alarm {
+                PanicOnUnmaskedAlarm::No => false,
+                PanicOnUnmaskedAlarm::Yes => true,
+            }),
         }
     }
 
@@ -1360,6 +1369,6 @@ impl ControlUnit {
 
 impl Default for ControlUnit {
     fn default() -> Self {
-        Self::new()
+        Self::new(PanicOnUnmaskedAlarm::No)
     }
 }

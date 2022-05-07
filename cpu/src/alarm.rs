@@ -182,9 +182,9 @@ impl AlarmUnit {
         AlarmUnit::default()
     }
 
-    pub fn new_with_panic() -> AlarmUnit {
+    pub fn new_with_panic(panic: bool) -> AlarmUnit {
         AlarmUnit {
-            panic_on_unmasked_alarm: true,
+            panic_on_unmasked_alarm: panic,
             ..AlarmUnit::new()
         }
     }

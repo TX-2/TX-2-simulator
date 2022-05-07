@@ -163,7 +163,7 @@ impl ControlUnit {
 
 #[cfg(test)]
 mod tests {
-    use crate::control::ProgramCounterChange;
+    use crate::control::{PanicOnUnmaskedAlarm, ProgramCounterChange};
     use crate::{ControlUnit, MemoryConfiguration, MemoryUnit};
     use base::instruction::{Opcode, SymbolicInstruction};
     use base::prelude::*;
@@ -175,11 +175,11 @@ mod tests {
         p: Address,
         q: Address,
     ) -> (ControlUnit, MemoryUnit) {
-        let mut control = ControlUnit::new();
+        let mut control = ControlUnit::new(PanicOnUnmaskedAlarm::Yes);
         let mem = MemoryUnit::new(&MemoryConfiguration {
             with_u_memory: false,
         });
-        if j == 0 {
+        if j == Unsigned6Bit::ZERO {
             assert_eq!(initial, 0, "Cannot set X₀ to a nonzero value");
         } else {
             control.regs.set_index_register(j, &initial);

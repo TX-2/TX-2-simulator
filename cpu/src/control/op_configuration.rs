@@ -47,7 +47,7 @@ impl ControlUnit {
 
 #[cfg(test)]
 mod tests {
-    use crate::control::UpdateE;
+    use crate::control::{PanicOnUnmaskedAlarm, UpdateE};
     use crate::exchanger::SystemConfiguration;
     use crate::memory::MetaBitChange;
     use crate::{MemoryConfiguration, MemoryUnit};
@@ -73,7 +73,7 @@ mod tests {
         const COMPLAIN: &str = "failed to set up test data";
 
         // Given... values for f-memory data loaded into memory
-        let mut control = ControlUnit::new();
+        let mut control = ControlUnit::new(PanicOnUnmaskedAlarm::Yes);
         let mut mem = MemoryUnit::new(&MemoryConfiguration {
             with_u_memory: false,
         });

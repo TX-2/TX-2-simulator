@@ -2,9 +2,10 @@
 use std::ffi::OsString;
 use std::fs::File;
 use std::fs::OpenOptions;
+use std::str::FromStr;
 use std::time::Duration;
 
-use clap::Parser;
+use clap::{ArgEnum, Parser};
 use tracing::{event, Level};
 use tracing_subscriber::filter::{EnvFilter, LevelFilter};
 use tracing_subscriber::prelude::*;
@@ -12,7 +13,7 @@ use tracing_subscriber::prelude::*;
 use base::prelude::*;
 use cpu::io::{Petr, TapeIterator};
 use cpu::{
-    Alarm, BasicClock, Clock, ControlUnit, MemoryConfiguration, MemoryUnit, MinimalSleeper,
+    self, Alarm, BasicClock, Clock, ControlUnit, MemoryConfiguration, MemoryUnit, MinimalSleeper,
     ResetMode, RunMode,
 };
 
@@ -151,6 +152,33 @@ impl TapeIterator for TapeSequence {
     }
 }
 
+/// Whether to panic when there was an unmasked alarm.
+#[derive(Debug, Clone, PartialEq, Eq, ArgEnum)]
+enum PanicOnUnmaskedAlarm {
+    // Panic when an unmasked alarm occurs.  If the RUST_BACKTRACE
+    // environment variable is also set, a stack backtrace will be
+    // printed.
+    No,
+    /// Do not panic when an unmasked alarm occurs.  The emulator will
+    /// stop, but no panic will happen.
+    Yes,
+}
+
+impl FromStr for PanicOnUnmaskedAlarm {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, String> {
+        match s {
+            "true" | "yes" => Ok(PanicOnUnmaskedAlarm::Yes),
+            "false" | "no" => Ok(PanicOnUnmaskedAlarm::No),
+            _ => Err(format!(
+                "unexpected value '{}': expected 'true', 'false', 'yes' or 'no'",
+                s
+            )),
+        }
+    }
+}
+
 /// Command-line simulator for the historical TX-2 computer
 #[derive(Parser, Debug)]
 #[clap(author = AUTHOR, version, about, long_about = None)]
@@ -158,6 +186,12 @@ struct Cli {
     /// Run this many times faster than real-time ('MAX' for as-fast-as-possible)
     #[clap(long = "speed-multiplier")]
     speed_multiplier: Option<String>,
+
+    /// When set, panic if an alarm occurs (so that a stack backtrace
+    /// is produced when the RUST_BACKTRACE environment variable is
+    /// also set).  When unset, stop the emulator without panic.
+    #[clap(long = "panic-on-unmasked-alarm", arg_enum)]
+    panic_on_unmasked_alarm: Option<PanicOnUnmaskedAlarm>,
 
     /// Files containing paper tape data
     tape: Vec<OsString>,
@@ -223,7 +257,14 @@ fn run_simulator() -> Result<(), Box<dyn std::error::Error>> {
         },
     };
 
-    let mut control = ControlUnit::new();
+    let mut control = ControlUnit::new(
+        // We have two simimarly-named enums here so that the cpu
+        // crate does not have to depend on clap.
+        match cli.panic_on_unmasked_alarm {
+            Some(PanicOnUnmaskedAlarm::Yes) => cpu::PanicOnUnmaskedAlarm::Yes,
+            Some(PanicOnUnmaskedAlarm::No) | None => cpu::PanicOnUnmaskedAlarm::No,
+        },
+    );
     let mut clk: BasicClock = BasicClock::new();
 
     let petr_unit: Unsigned6Bit = Unsigned6Bit::try_from(0o52_u8).unwrap();
