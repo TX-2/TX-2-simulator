@@ -29,9 +29,10 @@ use base::instruction::{Inst, Instruction, Opcode, OperandAddress, SymbolicInstr
 use base::prelude::*;
 use base::subword;
 
+use super::*;
 use crate::alarm::{Alarm, AlarmUnit, BadMemOp};
 use crate::exchanger::{exchanged_value_for_load, exchanged_value_for_store, SystemConfiguration};
-use crate::io::{DeviceManager, Unit};
+use crate::io::DeviceManager;
 use crate::memory::{self, ExtraBits, MemoryMapped, MemoryOpFailure, MemoryUnit, MetaBitChange};
 
 use trap::TrapCircuit;
@@ -380,7 +381,6 @@ impl ResetMode {
 pub struct ControlUnit {
     regs: ControlRegisters,
     trap: TrapCircuit,
-    devices: DeviceManager,
     alarm_unit: AlarmUnit,
 }
 
@@ -391,13 +391,6 @@ fn sign_extend_index_value(index_val: &Signed18Bit) -> Unsigned36Bit {
         Unsigned18Bit::ZERO
     };
     subword::join_halves(left, index_val.reinterpret_as_unsigned())
-}
-
-/// Determines whether a memory operation updates the E register.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum UpdateE {
-    No,
-    Yes,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -420,7 +413,6 @@ impl ControlUnit {
         ControlUnit {
             regs: ControlRegisters::new(),
             trap: TrapCircuit::new(),
-            devices: DeviceManager::new(),
             alarm_unit: AlarmUnit::new_with_panic(match panic_on_unmasked_alarm {
                 PanicOnUnmaskedAlarm::No => false,
                 PanicOnUnmaskedAlarm::Yes => true,
@@ -428,23 +420,8 @@ impl ControlUnit {
         }
     }
 
-    pub fn attach(
-        &mut self,
-        system_time: &Duration,
-        unit_number: Unsigned6Bit,
-        in_maintenance: bool,
-        unit: Box<dyn Unit>,
-    ) {
-        self.devices
-            .attach(system_time, unit_number, in_maintenance, unit)
-    }
-
     pub fn set_metabits_disabled(&mut self, disable: bool) {
         self.trap.set_metabits_disabled(disable);
-    }
-
-    pub fn disconnect_io_devices(&mut self) {
-        self.devices.disconnect_all();
     }
 
     /// There are actually 9 different CODABO buttons (see page 5-18
@@ -472,7 +449,12 @@ impl ControlUnit {
     /// So we don't do that.  But there's no unit test for that, since
     /// I haven't found (or cannot recall) a piece of documentation
     /// which states that this is so.
-    pub fn codabo(&mut self, reset_mode: &ResetMode, mem: &mut MemoryUnit) {
+    pub fn codabo(
+        &mut self,
+        reset_mode: &ResetMode,
+        devices: &mut DeviceManager,
+        mem: &mut MemoryUnit,
+    ) {
         // TODO: clear alarms.
         // We probably don't need an equivalent of resetting the
         // control flip-flops in an emulator.  But if we did, that
@@ -488,7 +470,7 @@ impl ControlUnit {
 			 reset_mode=?reset_mode);
         let _enter = span.enter();
         event!(Level::INFO, "Starting CODABO {:?}", &reset_mode);
-        self.disconnect_io_devices();
+        devices.disconnect_all();
         self.regs.flags.lower_all();
         self.startover(reset_mode, mem);
         event!(
@@ -793,10 +775,11 @@ impl ControlUnit {
 
     pub fn poll_hardware(
         &mut self,
+        devices: &mut DeviceManager,
         mut run_mode: RunMode,
         system_time: &Duration,
     ) -> Result<(RunMode, Option<Duration>), Alarm> {
-        let (mut raised_flags, alarm, next_poll) = self.devices.poll(system_time);
+        let (mut raised_flags, alarm, next_poll) = devices.poll(system_time);
         // If there are no hardware flags being raised, we may still
         // not be in limbo if there were already runnable sequences.
         // That is, if some sequence's flag was raised.  The hardware
@@ -892,12 +875,14 @@ impl ControlUnit {
     pub fn execute_instruction(
         &mut self,
         system_time: &Duration,
+        devices: &mut DeviceManager,
         mem: &mut MemoryUnit,
     ) -> Result<(u64, RunMode), (Alarm, Address)> {
         fn execute(
             prev_program_counter: Address,
             opcode: &Opcode,
             control: &mut ControlUnit,
+            devices: &mut DeviceManager,
             system_time: &Duration,
             mem: &mut MemoryUnit,
         ) -> OpcodeResult {
@@ -917,8 +902,8 @@ impl ControlUnit {
                 Opcode::Jnx => control.op_jnx(mem),
                 Opcode::Skm => control.op_skm(mem),
                 Opcode::Spg => control.op_spg(mem),
-                Opcode::Ios => control.op_ios(system_time),
-                Opcode::Tsd => control.op_tsd(prev_program_counter, system_time, mem),
+                Opcode::Ios => control.op_ios(devices, system_time),
+                Opcode::Tsd => control.op_tsd(devices, prev_program_counter, system_time, mem),
                 _ => Err(Alarm::ROUNDTUITAL(format!(
                     "The emulator does not yet implement opcode {}",
                     opcode,
@@ -957,7 +942,7 @@ impl ControlUnit {
 			     op=%sym.opcode());
             let _enter = span.enter();
             event!(Level::TRACE, "executing instruction {}", &sym);
-            match execute(p, &sym.opcode(), self, system_time, mem) {
+            match execute(p, &sym.opcode(), self, devices, system_time, mem) {
                 Ok(None) => {
                     // This is the usual case; the call to
                     // set_program_counter above will have incremented
@@ -1045,7 +1030,7 @@ impl ControlUnit {
                 if extra_bits.meta && self.trap.trap_on_operand() {
                     self.raise_trap();
                 }
-                if update_e == &UpdateE::Yes {
+                if let UpdateE::Yes = update_e {
                     self.regs.e = word;
                 }
                 Ok((word, extra_bits))
@@ -1085,7 +1070,7 @@ impl ControlUnit {
             target,
             value,
         );
-        if &UpdateE::Yes == update_e {
+        if let &UpdateE::Yes = update_e {
             // The E register gets updated to the value we want to
             // write, even if we cannot actually write it (see example
             // 10 on page 3-17 of the Users Handbook).

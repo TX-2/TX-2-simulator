@@ -10,12 +10,14 @@ mod control;
 mod exchanger;
 pub mod io;
 mod memory;
+mod types;
 
 pub use alarm::Alarm;
 pub use clock::{BasicClock, Clock, MinimalSleeper};
 pub use control::{ControlUnit, PanicOnUnmaskedAlarm, ResetMode, RunMode};
-pub use io::{set_up_peripherals, TapeIterator};
+pub use io::{set_up_peripherals, DeviceManager, TapeIterator};
 pub use memory::{MemoryConfiguration, MemoryUnit};
+pub use types::*;
 
 pub fn time_passes(
     clk: &mut BasicClock,

@@ -3,7 +3,8 @@
 use base::prelude::*;
 use std::time::Duration;
 
-use crate::io::{TransferFailed, Unit, UnitStatus};
+use super::super::*;
+use crate::io::{Unit, UnitStatus};
 
 #[derive(Debug)]
 pub struct TrapCircuit {
@@ -118,8 +119,6 @@ impl Unit for TrapCircuit {
             mode: self.mode,
             // The trap circuit does not need to be polled.
             poll_after: Duration::from_secs(60),
-            // In truth, I don't know whether the trap unit is an
-            // input unit or not.
             is_input_unit: true,
         }
     }
@@ -128,14 +127,21 @@ impl Unit for TrapCircuit {
         self.mode = mode;
     }
 
-    /// I don't know whether this is supposed to behave like an input
-    /// unit or an output unit.
-    fn read(
-        &mut self,
-        _system_time: &Duration,
-        _target: &mut Unsigned36Bit,
-    ) -> Result<(), TransferFailed> {
-        Ok(())
+    fn transfer_mode(&self) -> TransferMode {
+        TransferMode::Exchange
+    }
+
+    /// The TRAP unit doesn't perform I/O but reads retain the
+    /// cycle-left and dismiss features (See Users Handbook, section
+    /// 4-15 ("TRAP").  Because it cycles left, it must be an "input"
+    /// unit.
+    fn read(&mut self, _system_time: &Duration) -> Result<MaskedWord, TransferFailed> {
+        // TODO: add unit tests for the cycle-left and dismiss
+        // behaviours.
+        Ok(MaskedWord {
+            bits: Unsigned36Bit::ZERO,
+            mask: Unsigned36Bit::ZERO,
+        })
     }
 
     /// I don't know whether this is supposed to behave like an input
@@ -145,7 +151,7 @@ impl Unit for TrapCircuit {
         _system_time: &Duration,
         _source: Unsigned36Bit,
     ) -> Result<(), TransferFailed> {
-        Ok(())
+        unreachable!()
     }
 
     fn name(&self) -> String {
