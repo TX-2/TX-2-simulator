@@ -19,7 +19,6 @@
 //! stop, the tape movement stops immediately.  This will likely
 //! change in the future.
 use base::prelude::*;
-use base::subword;
 use std::cmp;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::fs::File;
@@ -28,7 +27,8 @@ use std::time::Duration;
 
 use tracing::{event, Level};
 
-use crate::io::{FlagChange, TransferFailed, Unit, UnitStatus};
+use super::*;
+use crate::io::{TransferFailed, Unit, UnitStatus};
 
 /// Is the tape motor running?
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -296,6 +296,14 @@ impl Petr {
             }
         }
     }
+
+    fn transfer_mode(&self) -> TransferMode {
+        if self.mode & 0o02 != 0 {
+            TransferMode::Assembly
+        } else {
+            TransferMode::Exchange
+        }
+    }
 }
 
 impl Unit for Petr {
@@ -335,21 +343,26 @@ impl Unit for Petr {
             self.time_of_next_read = None;
             Activity::Stopped
         };
-        self.mode = mode; // encodes Assembly/Normal
+        self.mode = mode;
+        let transfer_mode_name = match self.transfer_mode() {
+            TransferMode::Assembly => "assembly",
+            TransferMode::Exchange => "exchange",
+        };
         event!(
             Level::INFO,
-            "PETR connected; motor {}, direction {}; mode {:o}",
+            "PETR connected; motor {}, direction {}; {} mode {:o}",
             self.activity,
             self.direction,
+            transfer_mode_name,
             self.mode,
         );
     }
 
-    fn read(
-        &mut self,
-        system_time: &Duration,
-        target: &mut Unsigned36Bit,
-    ) -> Result<(), TransferFailed> {
+    fn transfer_mode(&self) -> TransferMode {
+        self.transfer_mode()
+    }
+
+    fn read(&mut self, system_time: &Duration) -> Result<MaskedWord, TransferFailed> {
         match self.data.take() {
             None => {
                 event!(Level::DEBUG, "no data is ready yet");
@@ -357,25 +370,11 @@ impl Unit for Petr {
             }
             Some(byte) => {
                 self.time_of_next_read = Some(next_line_time(self.direction, system_time));
-                let value_read = Unsigned6Bit::try_from(byte & 0o77).unwrap();
-                event!(Level::DEBUG, "read value {:03o}", &value_read);
-                let assemby_mode: bool = self.mode & 0o02 != 0;
-                if assemby_mode {
-                    *target = cycle_and_splay(*target, value_read);
-                    event!(
-                        Level::DEBUG,
-                        "assemble-mode target word is now {:012o}",
-                        target
-                    );
-                    Ok(())
-                } else {
-                    let (left, right) = subword::split_halves(*target);
-                    let (q2, _) = subword::split_halfword(right);
-                    let right = subword::join_quarters(q2, Unsigned9Bit::from(value_read));
-                    *target = subword::join_halves(left, right);
-                    event!(Level::DEBUG, "normal-mode target word is now {:o}", target);
-                    Ok(())
-                }
+                event!(Level::DEBUG, "read value {:03o}", byte & 0o77);
+                Ok(MaskedWord {
+                    bits: Unsigned36Bit::from(byte & 0o77),
+                    mask: u36!(0o77),
+                })
             }
         }
     }

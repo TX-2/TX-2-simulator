@@ -34,17 +34,17 @@
 //! 75: Misc output
 //! 76: Not for physical devices.
 //! 77: Not for physical devices.
-
+use std::cell::RefCell;
 use std::collections::BTreeMap;
-use std::fmt::{self, Debug, Display, Formatter};
+use std::fmt::{self, Debug, Formatter};
 use std::ops::Shl;
 use std::time::Duration;
 
 use tracing::{event, span, Level};
 
-use crate::alarm::{Alarm, AlarmUnit, BadMemOp};
-use crate::memory::{MemoryMapped, MemoryOpFailure, MemoryUnit, MetaBitChange};
-use crate::{Clock, ControlUnit};
+use super::types::*;
+use crate::alarm::{Alarm, AlarmUnit};
+use crate::Clock;
 use base::prelude::*;
 
 mod dev_petr;
@@ -81,11 +81,6 @@ pub const IO_MASK_SEQNO: Unsigned36Bit = Unsigned36Bit::MAX.and(0o_000_077_000_0
 
 /// Reserved for use by magnetic tape devices.
 pub const IO_MASK_SPECIAL: Unsigned36Bit = Unsigned36Bit::MAX.and(0o_777_700_000_000);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FlagChange {
-    Raise,
-}
 
 /// Units report their status (which is used to construct their report
 /// word) with this struct.
@@ -154,29 +149,11 @@ fn make_report_word_for_invalid_unit(unit: Unsigned6Bit, current_flag: bool) -> 
     )
 }
 
-#[derive(Debug)]
-pub enum TransferFailed {
-    BufferNotFree,
-}
-
-impl Display for TransferFailed {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        f.write_str(match self {
-            TransferFailed::BufferNotFree => "Unit buffer not available for use by the CPU",
-        })
-    }
-}
-
-impl std::error::Error for TransferFailed {}
-
 pub trait Unit {
     fn poll(&mut self, system_time: &Duration) -> UnitStatus;
     fn connect(&mut self, system_time: &Duration, mode: Unsigned12Bit);
-    fn read(
-        &mut self,
-        system_time: &Duration,
-        target: &mut Unsigned36Bit,
-    ) -> Result<(), TransferFailed>;
+    fn transfer_mode(&self) -> TransferMode;
+    fn read(&mut self, system_time: &Duration) -> Result<MaskedWord, TransferFailed>;
     fn write(
         &mut self,
         system_time: &Duration,
@@ -185,8 +162,8 @@ pub trait Unit {
     fn name(&self) -> String;
 }
 
-struct AttachedUnit {
-    inner: Box<dyn Unit>,
+pub struct AttachedUnit {
+    inner: RefCell<Box<dyn Unit>>,
 
     /// True for units which are input units.  Some devices (Lincoln
     /// Writers for example) occupy two units, one for read (input)
@@ -201,18 +178,55 @@ impl AttachedUnit {
     fn is_disconnected_output_unit(&self) -> bool {
         (!self.is_input_unit) && (!self.connected)
     }
+
+    pub fn poll(&self, system_time: &Duration) -> UnitStatus {
+        self.inner.borrow_mut().poll(system_time)
+    }
+
+    pub fn connect(&self, system_time: &Duration, mode: Unsigned12Bit) {
+        self.inner.borrow_mut().connect(system_time, mode)
+    }
+
+    pub fn transfer_mode(&self) -> TransferMode {
+        self.inner.borrow().transfer_mode()
+    }
+
+    pub fn read(&self, system_time: &Duration) -> Result<MaskedWord, TransferFailed> {
+        self.inner.borrow_mut().read(system_time)
+    }
+
+    pub fn write(
+        &mut self,
+        system_time: &Duration,
+        source: Unsigned36Bit,
+    ) -> Result<(), TransferFailed> {
+        self.inner.borrow_mut().write(system_time, source)
+    }
+
+    pub fn name(&self) -> String {
+        self.inner.borrow().name()
+    }
 }
 
 impl Debug for AttachedUnit {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         f.debug_struct("AttachedUnit")
-            .field("inner", &format_args!("<unit: {}>", self.inner.name()))
+            .field("inner", &format_args!("<unit: {}>", self.name()))
             .field("is_input_unit", &self.is_input_unit)
             .field("connected", &self.connected)
             .field("in_maintenance", &self.in_maintenance)
             .finish()
     }
 }
+
+// TODO: actually delete this
+//#[derive(Debug)]
+//enum DeviceType {
+//    Input { in_maintenance: bool },
+//    Output { in_maintenance: bool },
+//    Nonexistent,
+//    AttachedButNotConnected,
+//}
 
 /// Manages a collection of devices.  Does not actually correspond to
 /// a tangible physical component of the TX-2 system.
@@ -222,34 +236,6 @@ pub struct DeviceManager {
     poll_queue: PollQueue,
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum TransferOutcome {
-    /// When the outcome is successful, let the caller know if the
-    /// memory location's meta bit was set.  This allows the trap
-    /// circuit to be triggered if necessary.
-    Success(bool),
-
-    /// When the outcome of the TSD is dismiss and wait, we don't
-    /// trigger the trap circuit (not because we think the TX-2 behaved
-    /// this way, but because it keeps the code simpler and we don't
-    /// know if the oposite behaviour is needed).
-    DismissAndWait,
-}
-
-type OpConversion = fn(Address) -> BadMemOp;
-
-fn bad_read(addr: Address) -> BadMemOp {
-    BadMemOp::Read(addr.into())
-}
-
-fn bad_write(addr: Address) -> BadMemOp {
-    BadMemOp::Write(addr.into())
-}
-
-fn make_tsd_qsal(inst: Instruction, op: BadMemOp) -> Alarm {
-    Alarm::QSAL(inst, op, "TSD address is not mapped".to_string())
-}
-
 impl DeviceManager {
     pub fn new() -> DeviceManager {
         DeviceManager {
@@ -257,6 +243,32 @@ impl DeviceManager {
             poll_queue: PollQueue::new(),
         }
     }
+
+    pub fn get(&self, unit_number: &Unsigned6Bit) -> Option<&AttachedUnit> {
+        self.devices.get(unit_number)
+    }
+
+    pub fn get_mut(&mut self, unit_number: &Unsigned6Bit) -> Option<&mut AttachedUnit> {
+        self.devices.get_mut(unit_number)
+    }
+
+    // TODO: actually delete this
+    //fn get_type(&self, unit_number: Unsigned6Bit) -> DeviceType {
+    //    match self.devices.get(&unit_number) {
+    //        Some(attached) => {
+    //            if attached.is_input_unit {
+    //                DeviceType::Input {
+    //                    in_maintenance: attached.in_maintenance,
+    //                }
+    //            } else {
+    //                DeviceType::Output {
+    //                    in_maintenance: attached.in_maintenance,
+    //                }
+    //            }
+    //        }
+    //        None => DeviceType::Nonexistent,
+    //    }
+    //}
 
     pub fn attach(
         &mut self,
@@ -269,7 +281,7 @@ impl DeviceManager {
         self.devices.insert(
             unit_number,
             AttachedUnit {
-                inner: unit,
+                inner: RefCell::new(unit),
                 is_input_unit: status.is_input_unit,
                 connected: false,
                 in_maintenance,
@@ -291,7 +303,7 @@ impl DeviceManager {
                 // (2.6) and `Maintenance` bit (2.7) we need to be
                 // able to collect status from a unit which is
                 // attached but not otherwise usable.
-                let unit_status = attached.inner.poll(system_time);
+                let unit_status = attached.poll(system_time);
                 self.poll_queue.push(unit, unit_status.poll_after);
                 Ok(make_unit_report_word(
                     unit,
@@ -372,7 +384,7 @@ impl DeviceManager {
                         "polling unit at system time {:?}",
                         system_time
                     );
-                    let unit_status = attached.inner.poll(system_time);
+                    let unit_status = attached.poll(system_time);
                     event!(Level::TRACE, "unit status is {:?}", unit_status);
                     self.poll_queue.push(devno, unit_status.poll_after);
                     if let Some(FlagChange::Raise) = unit_status.change_flag {
@@ -410,6 +422,9 @@ impl DeviceManager {
         device: &Unsigned6Bit,
         alarm_unit: &AlarmUnit,
     ) -> Result<(), Alarm> {
+        if *device == u6!(0o42) {
+            return Ok(());
+        }
         match self.devices.get_mut(device) {
             Some(attached) => {
                 attached.connected = false;
@@ -447,7 +462,7 @@ impl DeviceManager {
                     } else {
                         None
                     };
-                    attached.inner.connect(system_time, mode);
+                    attached.connect(system_time, mode);
                     attached.connected = true;
                     Ok(flag_change)
                 }
@@ -462,157 +477,6 @@ impl DeviceManager {
             }
         }
     }
-
-    /// Perform a TSD instruction.
-    #[allow(clippy::too_many_arguments)]
-    pub fn transfer(
-        &mut self,
-        system_time: &Duration,
-        device: &Unsigned6Bit,
-        // TODO: reduce argument count, perhaps pass the whole
-        // instruction.
-        config: &Unsigned5Bit,
-        address: &Address,
-        mem: &mut MemoryUnit,
-        inst: &Instruction,
-        meta_op: &MetaBitChange,
-        alarm_unit: &AlarmUnit,
-    ) -> Result<TransferOutcome, Alarm> {
-        if *config != Unsigned5Bit::ZERO {
-            return Err(alarm_unit.always_fire(Alarm::ROUNDTUITAL(format!(
-                "TSD instruction has non-zero configuration value {:o}",
-                config,
-            ))));
-        }
-
-        let not_mapped = |op_conv: OpConversion| -> Alarm {
-            let op: BadMemOp = op_conv(*address);
-            make_tsd_qsal(*inst, op)
-        };
-
-        match u8::from(*device) {
-            0o40..=0o75 => {
-                // This is an "INOUT" channel, per Users Handbook,
-                // page 4-2.
-                match self.devices.get_mut(device) {
-                    None => {
-                        event!(Level::WARN, "TSD on unknown unit {:o}", *device);
-                        Ok(TransferOutcome::DismissAndWait)
-                    }
-                    Some(attached) => {
-                        // When the result of the TSD is dismiss and
-                        // wait, we don't trigger traps relating to
-                        // the state of the meta bit.
-                        if !attached.connected {
-                            event!(Level::WARN, "TSD on disconnected unit {:o}", *device);
-                            return Ok(TransferOutcome::DismissAndWait);
-                        }
-
-                        // TODO: consider rewriting this function to
-                        // use MemoryUnit::write_with_read_fallback().
-                        let inner_result: Result<TransferOutcome, TransferFailed> = if attached
-                            .is_input_unit
-                        {
-                            event!(Level::TRACE, "Read TSD on unit {:o}", *device);
-                            // Because a TSD may only affect part of a
-                            // word, we perform a memory fetch and
-                            // then write the value back.
-                            match mem.fetch(address, meta_op) {
-                                Ok((mut word, extra_bits)) => {
-                                    match attached.inner.read(system_time, &mut word) {
-                                        Ok(()) => match mem.store(address, &word, meta_op) {
-                                            Ok(()) => {
-                                                event!(
-                                                    Level::TRACE,
-                                                    "Read TSD succeeded on unit {:o} (stored word at {:>06o} is {:o})",
-                                                    *device, &address, &word,
-                                                );
-                                                Ok(TransferOutcome::Success(extra_bits.meta))
-                                            }
-                                            Err(MemoryOpFailure::ReadOnly(_, _)) => {
-                                                event!(
-							Level::WARN,
-							"Read TSD attempted to write into read-only location {} (this is valid but unusual)",
-							address
-						    );
-                                                Ok(TransferOutcome::Success(extra_bits.meta))
-                                            }
-                                            Err(MemoryOpFailure::NotMapped(addr)) => {
-                                                return Err(Alarm::BUGAL {
-                                                    instr: Some(*inst),
-                                                    message: format!(
-							    "Read TSD found memory location {} was mapped on read but not write" ,
-							    addr,
-							),
-                                                });
-                                            }
-                                        },
-                                        Err(TransferFailed::BufferNotFree) => {
-                                            event!(Level::TRACE, "Read TSD on unit {:o} resulted in dismiss and wait", *device);
-                                            Ok(TransferOutcome::DismissAndWait)
-                                        }
-                                    }
-                                }
-                                Err(MemoryOpFailure::ReadOnly(_, _)) => unreachable!(),
-                                Err(MemoryOpFailure::NotMapped(_)) => {
-                                    alarm_unit.fire_if_not_masked(not_mapped(bad_read))?;
-                                    // QSAL is masked, carry on.
-                                    Ok(TransferOutcome::Success(false)) // act as if metabit unset
-                                }
-                            }
-                        } else {
-                            event!(Level::TRACE, "Write TSD on unit {:o}", *device);
-                            match mem.fetch(address, meta_op) {
-                                Ok((word, extra_bits)) => {
-                                    match attached.inner.write(system_time, word) {
-                                        Ok(()) => Ok(TransferOutcome::Success(extra_bits.meta)),
-                                        Err(e) => Err(e),
-                                    }
-                                }
-                                Err(MemoryOpFailure::ReadOnly(_, _)) => unreachable!(),
-                                Err(MemoryOpFailure::NotMapped(_)) => {
-                                    alarm_unit.fire_if_not_masked(not_mapped(bad_write))?;
-                                    // QSAL is masked, carry on.
-                                    Ok(TransferOutcome::Success(false)) // act as if metabit unset
-                                }
-                            }
-                        };
-
-                        match inner_result {
-                            Err(TransferFailed::BufferNotFree) => {
-                                event!(
-                                    Level::DEBUG,
-                                    "Buffer of unit {:o} is not free, will dismiss and wait",
-                                    *device
-                                );
-                                Ok(TransferOutcome::DismissAndWait)
-                            }
-                            Ok(outcome) => Ok(outcome),
-                        }
-                    }
-                }
-            }
-            _ => {
-                // Not an "INOUT" channel.  Cycle the target word one
-                // place to the left (Users Handbook, page 4-2).
-                match mem.cycle_word(address) {
-                    Ok(extra_bits) => Ok(TransferOutcome::Success(extra_bits.meta)),
-                    Err(MemoryOpFailure::ReadOnly(_address, extra_bits)) => {
-                        // The read-only case is not an error, it's
-                        // normal.  The TSD instruction simply has no
-                        // effect when the target address is
-                        // read-only.
-                        Ok(TransferOutcome::Success(extra_bits.meta))
-                    }
-                    Err(MemoryOpFailure::NotMapped(_)) => {
-                        alarm_unit.fire_if_not_masked(not_mapped(bad_write))?;
-                        // QSAL is masked, carry on.
-                        Ok(TransferOutcome::Success(false)) // act as if metabit unset
-                    }
-                }
-            }
-        }
-    }
 }
 
 impl Default for DeviceManager {
@@ -623,10 +487,10 @@ impl Default for DeviceManager {
 }
 
 pub fn set_up_peripherals<C: Clock>(
-    control: &mut ControlUnit,
+    devices: &mut DeviceManager,
     clock: &C,
     tapes: Box<dyn TapeIterator>,
 ) {
     let now = clock.now();
-    control.attach(&now, u6!(0o52_u8), false, Box::new(Petr::new(tapes)));
+    devices.attach(&now, u6!(0o52_u8), false, Box::new(Petr::new(tapes)));
 }

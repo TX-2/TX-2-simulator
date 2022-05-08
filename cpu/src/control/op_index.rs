@@ -39,7 +39,7 @@ impl ControlUnit {
 
         // DPX is trying to perform a write.  But to do this in some
         // subword configurations, we need to read the existing value.
-        match self.fetch_operand_from_address_without_exchange(mem, &target, &UpdateE::Yes) {
+        match self.fetch_operand_from_address_without_exchange(mem, &target, &UpdateE::No) {
             Ok((dest, _meta)) => self
                 .memory_store_with_exchange(
                     mem,

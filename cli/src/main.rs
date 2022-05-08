@@ -12,8 +12,8 @@ use tracing_subscriber::prelude::*;
 
 use base::prelude::*;
 use cpu::{
-    self, set_up_peripherals, Alarm, BasicClock, Clock, ControlUnit, MemoryConfiguration,
-    MemoryUnit, MinimalSleeper, ResetMode, RunMode, TapeIterator,
+    self, set_up_peripherals, Alarm, BasicClock, Clock, ControlUnit, DeviceManager,
+    MemoryConfiguration, MemoryUnit, MinimalSleeper, ResetMode, RunMode, TapeIterator,
 };
 
 // Thanks to Google for allowing this code to be open-sourced.  I
@@ -24,11 +24,12 @@ const AUTHOR: &str = "James Youngman <james@youngman.org>";
 fn run(
     control: &mut ControlUnit,
     mem: &mut MemoryUnit,
+    devices: &mut DeviceManager,
     clk: &mut BasicClock,
     multiplier: Option<f64>,
 ) -> i32 {
-    control.codabo(&ResetMode::ResetTSP, mem);
-    let (alarm, maybe_address) = run_until_alarm(control, mem, clk, multiplier);
+    control.codabo(&ResetMode::ResetTSP, devices, mem);
+    let (alarm, maybe_address) = run_until_alarm(control, devices, mem, clk, multiplier);
     match maybe_address {
         Some(addr) => {
             event!(
@@ -47,6 +48,7 @@ fn run(
 
 fn run_until_alarm(
     control: &mut ControlUnit,
+    devices: &mut DeviceManager,
     mem: &mut MemoryUnit,
     clk: &mut BasicClock,
     multiplier: Option<f64>,
@@ -65,7 +67,7 @@ fn run_until_alarm(
                 "polling hardware for updates (now={:?})",
                 &now
             );
-            match control.poll_hardware(run_mode, &now) {
+            match control.poll_hardware(devices, run_mode, &now) {
                 Ok((mode, Some(next))) => {
                     run_mode = mode;
                     next_hw_poll = next;
@@ -104,7 +106,7 @@ fn run_until_alarm(
             cpu::time_passes(clk, &mut sleeper, &interval, multiplier);
             continue;
         }
-        elapsed_ns += match control.execute_instruction(&clk.now(), mem) {
+        elapsed_ns += match control.execute_instruction(&clk.now(), devices, mem) {
             Err((alarm, address)) => {
                 event!(
                     Level::INFO,
@@ -262,17 +264,25 @@ fn run_simulator() -> Result<(), Box<dyn std::error::Error>> {
             Some(PanicOnUnmaskedAlarm::No) | None => cpu::PanicOnUnmaskedAlarm::No,
         },
     );
-    let mut clk: BasicClock = BasicClock::new();
-
-    set_up_peripherals(&mut control, &clk, Box::new(tapes));
-
     event!(
         Level::DEBUG,
         "Initial control unit state iis {:?}",
         &control
     );
+
+    let mut clk: BasicClock = BasicClock::new();
+
     let mut mem = MemoryUnit::new(&mem_config);
-    std::process::exit(run(&mut control, &mut mem, &mut clk, speed_multiplier));
+    let mut devices = DeviceManager::new();
+    set_up_peripherals(&mut devices, &clk, Box::new(tapes));
+
+    std::process::exit(run(
+        &mut control,
+        &mut mem,
+        &mut devices,
+        &mut clk,
+        speed_multiplier,
+    ));
 }
 
 fn main() {

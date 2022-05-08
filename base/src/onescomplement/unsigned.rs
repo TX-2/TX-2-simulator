@@ -9,7 +9,7 @@ use std::cmp::Ordering;
 use std::fmt::{self, Debug, Display, Formatter, Octal};
 use std::hash::{Hash, Hasher};
 
-use super::super::subword::split_halves;
+use super::super::subword::{right_half, split_halfword, split_halves};
 use super::error::ConversionFailed;
 use super::signed::*;
 use super::{Sign, WordCommon};
@@ -770,6 +770,31 @@ impl From<Unsigned18Bit> for Unsigned36Bit {
     fn from(n: Unsigned18Bit) -> Self {
         Self {
             bits: n.bits.into(),
+        }
+    }
+}
+
+impl std::ops::BitAnd<Unsigned18Bit> for Unsigned36Bit {
+    type Output = Unsigned18Bit;
+    fn bitand(self, rhs: Unsigned18Bit) -> Unsigned18Bit {
+        right_half(self).bitand(rhs)
+    }
+}
+
+impl std::ops::BitAnd<Unsigned9Bit> for Unsigned36Bit {
+    type Output = Unsigned9Bit;
+    fn bitand(self, rhs: Unsigned9Bit) -> Unsigned9Bit {
+        let (_q2, q1) = split_halfword(right_half(self));
+        q1.bitand(rhs)
+    }
+}
+
+impl std::ops::BitAnd<Unsigned6Bit> for Unsigned36Bit {
+    type Output = Unsigned6Bit;
+    fn bitand(self, rhs: Unsigned6Bit) -> Unsigned6Bit {
+        Unsigned6Bit {
+            bits: u8::try_from(self.bits & 0o77).expect("a six-bit quantity should be in-range")
+                & rhs.bits,
         }
     }
 }
