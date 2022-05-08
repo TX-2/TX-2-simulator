@@ -13,6 +13,8 @@ publish = false
 base = { path = "../base" }
 tracing = "0.1" # MIT license
 keyed_priority_queue = "0.4.1"	# MIT license
+termcolor = "1"			# Unlicense OR MIT license
+atty = "0.2"			# MIT license
 
 [lib]
 name = "cpu"

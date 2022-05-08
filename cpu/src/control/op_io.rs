@@ -255,8 +255,10 @@ impl ControlUnit {
                                 }
                             } else {
                                 // In write operations, data is
-                                // transferred from the E register to the
-                                // I/O device over the E bus.
+                                // transferred from the E register to
+                                // the I/O device over the E bus.  See
+                                // figure 15-17 in Volume 2 of the
+                                // TX-2 Techical Manual.
                                 self.regs.e = exchanged_value_for_load(
                                     &self.get_config(),
                                     &m_register,

@@ -47,9 +47,11 @@ use crate::alarm::{Alarm, AlarmUnit};
 use crate::Clock;
 use base::prelude::*;
 
+mod dev_lincoln_writer;
 mod dev_petr;
 mod pollq;
 
+use dev_lincoln_writer::LincolnWriterOutput;
 pub use dev_petr::{Petr, TapeIterator};
 use pollq::PollQueue;
 
@@ -492,5 +494,10 @@ pub fn set_up_peripherals<C: Clock>(
     tapes: Box<dyn TapeIterator>,
 ) {
     let now = clock.now();
+    fn attach_lw_output(unit: Unsigned6Bit, now: &Duration, devices: &mut DeviceManager) {
+        devices.attach(now, unit, false, Box::new(LincolnWriterOutput::new(unit)));
+    }
+
     devices.attach(&now, u6!(0o52_u8), false, Box::new(Petr::new(tapes)));
+    attach_lw_output(u6!(0o66), &now, devices);
 }
