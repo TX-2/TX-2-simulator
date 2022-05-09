@@ -1,6 +1,6 @@
 use std::fmt::{self, Display, Formatter, Octal, Write};
 use std::num::IntErrorKind;
-use std::ops::Range;
+use std::ops::{Range, Shl};
 
 //use std::ops::Range;
 //use base::prelude::*;
@@ -15,6 +15,8 @@ use crate::ek::{self, ToRange};
 use crate::state::{Error, NumeralMode, State, StateExtra};
 use crate::types::*;
 use base::prelude::*;
+
+const HELD_MASK: Unsigned36Bit = u36!(1 << 35);
 
 #[derive(Debug, Clone)]
 pub struct ErrorLocation {
@@ -34,17 +36,31 @@ impl<'a, 'b> From<&ek::LocatedSpan<'a, 'b>> for ErrorLocation {
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub(crate) enum HoldBit {
+    Unspecified,
+    Hold,
+    NotHold,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProgramInstruction {
     pub(crate) tag: Option<SymbolName>,
+    pub(crate) holdbit: HoldBit,
     pub(crate) parts: Vec<InstructionFragment>,
 }
 
 impl ProgramInstruction {
     pub fn value(&self) -> Unsigned36Bit {
-        self.parts
+        let word = self
+            .parts
             .iter()
-            .fold(Unsigned36Bit::ZERO, |acc, frag| acc | frag.value())
+            .fold(Unsigned36Bit::ZERO, |acc, frag| acc | frag.value());
+        match self.holdbit {
+            HoldBit::Hold => word | HELD_MASK,
+            HoldBit::NotHold => word & !HELD_MASK,
+            HoldBit::Unspecified => word,
+        }
     }
 }
 
@@ -241,6 +257,33 @@ pub(crate) fn normal_literal_instruction_fragment<'a, 'b>(
     })(input)
 }
 
+pub(crate) fn opcode_instruction_fragment<'a, 'b>(
+    input: ek::LocatedSpan<'a, 'b>,
+) -> ek::IResult<'a, 'b, InstructionFragment> {
+    fn valid_opcode(s: ek::LocatedSpan) -> Result<InstructionFragment, ()> {
+        match opcode_to_num(s.fragment()) {
+            DecodedOpcode::Valid(opcode) => {
+                // Some instructions are assembled with the hold bit automatically set.
+                // These are JPX, JNX, LDE, ITE.  See Users Handbook, section 4-3.2 on page 4-5.
+                let maybe_hold: u64 = if matches!(u8::from(opcode), 0o06 | 0o07 | 0o20 | 0o40) {
+                    1 << 35
+                } else {
+                    0
+                };
+                Ok(InstructionFragment {
+                    elevation: Elevation::Normal,
+                    // Bits 24-29 (dec) inclusive in the instruction word
+                    // represent the opcode, so shift the opcode's value
+                    // left by 24 decimal.
+                    value: Unsigned36Bit::from(opcode).shl(24).bitor(maybe_hold),
+                })
+            }
+            DecodedOpcode::Invalid => Err(()),
+        }
+    }
+    map_res(take(3usize), valid_opcode)(input)
+}
+
 pub(crate) fn superscript_literal_instruction_fragment<'a, 'b>(
     input: ek::LocatedSpan<'a, 'b>,
 ) -> ek::IResult<'a, 'b, InstructionFragment> {
@@ -313,6 +356,7 @@ pub(crate) fn program_instruction_fragment<'a, 'b>(
             normal_literal_instruction_fragment,
             superscript_literal_instruction_fragment,
             subscript_literal_instruction_fragment,
+            opcode_instruction_fragment,
         )),
     )(input)
 }
@@ -920,17 +964,46 @@ fn tag_definition_or_origin<'a, 'b>(
     ))(input)
 }
 
+/// Accept either 'h' or ':' signalling the hold bit should be set.
+/// The documentation seems to use both, though perhaps ':' is the
+/// older usage.
+fn hold<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, HoldBit> {
+    map(alt((tag("h"), tag(":"))), |_| HoldBit::Hold)(input)
+}
+
+fn not_hold<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, HoldBit> {
+    map(
+        alt((
+            // Accept a combining overbar with h, as used on the TX-2.
+            tag("\u{0305}h"),
+            // Also accept the "h with stroke" (better known as h-bar) symbol.
+            tag("ℏ"),
+        )),
+        |_| HoldBit::NotHold,
+    )(input)
+}
+
+pub(crate) fn maybe_hold<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, HoldBit> {
+    let holdmapper = |got: Option<HoldBit>| got.unwrap_or(HoldBit::Unspecified);
+    map(opt(preceded(space0, alt((hold, not_hold)))), holdmapper)(input)
+}
+
 pub(crate) fn program_instruction<'a, 'b>(
     input: ek::LocatedSpan<'a, 'b>,
 ) -> ek::IResult<'a, 'b, (Option<Origin>, ManuscriptItem)> {
     map(
-        pair(opt(tag_definition_or_origin), program_instruction_fragments),
-        |(maybe_tag_or_origin, fragments)| {
+        tuple((
+            opt(tag_definition_or_origin),
+            maybe_hold,
+            program_instruction_fragments,
+        )),
+        |(maybe_tag_or_origin, holdbit, fragments)| {
             let (tag, origin) = maybe_tag_or_origin.unwrap_or((None, None));
             (
                 origin,
                 ManuscriptItem::Instruction(ProgramInstruction {
                     tag,
+                    holdbit,
                     parts: fragments,
                 }),
             )
