@@ -5,6 +5,8 @@ use std::io::{BufReader, BufWriter, Read, Write};
 
 use tracing::{event, span, Level};
 
+#[cfg(test)]
+use crate::parser::HoldBit;
 use crate::parser::{
     source_file, ErrorLocation, ManuscriptBlock, ManuscriptItem, ManuscriptMetaCommand, Origin,
     ProgramInstruction,
@@ -341,6 +343,7 @@ fn test_assemble_pass1() {
     let expected_block = Block {
         items: vec![ProgramInstruction {
             tag: None,
+            holdbit: HoldBit::Unspecified,
             parts: vec![InstructionFragment {
                 elevation: Elevation::Normal,
                 value: u36!(0o14),

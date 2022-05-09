@@ -281,6 +281,7 @@ fn test_program_instruction() {
             None,
             ManuscriptItem::Instruction(ProgramInstruction {
                 tag: None,
+                holdbit: HoldBit::Unspecified,
                 parts: vec![
                     InstructionFragment {
                         elevation: Elevation::Superscript,
@@ -372,6 +373,7 @@ fn test_manuscript_without_tag() {
                 None,
                 ManuscriptItem::Instruction(ProgramInstruction {
                     tag: None,
+                    holdbit: HoldBit::Unspecified,
                     parts: vec![InstructionFragment {
                         elevation: Elevation::Normal,
                         value: Unsigned36Bit::from(0o673_u32),
@@ -382,6 +384,7 @@ fn test_manuscript_without_tag() {
                 None,
                 ManuscriptItem::Instruction(ProgramInstruction {
                     tag: None,
+                    holdbit: HoldBit::Unspecified,
                     parts: vec![InstructionFragment {
                         elevation: Elevation::Normal,
                         value: Unsigned36Bit::from(0o71_u32),
@@ -425,6 +428,7 @@ fn test_manuscript_with_single_syllable_tag() {
                     canonical: "START4".to_string(),
                     as_used: "START4".to_string(),
                 }),
+                holdbit: HoldBit::Unspecified,
                 parts: vec![InstructionFragment {
                     elevation: Elevation::Normal,
                     value: Unsigned36Bit::from(0o205_u32),
@@ -442,6 +446,7 @@ fn test_manuscript_with_origin() {
             Some(Origin(Address::new(u18!(0o100)))),
             ManuscriptItem::Instruction(ProgramInstruction {
                 tag: None,
+                holdbit: HoldBit::Unspecified,
                 parts: vec![InstructionFragment {
                     elevation: Elevation::Normal,
                     value: Unsigned36Bit::from(0o202_u32),
@@ -494,6 +499,7 @@ fn test_manuscript_with_multi_syllable_tag() {
                     canonical: "CODEHERE".to_string(),
                     as_used: "CODE HERE".to_string(),
                 }),
+                holdbit: HoldBit::Unspecified,
                 parts: vec![InstructionFragment {
                     elevation: Elevation::Normal,
                     value: Unsigned36Bit::from(0o205_u32),
@@ -515,6 +521,7 @@ fn test_manuscript_with_real_arrow_tag() {
                     canonical: "HERE".to_string(),
                     as_used: "HERE".to_string(),
                 }),
+                holdbit: HoldBit::Unspecified,
                 parts: vec![InstructionFragment {
                     elevation: Elevation::Normal,
                     value: Unsigned36Bit::from(0o207_u32),
@@ -557,16 +564,18 @@ fn assemble_literal(input: &str, expected: &InstructionFragment) {
     }
     match blocks.as_slice() {
         [ManuscriptBlock { origin: _, items }] => match items.as_slice() {
-            [ManuscriptItem::Instruction(ProgramInstruction { tag: None, parts })] => {
-                match parts.as_slice() {
-                    [only_frag] => {
-                        if only_frag == expected {
-                            return;
-                        }
+            [ManuscriptItem::Instruction(ProgramInstruction {
+                tag: None,
+                holdbit: HoldBit::Unspecified,
+                parts,
+            })] => match parts.as_slice() {
+                [only_frag] => {
+                    if only_frag == expected {
+                        return;
                     }
-                    _ => (),
                 }
-            }
+                _ => (),
+            },
             _ => (),
         },
         _ => (),
@@ -660,11 +669,13 @@ fn test_metacommand_dec_changes_default_base() {
     {
         if let [ManuscriptItem::Instruction(ProgramInstruction {
             tag: None,
+            holdbit: HoldBit::Unspecified,
             parts: first_parts,
         }), ManuscriptItem::MetaCommand(ManuscriptMetaCommand::BaseChange(
             NumeralMode::Decimal,
         )), ManuscriptItem::Instruction(ProgramInstruction {
             tag: None,
+            holdbit: HoldBit::Unspecified,
             parts: second_parts,
         })] = items.as_slice()
         {
@@ -688,5 +699,71 @@ fn test_metacommand_dec_changes_default_base() {
     panic!(
         "expected two items with value 10 octal and 12 octal, got {:?}",
         &blocks,
+    );
+}
+
+#[test]
+fn test_opcode_instruction_fragment() {
+    let expected_instruction = Instruction::from(&SymbolicInstruction {
+        held: false,
+        configuration: Unsigned5Bit::ZERO,
+        opcode: Opcode::Aux,
+        index: Unsigned6Bit::ZERO,
+        operand_address: OperandAddress::Direct(Address::ZERO),
+    });
+    assert_eq!(
+        parse_successfully_with("AUX", opcode_instruction_fragment, no_state_setup),
+        InstructionFragment {
+            elevation: Elevation::Normal,
+            value: expected_instruction.bits(),
+        }
+    );
+}
+
+#[test]
+fn program_instruction_with_opcode() {
+    let (maybe_origin, item) =
+        parse_successfully_with("15000| ²¹IOS₅₂ 30106", program_instruction, no_state_setup);
+    assert_eq!(maybe_origin, Some(Origin(Address::from(u18!(0o15000)))));
+    if let ManuscriptItem::Instruction(inst) = item {
+        assert_eq!(inst.value(), u36!(0o210452_030106));
+    } else {
+        panic!(
+            "Parsed instruction should yield ManuscriptItem::Instruction but we actually got {item:?}",
+        );
+    }
+}
+
+#[test]
+fn hold() {
+    assert_eq!(
+        parse_successfully_with(" h", maybe_hold, no_state_setup),
+        HoldBit::Hold
+    );
+    assert_eq!(
+        parse_successfully_with(" :", maybe_hold, no_state_setup),
+        HoldBit::Hold
+    );
+}
+
+#[test]
+fn not_hold() {
+    assert_eq!(
+        //parse_successfully_with(" ℏ", maybe_hold, no_state_setup),
+        parse_successfully_with("ℏ", maybe_hold, no_state_setup),
+        HoldBit::NotHold
+    );
+    assert_eq!(
+        //parse_successfully_with(" ̅h", maybe_hold, no_state_setup),
+        parse_successfully_with("̅h", maybe_hold, no_state_setup),
+        HoldBit::NotHold
+    );
+}
+
+#[test]
+fn unspecified_hold() {
+    assert_eq!(
+        parse_successfully_with("", maybe_hold, no_state_setup),
+        HoldBit::Unspecified
     );
 }

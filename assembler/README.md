@@ -8,32 +8,50 @@ assembler, "M4".  Since this is a cross-assembler, some features (such
 as invoking the assembled program directly) likely will not be
 implemented.
 
-The assembler is very basic right now. For example, neither opcodes
-nor symbols are supported yet.  However, it can be used to generate
-basic test programs.
+The assembler is very basic right now.  However, it can be used to
+generate simple test programs.
 
 ## Example
 
 Here's an example input:
 
 <pre>
-100| 0
-     0
-☛☛PUNCH 101
+100|               0
+200| h ²¹IOS₅₂ 30106
+     h   STE     100
+         0
+☛☛PUNCH 200
 </pre>
 
-This program consists of two words, both zero (they're not valid
-instructions).  It will be loaded at memory address 100 octal.  The
-program entry point is 101 octal.
+This program consists of four words:
+
+* 100: a data storage location
+* 200: connect the paper tape reader (leaving its status word in register E)
+* 201: store the status word at location 100.
+* 202: an invalid instruction which (by default) causes the simulator to stop.
 
 If you put the above assembly language program in the file
-`example.tx2as` you can assemble it like this:
+`ios.tx2as` you can assemble it like this:
 
 ```
-cargo run --bin  tx2m4as -- --output 100.tape example.tx2as
+cargo run --bin  tx2m4as -- --output ios.tape ios.tx2as
 ```
 
-The output goes to the file `100.tape`.
+The output goes to the file `ios.tape`.
+
+## Limitations
+
+The assembler isn't finished yet, so there are a number of quite
+severe limitations:
+
+* No support yet for comments.
+* No symbol table, so tags, origins, addresses etc. cannot be symbols.
+* No expression evaluation, so we cannot use arithmetic expressions
+  (though please note that the TX-2 assembler, M4, had ideas of
+  operator precedence which don't reflect normal usage).
+* No support for deferred operands or RC words.
+* No support for macros.  Confusingly, the TX-2 assembler supported
+  macros and was called M4, but is unrelated to the Unix program `m4`.
 
 ## Documentation
 
