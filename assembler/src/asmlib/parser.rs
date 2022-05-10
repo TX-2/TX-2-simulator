@@ -384,7 +384,7 @@ fn opcode_to_num(input: &str) -> DecodedOpcode {
         "JNX" => 0o7,
         "AUX" => 0o10,
         "RSX" => 0o11,
-        "SKX" => 0o12,
+        "SKX" | "REX" | "SEX" => 0o12,
         // opcode 0o13 = 11 is undefined (unused).
         "EXX" => 0o14,
         "ADX" => 0o15,
