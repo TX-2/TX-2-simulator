@@ -41,14 +41,10 @@ impl Display for Fail {
 
 impl Error for Fail {}
 
-fn update_sum(mut sum: Signed18Bit, word: Unsigned36Bit) -> Signed18Bit {
+fn update_sum(sum: Signed18Bit, word: Unsigned36Bit) -> Signed18Bit {
     let (left, right) = split_halves(word);
-    let mut updated = sum.wrapping_add(right.reinterpret_as_signed());
-    println!("** Adding R {right:>06o} to {sum:>06o} yielding {updated:>06o}");
-    sum = updated;
-    updated = sum.wrapping_add(left.reinterpret_as_signed());
-    println!("** Adding L {left:>06o} to {sum:>06o} yielding {updated:>06o}");
-    updated
+    sum.wrapping_add(right.reinterpret_as_signed())
+        .wrapping_add(left.reinterpret_as_signed())
 }
 
 fn read_splayed_words<R: Read>(
@@ -148,16 +144,23 @@ fn disassemble_chunk<R: Read>(input: &mut R, checksum: &mut Signed18Bit) -> Resu
     };
     let block: Vec<Unsigned36Bit> = read_splayed_words(input, chunk_size, Some(checksum))?;
     let trailer: Vec<Unsigned36Bit> = read_splayed_words(input, 1, Some(checksum))?;
-    let (adj, next) = match trailer.as_slice() {
+    let (_adj, next) = match trailer.as_slice() {
         [only] => split_halves(*only),
         [] => return Err(Fail::ShortFile),
         _ => unreachable!(),
     };
     disassemble_block(origin, &block);
-    println!(
-        "** After reading block, checksum is {:?} (adjustment half-word was {:?}",
-        *checksum, adj
-    );
+    {
+        let unsigned_checksum = checksum.reinterpret_as_unsigned();
+        if unsigned_checksum.is_zero() {
+            println!("** Checksum is valid: {:>06o}", unsigned_checksum);
+        } else {
+            println!(
+                "** Checksum is not valid: {:>06o}, this tape cannot be loaded as-is",
+                unsigned_checksum
+            );
+        }
+    }
     if next == u18!(3) {
         Ok(true)
     } else if next == u18!(0o27) {
@@ -204,15 +207,6 @@ fn disassemble_file(input_file_name: &OsStr) -> Result<(), Fail> {
                 return Err(e);
             }
         }
-    }
-    let unsigned_checksum = checksum.reinterpret_as_unsigned();
-    if unsigned_checksum.is_zero() {
-        println!("** Checksum is valid: {:>06o}", unsigned_checksum);
-    } else {
-        println!(
-            "** Checksum is not valid: {:>06o}, this tape cannot be loaded as-is",
-            unsigned_checksum
-        );
     }
     // The last block we read claimed it was the last.  Check that
     // there is no more data.

@@ -82,12 +82,7 @@ struct OutputOptions {
 }
 
 fn update_checksum_by_halfword(sum: Signed18Bit, halfword: Signed18Bit) -> Signed18Bit {
-    let result = sum.wrapping_add(halfword);
-    event!(
-        Level::DEBUG,
-        "updating checksum {sum:>06o} with {halfword:>06o} yielding {result:>06o}",
-    );
-    result
+    sum.wrapping_add(halfword)
 }
 
 fn update_checksum(sum: Signed18Bit, word: Unsigned36Bit) -> Signed18Bit {
@@ -138,7 +133,7 @@ fn create_tape_block(
         Some(end) => end,
     };
     event!(
-        Level::INFO,
+        Level::DEBUG,
         "creating a tape block with origin={origin:>06o}, len={len:o}, end={end:>06o}"
     );
     let mut block = Vec::with_capacity(code.len().saturating_add(2usize));
@@ -149,29 +144,16 @@ fn create_tape_block(
     .expect("overflow in length encoding")
     .reinterpret_as_unsigned();
     let mut checksum = Signed18Bit::ZERO;
-    event!(
-        Level::INFO,
-        "for this tape block encoded_len={encoded_len:>06o}"
-    );
     block.push(join_halves(encoded_len, end));
     block.extend(code);
 
-    for (pos, w) in block.iter().enumerate() {
-        event!(Level::DEBUG, "block position {pos:>03}: w={w:>012o} ");
+    for w in block.iter() {
         checksum = update_checksum(checksum, *w);
     }
     let next: Unsigned18Bit = { if last { 0o27_u8 } else { 0o3_u8 }.into() };
     checksum = update_checksum_by_halfword(checksum, next.reinterpret_as_signed());
     let balance = Signed18Bit::ZERO.wrapping_sub(checksum);
-    event!(
-        Level::INFO,
-        "computed checksum-balancer for block is {balance:>06o}"
-    );
     checksum = update_checksum_by_halfword(checksum, balance);
-    event!(
-        Level::INFO,
-        "computed checksum for block is {checksum:>06o}"
-    );
     block.push(join_halves(balance.reinterpret_as_unsigned(), next));
     assert_eq!(checksum, Signed18Bit::ZERO);
     Ok(block)
@@ -232,12 +214,6 @@ fn write_data<W: Write>(
             let mut buf: Vec<u8> = Vec::with_capacity(chunk.len() * 6);
             for word in chunk {
                 let unsplayed: [Unsigned6Bit; 6] = unsplay(*word);
-                event!(
-                    Level::TRACE,
-                    "instruction word {:012o} unsplayed to {:?}",
-                    &word,
-                    &unsplayed
-                );
                 buf.extend(unsplayed.into_iter().map(|u| u8::from(u) | 1 << 7));
             }
             writer.write_all(&buf)?;
