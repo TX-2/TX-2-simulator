@@ -22,6 +22,8 @@
 ///!   1958.](https://dl.acm.org/doi/10.1145/368873.368879) describes
 ///!   the Lincoln Writer keyboard and the fact that some characters
 ///!   do not advance the print carriage.
+///! - The Lincoln Lab Division 6 Quarterly Progress Report (15 June
+///!   1958).
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
@@ -201,6 +203,24 @@ pub struct DescribedChar {
     pub advance: bool,
 }
 
+/// The character codes are shown in table 7-6 in the Users handbook.
+/// This shows two columns of characters for each code.  Somewhat
+/// counterintuitively, I believe that the left-hand column is "lower
+/// case".  hence for code 027 for example, 'H' is "lower case" and
+/// "x" is upper case.   I believe this for the following reasons:
+///
+/// 1. because the LW defaults to "lower case" after Carriage Return,
+///    and we'd expect this to correspond to the most commonly used
+///    characters.  The block capitals and digits are all in the
+///    left-hand column.  There is a complete set of A-Z but there is
+///    not a complete set of a-z.
+/// 2. The layout of the Lincoln Writer keyboard is consistent with
+///    this idea.  There are two keyboards, an upper and a lower.  The
+///    lower keyboard contains block capitals and digits, and the
+///    upper keyboard contains minuscule letters (e.g. "q", "k").
+///    This idea is based on the Lincoln Writer diagram on page 24 of
+///    the Lincoln Lab Division 6 Quarterly Progress Report (15 June
+///    1958).
 pub fn lincoln_char_to_described_char(
     lin_ch: &u8,
     state: &mut LincolnState,
@@ -208,7 +228,7 @@ pub fn lincoln_char_to_described_char(
     let nm = || -> Result<Option<DescribedChar>, LincolnToUnicodeConversionFailure> {
         Err(LincolnToUnicodeConversionFailure::NoMapping(*lin_ch))
     };
-    let by_case = |upper: char, lower: char| -> Option<char> {
+    let by_case = |lower: char, upper: char| -> Option<char> {
         Some(if state.uppercase { upper } else { lower })
     };
     let advance: bool = *lin_ch != 0o12 && *lin_ch != 0o13;
@@ -408,17 +428,13 @@ fn test_lincoln_to_unicode_strict() {
     // Regular script
     assert_eq!(
         // Start in lower case.
-        lincoln_to_unicode_strict(&[
-            0o75, // upper case
-            0o27, 0o24, 0o33, 0o33, 0o36
-        ]),
+        lincoln_to_unicode_strict(&[0o27, 0o24, 0o33, 0o33, 0o36]),
         Ok("HELLO".to_string())
     );
 
     assert_eq!(
         lincoln_to_unicode_strict(&[
             0o64, // Superscript
-            0o75, // upper case
             0o27, 0o24, 0o33, 0o33, 0o36
         ]), // HELLO
         Ok("ᴴᴱᴸᴸᴼ".to_string())
@@ -426,7 +442,6 @@ fn test_lincoln_to_unicode_strict() {
 
     assert_eq!(
         lincoln_to_unicode_strict(&[
-            0o75, // upper case
             0o65, // Normal
             0o27, // H
             0o66, // Subscript
@@ -439,11 +454,12 @@ fn test_lincoln_to_unicode_strict() {
 
     assert_eq!(
         lincoln_to_unicode_strict(&[
-            0o52, // { (when lower case)
-            0o53, // } (when lower case)
             0o75, // Upper case
-            0o52, // ( (when upper case)
-            0o53, // ) (when upper case)
+            0o52, // { (when upper case)
+            0o53, // } (when upper case)
+            0o74, // Lower case
+            0o52, // ( (when lower case)
+            0o53, // ) (when lower case)
         ]),
         Ok("{}()".to_string())
     );
@@ -453,17 +469,17 @@ fn test_lincoln_to_unicode_strict() {
 fn test_lincoln_to_unicode_carriage_return() {
     assert_eq!(
         lincoln_to_unicode_strict(&[
-            // Start on lower case.
-            0o06, // when lower case, '#'
             0o75, // Upper case
-            0o06, // when upper case, '6'
+            0o06, // when upper case, '#'
+            0o74, // Lower case
+            0o06, // when lower case, '6'
             0o64, // superscript
             0o20, // A
             0o60, // carriage return
             // Now lower case, normal script
-            0o06, // when lower case, '#'
+            0o06, // when lower case, '6'
         ]),
-        Ok("#6ᴬ\r#".to_string())
+        Ok("#6ᴬ\r6".to_string())
     );
 }
 
@@ -658,12 +674,22 @@ fn round_trip() {
 
 #[test]
 fn missing_superscript() {
-    // There is no superscript uppercase Y in Unicode.  So we expect
-    // the mapping to fail.
+    // There is no superscript uppercase Y in Unicode 14.0.0.  So we
+    // expect the mapping to fail.
+    //
+    // I (James Youngman) believe that the left-hand column in table
+    // 7-6 of the Users handbook is "lower case" even though this
+    // actually contains upper-case letters.  This is based on the
+    // idea that the LW defaults to "lower case" and only there is a
+    // full set of block capitals, but not minuscule letters.
+    //
+    // This is quite confusing and it's another illustration of why
+    // it's important to find authentic software to act as a
+    // reality-check.
     assert_eq!(
         lincoln_to_unicode_strict(&[
+            0o74, // lower case
             0o64, // superscript
-            0o75, // uppercase
             0o50  // Y
         ]),
         Err(LincolnToUnicodeConversionFailure::CannotSuperscript(
