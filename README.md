@@ -25,13 +25,32 @@ Right now the simulator doesn't have enough I/O support to be usable
 interactively, and only implements enough instructions to get part-way
 through the boot process.  So there is not much to see, yet.
 
-To try it out, simply run
+To try it out, you can simply run
 
 ```
 cargo run --bin cli
 ```
 
-This will build the code (if necessary) and then run it.
+This will build the code (if necessary) and then run the simulator.
+To give the simulator a program to run, we can assemble one:
+
+```
+cargo run --bin  tx2m4as -- --output hello.tape assembler/examples/hello.tx2as
+```
+
+This produces the file `hello.tape` which is a file containing the
+program in a form that can be loaded by the TX-2 boot process.  To
+boot the simulated TX-2 such that it runs this program from tape, we
+do this:
+
+```
+cargo run  --bin cli  hello.tape
+```
+
+The simulator should print `HELLO, WORLD` several times and then stop.
+It stops with an error message because the last instruction in the
+program is not a valid instruction; this is currently the only way
+that a user program can stop the simulator.
 
 
 ### Getting More Detail on the Internals

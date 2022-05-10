@@ -39,6 +39,8 @@ cargo run --bin  tx2m4as -- --output ios.tape ios.tx2as
 
 The output goes to the file `ios.tape`.
 
+There are some other examples in the `examples` folder.
+
 ## Limitations
 
 The assembler isn't finished yet, so there are a number of quite
