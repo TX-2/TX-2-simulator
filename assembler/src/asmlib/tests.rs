@@ -367,7 +367,11 @@ fn test_empty_manuscript() {
 #[test]
 fn test_manuscript_without_tag() {
     assert_eq!(
-        parse_successfully_with("673\n71\n", parse_manuscript, no_state_setup),
+        parse_successfully_with(
+            "673 ** This is a comment\n71\n",
+            parse_manuscript,
+            no_state_setup
+        ),
         vec![
             (
                 None,
@@ -420,7 +424,11 @@ fn test_symbol_name_two_syllables() {
 #[test]
 fn test_manuscript_with_single_syllable_tag() {
     assert_eq!(
-        parse_successfully_with("START4  \t->\t205\n", parse_manuscript, no_state_setup),
+        parse_successfully_with(
+            "START4  \t->\t205 ** comment here\n",
+            parse_manuscript,
+            no_state_setup
+        ),
         vec![(
             None,
             ManuscriptItem::Instruction(ProgramInstruction {
@@ -441,7 +449,11 @@ fn test_manuscript_with_single_syllable_tag() {
 #[test]
 fn test_manuscript_with_origin() {
     assert_eq!(
-        parse_successfully_with("100 | 202\n", parse_manuscript, no_state_setup),
+        parse_successfully_with(
+            "100 | 202 ** literal value\n",
+            parse_manuscript,
+            no_state_setup
+        ),
         vec![(
             Some(Origin(Address::new(u18!(0o100)))),
             ManuscriptItem::Instruction(ProgramInstruction {
@@ -491,7 +503,11 @@ fn test_multi_syllable_tag() {
 #[test]
 fn test_manuscript_with_multi_syllable_tag() {
     assert_eq!(
-        parse_successfully_with("CODE HERE->205\n", parse_manuscript, no_state_setup),
+        parse_successfully_with(
+            "CODE HERE->205 ** Also a comment\n",
+            parse_manuscript,
+            no_state_setup
+        ),
         vec![(
             None,
             ManuscriptItem::Instruction(ProgramInstruction {
@@ -660,7 +676,7 @@ fn test_metacommand_octal() {
 
 #[test]
 fn test_metacommand_dec_changes_default_base() {
-    const INPUT: &str = concat!("10\n", "☛☛DECIMAL\n", "10\n");
+    const INPUT: &str = concat!("10\n", "☛☛DECIMAL\n", "10  ** Ten\n");
     let (blocks, _) = assemble_nonempty_valid_input(INPUT);
     if let [ManuscriptBlock {
         origin: None,
@@ -728,9 +744,7 @@ fn program_instruction_with_opcode() {
     if let ManuscriptItem::Instruction(inst) = item {
         assert_eq!(inst.value(), u36!(0o210452_030106));
     } else {
-        panic!(
-            "Parsed instruction should yield ManuscriptItem::Instruction but we actually got {item:?}",
-        );
+        panic!("Wrong instruction result: {item:?}")
     }
 }
 

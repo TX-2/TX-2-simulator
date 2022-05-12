@@ -2,10 +2,8 @@ use std::fmt::{self, Display, Formatter, Octal, Write};
 use std::num::IntErrorKind;
 use std::ops::{Range, Shl};
 
-//use std::ops::Range;
-//use base::prelude::*;
 use nom::branch::alt;
-use nom::bytes::complete::{tag, take, take_while1};
+use nom::bytes::complete::{tag, take, take_until, take_while1};
 use nom::character::complete::{char, digit1, one_of, space0};
 use nom::combinator::{map, map_res, opt, recognize, verify};
 use nom::multi::{many0, many1};
@@ -1043,8 +1041,27 @@ pub(crate) fn program_instruction_or_metacommand<'a, 'b>(
     alt((parse_and_execute_metacommand, program_instruction))(input)
 }
 
+pub(crate) fn comment<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, String> {
+    map(
+        recognize(preceded(preceded(space0, tag("**")), take_until("\n"))),
+        |text: ek::LocatedSpan| text.fragment().to_string(),
+    )(input)
+}
+
 pub(crate) fn newline<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, char> {
     char('\n')(input)
+}
+
+pub(crate) fn end_of_line<'a, 'b>(
+    input: ek::LocatedSpan<'a, 'b>,
+) -> ek::IResult<'a, 'b, ek::LocatedSpan<'a, 'b>> {
+    fn one_end_of_line<'a, 'b>(
+        input: ek::LocatedSpan<'a, 'b>,
+    ) -> ek::IResult<'a, 'b, ek::LocatedSpan<'a, 'b>> {
+        recognize(preceded(opt(comment), newline))(input)
+    }
+
+    recognize(many1(one_end_of_line))(input)
 }
 
 /// Parse a manuscript (which is a sequence of metacommands, macros
@@ -1056,10 +1073,13 @@ pub(crate) fn parse_manuscript<'a, 'b>(
     // the processing of the metacommands and the generation of the
     // assembled code, because in between those things has to come the
     // execution of metacommands such as INSERT, DELETE, REPLACE.
-    many0(terminated(
-        program_instruction_or_metacommand,
-        ek::expect(newline, "expected newline after a program instruction"),
-    ))(input)
+    preceded(
+        many0(end_of_line),
+        many0(terminated(
+            program_instruction_or_metacommand,
+            ek::expect(end_of_line, "expected newline after a program instruction"),
+        )),
+    )(input)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
