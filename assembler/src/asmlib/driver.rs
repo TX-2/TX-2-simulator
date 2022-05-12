@@ -313,7 +313,7 @@ fn assemble_pass1(
 
 #[test]
 fn test_assemble_pass1() {
-    let input = concat!("14\n", "☛☛PUNCH 26");
+    let input = concat!("14\n", "☛☛PUNCH 26\n");
     let mut errors: Vec<Error> = Vec::new();
     let expected_directive_entry_point = Some(Address::new(Unsigned18Bit::from(0o26_u8)));
     let expected_block = Block {

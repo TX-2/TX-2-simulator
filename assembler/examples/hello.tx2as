@@ -1,23 +1,78 @@
-100|REX₆₆ 200
-	²¹IOS₆₆ 30000
-200|      REX₁ 777760
-201|     ⁶TSD 300
-         ⁵TSD 300
-         ⁴TSD 300
-         ³TSD 300
-	 ⁶TSD 301
-	 ⁵TSD 301
-         ⁴TSD 301
-         ³TSD 301
-	 ⁶TSD 302
-	 ⁵TSD 302
-         ⁴TSD 302
-         ³TSD 302
-         ⁶TSD 303
-         ¹JNX₁ 201
-	   000000
+** This TX-2 program prints HELLO, WORLD several times on the Lincoln
+** Writer (which on our simulator is the standard output).
+**
+** The syntax of this assembly language program follows that of the
+** TX-2 assembler, M4, except in the fact that the Lincoln Writer only
+** supported 13 lower-case letters.
+**
+** The first Lincoln Writer is output unit 66.  We will put the code
+** for its sequence at 200, so the program counter for sequence 66
+** (which is X₆₆) should start at 200.
+100|REX₆₆ 200             ** Set X₆₆ to 200.
+	²¹IOS₆₆ 30000     ** Connect the Lincoln Writer (unit 66).
+
+** The IOS instruction connecting unit 66 has the side effect of
+** making sequence 66 runnable. Because bit 020 of the configuration
+** syllable of the IOS instruction is set, the flag of the current
+** sequence is also dropped, meaning that the current sequence
+** (which happens to be 52, the paper tape reader, because of the
+** way the standard leader works) is dropped.
+
+** We want to print HELLO, WORLD several times, so we use X₁ as a
+** counter. Only X registers 40 and up correspond to I/O sequences, so
+** X₁ is just a regular index register.  Arithmetic on the TX-2 is
+** one's complement. The X registers are 18 bits wide.  Bit 17 is the
+** sign bit.
+200|      REX₁ 777760     ** Set X₁ to -15 (decimal)
+
+** TX-2 consisders words to be composed of four quarters (Q4..Q1) with
+** Q1 as least significant.  Most instructions can operate on just
+** some of the quarters of a word, by using the system configuration
+** value field of instructions.  These are reppresented as
+** superscripts.  The configuration values we use here are 6
+** (selecting Q4), 5 (Q3), 4 (Q2) and 3 (Q1).
+**
+** The effect of a TSD instruction is to perform I/O on the unit
+** correspondig to the currently-executing sequence (here, 66).
+** Whether this is input or output depends on whether the relevant
+** unit is an input or an output unit.  Unit 66 is the output half of
+** the first of the system's two Lincoln Writers.
+201|     ⁶TSD 300  ** Print Q4 of the word at 300
+         ⁵TSD 300  ** Print Q3 of the word at 300
+         ⁴TSD 300  ** Print Q2 of the word at 300
+         ³TSD 300  ** Print Q1 of the word at 300
+	 ⁶TSD 301  ** Print Q4 of the word at 301
+	 ⁵TSD 301  ** Print Q3 of the word at 301
+         ⁴TSD 301  ** Print Q2 of the word at 301
+         ³TSD 301  ** Print Q1 of the word at 301
+	 ⁶TSD 302  ** Print Q4 of the word at 302
+	 ⁵TSD 302  ** Print Q3 of the word at 302
+         ⁴TSD 302  ** Print Q2 of the word at 302
+         ³TSD 302  ** Print Q1 of the word at 302
+         ⁶TSD 303  ** Print Q4 of the word at 303
+         ¹JNX₁ 201 ** Loop to 201 if X₁<0, increment X₁
+	   000000  ** An invalid instruction; terminates simulation
+
+** The text we want to print follows.  The Lincoln Writer doesn't use
+** ASCII (it predates the invention of ASCII).  Lincoln Writer
+** characters are six bits wide, so they occupy the least-significant
+** two of the three octal digits of each quarter. Character codes we
+** use are:
+** 023 D
+** 024 E
+** 027 H
+** 033 L
+** 036 O
+** 041 R
+** 046 W
+** 056 Space
+** 060 Newline
+** 070 Comma
 300| 027024033033
 301| 036056070046
 302| 036041033023
 303| 060000000000
+** Indicate to the assembler that it should generate a punched tape
+** output (with the standard header) and that the header should begin
+** the program by juming to location 100.
 ☛☛PUNCH 100
