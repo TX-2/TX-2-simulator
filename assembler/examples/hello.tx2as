@@ -8,7 +8,7 @@
 ** The first Lincoln Writer is output unit 66.  We will put the code
 ** for its sequence at 200, so the program counter for sequence 66
 ** (which is X₆₆) should start at 200.
-100|REX₆₆ 200             ** Set X₆₆ to 200.
+100|      REX₆₆   200     ** Set X₆₆ to 200.
 	²¹IOS₆₆ 30000     ** Connect the Lincoln Writer (unit 66).
 
 ** The IOS instruction connecting unit 66 has the side effect of
@@ -16,7 +16,8 @@
 ** syllable of the IOS instruction is set, the flag of the current
 ** sequence is also dropped, meaning that the current sequence
 ** (which happens to be 52, the paper tape reader, because of the
-** way the standard leader works) is dropped.
+** way the standard leader works) is dropped.  Therefore sequence
+** 52 will no longer run.
 
 ** We want to print HELLO, WORLD several times, so we use X₁ as a
 ** counter. Only X registers 40 and up correspond to I/O sequences, so
