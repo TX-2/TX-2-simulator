@@ -36,7 +36,11 @@ fn bad_write(addr: Address) -> BadMemOp {
 
 impl ControlUnit {
     /// Implements the IOS opcode
-    pub fn op_ios(&mut self, devices: &mut DeviceManager, system_time: &Duration) -> OpcodeResult {
+    pub(crate) fn op_ios(
+        &mut self,
+        devices: &mut DeviceManager,
+        system_time: &Duration,
+    ) -> Result<OpcodeResult, Alarm> {
         let j = self.regs.n.index_address();
         let cf = self.regs.n.configuration();
 
@@ -110,7 +114,7 @@ impl ControlUnit {
         if let Some(reason) = dismiss_reason {
             self.dismiss_unless_held(reason);
         }
-        result.map(|()| None)
+        result.map(|()| OpcodeResult::default())
     }
 
     fn connect_unit(
@@ -135,13 +139,13 @@ impl ControlUnit {
         Ok(())
     }
 
-    pub fn op_tsd(
+    pub(crate) fn op_tsd(
         &mut self,
         devices: &mut DeviceManager,
         execution_address: Address,
         system_time: &Duration,
         mem: &mut MemoryUnit,
-    ) -> OpcodeResult {
+    ) -> Result<OpcodeResult, Alarm> {
         fn make_tsd_qsal(inst: Instruction, op: BadMemOp) -> Alarm {
             Alarm::QSAL(inst, op, "TSD address is not mapped".to_string())
         }
@@ -296,7 +300,10 @@ impl ControlUnit {
                 if meta_bit_set && self.trap.trap_on_operand() {
                     self.raise_trap();
                 }
-                Ok(None)
+                Ok(OpcodeResult {
+                    program_counter_change: None,
+                    hardware_state_change: true,
+                })
             }
             Ok(TransferOutcome::DismissAndWait) => {
                 // In the dismiss and wait case, the
@@ -306,9 +313,12 @@ impl ControlUnit {
                 // happens following the completion of an
                 // instruction.
                 self.dismiss("TSD while data was not ready caused dismiss-and-wait");
-                Ok(Some(ProgramCounterChange::DismissAndWait(
-                    execution_address,
-                )))
+                Ok(OpcodeResult {
+                    program_counter_change: Some(ProgramCounterChange::DismissAndWait(
+                        execution_address,
+                    )),
+                    hardware_state_change: true,
+                })
             }
             Err(e) => Err(e),
         }

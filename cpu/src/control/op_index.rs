@@ -32,7 +32,7 @@ use crate::memory::{MemoryUnit, MetaBitChange};
 impl ControlUnit {
     /// Implements the DPX instruction (Opcode 016, User Handbook,
     /// page 3-16).
-    pub fn op_dpx(&mut self, mem: &mut MemoryUnit) -> OpcodeResult {
+    pub(crate) fn op_dpx(&mut self, mem: &mut MemoryUnit) -> Result<OpcodeResult, Alarm> {
         let j = self.regs.n.index_address();
         let xj: Unsigned36Bit = sign_extend_index_value(&self.regs.get_index_register(j));
         let target: Address = self.operand_address_with_optional_defer_and_index(mem)?;
@@ -49,7 +49,7 @@ impl ControlUnit {
                     &UpdateE::Yes,
                     &MetaBitChange::None,
                 )
-                .map(|()| None),
+                .map(|()| OpcodeResult::default()),
             Err(Alarm::QSAL(inst, BadMemOp::Read(addr), msg)) => {
                 // That read operation just failed.  So we handle this
                 // as a _write_ failure, meaning that we change
@@ -59,7 +59,7 @@ impl ControlUnit {
                     BadMemOp::Write(addr),
                     msg,
                 ))?;
-                Ok(None) // QSAL is masked, we just carry on (the DPX instruction has no effect).
+                Ok(OpcodeResult::default()) // QSAL is masked, we just carry on (the DPX instruction has no effect).
             }
             Err(other) => Err(other),
         }
@@ -67,7 +67,7 @@ impl ControlUnit {
 
     /// Implements the AUX instruction (Opcode 010, User Handbook,
     /// page 3-22).
-    pub fn op_aux(&mut self, mem: &mut MemoryUnit) -> OpcodeResult {
+    pub(crate) fn op_aux(&mut self, mem: &mut MemoryUnit) -> Result<OpcodeResult, Alarm> {
         let j = self.regs.n.index_address();
         // The AUX instruction is not indexed.
         let source: Address = self.operand_address_with_optional_defer_without_index(mem)?;
@@ -90,12 +90,12 @@ impl ControlUnit {
             );
             self.regs.set_index_register(j, &newvalue);
         }
-        Ok(None)
+        Ok(OpcodeResult::default())
     }
 
     /// Implements the RSX instruction (Opcode 011, User Handbook,
     /// page 3-14).
-    pub fn op_rsx(&mut self, mem: &mut MemoryUnit) -> OpcodeResult {
+    pub(crate) fn op_rsx(&mut self, mem: &mut MemoryUnit) -> Result<OpcodeResult, Alarm> {
         let j = self.regs.n.index_address();
         let existing = join_halves(
             Unsigned18Bit::ZERO,
@@ -117,12 +117,12 @@ impl ControlUnit {
             let xj: Signed18Bit = subword::right_half(word).reinterpret_as_signed();
             self.regs.set_index_register(j, &xj);
         }
-        Ok(None)
+        Ok(OpcodeResult::default())
     }
 
     /// Implements the SKX instruction (Opcode 012, User Handbook,
     /// page 3-24).
-    pub fn op_skx(&mut self) -> OpcodeResult {
+    pub(crate) fn op_skx(&mut self) -> Result<OpcodeResult, Alarm> {
         let inst = &self.regs.n;
         let j = inst.index_address();
         // SKX does not cause an access to STUV memory; instead the
@@ -141,7 +141,7 @@ impl ControlUnit {
                 if config & 0o10 != 0 {
                     self.regs.flags.raise(&j);
                 }
-                Ok(None)
+                Ok(OpcodeResult::default())
             }
             0o1 => {
                 if j != 0 {
@@ -150,7 +150,7 @@ impl ControlUnit {
                     let t_negated = Signed18Bit::ZERO.wrapping_sub(operand.reinterpret_as_signed());
                     self.regs.set_index_register(j, &t_negated);
                 }
-                Ok(None)
+                Ok(OpcodeResult::default())
             }
             _ => Err(self.alarm_unit.always_fire(Alarm::ROUNDTUITAL(format!(
                 "SKX configuration {:#o} is not implemented yet",
@@ -160,13 +160,13 @@ impl ControlUnit {
     }
 
     /// Implements the JPX (jump on positive index) opcode (06).
-    pub fn op_jpx(&mut self, mem: &mut MemoryUnit) -> OpcodeResult {
+    pub(crate) fn op_jpx(&mut self, mem: &mut MemoryUnit) -> Result<OpcodeResult, Alarm> {
         let is_positive_address = |xj: &Signed18Bit| !xj.is_zero() && xj.is_positive();
         self.impl_op_jpx_jnx(is_positive_address, mem)
     }
 
     /// Implements the JNX (jump on positive index) opcode (07).
-    pub fn op_jnx(&mut self, mem: &mut MemoryUnit) -> OpcodeResult {
+    pub(crate) fn op_jnx(&mut self, mem: &mut MemoryUnit) -> Result<OpcodeResult, Alarm> {
         let is_negative_address = |xj: &Signed18Bit| xj.is_negative();
         self.impl_op_jpx_jnx(is_negative_address, mem)
     }
@@ -180,11 +180,11 @@ impl ControlUnit {
     // extended index increment (18 bits).  (BUT if the JNX or JPX is
     // deferred, the increment is not addded until PK3 so N is not
     // changed during PK1).
-    pub fn impl_op_jpx_jnx<F: FnOnce(&Signed18Bit) -> bool>(
+    pub(crate) fn impl_op_jpx_jnx<F: FnOnce(&Signed18Bit) -> bool>(
         &mut self,
         predicate: F,
         mem: &mut MemoryUnit,
-    ) -> OpcodeResult {
+    ) -> Result<OpcodeResult, Alarm> {
         let j = self.regs.n.index_address();
         let xj = self.regs.get_index_register(j);
         let do_jump: bool = predicate(&xj);
@@ -229,9 +229,12 @@ impl ControlUnit {
                 subword::left_half(self.regs.e),
                 Unsigned18Bit::from(self.regs.p),
             );
-            Ok(Some(ProgramCounterChange::Jump(target)))
+            Ok(OpcodeResult {
+                program_counter_change: Some(ProgramCounterChange::Jump(target)),
+                hardware_state_change: false,
+            })
         } else {
-            Ok(None)
+            Ok(OpcodeResult::default())
         }
     }
 }

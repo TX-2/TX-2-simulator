@@ -400,12 +400,33 @@ enum SequenceSelection {
     InLimbo,
 }
 
-pub type OpcodeResult = Result<Option<ProgramCounterChange>, Alarm>;
+#[derive(Debug, PartialEq, Eq, Default)]
+pub(crate) struct OpcodeResult {
+    program_counter_change: Option<ProgramCounterChange>,
+    hardware_state_change: bool,
+}
+
+#[test]
+fn test_opcode_result() {
+    let r = OpcodeResult::default();
+    assert!(r.program_counter_change.is_none());
+    assert_eq!(r.hardware_state_change, false);
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PanicOnUnmaskedAlarm {
     No,
     Yes,
+}
+
+fn please_poll_soon(
+    devices: &mut DeviceManager,
+    k_register: Option<SequenceNumber>,
+    now: Duration,
+) {
+    if let Some(k) = k_register {
+        devices.update_poll_time(k, now);
+    }
 }
 
 impl ControlUnit {
@@ -888,6 +909,7 @@ impl ControlUnit {
         system_time: &Duration,
         devices: &mut DeviceManager,
         mem: &mut MemoryUnit,
+        hardware_state_changed: &mut bool,
     ) -> Result<(u64, RunMode), (Alarm, Address)> {
         fn execute(
             prev_program_counter: Address,
@@ -896,7 +918,7 @@ impl ControlUnit {
             devices: &mut DeviceManager,
             system_time: &Duration,
             mem: &mut MemoryUnit,
-        ) -> OpcodeResult {
+        ) -> Result<OpcodeResult, Alarm> {
             match opcode {
                 Opcode::Aux => control.op_aux(mem),
                 Opcode::Lda => control.op_lda(mem),
@@ -954,18 +976,26 @@ impl ControlUnit {
             let _enter = span.enter();
             event!(Level::TRACE, "executing instruction {}", &sym);
             match execute(p, &sym.opcode(), self, devices, system_time, mem) {
-                Ok(None) => {
-                    // This is the usual case; the call to
-                    // set_program_counter above will have incremented
-                    // P.
-                    Ok(())
-                }
-                Ok(Some(pc_change)) => {
-                    // Instructions which return
-                    // ProgramCounterChange::CounterUpdate do so in
-                    // order perform a skip over the next instruction.
-                    event!(Level::TRACE, "program counter change: {:?}", &pc_change);
-                    self.set_program_counter(pc_change);
+                Ok(opcode_result) => {
+                    if opcode_result.hardware_state_change {
+                        *hardware_state_changed = true;
+                        please_poll_soon(devices, self.regs.k, *system_time);
+                    }
+                    match opcode_result.program_counter_change {
+                        None => {
+                            // This is the usual case; the call to
+                            // set_program_counter above will have
+                            // incremented P.
+                        }
+                        Some(pc_change) => {
+                            // Instructions which return
+                            // ProgramCounterChange::CounterUpdate do
+                            // so in order perform a skip over the
+                            // next instruction.
+                            event!(Level::TRACE, "program counter change: {:?}", &pc_change);
+                            self.set_program_counter(pc_change);
+                        }
+                    }
                     Ok(())
                 }
                 Err(e) => {

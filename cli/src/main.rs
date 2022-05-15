@@ -53,7 +53,6 @@ fn run_until_alarm(
     clk: &mut BasicClock,
     multiplier: Option<f64>,
 ) -> (Alarm, Option<Address>) {
-    let mut elapsed_ns: u64 = 0;
     let mut sleeper = MinimalSleeper::new(Duration::from_millis(2));
     let mut next_hw_poll = clk.now();
     let mut run_mode = RunMode::Running;
@@ -79,8 +78,8 @@ fn run_until_alarm(
                 Err(alarm) => {
                     event!(
                         Level::INFO,
-                        "Alarm raised during hardware polling after {}ns",
-                        elapsed_ns
+                        "Alarm raised during hardware polling at system time {:?}",
+                        now
                     );
                     return (alarm, None);
                 }
@@ -106,22 +105,27 @@ fn run_until_alarm(
             cpu::time_passes(clk, &mut sleeper, &interval, multiplier);
             continue;
         }
-        elapsed_ns += match control.execute_instruction(&clk.now(), devices, mem) {
+        let mut hardware_state_changed = false;
+        match control.execute_instruction(&clk.now(), devices, mem, &mut hardware_state_changed) {
             Err((alarm, address)) => {
                 event!(
                     Level::INFO,
-                    "Alarm raised during instruction execution at {:o} after {}ns",
+                    "Alarm raised during instruction execution at {:o} at system time {:?}",
                     address,
-                    elapsed_ns
+                    now
                 );
                 return (alarm, Some(address));
             }
             Ok((ns, new_run_mode)) => {
                 run_mode = new_run_mode;
                 cpu::time_passes(clk, &mut sleeper, &Duration::from_nanos(ns), multiplier);
-                ns
             }
-        };
+        }
+        if hardware_state_changed {
+            // Some instruction changed the hardware, so we need to
+            // poll it again.
+            next_hw_poll = now;
+        }
     }
 }
 
