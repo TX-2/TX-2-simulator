@@ -1,5 +1,6 @@
 /// Simulate the historic TX-2 computer
 use std::ffi::OsString;
+use std::fmt::{self, Debug, Display, Formatter};
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::str::FromStr;
@@ -26,10 +27,10 @@ fn run(
     mem: &mut MemoryUnit,
     devices: &mut DeviceManager,
     clk: &mut BasicClock,
-    multiplier: Option<f64>,
+    sleep_multiplier: Option<f64>,
 ) -> i32 {
     control.codabo(&ResetMode::ResetTSP, devices, mem);
-    let (alarm, maybe_address) = run_until_alarm(control, devices, mem, clk, multiplier);
+    let (alarm, maybe_address) = run_until_alarm(control, devices, mem, clk, sleep_multiplier);
     match maybe_address {
         Some(addr) => {
             event!(
@@ -51,7 +52,7 @@ fn run_until_alarm(
     devices: &mut DeviceManager,
     mem: &mut MemoryUnit,
     clk: &mut BasicClock,
-    multiplier: Option<f64>,
+    sleep_multiplier: Option<f64>,
 ) -> (Alarm, Option<Address>) {
     let mut sleeper = MinimalSleeper::new(Duration::from_millis(2));
     let mut next_hw_poll = clk.now();
@@ -102,7 +103,7 @@ fn run_until_alarm(
                 "machine is in limbo, waiting {:?} for a flag to be raised",
                 &interval,
             );
-            cpu::time_passes(clk, &mut sleeper, &interval, multiplier);
+            cpu::time_passes(clk, &mut sleeper, &interval, sleep_multiplier);
             continue;
         }
         let mut hardware_state_changed = false;
@@ -118,7 +119,12 @@ fn run_until_alarm(
             }
             Ok((ns, new_run_mode)) => {
                 run_mode = new_run_mode;
-                cpu::time_passes(clk, &mut sleeper, &Duration::from_nanos(ns), multiplier);
+                cpu::time_passes(
+                    clk,
+                    &mut sleeper,
+                    &Duration::from_nanos(ns),
+                    sleep_multiplier,
+                );
             }
         }
         if hardware_state_changed {
@@ -202,6 +208,21 @@ struct Cli {
     tape: Vec<OsString>,
 }
 
+#[derive(Debug)]
+struct BadSpeedMultiplier(f64);
+
+impl Display for BadSpeedMultiplier {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(
+            f,
+            "speed multiplier {} is too small for reliable arithmetic operations",
+            self.0
+        )
+    }
+}
+
+impl std::error::Error for BadSpeedMultiplier {}
+
 fn run_simulator() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
@@ -259,6 +280,17 @@ fn run_simulator() -> Result<(), Box<dyn std::error::Error>> {
             },
         },
     };
+    let sleep_multiplier = match speed_multiplier {
+        None => None,
+        Some(sp) => {
+            let sleep_multiplier = sp.recip();
+            if sleep_multiplier.is_finite() {
+                Some(sleep_multiplier)
+            } else {
+                return Err(Box::new(BadSpeedMultiplier(sp)));
+            }
+        }
+    };
 
     let mut control = ControlUnit::new(
         // We have two simimarly-named enums here so that the cpu
@@ -285,7 +317,7 @@ fn run_simulator() -> Result<(), Box<dyn std::error::Error>> {
         &mut mem,
         &mut devices,
         &mut clk,
-        speed_multiplier,
+        sleep_multiplier,
     ));
 }
 
