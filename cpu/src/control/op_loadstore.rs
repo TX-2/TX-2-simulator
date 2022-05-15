@@ -21,39 +21,39 @@ use base::prelude::*;
 impl ControlUnit {
     /// Implements the LDA instruction (Opcode 024, User Handbook,
     /// page 3-6).
-    pub fn op_lda(&mut self, mem: &mut MemoryUnit) -> OpcodeResult {
+    pub(crate) fn op_lda(&mut self, mem: &mut MemoryUnit) -> Result<OpcodeResult, Alarm> {
         let new_value = self.op_load_value(&mem.get_a_register(), mem, &UpdateE::Yes)?;
         mem.set_a_register(new_value);
-        Ok(None)
+        Ok(OpcodeResult::default())
     }
 
     /// Implements the LDB instruction (Opcode 025, User Handbook,
     /// page 3-6).
-    pub fn op_ldb(&mut self, mem: &mut MemoryUnit) -> OpcodeResult {
+    pub(crate) fn op_ldb(&mut self, mem: &mut MemoryUnit) -> Result<OpcodeResult, Alarm> {
         let new_value = self.op_load_value(&mem.get_b_register(), mem, &UpdateE::Yes)?;
         mem.set_b_register(new_value);
-        Ok(None)
+        Ok(OpcodeResult::default())
     }
 
     /// Implements the LDC instruction (Opcode 026, User Handbook,
     /// page 3-6).
-    pub fn op_ldc(&mut self, mem: &mut MemoryUnit) -> OpcodeResult {
+    pub(crate) fn op_ldc(&mut self, mem: &mut MemoryUnit) -> Result<OpcodeResult, Alarm> {
         let new_value = self.op_load_value(&mem.get_c_register(), mem, &UpdateE::Yes)?;
         mem.set_c_register(new_value);
-        Ok(None)
+        Ok(OpcodeResult::default())
     }
 
     /// Implements the LDD instruction (Opcode 027, User Handbook,
     /// page 3-6).
-    pub fn op_ldd(&mut self, mem: &mut MemoryUnit) -> OpcodeResult {
+    pub(crate) fn op_ldd(&mut self, mem: &mut MemoryUnit) -> Result<OpcodeResult, Alarm> {
         let new_value = self.op_load_value(&mem.get_d_register(), mem, &UpdateE::Yes)?;
         mem.set_d_register(new_value);
-        Ok(None)
+        Ok(OpcodeResult::default())
     }
 
     /// Implements the LDE instruction (Opcode 020, User Handbook,
     /// page 3-6).
-    pub fn op_lde(&mut self, mem: &mut MemoryUnit) -> OpcodeResult {
+    pub(crate) fn op_lde(&mut self, mem: &mut MemoryUnit) -> Result<OpcodeResult, Alarm> {
         // LDE is a special case in that the the other instructions
         // jam the loaded memory word into E (see example 2 for LDA)
         // but LDE doesn't do this (you get the exchanged result in E
@@ -61,12 +61,12 @@ impl ControlUnit {
         let old_value = self.regs.e;
         let new_value = self.op_load_value(&old_value, mem, &UpdateE::No)?;
         self.regs.e = new_value;
-        Ok(None)
+        Ok(OpcodeResult::default())
     }
 
     /// Implements the STE instruction (Opcode 030, User Handbook,
     /// page 3-8).
-    pub fn op_ste(&mut self, mem: &mut MemoryUnit) -> OpcodeResult {
+    pub(crate) fn op_ste(&mut self, mem: &mut MemoryUnit) -> Result<OpcodeResult, Alarm> {
         // STE is a special case in that it does not itself modify the
         // E register.  See paragraph 1 on page 3-8 of the Users
         // Handbook.
@@ -79,14 +79,14 @@ impl ControlUnit {
         register_value: Unsigned36Bit,
         mem: &mut MemoryUnit,
         update_e: &UpdateE,
-    ) -> OpcodeResult {
+    ) -> Result<OpcodeResult, Alarm> {
         let target: Address = self.operand_address_with_optional_defer_and_index(mem)?;
         event!(
             Level::TRACE,
             "storing register value {register_value:o} at {target:o}"
         );
         self.memory_read_and_update_with_exchange(mem, &target, update_e, |_| register_value)
-            .map(|()| None)
+            .map(|()| OpcodeResult::default())
     }
 
     /// Implement loads as if for opcodes LD{A,B,C,D,E}.

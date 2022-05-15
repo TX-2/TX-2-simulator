@@ -254,6 +254,15 @@ impl DeviceManager {
         self.devices.get_mut(unit_number)
     }
 
+    pub fn update_poll_time(&mut self, seq: SequenceNumber, when: Duration) {
+        if self.poll_queue.update(seq, when).is_err() {
+            // This happens when we complete an IOS or TSD
+            // instruction from a sequence that has no attached
+            // hardware.  For example software-only sequences such
+            // as 0o0, 0o76 or 0o77.  It's harmless.
+        }
+    }
+
     // TODO: actually delete this
     //fn get_type(&self, unit_number: Unsigned6Bit) -> DeviceType {
     //    match self.devices.get(&unit_number) {

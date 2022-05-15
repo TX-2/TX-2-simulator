@@ -11,6 +11,7 @@ use base::subword;
 use crate::control::{ControlUnit, OpcodeResult, UpdateE};
 use crate::exchanger::SystemConfiguration;
 use crate::memory::MemoryUnit;
+use crate::Alarm;
 
 use tracing::{event, Level};
 
@@ -23,7 +24,7 @@ use tracing::{event, Level};
 ///
 impl ControlUnit {
     /// Implements the SPG instruction.
-    pub fn op_spg(&mut self, mem: &mut MemoryUnit) -> OpcodeResult {
+    pub(crate) fn op_spg(&mut self, mem: &mut MemoryUnit) -> Result<OpcodeResult, Alarm> {
         let c = usize::from(self.regs.n.configuration());
         let target = self.operand_address_with_optional_defer_and_index(mem)?;
         let (word, _meta) =
@@ -41,7 +42,7 @@ impl ControlUnit {
                 );
             }
         }
-        Ok(None)
+        Ok(OpcodeResult::default())
     }
 }
 

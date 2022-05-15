@@ -54,6 +54,11 @@ pub struct PollQueue {
     items: KeyedPriorityQueue<SequenceNumber, ReverseOrdered<Duration>>,
 }
 
+#[derive(Debug)]
+pub enum PollQueueUpdateFailure {
+    UnknownSequence(SequenceNumber),
+}
+
 impl PollQueue {
     pub fn new() -> PollQueue {
         PollQueue {
@@ -73,6 +78,20 @@ impl PollQueue {
         self.items
             .push(key, ReverseOrdered::from(priority))
             .map(|rd| rd.inner)
+    }
+
+    pub fn update(
+        &mut self,
+        key: SequenceNumber,
+        priority: Duration,
+    ) -> Result<Duration, PollQueueUpdateFailure> {
+        match self
+            .items
+            .set_priority(&key, ReverseOrdered::from(priority))
+        {
+            Ok(priority) => Ok(priority.inner),
+            Err(_) => Err(PollQueueUpdateFailure::UnknownSequence(key)),
+        }
     }
 
     #[cfg(test)]

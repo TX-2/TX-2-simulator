@@ -15,7 +15,7 @@ use crate::memory::{BitChange, MemoryMapped, MemoryOpFailure, MemoryUnit, WordCh
 /// - SED (unimplemented)
 impl ControlUnit {
     /// Implements the JMP opcode and its variations (all of which are unconditional jumps).
-    pub fn op_jmp(&mut self) -> OpcodeResult {
+    pub(crate) fn op_jmp(&mut self) -> Result<OpcodeResult, Alarm> {
         // For JMP the configuration field in the instruction controls
         // the behaviour of the instruction, without involving
         // a load from F-memory.
@@ -78,7 +78,10 @@ impl ControlUnit {
             self.dismiss_unless_held("JMP has dismiss bit set in config syllable");
         } else {
         }
-        Ok(Some(ProgramCounterChange::Jump(new_pc)))
+        Ok(OpcodeResult {
+            program_counter_change: Some(ProgramCounterChange::Jump(new_pc)),
+            hardware_state_change: false,
+        })
     }
 
     /// Implement the SKM instruction.  This has a number of
@@ -90,7 +93,7 @@ impl ControlUnit {
     ///
     /// The SKM instruction is documented on pages 7-34 and 7-35 of
     /// the User Handbook.
-    pub fn op_skm(&mut self, mem: &mut MemoryUnit) -> OpcodeResult {
+    pub(crate) fn op_skm(&mut self, mem: &mut MemoryUnit) -> Result<OpcodeResult, Alarm> {
         let bit = index_address_to_bit_selection(self.regs.n.index_address());
         // Determine the operand address; any initial deferred cycle
         // must use 0 as the indexation, as the index address of the
@@ -120,7 +123,7 @@ impl ControlUnit {
                     ),
                 ))?;
                 // The alarm is masked.  We turn the memory mutation into a no-op.
-                return Ok(None);
+                return Ok(OpcodeResult::default());
             }
             Err(MemoryOpFailure::ReadOnly(_, _)) => {
                 self.alarm_unit.fire_if_not_masked(
@@ -134,7 +137,7 @@ impl ControlUnit {
                     ),
                     ))?;
                 // The alarm is masked.  We turn the memory mutation into a no-op.
-                return Ok(None);
+                return Ok(OpcodeResult::default());
             }
         };
         let skip: bool = if let Some(prevbit) = prev_bit_value {
@@ -150,20 +153,24 @@ impl ControlUnit {
             // (e.g. 1.0) and so we do not perform a skip.
             false
         };
-        // The location of the currently executing instruction is referred to by M4
-        // as '#'.  The next instruction would be '#+1' and that's where the P register
-        // currently points.  But "skip" means to set P=#+2.
-        Ok(if skip {
-            Some(ProgramCounterChange::CounterUpdate)
-        } else {
-            None
+        Ok(OpcodeResult {
+            // The location of the currently executing instruction is
+            // referred to by M4 as '#'.  The next instruction would
+            // be '#+1' and that's where the P register currently
+            // points.  But "skip" means to set P=#+2.
+            program_counter_change: if skip {
+                Some(ProgramCounterChange::CounterUpdate)
+            } else {
+                None
+            },
+            hardware_state_change: false,
         })
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::control::{PanicOnUnmaskedAlarm, ProgramCounterChange};
+    use crate::control::{OpcodeResult, PanicOnUnmaskedAlarm, ProgramCounterChange};
     use crate::{ControlUnit, MemoryConfiguration, MemoryUnit};
     use base::instruction::{Opcode, SymbolicInstruction};
     use base::prelude::*;
@@ -207,18 +214,22 @@ mod tests {
         control
             .update_n_register(Instruction::from(inst).bits())
             .expect(COMPLAIN);
-        match control.op_jmp() {
+        let result = control.op_jmp();
+        match result {
             Err(e) => {
                 panic!("JMP instruction failed: {}", e);
             }
-            Ok(Some(ProgramCounterChange::Jump(to))) => {
+            Ok(OpcodeResult {
+                program_counter_change: Some(ProgramCounterChange::Jump(to)),
+                hardware_state_change: false,
+            }) => {
                 let xj = control.regs.get_index_register(j);
                 let dismissed =
                     !dbg!(dbg!(control.regs.flags).current_flag_state(&SequenceNumber::ZERO));
                 (to, xj, control.regs.e, dismissed)
             }
-            Ok(other) => {
-                panic!("JMP didn't jump: {:?}", other);
+            other => {
+                panic!("JMP didn't jump in the expected way: {other:?}");
             }
         }
     }
