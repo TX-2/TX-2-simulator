@@ -4,6 +4,7 @@ use base::prelude::*;
 use std::time::Duration;
 
 use super::super::*;
+use crate::event::InputEvent;
 use crate::io::{Unit, UnitStatus};
 
 #[derive(Debug)]
@@ -159,6 +160,10 @@ impl Unit for TrapCircuit {
     }
 
     fn disconnect(&mut self, _system_time: &Duration) {
+        // Does nothing.
+    }
+
+    fn on_input_event(&mut self, _event: InputEvent) {
         // Does nothing.
     }
 }

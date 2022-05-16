@@ -312,4 +312,8 @@ impl Unit for LincolnWriterOutput {
         }
         self.connected = false;
     }
+
+    fn on_input_event(&mut self, _event: crate::event::InputEvent) {
+        // Does nothing
+    }
 }

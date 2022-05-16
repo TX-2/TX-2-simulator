@@ -1,8 +1,8 @@
 /// Simulate the historic TX-2 computer
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::fmt::{self, Debug, Display, Formatter};
-use std::fs::File;
 use std::fs::OpenOptions;
+use std::io::{BufReader, Read};
 use std::str::FromStr;
 use std::time::Duration;
 
@@ -14,7 +14,7 @@ use tracing_subscriber::prelude::*;
 use base::prelude::*;
 use cpu::{
     self, set_up_peripherals, Alarm, BasicClock, Clock, ControlUnit, DeviceManager,
-    MemoryConfiguration, MemoryUnit, MinimalSleeper, ResetMode, RunMode, TapeIterator,
+    MemoryConfiguration, MemoryUnit, MinimalSleeper, ResetMode, RunMode,
 };
 
 // Thanks to Google for allowing this code to be open-sourced.  I
@@ -138,34 +138,6 @@ fn run_until_alarm(
     }
 }
 
-#[derive(Debug)]
-struct TapeSequence {
-    pos: usize,
-    names: Vec<OsString>,
-}
-
-impl TapeSequence {
-    fn new(names: Vec<OsString>) -> TapeSequence {
-        TapeSequence { pos: 0, names }
-    }
-
-    fn is_empty(&self) -> bool {
-        self.names.is_empty()
-    }
-}
-
-impl TapeIterator for TapeSequence {
-    fn next_tape(&mut self) -> Option<File> {
-        match self.names.get(self.pos) {
-            Some(name) => {
-                self.pos += 1;
-                OpenOptions::new().read(true).open(name).ok()
-            }
-            None => None,
-        }
-    }
-}
-
 /// Whether to panic when there was an unmasked alarm.
 #[derive(Debug, Clone, PartialEq, Eq, ArgEnum)]
 enum PanicOnUnmaskedAlarm {
@@ -207,8 +179,8 @@ struct Cli {
     #[clap(long = "panic-on-unmasked-alarm", arg_enum)]
     panic_on_unmasked_alarm: Option<PanicOnUnmaskedAlarm>,
 
-    /// Files containing paper tape data
-    tape: Vec<OsString>,
+    /// File containing paper tape data
+    tape: Option<OsString>,
 }
 
 #[derive(Debug)]
@@ -244,13 +216,46 @@ fn run_simulator() -> Result<(), Box<dyn std::error::Error>> {
         with_u_memory: false,
     };
 
-    let tapes = TapeSequence::new(cli.tape.clone());
-    if tapes.is_empty() {
-        event!(
-            Level::WARN,
-            "No paper tapes were specified on the command line, so no program will be loaded"
-        );
+    fn file_size_guess(file_name: &OsStr) -> Option<usize> {
+        match std::fs::metadata(file_name) {
+            Ok(metadata) => match usize::try_from(metadata.len()) {
+                Ok(n) => Some(n),
+                Err(_) => None,
+            },
+            Err(_) => None,
+        }
     }
+
+    let tape_data: Option<Vec<u8>> = match cli.tape.as_ref() {
+        None => {
+            event!(
+                Level::WARN,
+                "No paper tapes were specified on the command line, so no program will be loaded"
+            );
+            None
+        }
+        Some(file_name) => {
+            match OpenOptions::new()
+                .read(true)
+                .open(file_name)
+                .map(BufReader::new)
+            {
+                Ok(mut r) => {
+                    let mut buf: Vec<u8> =
+                        Vec::with_capacity(file_size_guess(file_name).unwrap_or(0));
+                    if let Err(e) = r.read_to_end(&mut buf) {
+                        return Err(Box::new(e));
+                    } else {
+                        Some(buf)
+                    }
+                }
+                Err(e) => {
+                    return Err(Box::new(e));
+                }
+            }
+        }
+    };
+
     let speed_multiplier: Option<f64> = match cli.speed_multiplier.as_ref() {
         None => {
             event!(
@@ -313,7 +318,7 @@ fn run_simulator() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut mem = MemoryUnit::new(&mem_config);
     let mut devices = DeviceManager::new();
-    set_up_peripherals(&mut devices, &clk, Box::new(tapes));
+    set_up_peripherals(&mut devices, &clk, tape_data);
 
     std::process::exit(run(
         &mut control,
