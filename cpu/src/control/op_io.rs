@@ -302,7 +302,7 @@ impl ControlUnit {
                 }
                 Ok(OpcodeResult {
                     program_counter_change: None,
-                    hardware_state_change: true,
+                    poll_order_change: true,
                 })
             }
             Ok(TransferOutcome::DismissAndWait) => {
@@ -317,7 +317,7 @@ impl ControlUnit {
                     program_counter_change: Some(ProgramCounterChange::DismissAndWait(
                         execution_address,
                     )),
-                    hardware_state_change: true,
+                    poll_order_change: true,
                 })
             }
             Err(e) => Err(e),
