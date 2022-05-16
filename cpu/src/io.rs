@@ -142,6 +142,7 @@ fn make_report_word_for_invalid_unit(unit: Unsigned6Bit, current_flag: bool) -> 
 pub trait Unit {
     fn poll(&mut self, system_time: &Duration) -> UnitStatus;
     fn connect(&mut self, system_time: &Duration, mode: Unsigned12Bit);
+    fn disconnect(&mut self, system_time: &Duration);
     fn transfer_mode(&self) -> TransferMode;
     fn read(&mut self, system_time: &Duration) -> Result<MaskedWord, TransferFailed>;
     fn write(
@@ -175,6 +176,10 @@ impl AttachedUnit {
 
     pub fn connect(&self, system_time: &Duration, mode: Unsigned12Bit) {
         self.inner.borrow_mut().connect(system_time, mode)
+    }
+
+    pub fn disconnect(&self, system_time: &Duration) {
+        self.inner.borrow_mut().disconnect(system_time)
     }
 
     pub fn transfer_mode(&self) -> TransferMode {
@@ -410,9 +415,12 @@ impl DeviceManager {
         (raised_flags, alarm, next_poll)
     }
 
-    pub fn disconnect_all(&mut self) {
+    pub fn disconnect_all(&mut self, system_time: &Duration) {
         for (_, attached) in self.devices.iter_mut() {
-            attached.connected = false;
+            if attached.connected {
+                attached.disconnect(system_time);
+                attached.connected = false;
+            }
         }
     }
 

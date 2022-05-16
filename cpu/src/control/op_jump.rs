@@ -221,7 +221,7 @@ mod tests {
             }
             Ok(OpcodeResult {
                 program_counter_change: Some(ProgramCounterChange::Jump(to)),
-                hardware_state_change: false,
+                poll_order_change: false,
             }) => {
                 let xj = control.regs.get_index_register(j);
                 let dismissed =

@@ -157,4 +157,8 @@ impl Unit for TrapCircuit {
     fn name(&self) -> String {
         "trap circuit".to_string()
     }
+
+    fn disconnect(&mut self, _system_time: &Duration) {
+        // Does nothing.
+    }
 }
