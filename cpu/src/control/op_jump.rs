@@ -69,7 +69,7 @@ impl ControlUnit {
 
         // Now that we have used Xj, we can overwrite the original
         // value if we need to save P in it.
-        if savep_ix && j != 0 {
+        if savep_ix && j != Unsigned6Bit::ZERO {
             let p = self.regs.p;
             self.regs.set_index_register_from_address(j, &p);
         }
