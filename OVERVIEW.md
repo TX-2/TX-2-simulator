@@ -7,9 +7,8 @@ For a more general introduction, see [README.md](README.md).
 
 We're in the early stages of implementation.  Most opcodes and most
 hardware are not implemented yet.  We have enough implemented opcodes
-and hardware that the boot code works and the machine tries to load a
-binary from paper tape, in the normal boot process.  But so far that's
-it.
+and hardware that the boot code works and the machine can load a
+simlpe binary from paper tape and run it.  But so far that's it.
 
 This is going to mean that our design will change as implementation
 proceeds.  The purpose of this document, then, is to explain the
