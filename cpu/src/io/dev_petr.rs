@@ -21,8 +21,6 @@
 use base::prelude::*;
 use std::cmp;
 use std::fmt::{self, Debug, Display, Formatter};
-use std::fs::File;
-use std::io::Read;
 use std::time::Duration;
 
 use tracing::{event, Level};
@@ -87,10 +85,6 @@ fn next_line_time(direction: Direction, system_time: &Duration) -> Duration {
         }
 }
 
-pub trait TapeIterator {
-    fn next_tape(&mut self) -> Option<File>;
-}
-
 pub struct Petr {
     // Activity and direction cannot just be left encoded in mode,
     // because we need to be able to start/stop the motor and change
@@ -98,9 +92,8 @@ pub struct Petr {
     // controls that).
     activity: Activity,
     direction: Direction,
-    data_file: Option<File>,
+    tape_data: Vec<u8>,
     tape_pos: usize,
-    tapes: Box<dyn TapeIterator>,
     data: Option<u8>,
     already_warned_eof: bool,
     read_failed: bool,
@@ -115,7 +108,7 @@ impl Debug for Petr {
         f.debug_struct("Petr")
             .field("activity", &self.activity)
             .field("direction", &self.direction)
-            .field("data_file", &self.data_file)
+            .field("tape_data", &self.tape_data)
             .field("tape_pos", &self.tape_pos)
             .field("data", &self.data)
             .field("already_warned_eof", &self.already_warned_eof)
@@ -129,13 +122,12 @@ impl Debug for Petr {
 }
 
 impl Petr {
-    pub fn new(tapes: Box<dyn TapeIterator>) -> Petr {
+    pub fn new() -> Petr {
         Petr {
             activity: Activity::Stopped,
             direction: Direction::Bin,
-            data_file: None,
+            tape_data: Vec::new(),
             tape_pos: 0,
-            tapes,
             data: None,
             already_warned_eof: false,
             read_failed: false,
@@ -144,19 +136,6 @@ impl Petr {
             rewind_line_counter: 0,
             mode: Unsigned12Bit::ZERO,
         }
-    }
-
-    fn close_data_file(&mut self) {
-        self.data_file = None;
-        self.tape_pos = 0;
-    }
-
-    fn open_data_file(&mut self) {
-        if self.data_file.is_some() {
-            return; // already open
-        }
-        self.tape_pos = 0;
-        self.data_file = self.tapes.next_tape();
     }
 
     fn next_poll_time(&mut self, system_time: &Duration) -> Duration {
@@ -189,69 +168,43 @@ impl Petr {
     fn do_read(&mut self) {
         // A line of the simulated tape should have appeared under the
         // read head.
-        let mut buf: [u8; 1] = [0o377]; // deliberately > Unsigned6Bit::MAX.
-        match self.data_file.as_mut() {
-            Some(f) => match f.read(&mut buf) {
-                Err(_) => {
-                    self.read_failed = true;
-                    self.overrun = false;
-                    self.data = None;
-                    self.time_of_next_read = None;
-                }
-                Ok(0) => {
-                    // At EOF.  We don't stop the motor, but if the
-                    // real PETR device can detect when the whole tape
-                    // has already passed through, perhaps we should.
-                    if self.already_warned_eof {
-                        event!(
-                            Level::DEBUG,
-                            "reading again at end-of-file at position {}",
-                            self.tape_pos
-                        );
-                    } else {
-                        self.already_warned_eof = true;
-                        event!(
-                            Level::WARN,
-                            "end-of-file on tape input file at position {}",
-                            self.tape_pos
-                        );
-                    }
-                    self.time_of_next_read = None;
-                }
-                Ok(read_len) => {
-                    match read_len {
-                        0 => unreachable!(),
-                        1 => event!(
-                            Level::DEBUG,
-                            "read 1 byte: {:04o} at file position {}",
-                            buf[0],
-                            self.tape_pos
-                        ),
-                        n => event!(
-                            Level::DEBUG,
-                            "read {} bytes at file position {}: {:?}",
-                            n,
-                            self.tape_pos,
-                            &buf
-                        ),
-                    }
-                    self.already_warned_eof = false;
-                    if !self.overrun {
-                        self.overrun = self.data.is_some();
-                        if self.overrun {
-                            event!(Level::WARN, "input overrun");
-                        }
-                    }
-                    self.data = Some(buf[0]);
-                    self.tape_pos += read_len;
-                }
-            },
+        match self.tape_data.get(self.tape_pos) {
             None => {
-                // There is no tape.
-                event!(Level::TRACE, "paper tape: there is no tape");
-                self.data = None;
-                self.activity = Activity::Stopped;
+                // At EOF.  We don't stop the motor, but if the
+                // real PETR device can detect when the whole tape
+                // has already passed through, perhaps we should.
+                if self.already_warned_eof {
+                    event!(
+                        Level::DEBUG,
+                        "reading again at end-of-file at position {}",
+                        self.tape_pos
+                    );
+                } else {
+                    self.already_warned_eof = true;
+                    event!(
+                        Level::WARN,
+                        "end-of-file on tape input file at position {}",
+                        self.tape_pos
+                    );
+                }
                 self.time_of_next_read = None;
+            }
+            Some(byte) => {
+                event!(
+                    Level::DEBUG,
+                    "read a byte at file position {}: {:?}",
+                    self.tape_pos,
+                    byte
+                );
+                self.already_warned_eof = false;
+                if !self.overrun {
+                    self.overrun = self.data.is_some();
+                    if self.overrun {
+                        event!(Level::WARN, "input overrun");
+                    }
+                }
+                self.data = Some(*byte);
+                self.tape_pos += 1;
             }
         }
     }
@@ -341,15 +294,14 @@ impl Unit for Petr {
             Direction::Reel
         };
         self.activity = if mode & 0o100 != 0 {
-            self.open_data_file();
             self.time_of_next_read = Some(next_line_time(self.direction, system_time));
             Activity::Started
         } else {
             // While the motor is not running, no data will arrive.
-            self.close_data_file();
             self.time_of_next_read = None;
             Activity::Stopped
         };
+        self.tape_pos = 0;
         self.mode = mode;
         let transfer_mode_name = match self.transfer_mode() {
             TransferMode::Assembly => "assembly",
@@ -403,5 +355,14 @@ impl Unit for Petr {
 
     fn disconnect(&mut self, _system_time: &Duration) {
         self.activity = Activity::Stopped;
+    }
+
+    fn on_input_event(&mut self, event: InputEvent) {
+        match event {
+            InputEvent::PetrMountPaperTape { data } => {
+                event!(Level::DEBUG, "Mounting a tape ({} bytes)", data.len());
+                self.tape_data = data;
+            }
+        }
     }
 }

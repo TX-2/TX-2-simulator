@@ -44,6 +44,7 @@ use tracing::{event, span, Level};
 
 use super::types::*;
 use crate::alarm::{Alarm, AlarmUnit};
+use crate::event::InputEvent;
 use crate::Clock;
 use base::prelude::*;
 
@@ -52,7 +53,7 @@ mod dev_petr;
 mod pollq;
 
 use dev_lincoln_writer::LincolnWriterOutput;
-pub use dev_petr::{Petr, TapeIterator};
+pub use dev_petr::Petr;
 use pollq::PollQueue;
 
 /// When set, indicates that the controlling sequence has missed a data item.
@@ -151,6 +152,7 @@ pub trait Unit {
         source: Unsigned36Bit,
     ) -> Result<(), TransferFailed>;
     fn name(&self) -> String;
+    fn on_input_event(&mut self, event: InputEvent);
 }
 
 pub struct AttachedUnit {
@@ -196,6 +198,10 @@ impl AttachedUnit {
         source: Unsigned36Bit,
     ) -> Result<(), TransferFailed> {
         self.inner.borrow_mut().write(system_time, source)
+    }
+
+    pub fn on_input_event(&self, event: InputEvent) {
+        self.inner.borrow_mut().on_input_event(event)
     }
 
     pub fn name(&self) -> String {
@@ -292,6 +298,16 @@ impl DeviceManager {
             },
         );
         self.poll_queue.push(unit_number, status.poll_after);
+    }
+
+    pub fn on_input_event(&mut self, unit_number: Unsigned6Bit, input_event: InputEvent) {
+        match self.devices.get_mut(&unit_number) {
+            Some(attached) => attached.on_input_event(input_event),
+            None => {
+                // TODO: consider returning an error result for this
+                // case.
+            }
+        }
     }
 
     pub fn report(
@@ -496,13 +512,17 @@ impl Default for DeviceManager {
 pub fn set_up_peripherals<C: Clock>(
     devices: &mut DeviceManager,
     clock: &C,
-    tapes: Box<dyn TapeIterator>,
+    tape_data: Option<Vec<u8>>,
 ) {
     let now = clock.now();
     fn attach_lw_output(unit: Unsigned6Bit, now: &Duration, devices: &mut DeviceManager) {
         devices.attach(now, unit, false, Box::new(LincolnWriterOutput::new(unit)));
     }
 
-    devices.attach(&now, u6!(0o52_u8), false, Box::new(Petr::new(tapes)));
+    const PETR: Unsigned6Bit = u6!(0o52);
+    devices.attach(&now, PETR, false, Box::new(Petr::new()));
+    if let Some(data) = tape_data {
+        devices.on_input_event(PETR, InputEvent::PetrMountPaperTape { data });
+    }
     attach_lw_output(u6!(0o66), &now, devices);
 }
