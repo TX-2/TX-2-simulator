@@ -28,7 +28,9 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+use crate::{u6, Unsigned6Bit};
+
+#[derive(Debug, Clone, Copy)]
 pub struct NoSubscriptKnown(char);
 
 impl Display for NoSubscriptKnown {
@@ -117,45 +119,43 @@ pub fn superscript_char(ch: char) -> Result<char, NoSuperscriptKnown> {
     }
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub enum LincolnToUnicodeConversionFailure {
-    CharacterOutOfRange(u8),
-    NoMapping(u8),
-    CannotSuperscript(u8, char),
-    CannotSubscript(u8, char),
-}
-
-impl Display for LincolnToUnicodeConversionFailure {
+impl Display for LincolnToUnicodeStrictConversionFailure {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         match self {
-            LincolnToUnicodeConversionFailure::CharacterOutOfRange(u) => {
+            LincolnToUnicodeStrictConversionFailure::CannotSubscript(
+                _,
+                LincolnChar::Unprintable(n),
+            )
+            | LincolnToUnicodeStrictConversionFailure::CannotSuperscript(
+                _,
+                LincolnChar::Unprintable(n),
+            ) => {
                 write!(
-		    f,
-		    "cannot convert byte {:#o} from Lincoln Writer character set to Unicode, because the input value is too large (Lincoln Writers only use 6 bits)",
-		    u
+                    f,
+                    "cannot convert code {:#o} from Lincoln Writer character set to Unicode, because it has no printable representation",
+                    n
 		)
             }
-            LincolnToUnicodeConversionFailure::NoMapping(u) => {
+            LincolnToUnicodeStrictConversionFailure::CannotSubscript(
+                u,
+                LincolnChar::UnicodeBaseChar(ch),
+            ) => {
                 write!(
-		    f,
-		    "cannot convert byte {:#o} from Lincoln Writer character set to Unicode, because there is no known mapping",
-		    u
+                    f,
+                    "cannot convert {:#o} from Lincoln Writer character set to Unicode, because Unicode has no subscript form of '{}'",
+                    u,
+                    ch
 		)
             }
-            LincolnToUnicodeConversionFailure::CannotSubscript(u, ch) => {
+            LincolnToUnicodeStrictConversionFailure::CannotSuperscript(
+                u,
+                LincolnChar::UnicodeBaseChar(ch),
+            ) => {
                 write!(
-		    f,
-		    "cannot convert byte {:#o} from Lincoln Writer character set to Unicode, because Unicode has no subscript form of '{}'",
-		    u,
-		    ch
-		)
-            }
-            LincolnToUnicodeConversionFailure::CannotSuperscript(u, ch) => {
-                write!(
-		    f,
-		    "cannot convert byte {:#o} from Lincoln Writer character set to Unicode, because Unicode has no superscript form of '{}'",
-		    u,
-		    ch
+                    f,
+                    "cannot convert {:#o} from Lincoln Writer character set to Unicode, because Unicode has no superscript form of '{}'",
+                    u,
+                    ch
 		)
             }
         }
@@ -196,13 +196,58 @@ impl Default for LincolnState {
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum LincolnChar {
+    /// There is a Unicode character which we're trying to print (but
+    /// this actual Unicode character may be incorrect, i.e. it is
+    /// normal-script when the fully-described character is actually
+    /// superscript).
+    UnicodeBaseChar(char),
+    /// Unprintable chars include YES, READ IN, BEGIN, NO, and so forth.
+    Unprintable(Unsigned6Bit),
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct DescribedChar {
-    pub base_char: char,
-    pub display: Option<char>,
+    /// The actual character we're trying to print.  The `attributes`
+    /// attribute specifies whether this is a subscript, superscript
+    /// or normal character, and what colour it is.
+    pub base_char: LincolnChar,
+    /// If the character has a direct Unicode translation, that is in
+    /// unicode_representation.  Some characters, for example
+    /// superscript Y, have no Unicode representation.
+    pub unicode_representation: Option<char>,
+    /// Specifies whether the character is upper-case, lower-case
+    /// (both as understood in terms of normal typography, i.e. "A" is
+    /// upper-case), whether it is subscript, superscript, or normal,
+    /// and what colour it is.
     pub attributes: LincolnState,
+    /// When advance is `true`, printing this character should advance
+    /// the printing position.
     pub advance: bool,
 }
 
+fn unprintable(c: Unsigned6Bit, state: LincolnState) -> DescribedChar {
+    DescribedChar {
+        base_char: LincolnChar::Unprintable(c),
+        unicode_representation: None,
+        attributes: state,
+        advance: false,
+    }
+}
+fn bycase(lower: char, upper: char, state: &LincolnState) -> Option<char> {
+    Some(if state.uppercase { upper } else { lower })
+}
+
+/// Convert a Lincoln Writer character to a description which can
+/// be used to print a Unicode approximation of it.
+///
+/// In the success case we return None when the only effect of this
+/// Lincoln Writer character is to change mode (e.g. to upper case)
+/// and `Some(DescribedChar)` when there is something to print.  In
+/// the `Some(DescribedChar)` case, the DescribedChar instance
+/// describes what is to be printed and provides a Unicode
+/// approximation to it, if there is one.
+///
 /// The character codes are shown in table 7-6 in the Users handbook.
 /// This shows two columns of characters for each code.  Somewhat
 /// counterintuitively, I believe that the left-hand column is "lower
@@ -222,17 +267,12 @@ pub struct DescribedChar {
 ///    the Lincoln Lab Division 6 Quarterly Progress Report (15 June
 ///    1958).
 pub fn lincoln_char_to_described_char(
-    lin_ch: &u8,
+    lin_ch: Unsigned6Bit,
     state: &mut LincolnState,
-) -> Result<Option<DescribedChar>, LincolnToUnicodeConversionFailure> {
-    let nm = || -> Result<Option<DescribedChar>, LincolnToUnicodeConversionFailure> {
-        Err(LincolnToUnicodeConversionFailure::NoMapping(*lin_ch))
-    };
-    let by_case = |lower: char, upper: char| -> Option<char> {
-        Some(if state.uppercase { upper } else { lower })
-    };
-    let advance: bool = *lin_ch != 0o12 && *lin_ch != 0o13;
-    let base_char: Option<char> = match lin_ch {
+) -> Option<DescribedChar> {
+    let advance: bool = lin_ch != 0o12 && lin_ch != 0o13;
+    let by_case = |lower, upper: char| -> Option<char> { bycase(lower, upper, state) };
+    let base_char: Option<char> = match u8::from(lin_ch) {
         0o00 => by_case('0', '☛'), // \U261B, black hand pointing right
         0o01 => by_case('1', 'Σ'),  // \U03A3, Greek capital letter Sigma
         0o02 => by_case('2', '|'),
@@ -259,10 +299,7 @@ pub fn lincoln_char_to_described_char(
                 '\u{20DE}', // combining enclosing square
             )
         }
-        0o14 => return nm(),         // "READ IN"
-        0o15 => return nm(),         // "BEGIN"
-        0o16 => return nm(),         // "NO"
-        0o17 => return nm(),         // "YES"
+        0o14 | 0o15 | 0o16 | 0o17 => return Some(unprintable(lin_ch, *state)), // "READ IN", "BEGIN", "NO", "YES"
         0o20 => by_case('A', '≈'), // Almost Equal To (U+2248)
         0o21 => by_case('B', '⊂'), // Subset of (U+2282)
         0o22 => by_case('C', '∨'), // Logical or (U+2228)
@@ -336,10 +373,10 @@ pub fn lincoln_char_to_described_char(
             state.colour = Colour::Red;
             None
         }
-        0o70 => Some(' '),        // space
-        0o71 => return nm(),      // WORD EXAM
-        0o72 => Some('\n'),       // LINE FEED
-        0o73 => Some('\u{008D}'), // Reverse line feed
+        0o70 => Some(' '),                                // space
+        0o71 => return Some(unprintable(lin_ch, *state)), // WORD EXAM
+        0o72 => Some('\n'),                               // LINE FEED
+        0o73 => Some('\u{008D}'),                         // Reverse line feed
         0o74 => {
             state.uppercase = false;
             None
@@ -348,17 +385,13 @@ pub fn lincoln_char_to_described_char(
             state.uppercase = true;
             None
         }
-        0o76 => return nm(), // STOP
+        0o76 => return Some(unprintable(lin_ch, *state)), // STOP
         0o77 => {
             // Supposedly NULLIFY but it's used on tape to delete
             // the previous character so delete fits.
             Some('\u{007F}')
         }
-        _ => {
-            return Err(LincolnToUnicodeConversionFailure::CharacterOutOfRange(
-                *lin_ch,
-            ));
-        }
+        _ => unreachable!("All Unsigned6Bit values should have been handled"),
     };
 
     if let Some(base) = base_char {
@@ -367,57 +400,71 @@ pub fn lincoln_char_to_described_char(
             Script::Sub => subscript_char(base).ok(),
             Script::Super => superscript_char(base).ok(),
         };
-        Ok(Some(DescribedChar {
-            base_char: base,
-            display,
+        Some(DescribedChar {
+            base_char: LincolnChar::UnicodeBaseChar(base),
+            unicode_representation: display,
             attributes: *state,
             advance,
-        }))
+        })
     } else {
-        Ok(None)
+        None
     }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum LincolnToUnicodeStrictConversionFailure {
+    CannotSubscript(Unsigned6Bit, LincolnChar),
+    CannotSuperscript(Unsigned6Bit, LincolnChar),
 }
 
 /// Convert a stream of Lincoln Writer codes to a Unicode string.
 /// Lincoln Writer codes are 6 bits, and these are assumed to be in
 /// the lower 6 bits of the input values.
 pub fn lincoln_to_unicode_strict(
-    input: &[u8],
-) -> Result<String, LincolnToUnicodeConversionFailure> {
+    input: &[Unsigned6Bit],
+) -> Result<String, LincolnToUnicodeStrictConversionFailure> {
     let mut result = String::with_capacity(input.len());
     let mut state: LincolnState = LincolnState::default();
     for byte in input.iter() {
-        match lincoln_char_to_described_char(byte, &mut state) {
-            Ok(Some(DescribedChar {
+        match lincoln_char_to_described_char(*byte, &mut state) {
+            Some(DescribedChar {
+                base_char: LincolnChar::Unprintable(_),
+                ..
+            }) => {
+                // Codes like "YES" are handled here.  When printed on
+                // the Lincoln Writer, no character is printed (though
+                // some time is taken to not print it).
+                //
+                // We do nothing (i.e. generate no error and no output
+                // character).
+            }
+            Some(DescribedChar {
                 base_char: _,
-                display: Some(display),
+                unicode_representation: Some(display),
                 attributes: _,
                 advance: _,
-            })) => {
+            }) => {
                 result.push(display);
             }
-            Ok(Some(DescribedChar {
+            Some(DescribedChar {
                 base_char,
-                display: None,
+                unicode_representation: None,
                 attributes,
                 advance: _,
-            })) => match attributes.script {
+            }) => match attributes.script {
                 Script::Normal => unreachable!(),
                 Script::Sub => {
-                    return Err(LincolnToUnicodeConversionFailure::CannotSubscript(
+                    return Err(LincolnToUnicodeStrictConversionFailure::CannotSubscript(
                         *byte, base_char,
                     ));
                 }
                 Script::Super => {
-                    return Err(LincolnToUnicodeConversionFailure::CannotSuperscript(
+                    return Err(LincolnToUnicodeStrictConversionFailure::CannotSuperscript(
                         *byte, base_char,
                     ));
                 }
             },
-            Ok(None) => (),
-            Err(e) => {
-                return Err(e);
-            }
+            None => (),
         }
     }
     Ok(result)
@@ -428,38 +475,42 @@ fn test_lincoln_to_unicode_strict() {
     // Regular script
     assert_eq!(
         // Start in lower case.
-        lincoln_to_unicode_strict(&[0o27, 0o24, 0o33, 0o33, 0o36]),
+        lincoln_to_unicode_strict(&[u6!(0o27), u6!(0o24), u6!(0o33), u6!(0o33), u6!(0o36)]),
         Ok("HELLO".to_string())
     );
 
     assert_eq!(
         lincoln_to_unicode_strict(&[
-            0o64, // Superscript
-            0o27, 0o24, 0o33, 0o33, 0o36
+            u6!(0o64), // Superscript
+            u6!(0o27),
+            u6!(0o24),
+            u6!(0o33),
+            u6!(0o33),
+            u6!(0o36)
         ]), // HELLO
         Ok("ᴴᴱᴸᴸᴼ".to_string())
     );
 
     assert_eq!(
         lincoln_to_unicode_strict(&[
-            0o65, // Normal
-            0o27, // H
-            0o66, // Subscript
-            0o02, // 2
-            0o65, // Normal
-            0o36  // O
+            u6!(0o65), // Normal
+            u6!(0o27), // H
+            u6!(0o66), // Subscript
+            u6!(0o02), // 2
+            u6!(0o65), // Normal
+            u6!(0o36)  // O
         ]),
         Ok("H₂O".to_string())
     );
 
     assert_eq!(
         lincoln_to_unicode_strict(&[
-            0o75, // Upper case
-            0o52, // { (when upper case)
-            0o53, // } (when upper case)
-            0o74, // Lower case
-            0o52, // ( (when lower case)
-            0o53, // ) (when lower case)
+            u6!(0o75), // Upper case
+            u6!(0o52), // { (when upper case)
+            u6!(0o53), // } (when upper case)
+            u6!(0o74), // Lower case
+            u6!(0o52), // ( (when lower case)
+            u6!(0o53), // ) (when lower case)
         ]),
         Ok("{}()".to_string())
     );
@@ -469,15 +520,15 @@ fn test_lincoln_to_unicode_strict() {
 fn test_lincoln_to_unicode_carriage_return() {
     assert_eq!(
         lincoln_to_unicode_strict(&[
-            0o75, // Upper case
-            0o06, // when upper case, '#'
-            0o74, // Lower case
-            0o06, // when lower case, '6'
-            0o64, // superscript
-            0o20, // A
-            0o60, // carriage return
+            u6!(0o75), // Upper case
+            u6!(0o06), // when upper case, '#'
+            u6!(0o74), // Lower case
+            u6!(0o06), // when lower case, '6'
+            u6!(0o64), // superscript
+            u6!(0o20), // A
+            u6!(0o60), // carriage return
             // Now lower case, normal script
-            0o06, // when lower case, '6'
+            u6!(0o06), // when lower case, '6'
         ]),
         Ok("#6ᴬ\r6".to_string())
     );
@@ -486,14 +537,14 @@ fn test_lincoln_to_unicode_carriage_return() {
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 struct LincChar {
     state: LincolnState,
-    value: u8,
+    value: Unsigned6Bit,
 }
 
 pub struct UnicodeToLincolnMapping {
     m: HashMap<char, LincChar>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UnicodeToLincolnConversionFailure {
     NoMapping(char),
 }
@@ -518,19 +569,23 @@ impl UnicodeToLincolnMapping {
         for script in [Script::Normal, Script::Super, Script::Sub] {
             for uppercase in [false, true] {
                 for value in 0..=0o77 {
-                    let mut state = LincolnState {
-                        script,
-                        uppercase,
-                        colour: Colour::Black,
-                    };
-                    if let Ok(Some(DescribedChar {
-                        base_char: _,
-                        display: Some(display),
-                        attributes: _,
-                        advance: _,
-                    })) = lincoln_char_to_described_char(&value, &mut state)
-                    {
-                        m.insert(display, LincChar { state, value });
+                    if let Ok(ch) = Unsigned6Bit::try_from(value) {
+                        let mut state = LincolnState {
+                            script,
+                            uppercase,
+                            colour: Colour::Black,
+                        };
+                        if let Some(DescribedChar {
+                            base_char: _,
+                            unicode_representation: Some(display),
+                            attributes: _,
+                            advance: _,
+                        }) = lincoln_char_to_described_char(ch, &mut state)
+                        {
+                            m.insert(display, LincChar { state, value: ch });
+                        }
+                    } else {
+                        continue;
                     }
                 }
             }
@@ -538,8 +593,11 @@ impl UnicodeToLincolnMapping {
         UnicodeToLincolnMapping { m }
     }
 
-    pub fn to_lincoln(&self, s: &str) -> Result<Vec<u8>, UnicodeToLincolnConversionFailure> {
-        let mut result: Vec<u8> = Vec::with_capacity(s.len());
+    pub fn to_lincoln(
+        &self,
+        s: &str,
+    ) -> Result<Vec<Unsigned6Bit>, UnicodeToLincolnConversionFailure> {
+        let mut result: Vec<Unsigned6Bit> = Vec::with_capacity(s.len());
         let mut current_uppercase: Option<bool> = None;
         let mut current_script: Option<Script> = None;
 
@@ -552,7 +610,11 @@ impl UnicodeToLincolnMapping {
                     if Some(lch.state.uppercase) == current_uppercase {
                         // Nothing to do
                     } else {
-                        result.push(if lch.state.uppercase { 0o75 } else { 0o74 });
+                        result.push(if lch.state.uppercase {
+                            u6!(0o75)
+                        } else {
+                            u6!(0o74)
+                        });
                         current_uppercase = Some(lch.state.uppercase);
                     }
 
@@ -560,9 +622,9 @@ impl UnicodeToLincolnMapping {
                         // Nothing to do
                     } else {
                         result.push(match lch.state.script {
-                            Script::Super => 0o64,
-                            Script::Normal => 0o65,
-                            Script::Sub => 0o66,
+                            Script::Super => u6!(0o64),
+                            Script::Normal => u6!(0o65),
+                            Script::Sub => u6!(0o66),
                         });
                         current_script = Some(lch.state.script);
                     }
@@ -585,7 +647,7 @@ impl Default for UnicodeToLincolnMapping {
 fn round_trip() {
     fn must_round_trip(input: &str, mapping: &UnicodeToLincolnMapping) {
         match mapping.to_lincoln(input) {
-            Ok(bytes) => match lincoln_to_unicode_strict(&bytes) {
+            Ok(bytes) => match lincoln_to_unicode_strict(bytes.as_slice()) {
                 Ok(s) => {
                     assert_eq!(input, s);
                 }
@@ -688,12 +750,13 @@ fn missing_superscript() {
     // reality-check.
     assert_eq!(
         lincoln_to_unicode_strict(&[
-            0o74, // lower case
-            0o64, // superscript
-            0o50  // Y
+            u6!(0o74), // lower case
+            u6!(0o64), // superscript
+            u6!(0o50)  // Y
         ]),
-        Err(LincolnToUnicodeConversionFailure::CannotSuperscript(
-            0o50, 'Y'
+        Err(LincolnToUnicodeStrictConversionFailure::CannotSuperscript(
+            u6!(0o50),
+            LincolnChar::UnicodeBaseChar('Y'),
         ))
     );
 }
@@ -701,7 +764,7 @@ fn missing_superscript() {
 #[test]
 fn no_mapping() {
     assert_eq!(
-        lincoln_to_unicode_strict(&[0o14]), // "READ IN"
-        Err(LincolnToUnicodeConversionFailure::NoMapping(0o14))
+        lincoln_to_unicode_strict(&[u6!(0o14)]), // "READ IN"
+        Ok("".to_string()),
     );
 }
