@@ -345,7 +345,7 @@ impl Unit for Petr {
         &mut self,
         _system_time: &Duration,
         _source: Unsigned36Bit,
-    ) -> Result<(), TransferFailed> {
+    ) -> Result<Option<OutputEvent>, TransferFailed> {
         unreachable!()
     }
 

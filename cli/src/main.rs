@@ -14,8 +14,10 @@ use tracing_subscriber::prelude::*;
 use base::prelude::*;
 use cpu::{
     self, set_up_peripherals, Alarm, BasicClock, Clock, ControlUnit, DeviceManager,
-    MemoryConfiguration, MemoryUnit, MinimalSleeper, ResetMode, RunMode,
+    MemoryConfiguration, MemoryUnit, MinimalSleeper, OutputEvent, ResetMode, RunMode,
 };
+
+mod lw;
 
 // Thanks to Google for allowing this code to be open-sourced.  I
 // generally prefer to correspond about this project using my
@@ -59,8 +61,9 @@ fn run_until_alarm(
     let mut sleeper = MinimalSleeper::new(Duration::from_millis(2));
     let mut next_hw_poll = clk.now();
     let mut run_mode = RunMode::Running;
+    let mut lw66 = lw::LincolnStreamWriter::new();
 
-    loop {
+    let result = loop {
         let now = clk.now();
         if now >= next_hw_poll {
             // check for I/O alarms, flag changes.
@@ -110,32 +113,56 @@ fn run_until_alarm(
         }
         let mut hardware_state_changed = false;
         let now = clk.now();
-        match control.execute_instruction(&now, devices, mem, &mut hardware_state_changed) {
-            Err((alarm, address)) => {
-                event!(
-                    Level::INFO,
-                    "Alarm raised during instruction execution at {:o} at system time {:?}",
-                    address,
-                    now
-                );
-                return (alarm, Some(address), now);
-            }
-            Ok((ns, new_run_mode)) => {
-                run_mode = new_run_mode;
-                cpu::time_passes(
-                    clk,
-                    &mut sleeper,
-                    &Duration::from_nanos(ns),
-                    sleep_multiplier,
-                );
-            }
-        }
+        let maybe_output =
+            match control.execute_instruction(&now, devices, mem, &mut hardware_state_changed) {
+                Err((alarm, address)) => {
+                    event!(
+                        Level::INFO,
+                        "Alarm raised during instruction execution at {:o} at system time {:?}",
+                        address,
+                        now
+                    );
+                    return (alarm, Some(address), now);
+                }
+                Ok((ns, new_run_mode, maybe_output)) => {
+                    run_mode = new_run_mode;
+                    cpu::time_passes(
+                        clk,
+                        &mut sleeper,
+                        &Duration::from_nanos(ns),
+                        sleep_multiplier,
+                    );
+                    maybe_output
+                }
+            };
         if hardware_state_changed {
             // Some instruction changed the hardware, so we need to
             // poll it again.
             next_hw_poll = now;
         }
-    }
+        match maybe_output {
+            None => (),
+            Some(OutputEvent::LincolnWriterPrint { unit, ch }) => {
+                if unit == u6!(0o66) {
+                    if let Err(e) = lw66.write(ch) {
+                        event!(Level::ERROR, "output error: {}", e);
+                        // TODO: change state of the output unit to
+                        // indicate that there has been a failure,
+                        // instead of just terminating the simulation.
+                        break (Alarm::MISAL { unit }, None, now);
+                    }
+                } else {
+                    event!(
+                        Level::WARN,
+                        "discarding Lincoln Writer output for unit {:o}",
+                        unit,
+                    );
+                }
+            }
+        }
+    };
+    lw66.disconnect();
+    result
 }
 
 /// Whether to panic when there was an unmasked alarm.

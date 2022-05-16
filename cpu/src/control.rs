@@ -404,6 +404,7 @@ enum SequenceSelection {
 pub(crate) struct OpcodeResult {
     program_counter_change: Option<ProgramCounterChange>,
     poll_order_change: bool,
+    output: Option<OutputEvent>,
 }
 
 #[test]
@@ -915,7 +916,7 @@ impl ControlUnit {
         devices: &mut DeviceManager,
         mem: &mut MemoryUnit,
         poll_order_change: &mut bool,
-    ) -> Result<(u64, RunMode), (Alarm, Address)> {
+    ) -> Result<(u64, RunMode, Option<OutputEvent>), (Alarm, Address)> {
         fn execute(
             prev_program_counter: Address,
             opcode: &Opcode,
@@ -971,69 +972,74 @@ impl ControlUnit {
 
         let elapsed_time = self.estimate_execute_time_ns(&self.regs.n);
 
-        let result = if let Some(sym) = self.regs.n_sym.as_ref() {
-            let inst = sym.to_string();
-            let span = span!(Level::INFO,
+        let result: Result<Option<OutputEvent>, (Alarm, Address)> =
+            if let Some(sym) = self.regs.n_sym.as_ref() {
+                let inst = sym.to_string();
+                let span = span!(Level::INFO,
 			     "xop",
 			     seq=%seq_desc,
 			     p=?p,
 			     op=%sym.opcode());
-            let _enter = span.enter();
-            event!(Level::TRACE, "executing instruction {}", &sym);
-            match execute(p, &sym.opcode(), self, devices, system_time, mem) {
-                Ok(opcode_result) => {
-                    if opcode_result.poll_order_change {
-                        *poll_order_change = true;
-                        please_poll_soon(devices, self.regs.k, *system_time);
-                    }
-                    match opcode_result.program_counter_change {
-                        None => {
-                            // This is the usual case; the call to
-                            // set_program_counter above will have
-                            // incremented P.
+                let _enter = span.enter();
+                event!(Level::TRACE, "executing instruction {}", &sym);
+                match execute(p, &sym.opcode(), self, devices, system_time, mem) {
+                    Ok(opcode_result) => {
+                        if opcode_result.poll_order_change {
+                            *poll_order_change = true;
+                            please_poll_soon(devices, self.regs.k, *system_time);
                         }
-                        Some(pc_change) => {
-                            // Instructions which return
-                            // ProgramCounterChange::CounterUpdate do
-                            // so in order perform a skip over the
-                            // next instruction.
-                            event!(Level::TRACE, "program counter change: {:?}", &pc_change);
-                            self.set_program_counter(pc_change);
+                        match opcode_result.program_counter_change {
+                            None => {
+                                // This is the usual case; the call to
+                                // set_program_counter above will have
+                                // incremented P.
+                            }
+                            Some(pc_change) => {
+                                // Instructions which return
+                                // ProgramCounterChange::CounterUpdate do
+                                // so in order perform a skip over the
+                                // next instruction.
+                                event!(Level::TRACE, "program counter change: {:?}", &pc_change);
+                                self.set_program_counter(pc_change);
+                            }
                         }
+                        Ok(opcode_result.output)
                     }
-                    Ok(())
+                    Err(e) => {
+                        event!(Level::WARN, "instruction {} raised alarm {}", inst, e);
+                        self.set_program_counter(ProgramCounterChange::Stop(p));
+                        Err((e, p))
+                    }
                 }
-                Err(e) => {
-                    event!(Level::WARN, "instruction {} raised alarm {}", inst, e);
-                    self.set_program_counter(ProgramCounterChange::Stop(p));
-                    Err((e, p))
+            } else {
+                event!(
+                    Level::DEBUG,
+                    "fetched instruction {:?} is invalid",
+                    &self.regs.n
+                );
+                match self
+                    .alarm_unit
+                    .fire_if_not_masked(self.invalid_opcode_alarm())
+                {
+                    Err(e) => Err((e, p)),
+                    Ok(()) => Ok(None),
                 }
-            }
-        } else {
-            event!(
-                Level::DEBUG,
-                "fetched instruction {:?} is invalid",
-                &self.regs.n
-            );
-            self.alarm_unit
-                .fire_if_not_masked(self.invalid_opcode_alarm())
-                .map_err(|e| (e, p))
-        };
+            };
 
         // We have completed an attempt to execute instruction.  It
         // may not have been successful, so we cannot set the value of
         // prev_hold unconditionally. Determine whether this
         // instruction should be followed by a change of sequence.
         match result {
-            Ok(()) => match self.select_sequence() {
-                SequenceSelection::Continue => Ok((elapsed_time, RunMode::Running)),
-                SequenceSelection::InLimbo => Ok((elapsed_time, RunMode::InLimbo)),
+            Ok(maybe_output) => match self.select_sequence() {
+                SequenceSelection::Continue => Ok((elapsed_time, RunMode::Running, maybe_output)),
+                SequenceSelection::InLimbo => Ok((elapsed_time, RunMode::InLimbo, maybe_output)),
                 SequenceSelection::Change(seq) => {
                     // The (previously) current sequence dropped
                     // out, or seq is a higher priority than the
                     // current sequence
                     self.change_sequence(self.regs.k, seq);
-                    Ok((elapsed_time, RunMode::Running))
+                    Ok((elapsed_time, RunMode::Running, maybe_output))
                 }
             },
             Err((alarm, address)) => Err((alarm, address)),

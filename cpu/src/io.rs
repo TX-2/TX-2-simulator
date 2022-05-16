@@ -44,7 +44,7 @@ use tracing::{event, span, Level};
 
 use super::types::*;
 use crate::alarm::{Alarm, AlarmUnit};
-use crate::event::InputEvent;
+use crate::event::*;
 use crate::Clock;
 use base::prelude::*;
 
@@ -145,12 +145,14 @@ pub trait Unit {
     fn connect(&mut self, system_time: &Duration, mode: Unsigned12Bit);
     fn disconnect(&mut self, system_time: &Duration);
     fn transfer_mode(&self) -> TransferMode;
+    /// Handle a TSD on an input channel.
     fn read(&mut self, system_time: &Duration) -> Result<MaskedWord, TransferFailed>;
+    /// Handle a TSD on an output channel.
     fn write(
         &mut self,
         system_time: &Duration,
         source: Unsigned36Bit,
-    ) -> Result<(), TransferFailed>;
+    ) -> Result<Option<OutputEvent>, TransferFailed>;
     fn name(&self) -> String;
     fn on_input_event(&mut self, event: InputEvent);
 }
@@ -196,7 +198,7 @@ impl AttachedUnit {
         &mut self,
         system_time: &Duration,
         source: Unsigned36Bit,
-    ) -> Result<(), TransferFailed> {
+    ) -> Result<Option<OutputEvent>, TransferFailed> {
         self.inner.borrow_mut().write(system_time, source)
     }
 
