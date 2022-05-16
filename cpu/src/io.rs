@@ -55,14 +55,8 @@ use dev_lincoln_writer::LincolnWriterOutput;
 pub use dev_petr::{Petr, TapeIterator};
 use pollq::PollQueue;
 
-/// The mode with which the unit is connected; specified with IOS command 0o3X_XXX.
-pub const IO_MASK_MODE: Unsigned36Bit = Unsigned36Bit::MAX.and(0o_000_000_007_777);
-
 /// When set, indicates that the controlling sequence has missed a data item.
 pub const IO_MASK_MISIND: Unsigned36Bit = Unsigned36Bit::MAX.and(0o_000_000_010_000);
-
-/// When set, indicates an "inability"; i.e.a failure.
-pub const IO_MASK_EIA: Unsigned36Bit = Unsigned36Bit::MAX.and(0o_000_000_020_000);
 
 /// When set, indicates the unit is (already) connected.
 pub const IO_MASK_CONNECTED: Unsigned36Bit = Unsigned36Bit::MAX.and(0o_000_000_040_000);
@@ -77,12 +71,6 @@ pub const IO_MASK_AVAIL: Unsigned36Bit = Unsigned36Bit::MAX.and(0o_000_000_200_0
 /// When set, indicates that the unit wants attention.  That is, is ready for a
 /// TSD instruction or has just been connected.
 pub const IO_MASK_FLAG: Unsigned36Bit = Unsigned36Bit::MAX.and(0o_000_000_400_000);
-
-/// Indicates the sequence number associated with this unit.
-pub const IO_MASK_SEQNO: Unsigned36Bit = Unsigned36Bit::MAX.and(0o_000_077_000_000);
-
-/// Reserved for use by magnetic tape devices.
-pub const IO_MASK_SPECIAL: Unsigned36Bit = Unsigned36Bit::MAX.and(0o_777_700_000_000);
 
 /// Units report their status (which is used to construct their report
 /// word) with this struct.

@@ -14,7 +14,6 @@ use std::time::Duration;
 
 use crate::io::{FlagChange, TransferFailed, Unit, UnitStatus};
 use crate::types::*;
-use atty;
 use base::charset::{
     self, lincoln_char_to_described_char, DescribedChar, LincolnState,
     LincolnToUnicodeConversionFailure,
