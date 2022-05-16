@@ -29,8 +29,9 @@ fn run(
     clk: &mut BasicClock,
     sleep_multiplier: Option<f64>,
 ) -> i32 {
-    control.codabo(&ResetMode::ResetTSP, devices, mem);
-    let (alarm, maybe_address) = run_until_alarm(control, devices, mem, clk, sleep_multiplier);
+    control.codabo(&ResetMode::ResetTSP, &clk.now(), devices, mem);
+    let (alarm, maybe_address, system_time) =
+        run_until_alarm(control, devices, mem, clk, sleep_multiplier);
     match maybe_address {
         Some(addr) => {
             event!(
@@ -44,6 +45,7 @@ fn run(
             event!(Level::ERROR, "Execution stopped: {}", alarm);
         }
     }
+    control.disconnect_all_devices(devices, &system_time);
     1
 }
 
@@ -53,7 +55,7 @@ fn run_until_alarm(
     mem: &mut MemoryUnit,
     clk: &mut BasicClock,
     sleep_multiplier: Option<f64>,
-) -> (Alarm, Option<Address>) {
+) -> (Alarm, Option<Address>, Duration) {
     let mut sleeper = MinimalSleeper::new(Duration::from_millis(2));
     let mut next_hw_poll = clk.now();
     let mut run_mode = RunMode::Running;
@@ -82,7 +84,7 @@ fn run_until_alarm(
                         "Alarm raised during hardware polling at system time {:?}",
                         now
                     );
-                    return (alarm, None);
+                    return (alarm, None, now);
                 }
             }
         } else {
@@ -107,7 +109,8 @@ fn run_until_alarm(
             continue;
         }
         let mut hardware_state_changed = false;
-        match control.execute_instruction(&clk.now(), devices, mem, &mut hardware_state_changed) {
+        let now = clk.now();
+        match control.execute_instruction(&now, devices, mem, &mut hardware_state_changed) {
             Err((alarm, address)) => {
                 event!(
                     Level::INFO,
@@ -115,7 +118,7 @@ fn run_until_alarm(
                     address,
                     now
                 );
-                return (alarm, Some(address));
+                return (alarm, Some(address), now);
             }
             Ok((ns, new_run_mode)) => {
                 run_mode = new_run_mode;

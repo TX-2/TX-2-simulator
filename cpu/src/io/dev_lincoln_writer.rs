@@ -9,6 +9,7 @@
 ///! comparable with that of the IBM Selectric typewriter, which is
 ///! 14.8 characters per second.  This works out at roughly 68
 ///! milliseconds per character.
+use std::fmt::{self, Debug, Formatter};
 use std::io::{stdout, Write};
 use std::time::Duration;
 
@@ -36,7 +37,29 @@ pub struct LincolnWriterOutput {
     // example, carriage return sets the LW to lower case and normal
     // script, affecting the way input behaves as well as output.
     state: LincolnState,
-    colour_choice: termcolor::ColorChoice,
+    stream: Option<StandardStream>,
+}
+
+impl Debug for LincolnWriterOutput {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        f.debug_struct("LincolnWriterOutput")
+            .field("unit", &self.unit)
+            .field("mode", &self.mode)
+            .field("connected", &self.connected)
+            .field(
+                "transmit_will_be_finished_at",
+                &self.transmit_will_be_finished_at,
+            )
+            .field("state", &self.state)
+            .field(
+                "stream",
+                match self.stream {
+                    None => &"None",
+                    Some(_) => &"Some(...)",
+                },
+            )
+            .finish_non_exhaustive()
+    }
 }
 
 fn get_colour_choice() -> termcolor::ColorChoice {
@@ -55,12 +78,11 @@ impl LincolnWriterOutput {
             connected: false,
             transmit_will_be_finished_at: None,
             state: LincolnState::default(),
-            colour_choice: get_colour_choice(),
+            stream: None,
         }
     }
 
-    fn set_lw_colour(&self, col: charset::Colour) {
-        let mut stdout = StandardStream::stdout(self.colour_choice);
+    fn set_lw_colour(&mut self, col: charset::Colour) {
         let mut new_colour = ColorSpec::new();
         match col {
             charset::Colour::Black => {
@@ -74,13 +96,15 @@ impl LincolnWriterOutput {
                     .set_bg(Some(termcolor::Color::Black));
             }
         }
-        if let Err(e) = stdout.set_color(&new_colour) {
-            event!(
-                Level::ERROR,
-                "Failed to select colour {:?}: {}",
-                new_colour,
-                e
-            );
+        if let Some(s) = self.stream.as_mut() {
+            if let Err(e) = s.set_color(&new_colour) {
+                event!(
+                    Level::ERROR,
+                    "Failed to select colour {:?}: {}",
+                    new_colour,
+                    e
+                );
+            }
         }
     }
 }
@@ -195,6 +219,7 @@ impl Unit for LincolnWriterOutput {
 
     fn connect(&mut self, _system_time: &std::time::Duration, mode: base::Unsigned12Bit) {
         event!(Level::INFO, "{} connected", self.name(),);
+        self.stream = Some(StandardStream::stdout(get_colour_choice()));
         self.connected = true;
         self.mode = mode;
     }
@@ -270,5 +295,21 @@ impl Unit for LincolnWriterOutput {
 
     fn transfer_mode(&self) -> crate::TransferMode {
         TransferMode::Exchange
+    }
+
+    fn disconnect(&mut self, _system_time: &Duration) {
+        if let Some(stream) = self.stream.as_mut() {
+            if let Err(e) = stream.reset() {
+                event!(
+                    Level::ERROR,
+                    "Failed to reset terminal for {}: {}",
+                    self.name(),
+                    e
+                );
+            }
+        } else {
+            event!(Level::WARN, "disconnect() called but the Lincoln Writer unit is not connected to a stream: {self:?}");
+        }
+        self.connected = false;
     }
 }

@@ -473,6 +473,7 @@ impl ControlUnit {
     pub fn codabo(
         &mut self,
         reset_mode: &ResetMode,
+        system_time: &Duration,
         devices: &mut DeviceManager,
         mem: &mut MemoryUnit,
     ) {
@@ -491,7 +492,7 @@ impl ControlUnit {
 			 reset_mode=?reset_mode);
         let _enter = span.enter();
         event!(Level::INFO, "Starting CODABO {:?}", &reset_mode);
-        devices.disconnect_all();
+        self.disconnect_all_devices(devices, system_time);
         self.regs.flags.lower_all();
         self.startover(reset_mode, mem);
         event!(
@@ -499,6 +500,10 @@ impl ControlUnit {
             "After CODABO, control unit contains {:#?}",
             &self
         );
+    }
+
+    pub fn disconnect_all_devices(&mut self, devices: &mut DeviceManager, system_time: &Duration) {
+        devices.disconnect_all(system_time);
     }
 
     /// There are 9 separate RESET buttons, for 8 fixed addresses and

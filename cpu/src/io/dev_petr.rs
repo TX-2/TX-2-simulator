@@ -400,4 +400,8 @@ impl Unit for Petr {
     fn name(&self) -> String {
         "PETR photoelectric paper tape reader".to_string()
     }
+
+    fn disconnect(&mut self, _system_time: &Duration) {
+        self.activity = Activity::Stopped;
+    }
 }
