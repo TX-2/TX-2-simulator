@@ -8,7 +8,7 @@ mod alarm;
 mod clock;
 mod control;
 mod exchanger;
-pub mod io;
+mod io;
 mod memory;
 mod types;
 
