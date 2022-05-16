@@ -232,6 +232,7 @@ impl ControlUnit {
             Ok(OpcodeResult {
                 program_counter_change: Some(ProgramCounterChange::Jump(target)),
                 poll_order_change: false,
+                output: None,
             })
         } else {
             Ok(OpcodeResult::default())

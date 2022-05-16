@@ -81,6 +81,7 @@ impl ControlUnit {
         Ok(OpcodeResult {
             program_counter_change: Some(ProgramCounterChange::Jump(new_pc)),
             poll_order_change: false,
+            output: None,
         })
     }
 
@@ -164,6 +165,7 @@ impl ControlUnit {
                 None
             },
             poll_order_change: false,
+            output: None,
         })
     }
 }
@@ -222,6 +224,7 @@ mod tests {
             Ok(OpcodeResult {
                 program_counter_change: Some(ProgramCounterChange::Jump(to)),
                 poll_order_change: false,
+                output: None,
             }) => {
                 let xj = control.regs.get_index_register(j);
                 let dismissed =

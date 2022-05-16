@@ -9,22 +9,20 @@
 ///! comparable with that of the IBM Selectric typewriter, which is
 ///! 14.8 characters per second.  This works out at roughly 68
 ///! milliseconds per character.
-use std::fmt::{self, Debug, Formatter};
-use std::io::{stdout, Write};
+use std::fmt::Debug;
 use std::time::Duration;
 
+use crate::event::OutputEvent;
 use crate::io::{FlagChange, TransferFailed, Unit, UnitStatus};
 use crate::types::*;
-use base::charset::{
-    self, lincoln_char_to_described_char, DescribedChar, LincolnChar, LincolnState,
-};
+use base::charset::{lincoln_char_to_described_char, LincolnState};
 use base::prelude::*;
-use termcolor::{self, ColorChoice, ColorSpec, StandardStream, WriteColor};
 use tracing::{event, Level};
 
 const CHAR_TRANSMIT_TIME: Duration = Duration::from_millis(68);
 const LATER: Duration = Duration::from_secs(300);
 
+#[derive(Debug)]
 pub struct LincolnWriterOutput {
     unit: Unsigned6Bit,
     mode: Unsigned12Bit,
@@ -36,37 +34,6 @@ pub struct LincolnWriterOutput {
     // example, carriage return sets the LW to lower case and normal
     // script, affecting the way input behaves as well as output.
     state: LincolnState,
-    stream: Option<StandardStream>,
-}
-
-impl Debug for LincolnWriterOutput {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        f.debug_struct("LincolnWriterOutput")
-            .field("unit", &self.unit)
-            .field("mode", &self.mode)
-            .field("connected", &self.connected)
-            .field(
-                "transmit_will_be_finished_at",
-                &self.transmit_will_be_finished_at,
-            )
-            .field("state", &self.state)
-            .field(
-                "stream",
-                match self.stream {
-                    None => &"None",
-                    Some(_) => &"Some(...)",
-                },
-            )
-            .finish_non_exhaustive()
-    }
-}
-
-fn get_colour_choice() -> termcolor::ColorChoice {
-    if atty::is(atty::Stream::Stdout) {
-        ColorChoice::Auto
-    } else {
-        ColorChoice::Never
-    }
 }
 
 impl LincolnWriterOutput {
@@ -77,81 +44,6 @@ impl LincolnWriterOutput {
             connected: false,
             transmit_will_be_finished_at: None,
             state: LincolnState::default(),
-            stream: None,
-        }
-    }
-
-    fn set_lw_colour(&mut self, col: charset::Colour) {
-        let mut new_colour = ColorSpec::new();
-        match col {
-            charset::Colour::Black => {
-                new_colour
-                    .set_fg(Some(termcolor::Color::White))
-                    .set_bg(Some(termcolor::Color::Black));
-            }
-            charset::Colour::Red => {
-                new_colour
-                    .set_fg(Some(termcolor::Color::Black))
-                    .set_bg(Some(termcolor::Color::Black));
-            }
-        }
-        if let Some(s) = self.stream.as_mut() {
-            if let Err(e) = s.set_color(&new_colour) {
-                event!(
-                    Level::ERROR,
-                    "Failed to select colour {:?}: {}",
-                    new_colour,
-                    e
-                );
-            }
-        }
-    }
-}
-
-enum EmitItem {
-    Newline,
-    ColourChange(charset::Colour),
-    Char(char),
-}
-
-fn char_to_write(char_data: Unsigned6Bit, state: &mut LincolnState) -> Option<EmitItem> {
-    let prev_colour = state.colour;
-    match lincoln_char_to_described_char(char_data, state) {
-        Some(DescribedChar {
-            unicode_representation: Some('\r'),
-            ..
-        }) => Some(EmitItem::Newline),
-        Some(DescribedChar {
-            unicode_representation: Some(ch),
-            ..
-        }) => Some(EmitItem::Char(ch)),
-        Some(DescribedChar {
-            unicode_representation: None,
-            base_char: LincolnChar::UnicodeBaseChar(base_char),
-            ..
-        }) => {
-            // We just emit it in normal script.
-            Some(EmitItem::Char(base_char))
-        }
-        None => {
-            if state.colour != prev_colour {
-                Some(EmitItem::ColourChange(state.colour))
-            } else {
-                None
-            }
-        }
-        Some(DescribedChar {
-            base_char: LincolnChar::Unprintable(_),
-            unicode_representation: None,
-            attributes: _,
-            advance: _,
-        }) => {
-            // Some Lincoln Writer characters generate codes on input,
-            // but the Lincoln Writer does nothing with them on
-            // output.  The real Lincoln Writer took a non-zero time
-            // to process these characters but otherwise did nothing.
-            // We do nothing also, but probably faster.
-            None
         }
     }
 }
@@ -208,7 +100,6 @@ impl Unit for LincolnWriterOutput {
 
     fn connect(&mut self, _system_time: &std::time::Duration, mode: base::Unsigned12Bit) {
         event!(Level::INFO, "{} connected", self.name(),);
-        self.stream = Some(StandardStream::stdout(get_colour_choice()));
         self.connected = true;
         self.mode = mode;
     }
@@ -221,7 +112,7 @@ impl Unit for LincolnWriterOutput {
         &mut self,
         system_time: &std::time::Duration,
         source: base::Unsigned36Bit,
-    ) -> Result<(), TransferFailed> {
+    ) -> Result<Option<OutputEvent>, TransferFailed> {
         match self.transmit_will_be_finished_at {
             Some(t) if t > *system_time => {
                 event!(
@@ -251,30 +142,12 @@ impl Unit for LincolnWriterOutput {
         self.transmit_will_be_finished_at = Some(done_at);
         let char_data = Unsigned6Bit::try_from(u64::from(source) & 0o77)
             .expect("item should only have six value bits (this is a bug)");
-        match char_to_write(char_data, &mut self.state) {
-            None => Ok(()),
-            Some(thing) => {
-                if let Err(e) = {
-                    let out: Option<char> = match thing {
-                        EmitItem::ColourChange(newcol) => {
-                            self.set_lw_colour(newcol);
-                            None
-                        }
-                        EmitItem::Newline => Some('\n'),
-                        EmitItem::Char(ch) => Some(ch),
-                    };
-                    if let Some(ch) = out {
-                        let stdout = stdout();
-                        let mut handle = stdout.lock();
-                        write!(handle, "{}", ch).and_then(|()| handle.flush())
-                    } else {
-                        Ok(())
-                    }
-                } {
-                    event!(Level::WARN, "Write error on stdout: {}", e);
-                }
-                Ok(())
-            }
+        match lincoln_char_to_described_char(char_data, &mut self.state) {
+            None => Ok(None),
+            Some(described_char) => Ok(Some(OutputEvent::LincolnWriterPrint {
+                unit: self.unit,
+                ch: described_char,
+            })),
         }
     }
 
@@ -287,18 +160,6 @@ impl Unit for LincolnWriterOutput {
     }
 
     fn disconnect(&mut self, _system_time: &Duration) {
-        if let Some(stream) = self.stream.as_mut() {
-            if let Err(e) = stream.reset() {
-                event!(
-                    Level::ERROR,
-                    "Failed to reset terminal for {}: {}",
-                    self.name(),
-                    e
-                );
-            }
-        } else {
-            event!(Level::WARN, "disconnect() called but the Lincoln Writer unit is not connected to a stream: {self:?}");
-        }
         self.connected = false;
     }
 
