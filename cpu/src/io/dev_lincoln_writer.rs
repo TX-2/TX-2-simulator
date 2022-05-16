@@ -16,8 +16,7 @@ use std::time::Duration;
 use crate::io::{FlagChange, TransferFailed, Unit, UnitStatus};
 use crate::types::*;
 use base::charset::{
-    self, lincoln_char_to_described_char, DescribedChar, LincolnState,
-    LincolnToUnicodeConversionFailure,
+    self, lincoln_char_to_described_char, DescribedChar, LincolnChar, LincolnState,
 };
 use base::prelude::*;
 use termcolor::{self, ColorChoice, ColorSpec, StandardStream, WriteColor};
@@ -115,52 +114,42 @@ enum EmitItem {
     Char(char),
 }
 
-fn char_to_write(char_data: u8, state: &mut LincolnState) -> Option<EmitItem> {
+fn char_to_write(char_data: Unsigned6Bit, state: &mut LincolnState) -> Option<EmitItem> {
     let prev_colour = state.colour;
-    match lincoln_char_to_described_char(&char_data, state) {
-        Ok(Some(DescribedChar {
-            display: Some('\r'),
+    match lincoln_char_to_described_char(char_data, state) {
+        Some(DescribedChar {
+            unicode_representation: Some('\r'),
             ..
-        })) => Some(EmitItem::Newline),
-        Ok(Some(DescribedChar {
-            display: Some(ch), ..
-        })) => Some(EmitItem::Char(ch)),
-        Ok(Some(DescribedChar {
-            display: None,
-            base_char,
+        }) => Some(EmitItem::Newline),
+        Some(DescribedChar {
+            unicode_representation: Some(ch),
             ..
-        })) => {
+        }) => Some(EmitItem::Char(ch)),
+        Some(DescribedChar {
+            unicode_representation: None,
+            base_char: LincolnChar::UnicodeBaseChar(base_char),
+            ..
+        }) => {
             // We just emit it in normal script.
             Some(EmitItem::Char(base_char))
         }
-        Ok(None) => {
+        None => {
             if state.colour != prev_colour {
                 Some(EmitItem::ColourChange(state.colour))
             } else {
                 None
             }
         }
-        Err(LincolnToUnicodeConversionFailure::CannotSuperscript(_, base)) => {
-            // This is a character which is superscript in the
-            // Lincoln Writer representation but for which we have
-            // not been able to find a suitable Unicode
-            // representation.
-            Some(EmitItem::Char(base))
-        }
-        Err(LincolnToUnicodeConversionFailure::CannotSubscript(_, base)) => {
-            // This is a character which is subscript in the
-            // Lincoln Writer representation but for which we have
-            // not been able to find a suitable Unicode
-            // representation.
-            Some(EmitItem::Char(base))
-        }
-        Err(LincolnToUnicodeConversionFailure::CharacterOutOfRange(_)) => unreachable!(),
-        Err(LincolnToUnicodeConversionFailure::NoMapping(_)) => {
-            // Some Lincoln Writer characters generate codes on
-            // input, but the Lincoln Writer does nothing with
-            // them.  These characters generate a NoMapping error.
-            // The real Lincoln Writer tooka non-zero time to
-            // process these characters but otherwise did nothing.
+        Some(DescribedChar {
+            base_char: LincolnChar::Unprintable(_),
+            unicode_representation: None,
+            attributes: _,
+            advance: _,
+        }) => {
+            // Some Lincoln Writer characters generate codes on input,
+            // but the Lincoln Writer does nothing with them on
+            // output.  The real Lincoln Writer took a non-zero time
+            // to process these characters but otherwise did nothing.
             // We do nothing also, but probably faster.
             None
         }
@@ -260,7 +249,7 @@ impl Unit for LincolnWriterOutput {
             &done_at
         );
         self.transmit_will_be_finished_at = Some(done_at);
-        let char_data = u8::try_from(u64::from(source) & 0o77)
+        let char_data = Unsigned6Bit::try_from(u64::from(source) & 0o77)
             .expect("item should only have six value bits (this is a bug)");
         match char_to_write(char_data, &mut self.state) {
             None => Ok(()),
