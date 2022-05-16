@@ -80,7 +80,7 @@ impl ControlUnit {
         }
         Ok(OpcodeResult {
             program_counter_change: Some(ProgramCounterChange::Jump(new_pc)),
-            hardware_state_change: false,
+            poll_order_change: false,
         })
     }
 
@@ -163,7 +163,7 @@ impl ControlUnit {
             } else {
                 None
             },
-            hardware_state_change: false,
+            poll_order_change: false,
         })
     }
 }

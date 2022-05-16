@@ -231,7 +231,7 @@ impl ControlUnit {
             );
             Ok(OpcodeResult {
                 program_counter_change: Some(ProgramCounterChange::Jump(target)),
-                hardware_state_change: false,
+                poll_order_change: false,
             })
         } else {
             Ok(OpcodeResult::default())

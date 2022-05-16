@@ -403,14 +403,14 @@ enum SequenceSelection {
 #[derive(Debug, PartialEq, Eq, Default)]
 pub(crate) struct OpcodeResult {
     program_counter_change: Option<ProgramCounterChange>,
-    hardware_state_change: bool,
+    poll_order_change: bool,
 }
 
 #[test]
 fn test_opcode_result() {
     let r = OpcodeResult::default();
     assert!(r.program_counter_change.is_none());
-    assert_eq!(r.hardware_state_change, false);
+    assert_eq!(r.poll_order_change, false);
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -909,7 +909,7 @@ impl ControlUnit {
         system_time: &Duration,
         devices: &mut DeviceManager,
         mem: &mut MemoryUnit,
-        hardware_state_changed: &mut bool,
+        poll_order_change: &mut bool,
     ) -> Result<(u64, RunMode), (Alarm, Address)> {
         fn execute(
             prev_program_counter: Address,
@@ -977,8 +977,8 @@ impl ControlUnit {
             event!(Level::TRACE, "executing instruction {}", &sym);
             match execute(p, &sym.opcode(), self, devices, system_time, mem) {
                 Ok(opcode_result) => {
-                    if opcode_result.hardware_state_change {
-                        *hardware_state_changed = true;
+                    if opcode_result.poll_order_change {
+                        *poll_order_change = true;
                         please_poll_soon(devices, self.regs.k, *system_time);
                     }
                     match opcode_result.program_counter_change {
