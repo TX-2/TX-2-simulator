@@ -16,4 +16,7 @@ members = [
 	# produces output intended to be run within the simulated
 	# TX-2.
 	"assembler",
+
+	# Web-based simulator.
+	"wasm",
 ]
