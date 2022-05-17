@@ -11,8 +11,8 @@ From [the Wikipedia entry for the TX-2](https://en.wikipedia.org/wiki/TX-2):
 > intelligence and human–computer interaction. Wesley A. Clark was the
 > chief architect of the TX-2.
 
-The [OVERVIEW](OVERVIEW.md) file explains the high-level design of the
-simulator.
+The [OVERVIEW](docs/OVERVIEW.md) file explains the high-level design
+of the simulator.
 
 ## To Build The Code
 
