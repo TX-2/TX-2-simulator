@@ -1,4 +1,7 @@
 /// Simulate the historic TX-2 computer
+mod lw;
+mod sleep;
+
 use std::ffi::{OsStr, OsString};
 use std::fmt::{self, Debug, Display, Formatter};
 use std::fs::OpenOptions;
@@ -14,10 +17,8 @@ use tracing_subscriber::prelude::*;
 use base::prelude::*;
 use cpu::{
     self, set_up_peripherals, Alarm, BasicClock, Clock, ControlUnit, DeviceManager,
-    MemoryConfiguration, MemoryUnit, MinimalSleeper, OutputEvent, ResetMode, RunMode,
+    MemoryConfiguration, MemoryUnit, OutputEvent, ResetMode, RunMode,
 };
-
-mod lw;
 
 // Thanks to Google for allowing this code to be open-sourced.  I
 // generally prefer to correspond about this project using my
@@ -58,7 +59,7 @@ fn run_until_alarm(
     clk: &mut BasicClock,
     sleep_multiplier: Option<f64>,
 ) -> (Alarm, Option<Address>, Duration) {
-    let mut sleeper = MinimalSleeper::new(Duration::from_millis(2));
+    let mut sleeper = sleep::MinimalSleeper::new(Duration::from_millis(2));
     let mut next_hw_poll = clk.now();
     let mut run_mode = RunMode::Running;
     let mut lw66 = lw::LincolnStreamWriter::new();
@@ -108,7 +109,7 @@ fn run_until_alarm(
                 "machine is in limbo, waiting {:?} for a flag to be raised",
                 &interval,
             );
-            cpu::time_passes(clk, &mut sleeper, &interval, sleep_multiplier);
+            sleep::time_passes(clk, &mut sleeper, &interval, sleep_multiplier);
             continue;
         }
         let mut hardware_state_changed = false;
@@ -126,7 +127,7 @@ fn run_until_alarm(
                 }
                 Ok((ns, new_run_mode, maybe_output)) => {
                     run_mode = new_run_mode;
-                    cpu::time_passes(
+                    sleep::time_passes(
                         clk,
                         &mut sleeper,
                         &Duration::from_nanos(ns),
