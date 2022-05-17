@@ -8,6 +8,7 @@ mod onescomplement;
 mod types;
 
 pub mod charset;
+pub mod collections;
 pub mod instruction;
 pub mod prelude;
 pub mod readerleader;

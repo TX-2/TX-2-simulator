@@ -12,7 +12,6 @@ publish = false
 [dependencies]
 base = { path = "../base" }
 tracing = "0.1" # MIT license
-keyed_priority_queue = "0.4.1"	# MIT license
 
 [lib]
 name = "cpu"
