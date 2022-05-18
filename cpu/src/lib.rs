@@ -16,3 +16,5 @@ pub use event::*;
 pub use io::{set_up_peripherals, DeviceManager};
 pub use memory::{MemoryConfiguration, MemoryUnit};
 pub use types::*;
+
+pub const PETR: base::prelude::Unsigned6Bit = base::prelude::u6!(0o52);
