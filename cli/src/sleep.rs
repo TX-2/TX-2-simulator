@@ -1,9 +1,9 @@
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
-use cpu::{BasicClock, Clock};
-
 use tracing::{event, Level};
+
+use crate::clock::{BasicClock, Clock};
 
 #[derive(Debug)]
 struct SignedDuration {

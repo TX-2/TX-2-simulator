@@ -1,4 +1,5 @@
 /// Simulate the historic TX-2 computer
+mod clock;
 mod lw;
 mod sleep;
 
@@ -15,9 +16,10 @@ use tracing_subscriber::filter::{EnvFilter, LevelFilter};
 use tracing_subscriber::prelude::*;
 
 use base::prelude::*;
+use clock::{BasicClock, Clock};
 use cpu::{
-    self, set_up_peripherals, Alarm, BasicClock, Clock, ControlUnit, DeviceManager,
-    MemoryConfiguration, MemoryUnit, OutputEvent, ResetMode, RunMode,
+    self, set_up_peripherals, Alarm, ControlUnit, DeviceManager, MemoryConfiguration, MemoryUnit,
+    OutputEvent, ResetMode, RunMode,
 };
 
 // Thanks to Google for allowing this code to be open-sourced.  I
@@ -346,7 +348,7 @@ fn run_simulator() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut mem = MemoryUnit::new(&mem_config);
     let mut devices = DeviceManager::new();
-    set_up_peripherals(&mut devices, &clk, tape_data);
+    set_up_peripherals(&mut devices, &clk.now(), tape_data);
 
     std::process::exit(run(
         &mut control,
