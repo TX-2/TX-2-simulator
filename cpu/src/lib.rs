@@ -3,7 +3,6 @@
 #![crate_name = "cpu"]
 
 mod alarm;
-mod clock;
 mod control;
 mod event;
 mod exchanger;
@@ -12,7 +11,6 @@ mod memory;
 mod types;
 
 pub use alarm::Alarm;
-pub use clock::{BasicClock, Clock};
 pub use control::{ControlUnit, PanicOnUnmaskedAlarm, ResetMode, RunMode};
 pub use event::*;
 pub use io::{set_up_peripherals, DeviceManager};
