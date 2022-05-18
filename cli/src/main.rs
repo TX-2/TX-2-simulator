@@ -18,8 +18,8 @@ use tracing_subscriber::prelude::*;
 use base::prelude::*;
 use clock::{BasicClock, Clock};
 use cpu::{
-    self, set_up_peripherals, Alarm, ControlUnit, DeviceManager, MemoryConfiguration, MemoryUnit,
-    OutputEvent, ResetMode, RunMode,
+    self, set_up_peripherals, Alarm, ControlUnit, DeviceManager, InputEvent, MemoryConfiguration,
+    MemoryUnit, OutputEvent, ResetMode, RunMode, PETR,
 };
 
 // Thanks to Google for allowing this code to be open-sourced.  I
@@ -27,16 +27,56 @@ use cpu::{
 // personal email address rather than my work one, though.
 const AUTHOR: &str = "James Youngman <james@youngman.org>";
 
-fn run(
-    control: &mut ControlUnit,
-    mem: &mut MemoryUnit,
-    devices: &mut DeviceManager,
-    clk: &mut BasicClock,
-    sleep_multiplier: Option<f64>,
-) -> i32 {
-    control.codabo(&ResetMode::ResetTSP, &clk.now(), devices, mem);
-    let (alarm, maybe_address, system_time) =
-        run_until_alarm(control, devices, mem, clk, sleep_multiplier);
+struct Tx2 {
+    control: ControlUnit,
+    mem: MemoryUnit,
+    devices: DeviceManager,
+}
+
+impl Tx2 {
+    fn new(
+        maybe_alarm_panic: Option<PanicOnUnmaskedAlarm>,
+        mem_config: &MemoryConfiguration,
+        system_time: &Duration,
+    ) -> Tx2 {
+        let control = ControlUnit::new(
+            // We have two simimarly-named enums here so that the cpu
+            // crate does not have to depend on clap.
+            match maybe_alarm_panic {
+                Some(PanicOnUnmaskedAlarm::Yes) => cpu::PanicOnUnmaskedAlarm::Yes,
+                Some(PanicOnUnmaskedAlarm::No) | None => cpu::PanicOnUnmaskedAlarm::No,
+            },
+        );
+        event!(
+            Level::DEBUG,
+            "Initial control unit state iis {:?}",
+            &control
+        );
+
+        let mem = MemoryUnit::new(mem_config);
+        let mut devices = DeviceManager::new();
+        set_up_peripherals(&mut devices, system_time);
+        Tx2 {
+            control,
+            mem,
+            devices,
+        }
+    }
+
+    fn mount_tape(&mut self, data: Vec<u8>) {
+        self.devices
+            .on_input_event(PETR, InputEvent::PetrMountPaperTape { data });
+    }
+}
+
+fn run(tx2: &mut Tx2, clk: &mut BasicClock, sleep_multiplier: Option<f64>) -> i32 {
+    tx2.control.codabo(
+        &ResetMode::ResetTSP,
+        &clk.now(),
+        &mut tx2.devices,
+        &mut tx2.mem,
+    );
+    let (alarm, maybe_address, system_time) = run_until_alarm(tx2, clk, sleep_multiplier);
     match maybe_address {
         Some(addr) => {
             event!(
@@ -50,14 +90,13 @@ fn run(
             event!(Level::ERROR, "Execution stopped: {}", alarm);
         }
     }
-    control.disconnect_all_devices(devices, &system_time);
+    tx2.control
+        .disconnect_all_devices(&mut tx2.devices, &system_time);
     1
 }
 
 fn run_until_alarm(
-    control: &mut ControlUnit,
-    devices: &mut DeviceManager,
-    mem: &mut MemoryUnit,
+    tx2: &mut Tx2,
     clk: &mut BasicClock,
     sleep_multiplier: Option<f64>,
 ) -> (Alarm, Option<Address>, Duration) {
@@ -75,7 +114,7 @@ fn run_until_alarm(
                 "polling hardware for updates (now={:?})",
                 &now
             );
-            match control.poll_hardware(devices, run_mode, &now) {
+            match tx2.control.poll_hardware(&mut tx2.devices, run_mode, &now) {
                 Ok((mode, Some(next))) => {
                     run_mode = mode;
                     next_hw_poll = next;
@@ -116,28 +155,32 @@ fn run_until_alarm(
         }
         let mut hardware_state_changed = false;
         let now = clk.now();
-        let maybe_output =
-            match control.execute_instruction(&now, devices, mem, &mut hardware_state_changed) {
-                Err((alarm, address)) => {
-                    event!(
-                        Level::INFO,
-                        "Alarm raised during instruction execution at {:o} at system time {:?}",
-                        address,
-                        now
-                    );
-                    return (alarm, Some(address), now);
-                }
-                Ok((ns, new_run_mode, maybe_output)) => {
-                    run_mode = new_run_mode;
-                    sleep::time_passes(
-                        clk,
-                        &mut sleeper,
-                        &Duration::from_nanos(ns),
-                        sleep_multiplier,
-                    );
-                    maybe_output
-                }
-            };
+        let maybe_output = match tx2.control.execute_instruction(
+            &now,
+            &mut tx2.devices,
+            &mut tx2.mem,
+            &mut hardware_state_changed,
+        ) {
+            Err((alarm, address)) => {
+                event!(
+                    Level::INFO,
+                    "Alarm raised during instruction execution at {:o} at system time {:?}",
+                    address,
+                    now
+                );
+                return (alarm, Some(address), now);
+            }
+            Ok((ns, new_run_mode, maybe_output)) => {
+                run_mode = new_run_mode;
+                sleep::time_passes(
+                    clk,
+                    &mut sleeper,
+                    &Duration::from_nanos(ns),
+                    sleep_multiplier,
+                );
+                maybe_output
+            }
+        };
         if hardware_state_changed {
             // Some instruction changed the hardware, so we need to
             // poll it again.
@@ -330,33 +373,12 @@ fn run_simulator() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    let mut control = ControlUnit::new(
-        // We have two simimarly-named enums here so that the cpu
-        // crate does not have to depend on clap.
-        match cli.panic_on_unmasked_alarm {
-            Some(PanicOnUnmaskedAlarm::Yes) => cpu::PanicOnUnmaskedAlarm::Yes,
-            Some(PanicOnUnmaskedAlarm::No) | None => cpu::PanicOnUnmaskedAlarm::No,
-        },
-    );
-    event!(
-        Level::DEBUG,
-        "Initial control unit state iis {:?}",
-        &control
-    );
-
     let mut clk: BasicClock = BasicClock::new();
-
-    let mut mem = MemoryUnit::new(&mem_config);
-    let mut devices = DeviceManager::new();
-    set_up_peripherals(&mut devices, &clk.now(), tape_data);
-
-    std::process::exit(run(
-        &mut control,
-        &mut mem,
-        &mut devices,
-        &mut clk,
-        sleep_multiplier,
-    ));
+    let mut tx2 = Tx2::new(cli.panic_on_unmasked_alarm, &mem_config, &clk.now());
+    if let Some(tape) = tape_data {
+        tx2.mount_tape(tape);
+    }
+    std::process::exit(run(&mut tx2, &mut clk, sleep_multiplier));
 }
 
 fn main() {

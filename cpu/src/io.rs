@@ -45,6 +45,7 @@ use tracing::{event, span, Level};
 use super::types::*;
 use crate::alarm::{Alarm, AlarmUnit};
 use crate::event::*;
+use crate::PETR;
 use base::prelude::*;
 
 mod dev_lincoln_writer;
@@ -510,15 +511,11 @@ impl Default for DeviceManager {
     }
 }
 
-pub fn set_up_peripherals(devices: &mut DeviceManager, now: &Duration, tape_data: Option<Vec<u8>>) {
+pub fn set_up_peripherals(devices: &mut DeviceManager, now: &Duration) {
     fn attach_lw_output(unit: Unsigned6Bit, now: &Duration, devices: &mut DeviceManager) {
         devices.attach(now, unit, false, Box::new(LincolnWriterOutput::new(unit)));
     }
 
-    const PETR: Unsigned6Bit = u6!(0o52);
     devices.attach(now, PETR, false, Box::new(Petr::new()));
-    if let Some(data) = tape_data {
-        devices.on_input_event(PETR, InputEvent::PetrMountPaperTape { data });
-    }
     attach_lw_output(u6!(0o66), now, devices);
 }
