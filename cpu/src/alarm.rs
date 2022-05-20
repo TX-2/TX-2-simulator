@@ -1,5 +1,6 @@
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
+use std::time::Duration;
 
 use tracing::{event, Level};
 
@@ -162,6 +163,12 @@ impl Display for Alarm {
 }
 
 impl Error for Alarm {}
+
+pub struct UnmaskedAlarm {
+    pub alarm: Alarm,
+    pub address: Option<Address>,
+    pub when: Duration,
+}
 
 /// The TX-2 can "mask" some alarms, and whether or not this is
 /// happening is controlled by the AlarmUnit.
