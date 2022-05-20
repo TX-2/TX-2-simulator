@@ -76,61 +76,135 @@ fn run(tx2: &mut Tx2, clk: &mut BasicClock, sleep_multiplier: Option<f64>) -> i3
         &mut tx2.devices,
         &mut tx2.mem,
     );
-    let (alarm, maybe_address, system_time) = run_until_alarm(tx2, clk, sleep_multiplier);
-    match maybe_address {
-        Some(addr) => {
+    let alarm_time: Duration = match run_until_alarm(tx2, clk, sleep_multiplier) {
+        UnmaskedAlarm {
+            alarm,
+            address: Some(addr),
+            when,
+        } => {
             event!(
                 Level::ERROR,
                 "Execution stopped at address  {:o}: {}",
                 addr,
                 alarm
             );
+            when
         }
-        None => {
+        UnmaskedAlarm {
+            alarm,
+            address: None,
+            when,
+        } => {
             event!(Level::ERROR, "Execution stopped: {}", alarm);
+            when
+        }
+    };
+    tx2.control
+        .disconnect_all_devices(&mut tx2.devices, &alarm_time);
+    1
+}
+
+struct UnmaskedAlarm {
+    pub alarm: Alarm,
+    pub address: Option<Address>,
+    pub when: Duration,
+}
+
+impl Tx2 {
+    fn poll_hw(
+        &mut self,
+        now: &Duration,
+        run_mode: &RunMode,
+    ) -> Result<(RunMode, Duration), UnmaskedAlarm> {
+        // check for I/O alarms, flag changes.
+        event!(
+            Level::TRACE,
+            "polling hardware for updates (now={:?})",
+            &now
+        );
+        match self
+            .control
+            // TODO: remove run_mode indirection, or remove reference.
+            .poll_hardware(&mut self.devices, *run_mode, now)
+        {
+            Ok((mode, Some(next))) => Ok((mode, next)),
+            Ok((mode, None)) => {
+                // TODO: check why poll() doesn't always return a
+                // next-poll time.
+                Ok((mode, *now + Duration::from_micros(5)))
+            }
+            Err(alarm) => {
+                event!(
+                    Level::INFO,
+                    "Alarm raised during hardware polling at system time {:?}",
+                    now
+                );
+                Err(UnmaskedAlarm {
+                    alarm,
+                    address: None,
+                    when: *now,
+                })
+            }
         }
     }
-    tx2.control
-        .disconnect_all_devices(&mut tx2.devices, &system_time);
-    1
+
+    fn execute_one_instruction(
+        &mut self,
+        now: &Duration,
+    ) -> Result<(u64, RunMode, Option<Duration>, Option<OutputEvent>), UnmaskedAlarm> {
+        let mut hardware_state_changed = false;
+        match self.control.execute_instruction(
+            now,
+            &mut self.devices,
+            &mut self.mem,
+            &mut hardware_state_changed,
+        ) {
+            Err((alarm, address)) => {
+                event!(
+                    Level::INFO,
+                    "Alarm raised during instruction execution at {:o} at system time {:?}",
+                    address,
+                    now
+                );
+                Err(UnmaskedAlarm {
+                    alarm,
+                    address: Some(address),
+                    when: *now,
+                })
+            }
+            Ok((ns, new_run_mode, maybe_output)) => {
+                let change_next_hw_poll: Option<Duration> = if hardware_state_changed {
+                    // Some instruction changed the hardware, so we need to
+                    // poll it again.
+                    Some(*now)
+                } else {
+                    None
+                };
+                Ok((ns, new_run_mode, change_next_hw_poll, maybe_output))
+            }
+        }
+    }
 }
 
 fn run_until_alarm(
     tx2: &mut Tx2,
     clk: &mut BasicClock,
     sleep_multiplier: Option<f64>,
-) -> (Alarm, Option<Address>, Duration) {
+) -> UnmaskedAlarm {
     let mut sleeper = sleep::MinimalSleeper::new(Duration::from_millis(2));
-    let mut next_hw_poll = clk.now();
+    let mut next_hw_poll: Duration = clk.now();
     let mut run_mode = RunMode::Running;
     let mut lw66 = lw::LincolnStreamWriter::new();
 
-    let result = loop {
+    let result: UnmaskedAlarm = loop {
         let now = clk.now();
         if now >= next_hw_poll {
-            // check for I/O alarms, flag changes.
-            event!(
-                Level::TRACE,
-                "polling hardware for updates (now={:?})",
-                &now
-            );
-            match tx2.control.poll_hardware(&mut tx2.devices, run_mode, &now) {
-                Ok((mode, Some(next))) => {
+            match tx2.poll_hw(&now, &run_mode) {
+                Ok((mode, next_poll)) => {
                     run_mode = mode;
-                    next_hw_poll = next;
+                    next_hw_poll = next_poll;
                 }
-                Ok((mode, None)) => {
-                    run_mode = mode;
-                    next_hw_poll = now + Duration::from_micros(5);
-                }
-                Err(alarm) => {
-                    event!(
-                        Level::INFO,
-                        "Alarm raised during hardware polling at system time {:?}",
-                        now
-                    );
-                    return (alarm, None, now);
-                }
+                Err(unmasked_alarm) => return unmasked_alarm,
             }
         } else {
             event!(
@@ -153,39 +227,24 @@ fn run_until_alarm(
             sleep::time_passes(clk, &mut sleeper, &interval, sleep_multiplier);
             continue;
         }
-        let mut hardware_state_changed = false;
-        let now = clk.now();
-        let maybe_output = match tx2.control.execute_instruction(
-            &now,
-            &mut tx2.devices,
-            &mut tx2.mem,
-            &mut hardware_state_changed,
-        ) {
-            Err((alarm, address)) => {
-                event!(
-                    Level::INFO,
-                    "Alarm raised during instruction execution at {:o} at system time {:?}",
-                    address,
-                    now
-                );
-                return (alarm, Some(address), now);
-            }
-            Ok((ns, new_run_mode, maybe_output)) => {
-                run_mode = new_run_mode;
+        let maybe_output = match tx2.execute_one_instruction(&now) {
+            Ok((ns, new_run_mode, change_next_hw_poll, maybe_output)) => {
                 sleep::time_passes(
                     clk,
                     &mut sleeper,
                     &Duration::from_nanos(ns),
                     sleep_multiplier,
                 );
+                run_mode = new_run_mode;
+                if let Some(next) = change_next_hw_poll {
+                    next_hw_poll = next;
+                }
                 maybe_output
             }
+            Err(unmasked_alarm) => {
+                return unmasked_alarm;
+            }
         };
-        if hardware_state_changed {
-            // Some instruction changed the hardware, so we need to
-            // poll it again.
-            next_hw_poll = now;
-        }
         match maybe_output {
             None => (),
             Some(OutputEvent::LincolnWriterPrint { unit, ch }) => {
@@ -195,7 +254,11 @@ fn run_until_alarm(
                         // TODO: change state of the output unit to
                         // indicate that there has been a failure,
                         // instead of just terminating the simulation.
-                        break (Alarm::MISAL { unit }, None, now);
+                        break UnmaskedAlarm {
+                            alarm: Alarm::MISAL { unit },
+                            address: None,
+                            when: now,
+                        };
                     }
                 } else {
                     event!(
