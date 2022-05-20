@@ -80,7 +80,7 @@ impl ControlUnit {
         }
         Ok(OpcodeResult {
             program_counter_change: Some(ProgramCounterChange::Jump(new_pc)),
-            poll_order_change: false,
+            poll_order_change: None,
             output: None,
         })
     }
@@ -164,7 +164,7 @@ impl ControlUnit {
             } else {
                 None
             },
-            poll_order_change: false,
+            poll_order_change: None,
             output: None,
         })
     }
@@ -223,7 +223,7 @@ mod tests {
             }
             Ok(OpcodeResult {
                 program_counter_change: Some(ProgramCounterChange::Jump(to)),
-                poll_order_change: false,
+                poll_order_change: None,
                 output: None,
             }) => {
                 let xj = control.regs.get_index_register(j);

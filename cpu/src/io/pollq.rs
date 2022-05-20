@@ -1,6 +1,8 @@
 use std::fmt::Debug;
 use std::time::Duration;
 
+use tracing::{event, Level};
+
 use base::collections::pq::KeyedReversePriorityQueue;
 use base::prelude::*;
 
@@ -30,7 +32,19 @@ impl PollQueue {
     }
 
     pub fn push(&mut self, key: SequenceNumber, priority: Duration) -> Option<Duration> {
-        self.items.push(key, priority)
+        let old_pri = self.items.push(key, priority);
+        if let Some(prev) = old_pri {
+            if prev < priority {
+                event!(
+                    Level::WARN,
+                    "unit {:o} poll time pushed back from {:?} to {:?}",
+                    key,
+                    prev,
+                    priority
+                );
+            }
+        }
+        old_pri
     }
 
     pub fn update(
@@ -39,7 +53,18 @@ impl PollQueue {
         priority: Duration,
     ) -> Result<Duration, PollQueueUpdateFailure> {
         match self.items.set_priority(&key, priority) {
-            Ok(priority) => Ok(priority),
+            Ok(old_pri) => {
+                if old_pri < priority {
+                    event!(
+                        Level::WARN,
+                        "unit {:o} poll time pushed back from {:?} to {:?}",
+                        key,
+                        old_pri,
+                        priority
+                    );
+                }
+                Ok(old_pri)
+            }
             Err(_) => Err(PollQueueUpdateFailure::UnknownSequence(key)),
         }
     }

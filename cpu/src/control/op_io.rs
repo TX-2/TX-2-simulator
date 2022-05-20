@@ -121,7 +121,13 @@ impl ControlUnit {
         if let Some(reason) = dismiss_reason {
             self.dismiss_unless_held(reason);
         }
-        result.map(|()| OpcodeResult::default())
+        result.map(|()| OpcodeResult {
+            program_counter_change: None,
+            // poll_order_change doesn't always need to be set, but
+            // false positives cost us only compute efficiency.
+            poll_order_change: Some(j),
+            output: None,
+        })
     }
 
     fn connect_unit(
@@ -327,7 +333,7 @@ impl ControlUnit {
                 }
                 Ok(OpcodeResult {
                     program_counter_change: None,
-                    poll_order_change: true,
+                    poll_order_change: self.regs.k,
                     output,
                 })
             }
@@ -343,7 +349,7 @@ impl ControlUnit {
                     program_counter_change: Some(ProgramCounterChange::DismissAndWait(
                         execution_address,
                     )),
-                    poll_order_change: true,
+                    poll_order_change: self.regs.k,
                     output: None,
                 })
             }

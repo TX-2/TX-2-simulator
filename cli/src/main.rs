@@ -17,65 +17,23 @@ use tracing_subscriber::prelude::*;
 
 use base::prelude::*;
 use clock::{BasicClock, Clock};
-use cpu::{
-    self, set_up_peripherals, Alarm, ControlUnit, DeviceManager, InputEvent, MemoryConfiguration,
-    MemoryUnit, OutputEvent, ResetMode, RunMode, PETR,
-};
+use cpu::{self, Alarm, MemoryConfiguration, OutputEvent, ResetMode, RunMode, Tx2, UnmaskedAlarm};
 
 // Thanks to Google for allowing this code to be open-sourced.  I
 // generally prefer to correspond about this project using my
 // personal email address rather than my work one, though.
 const AUTHOR: &str = "James Youngman <james@youngman.org>";
 
-struct Tx2 {
-    control: ControlUnit,
-    mem: MemoryUnit,
-    devices: DeviceManager,
-}
-
-impl Tx2 {
-    fn new(
-        maybe_alarm_panic: Option<PanicOnUnmaskedAlarm>,
-        mem_config: &MemoryConfiguration,
-        system_time: &Duration,
-    ) -> Tx2 {
-        let control = ControlUnit::new(
-            // We have two simimarly-named enums here so that the cpu
-            // crate does not have to depend on clap.
-            match maybe_alarm_panic {
-                Some(PanicOnUnmaskedAlarm::Yes) => cpu::PanicOnUnmaskedAlarm::Yes,
-                Some(PanicOnUnmaskedAlarm::No) | None => cpu::PanicOnUnmaskedAlarm::No,
-            },
-        );
-        event!(
-            Level::DEBUG,
-            "Initial control unit state iis {:?}",
-            &control
-        );
-
-        let mem = MemoryUnit::new(mem_config);
-        let mut devices = DeviceManager::new();
-        set_up_peripherals(&mut devices, system_time);
-        Tx2 {
-            control,
-            mem,
-            devices,
-        }
-    }
-
-    fn mount_tape(&mut self, data: Vec<u8>) {
-        self.devices
-            .on_input_event(PETR, InputEvent::PetrMountPaperTape { data });
-    }
-}
-
 fn run(tx2: &mut Tx2, clk: &mut BasicClock, sleep_multiplier: Option<f64>) -> i32 {
-    tx2.control.codabo(
-        &ResetMode::ResetTSP,
-        &clk.now(),
-        &mut tx2.devices,
-        &mut tx2.mem,
-    );
+    tx2.codabo(&clk.now(), &ResetMode::ResetTSP);
+
+    // TODO: setting next_execution_due is basically the 'start'
+    // operaiton of the TX-2's sync system.  We should model that
+    // directly as the user may want to use the UI to operate the sync
+    // system as was possible in the real hardware.
+    tx2.next_execution_due = Some(clk.now());
+    tx2.run_mode = RunMode::Running;
+
     let alarm_time: Duration = match run_until_alarm(tx2, clk, sleep_multiplier) {
         UnmaskedAlarm {
             alarm,
@@ -99,91 +57,8 @@ fn run(tx2: &mut Tx2, clk: &mut BasicClock, sleep_multiplier: Option<f64>) -> i3
             when
         }
     };
-    tx2.control
-        .disconnect_all_devices(&mut tx2.devices, &alarm_time);
+    tx2.disconnect_all_devices(&alarm_time);
     1
-}
-
-struct UnmaskedAlarm {
-    pub alarm: Alarm,
-    pub address: Option<Address>,
-    pub when: Duration,
-}
-
-impl Tx2 {
-    fn poll_hw(
-        &mut self,
-        now: &Duration,
-        run_mode: &RunMode,
-    ) -> Result<(RunMode, Duration), UnmaskedAlarm> {
-        // check for I/O alarms, flag changes.
-        event!(
-            Level::TRACE,
-            "polling hardware for updates (now={:?})",
-            &now
-        );
-        match self
-            .control
-            // TODO: remove run_mode indirection, or remove reference.
-            .poll_hardware(&mut self.devices, *run_mode, now)
-        {
-            Ok((mode, Some(next))) => Ok((mode, next)),
-            Ok((mode, None)) => {
-                // TODO: check why poll() doesn't always return a
-                // next-poll time.
-                Ok((mode, *now + Duration::from_micros(5)))
-            }
-            Err(alarm) => {
-                event!(
-                    Level::INFO,
-                    "Alarm raised during hardware polling at system time {:?}",
-                    now
-                );
-                Err(UnmaskedAlarm {
-                    alarm,
-                    address: None,
-                    when: *now,
-                })
-            }
-        }
-    }
-
-    fn execute_one_instruction(
-        &mut self,
-        now: &Duration,
-    ) -> Result<(u64, RunMode, Option<Duration>, Option<OutputEvent>), UnmaskedAlarm> {
-        let mut hardware_state_changed = false;
-        match self.control.execute_instruction(
-            now,
-            &mut self.devices,
-            &mut self.mem,
-            &mut hardware_state_changed,
-        ) {
-            Err((alarm, address)) => {
-                event!(
-                    Level::INFO,
-                    "Alarm raised during instruction execution at {:o} at system time {:?}",
-                    address,
-                    now
-                );
-                Err(UnmaskedAlarm {
-                    alarm,
-                    address: Some(address),
-                    when: *now,
-                })
-            }
-            Ok((ns, new_run_mode, maybe_output)) => {
-                let change_next_hw_poll: Option<Duration> = if hardware_state_changed {
-                    // Some instruction changed the hardware, so we need to
-                    // poll it again.
-                    Some(*now)
-                } else {
-                    None
-                };
-                Ok((ns, new_run_mode, change_next_hw_poll, maybe_output))
-            }
-        }
-    }
 }
 
 fn run_until_alarm(
@@ -192,82 +67,53 @@ fn run_until_alarm(
     sleep_multiplier: Option<f64>,
 ) -> UnmaskedAlarm {
     let mut sleeper = sleep::MinimalSleeper::new(Duration::from_millis(2));
-    let mut next_hw_poll: Duration = clk.now();
-    let mut run_mode = RunMode::Running;
     let mut lw66 = lw::LincolnStreamWriter::new();
 
     let result: UnmaskedAlarm = loop {
-        let now = clk.now();
-        if now >= next_hw_poll {
-            match tx2.poll_hw(&now, &run_mode) {
-                Ok((mode, next_poll)) => {
-                    run_mode = mode;
-                    next_hw_poll = next_poll;
-                }
-                Err(unmasked_alarm) => return unmasked_alarm,
-            }
-        } else {
-            event!(
-                Level::TRACE,
-                "not polling hardware for updates (remaining wait: {:?})",
-                next_hw_poll - now,
-            );
-        }
-        if run_mode == RunMode::InLimbo {
-            // No sequence is active, so there is no CPU instruction
-            // to execute.  Therefore we can only leave the limbo
-            // state in response to a hardware event.  We already know
-            // that we need to check for that at `next_hw_poll`.
-            let interval: Duration = next_hw_poll - now;
-            event!(
-                Level::TRACE,
-                "machine is in limbo, waiting {:?} for a flag to be raised",
-                &interval,
-            );
+        let mut now = clk.now();
+        let next = tx2.next_tick();
+        if now < next {
+            let interval = next - now;
             sleep::time_passes(clk, &mut sleeper, &interval, sleep_multiplier);
-            continue;
         }
-        let maybe_output = match tx2.execute_one_instruction(&now) {
-            Ok((ns, new_run_mode, change_next_hw_poll, maybe_output)) => {
-                sleep::time_passes(
-                    clk,
-                    &mut sleeper,
-                    &Duration::from_nanos(ns),
-                    sleep_multiplier,
-                );
-                run_mode = new_run_mode;
-                if let Some(next) = change_next_hw_poll {
-                    next_hw_poll = next;
+        now = next;
+        match tx2.tick(now) {
+            Ok(maybe_output) => {
+                match maybe_output {
+                    None => (),
+                    Some(OutputEvent::LincolnWriterPrint { unit, ch }) => {
+                        if unit == u6!(0o66) {
+                            if let Err(e) = lw66.write(ch) {
+                                event!(Level::ERROR, "output error: {}", e);
+                                // TODO: change state of the output unit to
+                                // indicate that there has been a failure,
+                                // instead of just terminating the simulation.
+                                break UnmaskedAlarm {
+                                    alarm: Alarm::MISAL { unit },
+                                    address: None,
+                                    when: now,
+                                };
+                            }
+                        } else {
+                            event!(
+                                Level::WARN,
+                                "discarding Lincoln Writer output for unit {:o}",
+                                unit,
+                            );
+                        }
+                    }
                 }
-                maybe_output
             }
             Err(unmasked_alarm) => {
-                return unmasked_alarm;
+                break unmasked_alarm;
             }
-        };
-        match maybe_output {
-            None => (),
-            Some(OutputEvent::LincolnWriterPrint { unit, ch }) => {
-                if unit == u6!(0o66) {
-                    if let Err(e) = lw66.write(ch) {
-                        event!(Level::ERROR, "output error: {}", e);
-                        // TODO: change state of the output unit to
-                        // indicate that there has been a failure,
-                        // instead of just terminating the simulation.
-                        break UnmaskedAlarm {
-                            alarm: Alarm::MISAL { unit },
-                            address: None,
-                            when: now,
-                        };
-                    }
-                } else {
-                    event!(
-                        Level::WARN,
-                        "discarding Lincoln Writer output for unit {:o}",
-                        unit,
-                    );
-                }
-            }
+        }
+        let next_tick = tx2.next_tick();
+        if next_tick <= now {
+            event!(
+                Level::WARN,
+                "Tx2::tick is not advancing the system clock (next tick {next_tick:?} <= current tick {now:?})"
+            );
         }
     };
     lw66.disconnect();
@@ -437,7 +283,13 @@ fn run_simulator() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let mut clk: BasicClock = BasicClock::new();
-    let mut tx2 = Tx2::new(cli.panic_on_unmasked_alarm, &mem_config, &clk.now());
+    // We have two simimarly-named enums here so that the cpu crate
+    // does not have to depend on clap.
+    let panic_on_unmasked_alarm = match cli.panic_on_unmasked_alarm {
+        Some(PanicOnUnmaskedAlarm::Yes) => cpu::PanicOnUnmaskedAlarm::Yes,
+        Some(PanicOnUnmaskedAlarm::No) | None => cpu::PanicOnUnmaskedAlarm::No,
+    };
+    let mut tx2 = Tx2::new(panic_on_unmasked_alarm, &mem_config, clk.now());
     if let Some(tape) = tape_data {
         tx2.mount_tape(tape);
     }
