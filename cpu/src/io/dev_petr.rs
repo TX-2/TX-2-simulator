@@ -141,7 +141,17 @@ impl Petr {
     fn next_poll_time(&mut self, system_time: &Duration) -> Duration {
         match self.time_of_next_read {
             Some(t) => cmp::max(t, *system_time),
-            None => Duration::from_secs(1),
+            None => {
+                let interval = Duration::from_secs(1);
+                let next = *system_time + interval;
+                event!(
+                    Level::DEBUG,
+                    "next_poll_time: time_of_next_read is None, using default {system_time:?}+{interval:?}={:?}; self={:?}",
+                    next,
+                    &self
+                );
+                next
+            }
         }
     }
 
@@ -270,7 +280,8 @@ impl Unit for Petr {
     fn poll(&mut self, system_time: &Duration) -> UnitStatus {
         self.maybe_simulate_event(system_time);
         let data_ready: bool = self.data.is_some();
-
+        let poll_after = self.next_poll_time(system_time);
+        event!(Level::TRACE, "PETR poll: poll_after={poll_after:?}");
         UnitStatus {
             special: Unsigned12Bit::ZERO,
             change_flag: if data_ready {
@@ -282,7 +293,7 @@ impl Unit for Petr {
             inability: self.read_failed,
             missed_data: self.overrun,
             mode: self.mode,
-            poll_after: self.next_poll_time(system_time),
+            poll_after,
             is_input_unit: true,
         }
     }
@@ -309,11 +320,12 @@ impl Unit for Petr {
         };
         event!(
             Level::INFO,
-            "PETR connected; motor {}, direction {}; {} mode {:o}",
+            "PETR connected; motor {}, direction {}; {} mode {:o} (time_of_next_read={:?})",
             self.activity,
             self.direction,
             transfer_mode_name,
             self.mode,
+            self.time_of_next_read,
         );
     }
 

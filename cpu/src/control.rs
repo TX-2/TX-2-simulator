@@ -403,7 +403,7 @@ enum SequenceSelection {
 #[derive(Debug, PartialEq, Eq, Default)]
 pub(crate) struct OpcodeResult {
     program_counter_change: Option<ProgramCounterChange>,
-    poll_order_change: bool,
+    poll_order_change: Option<SequenceNumber>,
     output: Option<OutputEvent>,
 }
 
@@ -411,7 +411,7 @@ pub(crate) struct OpcodeResult {
 fn test_opcode_result() {
     let r = OpcodeResult::default();
     assert!(r.program_counter_change.is_none());
-    assert_eq!(r.poll_order_change, false);
+    assert!(r.poll_order_change.is_none());
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -420,14 +420,14 @@ pub enum PanicOnUnmaskedAlarm {
     Yes,
 }
 
-fn please_poll_soon(
-    devices: &mut DeviceManager,
-    k_register: Option<SequenceNumber>,
-    now: Duration,
-) {
-    if let Some(k) = k_register {
-        devices.update_poll_time(k, now);
-    }
+fn please_poll_soon(devices: &mut DeviceManager, seq: SequenceNumber, now: Duration) {
+    event!(
+        Level::TRACE,
+        "please_poll_soon: seq={:?}, requesting poll at {:?}",
+        seq,
+        now
+    );
+    devices.update_poll_time(seq, now);
 }
 
 impl ControlUnit {
@@ -915,7 +915,7 @@ impl ControlUnit {
         system_time: &Duration,
         devices: &mut DeviceManager,
         mem: &mut MemoryUnit,
-        poll_order_change: &mut bool,
+        poll_order_change: &mut Option<SequenceNumber>,
     ) -> Result<(u64, RunMode, Option<OutputEvent>), (Alarm, Address)> {
         fn execute(
             prev_program_counter: Address,
@@ -976,17 +976,22 @@ impl ControlUnit {
             if let Some(sym) = self.regs.n_sym.as_ref() {
                 let inst = sym.to_string();
                 let span = span!(Level::INFO,
-			     "xop",
-			     seq=%seq_desc,
-			     p=?p,
-			     op=%sym.opcode());
+				 "xop",
+				 seq=%seq_desc,
+				 p=?p,
+				 op=%sym.opcode());
                 let _enter = span.enter();
                 event!(Level::TRACE, "executing instruction {}", &sym);
                 match execute(p, &sym.opcode(), self, devices, system_time, mem) {
                     Ok(opcode_result) => {
-                        if opcode_result.poll_order_change {
-                            *poll_order_change = true;
-                            please_poll_soon(devices, self.regs.k, *system_time);
+                        event!(
+                            Level::TRACE,
+                            "opcode_result.poll_order_change={:?}",
+                            &opcode_result.poll_order_change
+                        );
+                        if let Some(seq) = opcode_result.poll_order_change {
+                            *poll_order_change = Some(seq);
+                            please_poll_soon(devices, seq, *system_time);
                         }
                         match opcode_result.program_counter_change {
                             None => {
