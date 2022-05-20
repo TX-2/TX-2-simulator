@@ -37,7 +37,7 @@ use crate::memory::{self, ExtraBits, MemoryMapped, MemoryOpFailure, MemoryUnit, 
 
 use trap::TrapCircuit;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum RunMode {
     Running,
     InLimbo,
