@@ -167,14 +167,12 @@ impl<'a, 'b> From<&ek::LocatedSpan<'a, 'b>> for SymbolName {
     }
 }
 
+/// A symbol which has a reference but no definition is known, will
+/// ben represented it by having it map to None.  The rules for how
+/// such symbols are assigned values are indicated in "Unassigned
+/// Symexes" in section 6-2.2 of the User Handbook.
 #[derive(Debug)]
-pub struct SymbolTable {
-    // A symbol which has a reference but no definition is allowed,
-// and we represent it by having it map to None.  The rules for
-// how such symbols are assigned values are indicated in
-// "Unassigned Symexes" in section 6-2.2 of the User Handbook.
-//syms: HashMap<String, Option<SymbolDefinition>>,
-}
+pub struct SymbolTable {}
 
 impl SymbolTable {
     pub fn new() -> SymbolTable {
@@ -183,12 +181,10 @@ impl SymbolTable {
 
     #[cfg(test)]
     pub fn is_empty(&self) -> bool {
-        // self.syms.is_empty()
         true
     }
 
     pub fn list(&self) -> Result<(), std::io::Error> {
-        // There are no fields, so nothing to do.
         Ok(())
     }
 }
