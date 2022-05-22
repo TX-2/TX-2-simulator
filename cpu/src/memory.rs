@@ -23,15 +23,17 @@
 ///   Readable via the SKM instruction.  The emulator behaves as if
 ///   parity errors never occur.
 ///
+use core::time::Duration;
 use std::error;
 use std::fmt::{self, Debug, Display, Formatter};
 #[cfg(test)]
 use std::ops::RangeInclusive;
-use std::time::SystemTime;
 
 use tracing::{event, Level};
 
 use base::prelude::*;
+
+use crate::context::Context;
 
 pub const S_MEMORY_START: u32 = 0o0000000;
 pub const S_MEMORY_SIZE: u32 = 1 + 0o0177777;
@@ -119,6 +121,7 @@ pub trait MemoryMapped {
     /// Fetch a word.
     fn fetch(
         &mut self,
+        ctx: &Context,
         addr: &Address,
         meta: &MetaBitChange,
     ) -> Result<(Unsigned36Bit, ExtraBits), MemoryOpFailure>;
@@ -126,6 +129,7 @@ pub trait MemoryMapped {
     /// Store a word.
     fn store(
         &mut self,
+        ctx: &Context,
         addr: &Address,
         value: &Unsigned36Bit,
         meta: &MetaBitChange,
@@ -134,12 +138,13 @@ pub trait MemoryMapped {
     /// Mutate a bit in-place, returning its previous value.
     fn change_bit(
         &mut self,
+        ctx: &Context,
         addr: &Address,
         op: &WordChange,
     ) -> Result<Option<bool>, MemoryOpFailure>;
 
-    /// Cycle a memory location one place to the left (as in hTSD).
-    fn cycle_word(&mut self, addr: &Address) -> Result<ExtraBits, MemoryOpFailure>;
+    /// Cycle a memory location one place to the left (as in TSD).
+    fn cycle_word(&mut self, ctx: &Context, addr: &Address) -> Result<ExtraBits, MemoryOpFailure>;
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -196,6 +201,14 @@ impl From<&mut MemoryWord> for (Unsigned36Bit, ExtraBits) {
             Unsigned36Bit::try_from(valuebits).unwrap(),
             compute_extra_bits(w.0),
         )
+    }
+}
+
+#[cfg(test)]
+fn make_ctx() -> Context {
+    Context {
+        simulated_time: Duration::new(42, 42),
+        real_elapsed_time: Duration::new(7, 12),
     }
 }
 
@@ -325,7 +338,7 @@ pub struct MemoryConfiguration {
 }
 
 impl MemoryUnit {
-    pub fn new(config: &MemoryConfiguration) -> MemoryUnit {
+    pub fn new(ctx: &Context, config: &MemoryConfiguration) -> MemoryUnit {
         MemoryUnit {
             s_memory: default_filled_memory_vec(S_MEMORY_SIZE),
             t_memory: default_filled_memory_vec(T_MEMORY_SIZE),
@@ -334,7 +347,7 @@ impl MemoryUnit {
             } else {
                 None
             },
-            v_memory: VMemory::new(),
+            v_memory: VMemory::new(ctx),
         }
     }
 
@@ -372,6 +385,7 @@ impl MemoryUnit {
 
     fn access(
         &mut self,
+        ctx: &Context,
         access_type: &MemoryAccess,
         addr: &Address,
     ) -> Result<Option<&mut MemoryWord>, MemoryOpFailure> {
@@ -385,25 +399,26 @@ impl MemoryUnit {
                     Err(MemoryOpFailure::NotMapped(*addr))
                 }
             }
-            Some(MemoryDecode::V(_)) => self.v_memory.access(access_type, addr),
+            Some(MemoryDecode::V(_)) => self.v_memory.access(ctx, access_type, addr),
             None => Err(MemoryOpFailure::NotMapped(*addr)),
         }
     }
 
     fn write_with_read_fallback<R, FW, FR>(
         &mut self,
+        ctx: &Context,
         addr: &Address,
         on_write: FW,
         on_read: FR,
     ) -> Result<R, MemoryOpFailure>
     where
-        FW: FnOnce(Address, &mut MemoryWord) -> Result<R, MemoryOpFailure>,
-        FR: FnOnce(Address, &MemoryWord) -> Result<R, MemoryOpFailure>,
+        FW: FnOnce(&Context, Address, &mut MemoryWord) -> Result<R, MemoryOpFailure>,
+        FR: FnOnce(&Context, Address, &MemoryWord) -> Result<R, MemoryOpFailure>,
     {
         // If the memory address is not mapped at all, access will
         // return Err, causing the next line to bail out of this
         // function.
-        match self.access(&MemoryAccess::Write, addr) {
+        match self.access(ctx, &MemoryAccess::Write, addr) {
             Ok(None) => {
                 // The memory address is mapped to read-only memory.
                 // For example, plugboard memory.
@@ -411,13 +426,13 @@ impl MemoryUnit {
                 // We downgrade the bit operation to be non-mutating,
                 // so that the outcome of the bit test is as it should
                 // be, but the memory-write is inhibited.
-                match self.access(&MemoryAccess::Read, addr) {
+                match self.access(ctx, &MemoryAccess::Read, addr) {
                     Ok(None) => unreachable!(),
-                    Ok(Some(mem_word)) => on_read(*addr, mem_word),
+                    Ok(Some(mem_word)) => on_read(ctx, *addr, mem_word),
                     Err(e) => Err(e),
                 }
             }
-            Ok(Some(mem_word)) => on_write(*addr, mem_word),
+            Ok(Some(mem_word)) => on_write(ctx, *addr, mem_word),
             Err(e) => Err(e),
         }
     }
@@ -466,10 +481,11 @@ fn change_word(mem_word: &mut MemoryWord, op: &WordChange) -> Option<bool> {
 impl MemoryMapped for MemoryUnit {
     fn fetch(
         &mut self,
+        ctx: &Context,
         addr: &Address,
         side_effect: &MetaBitChange,
     ) -> Result<(Unsigned36Bit, ExtraBits), MemoryOpFailure> {
-        match self.access(&MemoryAccess::Read, addr) {
+        match self.access(ctx, &MemoryAccess::Read, addr) {
             Err(e) => Err(e),
             Ok(None) => unreachable!(),
             Ok(Some(mem_word)) => {
@@ -500,6 +516,7 @@ impl MemoryMapped for MemoryUnit {
 
     fn store(
         &mut self,
+        ctx: &Context,
         addr: &Address,
         value: &Unsigned36Bit,
         meta: &MetaBitChange,
@@ -531,7 +548,7 @@ impl MemoryMapped for MemoryUnit {
         // TODO: instructions are not allowed to write to V-memory
         // (directly) though writes to registers are allowed.  For
         // example EXA is permitted, I think.
-        match self.access(&MemoryAccess::Write, addr) {
+        match self.access(ctx, &MemoryAccess::Write, addr) {
             Err(e) => {
                 return Err(e);
             }
@@ -551,8 +568,9 @@ impl MemoryMapped for MemoryUnit {
         Ok(())
     }
 
-    fn cycle_word(&mut self, addr: &Address) -> Result<ExtraBits, MemoryOpFailure> {
+    fn cycle_word(&mut self, ctx: &Context, addr: &Address) -> Result<ExtraBits, MemoryOpFailure> {
         fn on_write_cycle(
+            _ctx: &Context,
             _address: Address,
             mem_word: &mut MemoryWord,
         ) -> Result<ExtraBits, MemoryOpFailure> {
@@ -561,6 +579,7 @@ impl MemoryMapped for MemoryUnit {
             Ok(extra_bits)
         }
         fn on_read_only_fail(
+            _ctx: &Context,
             address: Address,
             mem_word: &MemoryWord,
         ) -> Result<ExtraBits, MemoryOpFailure> {
@@ -568,11 +587,12 @@ impl MemoryMapped for MemoryUnit {
             let (_word, extra_bits) = mem_word.into();
             Err(MemoryOpFailure::ReadOnly(address, extra_bits))
         }
-        self.write_with_read_fallback(addr, on_write_cycle, on_read_only_fail)
+        self.write_with_read_fallback(ctx, addr, on_write_cycle, on_read_only_fail)
     }
 
     fn change_bit(
         &mut self,
+        ctx: &Context,
         addr: &Address,
         op: &WordChange,
     ) -> Result<Option<bool>, MemoryOpFailure> {
@@ -584,7 +604,7 @@ impl MemoryMapped for MemoryUnit {
         // If the memory address is not mapped at all, access will
         // return Err, causing the next line to bail out of this
         // function.
-        match self.access(&memory_access, addr)? {
+        match self.access(ctx, &memory_access, addr)? {
             None => {
                 // The memory address is mapped to read-only memory.
                 // For example, plugboard memory.
@@ -592,7 +612,7 @@ impl MemoryMapped for MemoryUnit {
                 // We downgrade the bit operation to be non-mutating,
                 // so that the outcome of the bit test is as it should
                 // be, but the memory-write is inhibited.
-                match self.access(&MemoryAccess::Read, addr)? {
+                match self.access(ctx, &MemoryAccess::Read, addr)? {
                     None => unreachable!(),
                     Some(mem_word) => {
                         let downgraded_op = WordChange {
@@ -639,7 +659,7 @@ struct VMemory {
     unimplemented_shaft_encoder: MemoryWord,
     unimplemented_external_input_register: MemoryWord,
     rtc: MemoryWord,
-    rtc_start: SystemTime,
+    rtc_start: Duration,
     codabo_start_point: [MemoryWord; 8],
     plugboard: [MemoryWord; 32],
 
@@ -732,8 +752,7 @@ pub fn get_standard_plugboard() -> Vec<Unsigned36Bit> {
 const RESULT_OF_VMEMORY_UNKNOWN_READ: MemoryWord = MemoryWord(0o404_404_404_404_u64);
 
 impl VMemory {
-    fn new() -> VMemory {
-        let now = SystemTime::now();
+    fn new(ctx: &Context) -> VMemory {
         let mut result = VMemory {
             a_register: MemoryWord::default(),
             b_register: MemoryWord::default(),
@@ -754,11 +773,11 @@ impl VMemory {
             unimplemented_shaft_encoder: MemoryWord::default(),
             unimplemented_external_input_register: MemoryWord::default(),
             rtc: MemoryWord::default(),
-            rtc_start: now,
+            rtc_start: ctx.real_elapsed_time,
             permit_unknown_reads: true,
             sacrificial_word_for_unknown_reads: RESULT_OF_VMEMORY_UNKNOWN_READ,
         };
-        result.reset_rtc(&now);
+        result.reset_rtc(ctx);
         result
     }
 
@@ -816,6 +835,7 @@ impl VMemory {
 
     fn access(
         &mut self,
+        ctx: &Context,
         access_type: &MemoryAccess,
         addr: &Address,
     ) -> Result<Option<&mut MemoryWord>, MemoryOpFailure> {
@@ -851,7 +871,7 @@ impl VMemory {
                 Ok(Some(&mut self.unimplemented_external_input_register))
             }
             0o0377630 => {
-                self.update_rtc();
+                self.update_rtc(ctx);
                 Ok(Some(&mut self.rtc))
             }
             0o0377710 => Ok(Some(&mut self.codabo_start_point[0])), // CODABO Reset0
@@ -889,55 +909,52 @@ impl VMemory {
         }
     }
 
-    fn reset_rtc(&mut self, now: &SystemTime) {
-        self.rtc_start = *now;
+    fn reset_rtc(&mut self, ctx: &Context) {
+        self.rtc_start = ctx.real_elapsed_time;
         self.rtc = MemoryWord(0);
     }
 
-    fn update_rtc(&mut self) {
-        let now = SystemTime::now();
-        match now.duration_since(self.rtc_start) {
-            Ok(duration) => {
-                // Page 5-19 of the Nov 1963 Users Handbook states that the
-                // RTC has a period of 10 microseconds and will reset itself
-                // "every 7.6 days or so".
-                //
-                // These facts seems to be inconsistent, since 2^36 *
-                // 10 microseconds is 7.953643140740741 days (assuming
-                // 86400 seconds per day).  In other words, this
-                // period is about 5% too high, and is an odd choice
-                // of rounding (when the author could have said "just
-                // under 8 days" or "just over 7.9 days").
-                //
-                // A clock period of 9.555 microseconds on the other
-                // hand would give a rollover period of 7.5997 days
-                // (about 7d 14h 23m 34.1s).
-                //
-                // Since the tick interval is more important than the
-                // time between rollovers though, we stick with 10
-                // microseconds.
-                const TICK_MICROSEC: u128 = 10;
-                let tick_count = duration.as_micros() / TICK_MICROSEC;
-                const RTC_MODULUS: u128 = 1 << 36;
-                assert!(u128::from(u64::from(Unsigned36Bit::MAX)) < RTC_MODULUS);
-                match u64::try_from(tick_count % RTC_MODULUS) {
-                    Ok(n) => {
-                        self.rtc = MemoryWord(n);
-                    }
-                    Err(_) => {
-                        // (x % RTC_MODULUS) <= Unsigned36Bit::MAX for
-                        // all x, so this case cannot occur.
-                        unreachable!();
-                    }
+    fn update_rtc(&mut self, ctx: &Context) {
+        if ctx.real_elapsed_time >= self.rtc_start {
+            // Page 5-19 of the Nov 1963 Users Handbook states that the
+            // RTC has a period of 10 microseconds and will reset itself
+            // "every 7.6 days or so".
+            //
+            // These facts seems to be inconsistent, since 2^36 *
+            // 10 microseconds is 7.953643140740741 days (assuming
+            // 86400 seconds per day).  In other words, this
+            // period is about 5% too high, and is an odd choice
+            // of rounding (when the author could have said "just
+            // under 8 days" or "just over 7.9 days").
+            //
+            // A clock period of 9.555 microseconds on the other
+            // hand would give a rollover period of 7.5997 days
+            // (about 7d 14h 23m 34.1s).
+            //
+            // Since the tick interval is more important than the
+            // time between rollovers though, we stick with 10
+            // microseconds.
+            const TICK_MICROSEC: u128 = 10;
+            let duration = ctx.real_elapsed_time - self.rtc_start;
+            let tick_count = duration.as_micros() / TICK_MICROSEC;
+            const RTC_MODULUS: u128 = 1 << 36;
+            assert!(u128::from(u64::from(Unsigned36Bit::MAX)) < RTC_MODULUS);
+            match u64::try_from(tick_count % RTC_MODULUS) {
+                Ok(n) => {
+                    self.rtc = MemoryWord(n);
+                }
+                Err(_) => {
+                    // (x % RTC_MODULUS) <= Unsigned36Bit::MAX for
+                    // all x, so this case cannot occur.
+                    unreachable!();
                 }
             }
-            Err(_) => {
-                // This error signals that self.rtc_start > now.  In
-                // other words, that there has ben a correction to the
-                // system clock.  We handle this by pretending that
-                // the user has just pressed the "reset RTC" button.
-                self.reset_rtc(&now);
-            }
+        } else {
+            // There has ben a correction to the system clock used
+            // to generate `ctx.real_elapsed_time`.  We handle
+            // this by pretending that the user has just pressed
+            // the "reset RTC" button.
+            self.reset_rtc(ctx);
         }
     }
 }
@@ -951,14 +968,18 @@ fn all_physical_memory_addresses() -> RangeInclusive<u32> {
 
 #[test]
 fn test_write_all_mem() {
-    let mut mem = MemoryUnit::new(&MemoryConfiguration {
-        with_u_memory: false,
-    });
+    let context = make_ctx();
+    let mut mem = MemoryUnit::new(
+        &context,
+        &MemoryConfiguration {
+            with_u_memory: false,
+        },
+    );
     for a in all_physical_memory_addresses() {
         let addr: Address = Address::try_from(a).unwrap();
         // The point of this test is to verify that we con't have any
         // todo!()s in reachable code paths.
-        let result = mem.access(&MemoryAccess::Write, &addr);
+        let result = mem.access(&context, &MemoryAccess::Write, &addr);
         match result {
             Ok(Some(_)) => (),
             Ok(None) => {
@@ -982,14 +1003,19 @@ fn test_write_all_mem() {
 
 #[test]
 fn test_read_all_mem() {
-    let mut mem = MemoryUnit::new(&MemoryConfiguration {
-        with_u_memory: false,
-    });
+    #[cfg(test)]
+    let context = make_ctx();
+    let mut mem = MemoryUnit::new(
+        &context,
+        &MemoryConfiguration {
+            with_u_memory: false,
+        },
+    );
     for a in all_physical_memory_addresses() {
         let addr: Address = Address::try_from(a).unwrap();
         // The point of this test is to verify that we con't have any
         // todo!()s in reachable code paths.
-        let result = mem.access(&MemoryAccess::Read, &addr);
+        let result = mem.access(&context, &MemoryAccess::Read, &addr);
         match result {
             Ok(Some(_)) => (),
             Ok(None) => {

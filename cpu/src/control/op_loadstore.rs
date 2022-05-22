@@ -14,6 +14,7 @@
 use tracing::{event, Level};
 
 use crate::alarm::Alarm;
+use crate::context::Context;
 use crate::control::{ControlUnit, MemoryUnit, OpcodeResult, UpdateE};
 use crate::exchanger::exchanged_value_for_load;
 use base::prelude::*;
@@ -21,84 +22,110 @@ use base::prelude::*;
 impl ControlUnit {
     /// Implements the LDA instruction (Opcode 024, User Handbook,
     /// page 3-6).
-    pub(crate) fn op_lda(&mut self, mem: &mut MemoryUnit) -> Result<OpcodeResult, Alarm> {
-        let new_value = self.op_load_value(&mem.get_a_register(), mem, &UpdateE::Yes)?;
+    pub(crate) fn op_lda(
+        &mut self,
+        ctx: &Context,
+        mem: &mut MemoryUnit,
+    ) -> Result<OpcodeResult, Alarm> {
+        let new_value = self.op_load_value(ctx, &mem.get_a_register(), mem, &UpdateE::Yes)?;
         mem.set_a_register(new_value);
         Ok(OpcodeResult::default())
     }
 
     /// Implements the LDB instruction (Opcode 025, User Handbook,
     /// page 3-6).
-    pub(crate) fn op_ldb(&mut self, mem: &mut MemoryUnit) -> Result<OpcodeResult, Alarm> {
-        let new_value = self.op_load_value(&mem.get_b_register(), mem, &UpdateE::Yes)?;
+    pub(crate) fn op_ldb(
+        &mut self,
+        ctx: &Context,
+        mem: &mut MemoryUnit,
+    ) -> Result<OpcodeResult, Alarm> {
+        let new_value = self.op_load_value(ctx, &mem.get_b_register(), mem, &UpdateE::Yes)?;
         mem.set_b_register(new_value);
         Ok(OpcodeResult::default())
     }
 
     /// Implements the LDC instruction (Opcode 026, User Handbook,
     /// page 3-6).
-    pub(crate) fn op_ldc(&mut self, mem: &mut MemoryUnit) -> Result<OpcodeResult, Alarm> {
-        let new_value = self.op_load_value(&mem.get_c_register(), mem, &UpdateE::Yes)?;
+    pub(crate) fn op_ldc(
+        &mut self,
+        ctx: &Context,
+        mem: &mut MemoryUnit,
+    ) -> Result<OpcodeResult, Alarm> {
+        let new_value = self.op_load_value(ctx, &mem.get_c_register(), mem, &UpdateE::Yes)?;
         mem.set_c_register(new_value);
         Ok(OpcodeResult::default())
     }
 
     /// Implements the LDD instruction (Opcode 027, User Handbook,
     /// page 3-6).
-    pub(crate) fn op_ldd(&mut self, mem: &mut MemoryUnit) -> Result<OpcodeResult, Alarm> {
-        let new_value = self.op_load_value(&mem.get_d_register(), mem, &UpdateE::Yes)?;
+    pub(crate) fn op_ldd(
+        &mut self,
+        ctx: &Context,
+        mem: &mut MemoryUnit,
+    ) -> Result<OpcodeResult, Alarm> {
+        let new_value = self.op_load_value(ctx, &mem.get_d_register(), mem, &UpdateE::Yes)?;
         mem.set_d_register(new_value);
         Ok(OpcodeResult::default())
     }
 
     /// Implements the LDE instruction (Opcode 020, User Handbook,
     /// page 3-6).
-    pub(crate) fn op_lde(&mut self, mem: &mut MemoryUnit) -> Result<OpcodeResult, Alarm> {
+    pub(crate) fn op_lde(
+        &mut self,
+        ctx: &Context,
+        mem: &mut MemoryUnit,
+    ) -> Result<OpcodeResult, Alarm> {
         // LDE is a special case in that the the other instructions
         // jam the loaded memory word into E (see example 2 for LDA)
         // but LDE doesn't do this (you get the exchanged result in E
         // instead).  This is why we use UpdateE::No.
         let old_value = self.regs.e;
-        let new_value = self.op_load_value(&old_value, mem, &UpdateE::No)?;
+        let new_value = self.op_load_value(ctx, &old_value, mem, &UpdateE::No)?;
         self.regs.e = new_value;
         Ok(OpcodeResult::default())
     }
 
     /// Implements the STE instruction (Opcode 030, User Handbook,
     /// page 3-8).
-    pub(crate) fn op_ste(&mut self, mem: &mut MemoryUnit) -> Result<OpcodeResult, Alarm> {
+    pub(crate) fn op_ste(
+        &mut self,
+        ctx: &Context,
+        mem: &mut MemoryUnit,
+    ) -> Result<OpcodeResult, Alarm> {
         // STE is a special case in that it does not itself modify the
         // E register.  See paragraph 1 on page 3-8 of the Users
         // Handbook.
-        self.op_store_ae_register(self.regs.e, mem, &UpdateE::No)
+        self.op_store_ae_register(ctx, self.regs.e, mem, &UpdateE::No)
     }
 
     /// Implement opcodes ST{A,B,C,D,E}.
     fn op_store_ae_register(
         &mut self,
+        ctx: &Context,
         register_value: Unsigned36Bit,
         mem: &mut MemoryUnit,
         update_e: &UpdateE,
     ) -> Result<OpcodeResult, Alarm> {
-        let target: Address = self.operand_address_with_optional_defer_and_index(mem)?;
+        let target: Address = self.operand_address_with_optional_defer_and_index(ctx, mem)?;
         event!(
             Level::TRACE,
             "storing register value {register_value:o} at {target:o}"
         );
-        self.memory_read_and_update_with_exchange(mem, &target, update_e, |_| register_value)
+        self.memory_read_and_update_with_exchange(ctx, mem, &target, update_e, |_| register_value)
             .map(|()| OpcodeResult::default())
     }
 
     /// Implement loads as if for opcodes LD{A,B,C,D,E}.
     fn op_load_value(
         &mut self,
+        ctx: &Context,
         existing: &Unsigned36Bit,
         mem: &mut MemoryUnit,
         update_e: &UpdateE,
     ) -> Result<Unsigned36Bit, Alarm> {
-        let target: Address = self.operand_address_with_optional_defer_and_index(mem)?;
+        let target: Address = self.operand_address_with_optional_defer_and_index(ctx, mem)?;
         let (memword, _extra) =
-            self.fetch_operand_from_address_without_exchange(mem, &target, update_e)?;
+            self.fetch_operand_from_address_without_exchange(ctx, mem, &target, update_e)?;
         let exchanged = exchanged_value_for_load(&self.get_config(), &memword, existing);
         Ok(exchanged)
     }
@@ -107,11 +134,13 @@ impl ControlUnit {
 #[cfg(test)]
 mod tests {
     use super::super::{ControlUnit, PanicOnUnmaskedAlarm, UpdateE};
+    use crate::context::Context;
     use crate::exchanger::SystemConfiguration;
     use crate::memory::{MemoryMapped, MetaBitChange};
     use crate::{MemoryConfiguration, MemoryUnit};
     use base::prelude::*;
     use base::subword::right_half;
+    use core::time::Duration;
 
     #[derive(Debug)]
     enum ArithmeticUnitRegister {
@@ -123,6 +152,13 @@ mod tests {
         // E is actually physically in the Exchange Element, but we
         // use the same test infrastructure for LDE anyway.
         E,
+    }
+
+    fn make_ctx() -> Context {
+        Context {
+            simulated_time: Duration::new(42, 42),
+            real_elapsed_time: Duration::new(7, 12),
+        }
     }
 
     fn get_register_value(
@@ -141,6 +177,7 @@ mod tests {
     }
 
     fn set_up_load(
+        ctx: &Context,
         a: Unsigned36Bit,
         b: Unsigned36Bit,
         c: Unsigned36Bit,
@@ -148,9 +185,12 @@ mod tests {
         e: Unsigned36Bit,
     ) -> (ControlUnit, MemoryUnit) {
         let mut control = ControlUnit::new(PanicOnUnmaskedAlarm::Yes);
-        let mut mem = MemoryUnit::new(&MemoryConfiguration {
-            with_u_memory: false,
-        });
+        let mut mem = MemoryUnit::new(
+            ctx,
+            &MemoryConfiguration {
+                with_u_memory: false,
+            },
+        );
         mem.set_a_register(a);
         mem.set_b_register(b);
         mem.set_c_register(c);
@@ -161,6 +201,7 @@ mod tests {
 
     /// Simulate a load instruction; return (target register, e register)
     fn simulate_load(
+        ctx: &Context,
         final_operand_address: Unsigned18Bit,
         target_register: ArithmeticUnitRegister,
         configuration: SystemConfiguration,
@@ -174,11 +215,12 @@ mod tests {
         xj: Signed18Bit,
         defer_index: Option<Signed18Bit>,
     ) -> (Unsigned36Bit, Unsigned36Bit) {
-        let (mut control, mut mem) = set_up_load(a, b, c, d, e);
+        let (mut control, mut mem) = set_up_load(ctx, a, b, c, d, e);
         if let Some(w) = mem_word {
             // Store the value to be loaded at final_operand_address.
             control
                 .memory_store_without_exchange(
+                    ctx,
                     &mut mem,
                     &Address::from(final_operand_address),
                     &w,
@@ -212,6 +254,7 @@ mod tests {
         );
         control
             .memory_store_without_exchange(
+                ctx,
                 &mut mem,
                 &Address::from(u18!(0o200)),
                 &defer,
@@ -245,11 +288,11 @@ mod tests {
             .expect("should be able to set N register");
 
         let result = match target_register {
-            ArithmeticUnitRegister::A => control.op_lda(&mut mem),
-            ArithmeticUnitRegister::B => control.op_ldb(&mut mem),
-            ArithmeticUnitRegister::C => control.op_ldc(&mut mem),
-            ArithmeticUnitRegister::D => control.op_ldd(&mut mem),
-            ArithmeticUnitRegister::E => control.op_lde(&mut mem),
+            ArithmeticUnitRegister::A => control.op_lda(ctx, &mut mem),
+            ArithmeticUnitRegister::B => control.op_ldb(ctx, &mut mem),
+            ArithmeticUnitRegister::C => control.op_ldc(ctx, &mut mem),
+            ArithmeticUnitRegister::D => control.op_ldd(ctx, &mut mem),
+            ArithmeticUnitRegister::E => control.op_lde(ctx, &mut mem),
         };
         dbg!(&result);
         if let Err(e) = result {
@@ -262,6 +305,7 @@ mod tests {
     }
 
     fn set_up_store<F>(
+        ctx: &Context,
         mem_word: Unsigned36Bit,
         working_address: &Address,
         mut reg_init: F,
@@ -271,11 +315,15 @@ mod tests {
     {
         const COMPLAIN: &str = "failed to set up load/store test data";
         let mut control = ControlUnit::new(PanicOnUnmaskedAlarm::Yes);
-        let mut mem = MemoryUnit::new(&MemoryConfiguration {
-            with_u_memory: false,
-        });
+        let mut mem = MemoryUnit::new(
+            ctx,
+            &MemoryConfiguration {
+                with_u_memory: false,
+            },
+        );
         control
             .memory_store_without_exchange(
+                ctx,
                 &mut mem,
                 &working_address,
                 &mem_word,
@@ -288,6 +336,7 @@ mod tests {
     }
 
     fn simulate_store(
+        ctx: &Context,
         control: &mut ControlUnit,
         mem: &mut MemoryUnit,
         working_address: &Address,
@@ -321,10 +370,10 @@ mod tests {
         dbg!(&control.regs.e);
         dbg!(&control.regs.f_memory[1]);
         dbg!(&mem.s_memory[0o100]);
-        if let Err(e) = f(control, mem) {
+        if let Err(e) = f(control, ctx, mem) {
             panic!("{:?} instruction failed: {}", opcode, e);
         }
-        match mem.fetch(working_address, &MetaBitChange::None) {
+        match mem.fetch(ctx, working_address, &MetaBitChange::None) {
             Ok((stored, _)) => (stored, control.regs.e),
             Err(e) => {
                 panic!("unable to retrieve the stored word: {}", e);
@@ -335,8 +384,10 @@ mod tests {
     /// This test is taken from example 1 on page 3-6 of the Users Handbook.
     #[test]
     fn test_lde_example_1() {
+        let context = make_ctx();
         let input = u36!(0o444_333_222_111);
         let (output, e) = simulate_load(
+            &context,
             u18!(0o10000),
             ArithmeticUnitRegister::E,
             SystemConfiguration::zero(),
@@ -358,9 +409,11 @@ mod tests {
     /// Handbook, using register E.
     #[test]
     fn test_lde_example_2() {
+        let context = make_ctx();
         let input = u36!(0o404_303_202_101);
         let orig_e = u36!(0o545_535_525_515);
         let (new_e, e) = simulate_load(
+            &context,
             u18!(0o10000),
             ArithmeticUnitRegister::E,
             SystemConfiguration::from(u9!(0o340)), // 340 is standard configuration 1
@@ -383,9 +436,11 @@ mod tests {
     /// Handbook, using register A.
     #[test]
     fn test_lda_example_2() {
+        let context = make_ctx();
         let input = u36!(0o404_303_202_101);
         let orig_e = u36!(0o545_535_525_515);
         let (new_a, e) = simulate_load(
+            &context,
             u18!(0o10000),
             ArithmeticUnitRegister::A,
             SystemConfiguration::from(u9!(0o340)), // 340 is standard configuration 1
@@ -409,10 +464,12 @@ mod tests {
     /// Handbook, using register C.
     #[test]
     fn test_ldc_example_3() {
+        let context = make_ctx();
         // Notice that R(input) has the MSB set, i.e. it is negative.
         let input = u36!(0o404_303_402_101);
         let orig_e = u36!(0o545_535_525_515);
         let (new_c, e) = simulate_load(
+            &context,
             u18!(0o10000),
             ArithmeticUnitRegister::C,
             SystemConfiguration::from(u9!(0o140)), // 140 is standard configuration 11
@@ -437,10 +494,12 @@ mod tests {
     /// Handbook, using register D.
     #[test]
     fn test_ldd_example_4() {
+        let context = make_ctx();
         let input = u36!(0o404_303_202_101);
         let orig_e = u36!(0o545_535_525_515);
         let orig_d = u36!(0o444_434_424_414);
         let (new_d, new_e) = simulate_load(
+            &context,
             u18!(0o10000),
             ArithmeticUnitRegister::D,
             SystemConfiguration::from(u9!(0o342)), // 342 is standard configuration 2
@@ -465,10 +524,12 @@ mod tests {
     /// the B register itself.
     #[test]
     fn test_ldb_example_5() {
+        let context = make_ctx();
         // The input is actually register B.
         let b_register_address: Unsigned18Bit = u18!(0o0377605);
         let orig_b = u36!(0o242_232_222_212);
         let (new_b, new_e) = simulate_load(
+            &context,
             b_register_address,
             ArithmeticUnitRegister::B,
             SystemConfiguration::from(u9!(0o342)), // 342 is standard configuration 2
@@ -491,11 +552,13 @@ mod tests {
     /// Handbook, using register D.
     #[test]
     fn test_ldd_example_6() {
+        let context = make_ctx();
         // Note that the sign bit of Q4 of the input is set.
         let input = u36!(0o404_303_202_101);
         let orig_e = u36!(0o545_535_525_515);
         let orig_d = u36!(0o444_434_424_414);
         let (new_d, new_e) = simulate_load(
+            &context,
             u18!(0o10000),
             ArithmeticUnitRegister::D,
             SystemConfiguration::from(u9!(0o163)), // 163 is standard configuration 16
@@ -518,15 +581,21 @@ mod tests {
 
     #[test]
     fn test_ste_example_1() {
+        let context = make_ctx();
         let input = u36!(0o004_003_002_001);
         let working_address: Address = Address::from(u18!(0o100));
-        let (mut control, mut mem) =
-            set_up_store(u36!(0o444_333_222_111), &working_address, |control| {
+        let (mut control, mut mem) = set_up_store(
+            &context,
+            u36!(0o444_333_222_111),
+            &working_address,
+            |control| {
                 control.regs.e = input;
-            });
+            },
+        );
         // The instruction actually uses System Configuration number
         // 1, but we put Unsigned9Bit::ZERO in register F₁.
         let (result, _e) = simulate_store(
+            &context,
             &mut control,
             &mut mem,
             &working_address,
@@ -542,13 +611,18 @@ mod tests {
     /// Handbook.
     #[test]
     fn test_ste_example_3() {
+        let context = make_ctx();
         let initial_value_at_100 = u36!(0o004_003_002_001);
         let initial_e = u36!(0o444_333_222_111);
         let working_address: Address = Address::from(u18!(0o100));
-        let (mut control, mut mem) =
-            set_up_store(initial_value_at_100, &working_address, |control| {
+        let (mut control, mut mem) = set_up_store(
+            &context,
+            initial_value_at_100,
+            &working_address,
+            |control| {
                 control.regs.e = initial_e;
-            });
+            },
+        );
         dbg!(&control.regs.e);
 
         // The instruction actually uses System Configuration number
@@ -557,6 +631,7 @@ mod tests {
         //
         // This configuration loads R(E) into L(100).  R(100) is unchanged.
         let (result, e) = simulate_store(
+            &context,
             &mut control,
             &mut mem,
             &working_address,

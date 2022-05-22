@@ -14,6 +14,7 @@ use base::prelude::*;
 use base::subword;
 
 use crate::alarm::{Alarm, BadMemOp};
+use crate::context::Context;
 use crate::control::{
     sign_extend_index_value, ControlUnit, OpcodeResult, ProgramCounterChange, UpdateE,
 };
@@ -32,16 +33,21 @@ use crate::memory::{MemoryUnit, MetaBitChange};
 impl ControlUnit {
     /// Implements the DPX instruction (Opcode 016, User Handbook,
     /// page 3-16).
-    pub(crate) fn op_dpx(&mut self, mem: &mut MemoryUnit) -> Result<OpcodeResult, Alarm> {
+    pub(crate) fn op_dpx(
+        &mut self,
+        ctx: &Context,
+        mem: &mut MemoryUnit,
+    ) -> Result<OpcodeResult, Alarm> {
         let j = self.regs.n.index_address();
         let xj: Unsigned36Bit = sign_extend_index_value(&self.regs.get_index_register(j));
-        let target: Address = self.operand_address_with_optional_defer_and_index(mem)?;
+        let target: Address = self.operand_address_with_optional_defer_and_index(ctx, mem)?;
 
         // DPX is trying to perform a write.  But to do this in some
         // subword configurations, we need to read the existing value.
-        match self.fetch_operand_from_address_without_exchange(mem, &target, &UpdateE::No) {
+        match self.fetch_operand_from_address_without_exchange(ctx, mem, &target, &UpdateE::No) {
             Ok((dest, _meta)) => self
                 .memory_store_with_exchange(
+                    ctx,
                     mem,
                     &target,
                     &xj,
@@ -67,14 +73,19 @@ impl ControlUnit {
 
     /// Implements the AUX instruction (Opcode 010, User Handbook,
     /// page 3-22).
-    pub(crate) fn op_aux(&mut self, mem: &mut MemoryUnit) -> Result<OpcodeResult, Alarm> {
+    pub(crate) fn op_aux(
+        &mut self,
+        ctx: &Context,
+        mem: &mut MemoryUnit,
+    ) -> Result<OpcodeResult, Alarm> {
         let j = self.regs.n.index_address();
         // The AUX instruction is not indexed.
-        let source: Address = self.operand_address_with_optional_defer_without_index(mem)?;
+        let source: Address = self.operand_address_with_optional_defer_without_index(ctx, mem)?;
         // If j == 0 nothing is going to happen (X₀ is always 0) but
         // we still need to make sure we raise an alarm if the memory
         // access is invalid.
         let (word, _extra) = self.fetch_operand_from_address_with_exchange(
+            ctx,
             mem,
             &source,
             &Unsigned36Bit::ZERO,
@@ -95,7 +106,11 @@ impl ControlUnit {
 
     /// Implements the RSX instruction (Opcode 011, User Handbook,
     /// page 3-14).
-    pub(crate) fn op_rsx(&mut self, mem: &mut MemoryUnit) -> Result<OpcodeResult, Alarm> {
+    pub(crate) fn op_rsx(
+        &mut self,
+        ctx: &Context,
+        mem: &mut MemoryUnit,
+    ) -> Result<OpcodeResult, Alarm> {
         let j = self.regs.n.index_address();
         let existing = join_halves(
             Unsigned18Bit::ZERO,
@@ -110,9 +125,14 @@ impl ControlUnit {
         // page 3-14), the index bits in the instruction identify
         // which index register we're modifying, so cannot be used for
         // indexing.
-        let source: Address = self.operand_address_with_optional_defer_without_index(mem)?;
-        let (word, _extra) =
-            self.fetch_operand_from_address_with_exchange(mem, &source, &existing, &UpdateE::Yes)?;
+        let source: Address = self.operand_address_with_optional_defer_without_index(ctx, mem)?;
+        let (word, _extra) = self.fetch_operand_from_address_with_exchange(
+            ctx,
+            mem,
+            &source,
+            &existing,
+            &UpdateE::Yes,
+        )?;
         if !j.is_zero() {
             let xj: Signed18Bit = subword::right_half(word).reinterpret_as_signed();
             self.regs.set_index_register(j, &xj);
@@ -122,7 +142,7 @@ impl ControlUnit {
 
     /// Implements the SKX instruction (Opcode 012, User Handbook,
     /// page 3-24).
-    pub(crate) fn op_skx(&mut self) -> Result<OpcodeResult, Alarm> {
+    pub(crate) fn op_skx(&mut self, _ctx: &Context) -> Result<OpcodeResult, Alarm> {
         let inst = &self.regs.n;
         let j = inst.index_address();
         // SKX does not cause an access to STUV memory; instead the
@@ -160,15 +180,23 @@ impl ControlUnit {
     }
 
     /// Implements the JPX (jump on positive index) opcode (06).
-    pub(crate) fn op_jpx(&mut self, mem: &mut MemoryUnit) -> Result<OpcodeResult, Alarm> {
+    pub(crate) fn op_jpx(
+        &mut self,
+        ctx: &Context,
+        mem: &mut MemoryUnit,
+    ) -> Result<OpcodeResult, Alarm> {
         let is_positive_address = |xj: &Signed18Bit| !xj.is_zero() && xj.is_positive();
-        self.impl_op_jpx_jnx(is_positive_address, mem)
+        self.impl_op_jpx_jnx(ctx, is_positive_address, mem)
     }
 
     /// Implements the JNX (jump on positive index) opcode (07).
-    pub(crate) fn op_jnx(&mut self, mem: &mut MemoryUnit) -> Result<OpcodeResult, Alarm> {
+    pub(crate) fn op_jnx(
+        &mut self,
+        ctx: &Context,
+        mem: &mut MemoryUnit,
+    ) -> Result<OpcodeResult, Alarm> {
         let is_negative_address = |xj: &Signed18Bit| xj.is_negative();
-        self.impl_op_jpx_jnx(is_negative_address, mem)
+        self.impl_op_jpx_jnx(ctx, is_negative_address, mem)
     }
 
     // Implements JPX (opcode 06) and JNX.  Note that these opcodes
@@ -182,6 +210,7 @@ impl ControlUnit {
     // changed during PK1).
     pub(crate) fn impl_op_jpx_jnx<F: FnOnce(&Signed18Bit) -> bool>(
         &mut self,
+        ctx: &Context,
         predicate: F,
         mem: &mut MemoryUnit,
     ) -> Result<OpcodeResult, Alarm> {
@@ -205,7 +234,7 @@ impl ControlUnit {
         // determined before the index register is changed.  Therefore
         // a ⁻¹JPXₐ|ₐ S would jump to Sₐ as defined by the original
         // contents of Xₐ - if it jumps at all.
-        let target: Address = self.resolve_operand_address(mem, Some(Unsigned6Bit::ZERO))?;
+        let target: Address = self.resolve_operand_address(ctx, mem, Some(Unsigned6Bit::ZERO))?;
         let cf: Signed5Bit = self.regs.n.configuration().reinterpret_as_signed();
         let new_xj: Signed18Bit = xj.wrapping_add(Signed18Bit::from(cf));
         if !j.is_zero() {
@@ -242,16 +271,26 @@ impl ControlUnit {
 
 #[cfg(test)]
 mod tests {
+    use crate::context::Context;
     use crate::control::{PanicOnUnmaskedAlarm, UpdateE};
     use crate::exchanger::SystemConfiguration;
     use crate::memory::MetaBitChange;
     use crate::{MemoryConfiguration, MemoryUnit};
     use base::instruction::{Opcode, SymbolicInstruction};
     use base::prelude::*;
+    use core::time::Duration;
 
     use super::ControlUnit;
 
+    fn make_ctx() -> Context {
+        Context {
+            simulated_time: Duration::new(42, 42),
+            real_elapsed_time: Duration::new(7, 12),
+        }
+    }
+
     fn setup(
+        ctx: &Context,
         j: Unsigned6Bit,
         initial: Signed18Bit,
         mem_setup: &[(Address, Unsigned36Bit)],
@@ -259,9 +298,12 @@ mod tests {
     ) -> (ControlUnit, MemoryUnit) {
         const COMPLAIN: &str = "failed to set up initial state";
         let mut control = ControlUnit::new(PanicOnUnmaskedAlarm::Yes);
-        let mut mem = MemoryUnit::new(&MemoryConfiguration {
-            with_u_memory: false,
-        });
+        let mut mem = MemoryUnit::new(
+            ctx,
+            &MemoryConfiguration {
+                with_u_memory: false,
+            },
+        );
         if j == 0 {
             assert_eq!(initial, 0, "Cannot set X₀ to a nonzero value");
         } else {
@@ -270,6 +312,7 @@ mod tests {
         for (address, value) in mem_setup.iter() {
             control
                 .memory_store_without_exchange(
+                    ctx,
                     &mut mem,
                     address,
                     value,
@@ -299,6 +342,7 @@ mod tests {
     /// * `defer` - whether the operand should be deferred
     /// * `cfg` - the system configuration to use when adding
     fn simulate_aux(
+        ctx: &Context,
         j: Unsigned6Bit,
         initial: Signed18Bit,
         addends: &[Unsigned36Bit],
@@ -321,7 +365,7 @@ mod tests {
                 (addend_address, *addend)
             })
             .collect();
-        let (mut control, mut mem) = setup(j, initial, &mem_setup, f_memory_setup);
+        let (mut control, mut mem) = setup(ctx, j, initial, &mem_setup, f_memory_setup);
 
         // When... we perform a sequence of AUX instructions
         let defer_address = Address::from(u18!(0o100));
@@ -333,6 +377,7 @@ mod tests {
                 // Set up the word at the deferred address
                 control
                     .memory_store_without_exchange(
+                        ctx,
                         &mut mem,
                         &Address::from(u18!(0o100)),
                         &join_halves(ignored_lhs, deferred),
@@ -357,7 +402,7 @@ mod tests {
             control
                 .update_n_register(Instruction::from(&inst).bits())
                 .expect(COMPLAIN);
-            if let Err(e) = control.op_aux(&mut mem) {
+            if let Err(e) = control.op_aux(ctx, &mut mem) {
                 panic!("AUX instruction failed: {}", e);
             }
         }
@@ -367,7 +412,9 @@ mod tests {
     /// Check that AUX thinks that 0 + 1 = 1.
     #[test]
     fn op_aux_zero_plus_one_equals_one() {
+        let context = make_ctx();
         let (sum, e) = simulate_aux(
+            &context,
             Unsigned6Bit::ONE, // Use register X₁
             Signed18Bit::ZERO,
             &[Unsigned36Bit::ONE],
@@ -383,6 +430,7 @@ mod tests {
     #[test]
     fn op_aux_negative() {
         const COMPLAIN: &str = "failed to set up AUX test data";
+        let context = make_ctx();
         let minus_three = Signed36Bit::try_from(-3)
             .expect(COMPLAIN)
             .reinterpret_as_unsigned();
@@ -393,6 +441,7 @@ mod tests {
             minus_three,
         ];
         let (sum, e) = simulate_aux(
+            &context,
             Unsigned6Bit::ONE,                                // Use register X₁
             Signed18Bit::try_from(0o250077).expect(COMPLAIN), // initial value
             &items_to_add,
@@ -411,7 +460,9 @@ mod tests {
     /// Handbook.
     #[test]
     fn op_aux_example_1() {
+        let context = make_ctx();
         let (sum, e) = simulate_aux(
+            &context,
             Unsigned6Bit::ONE, // Use register X₁
             u18!(0o000_111).reinterpret_as_signed(),
             &[u36!(0o444_000_222_010)],
@@ -427,7 +478,9 @@ mod tests {
     /// Handbook.
     #[test]
     fn op_aux_example_2() {
+        let context = make_ctx();
         let (sum, e) = simulate_aux(
+            &context,
             Unsigned6Bit::ONE,               // Use register X₁
             u18!(0).reinterpret_as_signed(), // initial
             &[u36!(0o444_333_222_111)],
@@ -439,6 +492,7 @@ mod tests {
         assert_eq!(e, u36!(0o444_333_222_111));
 
         let (sum, e) = simulate_aux(
+            &context,
             Unsigned6Bit::ONE, // Use register X₁
             u18!(0o010_111).reinterpret_as_signed(),
             &[u36!(0o444_003_222_010)],
@@ -454,11 +508,13 @@ mod tests {
     /// Handbook.
     #[test]
     fn op_aux_example_3() {
+        let context = make_ctx();
         let xj = Signed18Bit::from(3_i8);
         // Q1(w) is 777, sign extended this is 777_776, which is -1.
         // Adding that to X₁ which is 3, gives 2.
         let w = u36!(0o444_333_000_776);
         let (sum, e) = simulate_aux(
+            &context,
             Unsigned6Bit::ONE, // Use register X₁
             xj,
             &[w],
@@ -474,11 +530,13 @@ mod tests {
     /// Handbook.
     #[test]
     fn op_aux_example_4() {
+        let context = make_ctx();
         let xj = u18!(0o006_000).reinterpret_as_signed();
         // Q2(w) is -2, sign extended though the value is 775_777,
         // which is -2000 octal.
         let w = u36!(0o044_333_775_000);
         let (sum, e) = simulate_aux(
+            &context,
             Unsigned6Bit::ONE, // Use register X₁
             xj,
             &[w],
@@ -498,9 +556,11 @@ mod tests {
     /// Handbook.
     #[test]
     fn op_aux_example_5() {
+        let context = make_ctx();
         let xj = u18!(0o654_321).reinterpret_as_signed(); // X₁
         let w = u36!(0o040_030_020_010);
         let (sum, e) = simulate_aux(
+            &context,
             Unsigned6Bit::ONE, // Use register X₁
             xj,                // value of X₁
             &[w],
@@ -518,9 +578,11 @@ mod tests {
     /// Handbook.
     #[test]
     fn op_aux_example_6() {
+        let context = make_ctx();
         let xj = u18!(0o222_111).reinterpret_as_signed(); // X₁
         let w = u36!(0o242_232_000_212);
         let (sum, e) = simulate_aux(
+            &context,
             Unsigned6Bit::ONE, // Use register X₁
             xj,                // value of X₁
             &[w],
@@ -544,7 +606,9 @@ mod tests {
     /// active.
     #[test]
     fn op_aux_q2_only() {
+        let context = make_ctx();
         let (sum, _e) = simulate_aux(
+            &context,
             Unsigned6Bit::ONE,                       // Use register X₁
             u18!(0o300_555).reinterpret_as_signed(), // initial value
             &[u36!(0o020_010)],
@@ -559,6 +623,7 @@ mod tests {
     }
 
     fn simulate_rsx(
+        ctx: &Context,
         j: Unsigned6Bit,
         initial: Signed18Bit,
         mem_word: &Unsigned36Bit,
@@ -575,7 +640,7 @@ mod tests {
                 join_halves(Unsigned18Bit::ZERO, u18!(0o100)),
             ), // for deferred case
         ];
-        let (mut control, mut mem) = setup(j, initial, &mem_setup, f_memory_setup);
+        let (mut control, mut mem) = setup(ctx, j, initial, &mem_setup, f_memory_setup);
 
         let operand_address = if defer {
             OperandAddress::Deferred(Address::from(u18!(0o200)))
@@ -592,7 +657,7 @@ mod tests {
         control
             .update_n_register(Instruction::from(&inst).bits())
             .expect(COMPLAIN);
-        if let Err(e) = control.op_rsx(&mut mem) {
+        if let Err(e) = control.op_rsx(ctx, &mut mem) {
             panic!("RSX instruction failed: {}", e);
         }
         (control.regs.get_index_register(j), control.regs.e)
@@ -601,9 +666,11 @@ mod tests {
     /// Test case taken from example 1 on page 3-14 of the Users Handbook.
     #[test]
     fn op_rsx_example_1() {
+        let context = make_ctx();
         const COMPLAIN: &str = "test data should be valid";
         let w: Unsigned36Bit = u36!(0o444_333_222_111);
         let (xj, e) = simulate_rsx(
+            &context,
             Unsigned6Bit::ONE,
             Signed18Bit::from(20_i8),
             &w,
@@ -618,8 +685,10 @@ mod tests {
     /// Test case taken from example 2 on page 3-14 of the Users Handbook.
     #[test]
     fn op_rsx_example_2() {
+        let context = make_ctx();
         let w: Unsigned36Bit = u36!(0o444_333_222_111);
         let (xj, e) = simulate_rsx(
+            &context,
             Unsigned6Bit::ONE,
             Signed18Bit::from(20_i8),
             &w,
@@ -634,8 +703,10 @@ mod tests {
     /// Test case taken from example 3 on page 3-14 of the Users Handbook.
     #[test]
     fn op_rsx_example_3() {
+        let context = make_ctx();
         let w: Unsigned36Bit = u36!(0o444_333_222_111);
         let (xj, e) = simulate_rsx(
+            &context,
             Unsigned6Bit::ONE,
             u18!(0o505_404).reinterpret_as_signed(),
             &w,
@@ -651,10 +722,12 @@ mod tests {
     /// Handbook, in this case with a quarter having the top bit set
     #[test]
     fn op_rsx_example_4_negative() {
+        let context = make_ctx();
         // Because q1 has the top bit set, the `1` sign bit is
         // extended through q2 of the destination index register.
         let w: Unsigned36Bit = u36!(0o454_453_452_451);
         let (xj, e) = simulate_rsx(
+            &context,
             Unsigned6Bit::ONE,
             u18!(0o202_101).reinterpret_as_signed(),
             &w,
@@ -670,10 +743,12 @@ mod tests {
     /// Handbook, in this case with a quarter having the top bit clear
     #[test]
     fn op_rsx_example_4_positive() {
+        let context = make_ctx();
         // Because q1 has the top bit unset, the `0` sign bit is
         // extended through q2 of the destination index register.
         let w: Unsigned36Bit = u36!(0o454_453_452_251);
         let (xj, e) = simulate_rsx(
+            &context,
             Unsigned6Bit::ONE,
             u18!(0o402_101).reinterpret_as_signed(),
             &w,
@@ -688,9 +763,11 @@ mod tests {
     /// Test case taken from example 5 on page 3-14 of the Users Handbook.
     #[test]
     fn op_rsx_example_5() {
+        let context = make_ctx();
         let w: Unsigned36Bit = u36!(0o454_453_452_451);
         let orig_xj = u18!(0o202_101).reinterpret_as_signed();
         let (xj, e) = simulate_rsx(
+            &context,
             Unsigned6Bit::ONE,
             orig_xj,
             &w,
@@ -705,9 +782,11 @@ mod tests {
     /// Test case taken from example 6 on page 3-15 of the Users Handbook.
     #[test]
     fn op_rsx_example_6() {
+        let context = make_ctx();
         let w: Unsigned36Bit = u36!(0o454_453_452_451);
         let orig_xj = u18!(0o202_101).reinterpret_as_signed();
         let (xj, e) = simulate_rsx(
+            &context,
             Unsigned6Bit::ONE,
             orig_xj,
             &w,
@@ -723,8 +802,10 @@ mod tests {
     /// Test case taken from example 7 on page 3-15 of the Users Handbook.
     #[test]
     fn op_rsx_example_7() {
+        let context = make_ctx();
         let w: Unsigned36Bit = u36!(0o454_453_452_251);
         let (xj, e) = simulate_rsx(
+            &context,
             Unsigned6Bit::ONE,
             u18!(0o402_101).reinterpret_as_signed(),
             &w,
@@ -739,8 +820,10 @@ mod tests {
     /// Test case taken from example 8 on page 3-15 of the Users Handbook.
     #[test]
     fn op_rsx_example_8() {
+        let context = make_ctx();
         let w: Unsigned36Bit = u36!(0o454_453_452_451);
         let (xj, e) = simulate_rsx(
+            &context,
             Unsigned6Bit::ZERO, // X₀
             Signed18Bit::ZERO,
             &w,

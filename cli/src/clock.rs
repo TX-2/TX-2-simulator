@@ -1,6 +1,7 @@
 //! Simulation of elapsed time in the simulated system.
-
-use std::time::Duration;
+use cpu::Context;
+use std::time::{Duration, SystemTime};
+use tracing::{event, Level};
 
 /// Clock is a simulated system clock.  Its run rate may be real-time
 /// (i.e. one simulated second per actual wall-clock second) or it may
@@ -55,12 +56,42 @@ pub trait Clock {
 pub struct BasicClock {
     /// Elapsed time as measured by the simulated clock.
     simulator_elapsed: Duration,
+
+    /// Origin time for the simulated RTC.  When the SystemTime
+    /// implementation appears to have advanced non-monotonically, we
+    /// update wall_clock_time_origin.
+    wall_clock_time_origin: SystemTime,
 }
 
 impl BasicClock {
     pub fn new() -> BasicClock {
         BasicClock {
             simulator_elapsed: Duration::new(0, 0),
+            wall_clock_time_origin: SystemTime::now(),
+        }
+    }
+
+    pub fn advance_to_simulated_time(&mut self, when: Duration) {
+        self.simulator_elapsed = when;
+    }
+
+    pub fn make_fresh_context(&mut self) -> Context {
+        let real_now = SystemTime::now();
+        let elapsed = match real_now.duration_since(self.wall_clock_time_origin) {
+            Ok(delta) => delta,
+            Err(_) => {
+                // simulate an RTC reset.
+                event!(
+                    Level::WARN,
+                    "System time went backward, simulating RTC reset"
+                );
+                self.wall_clock_time_origin = real_now;
+                Duration::new(0, 0)
+            }
+        };
+        Context {
+            simulated_time: self.simulator_elapsed,
+            real_elapsed_time: elapsed,
         }
     }
 }

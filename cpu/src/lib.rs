@@ -3,6 +3,7 @@
 #![crate_name = "cpu"]
 
 mod alarm;
+mod context;
 mod control;
 mod event;
 mod exchanger;
@@ -12,6 +13,7 @@ mod tx2;
 mod types;
 
 pub use alarm::{Alarm, UnmaskedAlarm};
+pub use context::Context;
 pub use control::{ControlUnit, PanicOnUnmaskedAlarm, ResetMode, RunMode};
 pub use event::*;
 pub use io::{set_up_peripherals, DeviceManager};
