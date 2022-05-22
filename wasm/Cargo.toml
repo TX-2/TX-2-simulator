@@ -11,7 +11,10 @@ crate-type = ["cdylib", "rlib"]
 default = ["console_error_panic_hook"]
 
 [dependencies]
+tracing-wasm = "0.2.1"		# License: MIT or Apache
 wasm-bindgen = "0.2.63"
+cpu = {path = "../cpu" }
+base = {path = "../base" }
 
 # The `console_error_panic_hook` crate provides better debugging of
 # panics by logging them with `console.error`.  This has quite a large

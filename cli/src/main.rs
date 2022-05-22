@@ -31,8 +31,11 @@ fn run(tx2: &mut Tx2, clk: &mut BasicClock, sleep_multiplier: Option<f64>) -> i3
     // operaiton of the TX-2's sync system.  We should model that
     // directly as the user may want to use the UI to operate the sync
     // system as was possible in the real hardware.
-    tx2.next_execution_due = Some(clk.now());
-    tx2.run_mode = RunMode::Running;
+    {
+        let now = clk.now();
+        tx2.set_next_execution_due(now, Some(now));
+    }
+    tx2.set_run_mode(RunMode::Running);
 
     match run_until_alarm(tx2, clk, sleep_multiplier) {
         UnmaskedAlarm {

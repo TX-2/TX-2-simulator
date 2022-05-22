@@ -12,6 +12,7 @@ publish = false
 [dependencies]
 base = { path = "../base" }
 tracing = "0.1" # MIT license
+wasm-bindgen = "0.2"
 
 [lib]
 name = "cpu"

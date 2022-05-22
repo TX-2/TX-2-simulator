@@ -2,10 +2,40 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>Hello wasm-pack!</title>
+    <link rel="stylesheet" href="tx2.css">
+    <title>TX-2</title>
   </head>
   <body>
-    <noscript>This page contains webassembly and javascript content, please enable javascript in your browser.</noscript>
-    <script src="./bootstrap.js"></script>
+    <noscript>
+      <div class="box nojs-warning">
+	<p>This page contains webassembly and Javascript content.  To
+	  see it, please enable Javascript in your browser.
+	</p>
+	<p>
+	  If you don't want to do that, please see
+	  <a href="https://github.com/TX-2/TX-2-simulator/blob/main/README.md">the
+	    README.md file</a> for information about how to run the
+	  simulator using a locally-built binary.
+	  </p>
+      </div>
+    </noscript>
+    <script src="./bootstrap.js">
+    </script>
+    <div class="wrapper">
+      <!-- this is just static content for now. -->
+      <div class="box status">Machine Status; adding some long content
+	here to see if we get a wide column.</div>
+      <div class="box buttons">
+	<button>CODABO</button>
+      </div>
+      <div class="box paper lw66">
+	<pre>
+	  <span class=lw-red>Lincoln Writer Content</span>
+	  100| REX<sub>66</sub> 200  ** Set X<sub>66</sub> to 200.
+	  <sup>21</sup>IOS<sub>66</sub> 30000 ** Connect the Lincoln Writer (<span class=lw-red>unit 66</span>).
+	  FOO<sup>Y</sup>
+	</pre>
+      </div>
+    </div>
   </body>
 </html>
