@@ -12,6 +12,7 @@
 use std::fmt::Debug;
 use std::time::Duration;
 
+use crate::context::Context;
 use crate::event::OutputEvent;
 use crate::io::{FlagChange, TransferFailed, Unit, UnitStatus};
 use crate::types::*;
@@ -49,27 +50,27 @@ impl LincolnWriterOutput {
 }
 
 impl Unit for LincolnWriterOutput {
-    fn poll(&mut self, system_time: &std::time::Duration) -> UnitStatus {
+    fn poll(&mut self, ctx: &Context) -> UnitStatus {
         let (transmitting, next_poll) = match self.transmit_will_be_finished_at {
-            Some(d) if d > *system_time => {
+            Some(d) if d > ctx.simulated_time => {
                 event!(
                     Level::TRACE,
                     "still transmitting; remaining transmit time is {:?}",
-                    d - *system_time
+                    d - ctx.simulated_time
                 );
                 (true, d)
             }
             None => {
                 event!(Level::TRACE, "no transmit has yet been started");
-                (false, *system_time + LATER)
+                (false, ctx.simulated_time + LATER)
             }
             Some(d) => {
                 event!(
                     Level::TRACE,
                     "transmission completed {:?} ago, ready to transmit",
-                    (*system_time - d)
+                    (ctx.simulated_time - d)
                 );
-                (false, *system_time + LATER)
+                (false, ctx.simulated_time + LATER)
             }
         };
         // next_poll is far in the future if we are already ready to
@@ -98,23 +99,23 @@ impl Unit for LincolnWriterOutput {
         }
     }
 
-    fn connect(&mut self, _system_time: &std::time::Duration, mode: base::Unsigned12Bit) {
+    fn connect(&mut self, _ctx: &Context, mode: base::Unsigned12Bit) {
         event!(Level::INFO, "{} connected", self.name(),);
         self.connected = true;
         self.mode = mode;
     }
 
-    fn read(&mut self, _system_time: &std::time::Duration) -> Result<MaskedWord, TransferFailed> {
+    fn read(&mut self, _ctx: &Context) -> Result<MaskedWord, TransferFailed> {
         unreachable!("attempted to read from an output device")
     }
 
     fn write(
         &mut self,
-        system_time: &std::time::Duration,
+        ctx: &Context,
         source: base::Unsigned36Bit,
     ) -> Result<Option<OutputEvent>, TransferFailed> {
         match self.transmit_will_be_finished_at {
-            Some(t) if t > *system_time => {
+            Some(t) if t > ctx.simulated_time => {
                 event!(
                     Level::DEBUG,
                     "cannot complete TSD, we are already transmitting"
@@ -125,18 +126,18 @@ impl Unit for LincolnWriterOutput {
                 event!(Level::TRACE, "this is the unit's first transmit operation");
             }
             Some(then) => {
-                let idle_for = *system_time - then;
+                let idle_for = ctx.simulated_time - then;
                 event!(
                     Level::TRACE,
                     "ready to transmit more data (and have been for {idle_for:?}"
                 );
             }
         }
-        let done_at = *system_time + CHAR_TRANSMIT_TIME;
+        let done_at = ctx.simulated_time + CHAR_TRANSMIT_TIME;
         event!(
             Level::DEBUG,
             "beginning new transmit operation at {:?}, it will complete at {:?}",
-            system_time,
+            &ctx.simulated_time,
             &done_at
         );
         self.transmit_will_be_finished_at = Some(done_at);
@@ -159,11 +160,11 @@ impl Unit for LincolnWriterOutput {
         TransferMode::Exchange
     }
 
-    fn disconnect(&mut self, _system_time: &Duration) {
+    fn disconnect(&mut self, _ctx: &Context) {
         self.connected = false;
     }
 
-    fn on_input_event(&mut self, _event: crate::event::InputEvent) {
+    fn on_input_event(&mut self, _ctx: &Context, _event: crate::event::InputEvent) {
         // Does nothing
     }
 }

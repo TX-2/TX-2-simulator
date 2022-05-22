@@ -25,7 +25,7 @@ use cpu::{self, Alarm, MemoryConfiguration, OutputEvent, ResetMode, RunMode, Tx2
 const AUTHOR: &str = "James Youngman <james@youngman.org>";
 
 fn run(tx2: &mut Tx2, clk: &mut BasicClock, sleep_multiplier: Option<f64>) -> i32 {
-    tx2.codabo(&clk.now(), &ResetMode::ResetTSP);
+    tx2.codabo(&clk.make_fresh_context(), &ResetMode::ResetTSP);
 
     // TODO: setting next_execution_due is basically the 'start'
     // operaiton of the TX-2's sync system.  We should model that
@@ -34,11 +34,11 @@ fn run(tx2: &mut Tx2, clk: &mut BasicClock, sleep_multiplier: Option<f64>) -> i3
     tx2.next_execution_due = Some(clk.now());
     tx2.run_mode = RunMode::Running;
 
-    let alarm_time: Duration = match run_until_alarm(tx2, clk, sleep_multiplier) {
+    match run_until_alarm(tx2, clk, sleep_multiplier) {
         UnmaskedAlarm {
             alarm,
             address: Some(addr),
-            when,
+            when: _,
         } => {
             event!(
                 Level::ERROR,
@@ -46,18 +46,16 @@ fn run(tx2: &mut Tx2, clk: &mut BasicClock, sleep_multiplier: Option<f64>) -> i3
                 addr,
                 alarm
             );
-            when
         }
         UnmaskedAlarm {
             alarm,
             address: None,
-            when,
+            when: _,
         } => {
             event!(Level::ERROR, "Execution stopped: {}", alarm);
-            when
         }
     };
-    tx2.disconnect_all_devices(&alarm_time);
+    tx2.disconnect_all_devices(&clk.make_fresh_context());
     1
 }
 
@@ -70,14 +68,17 @@ fn run_until_alarm(
     let mut lw66 = lw::LincolnStreamWriter::new();
 
     let result: UnmaskedAlarm = loop {
-        let mut now = clk.now();
-        let next = tx2.next_tick();
-        if now < next {
-            let interval = next - now;
-            sleep::time_passes(clk, &mut sleeper, &interval, sleep_multiplier);
+        {
+            let now = clk.now();
+            let next = tx2.next_tick();
+            if now < next {
+                let interval = next - now;
+                sleep::time_passes(clk, &mut sleeper, &interval, sleep_multiplier);
+            }
+            clk.advance_to_simulated_time(next);
         }
-        now = next;
-        match tx2.tick(now) {
+        let tick_context = clk.make_fresh_context();
+        match tx2.tick(&tick_context) {
             Ok(maybe_output) => {
                 match maybe_output {
                     None => (),
@@ -91,7 +92,7 @@ fn run_until_alarm(
                                 break UnmaskedAlarm {
                                     alarm: Alarm::MISAL { unit },
                                     address: None,
-                                    when: now,
+                                    when: tick_context.simulated_time,
                                 };
                             }
                         } else {
@@ -109,10 +110,12 @@ fn run_until_alarm(
             }
         }
         let next_tick = tx2.next_tick();
-        if next_tick <= now {
+        if next_tick <= tick_context.simulated_time {
             event!(
                 Level::WARN,
-                "Tx2::tick is not advancing the system clock (next tick {next_tick:?} <= current tick {now:?})"
+                "Tx2::tick is not advancing the system clock (next tick {:?} <= current tick {:?})",
+                next_tick,
+                tick_context.simulated_time,
             );
         }
     };
@@ -289,9 +292,10 @@ fn run_simulator() -> Result<(), Box<dyn std::error::Error>> {
         Some(PanicOnUnmaskedAlarm::Yes) => cpu::PanicOnUnmaskedAlarm::Yes,
         Some(PanicOnUnmaskedAlarm::No) | None => cpu::PanicOnUnmaskedAlarm::No,
     };
-    let mut tx2 = Tx2::new(panic_on_unmasked_alarm, &mem_config, clk.now());
+    let initial_context = clk.make_fresh_context();
+    let mut tx2 = Tx2::new(&initial_context, panic_on_unmasked_alarm, &mem_config);
     if let Some(tape) = tape_data {
-        tx2.mount_tape(tape);
+        tx2.mount_tape(&initial_context, tape);
     }
     std::process::exit(run(&mut tx2, &mut clk, sleep_multiplier));
 }

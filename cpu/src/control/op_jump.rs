@@ -2,6 +2,7 @@ use base::prelude::*;
 use base::subword;
 
 use crate::alarm::{Alarm, BadMemOp};
+use crate::context::Context;
 use crate::control::{ControlUnit, OpcodeResult, ProgramCounterChange};
 use crate::memory::{BitChange, MemoryMapped, MemoryOpFailure, MemoryUnit, WordChange};
 
@@ -15,7 +16,7 @@ use crate::memory::{BitChange, MemoryMapped, MemoryOpFailure, MemoryUnit, WordCh
 /// - SED (unimplemented)
 impl ControlUnit {
     /// Implements the JMP opcode and its variations (all of which are unconditional jumps).
-    pub(crate) fn op_jmp(&mut self) -> Result<OpcodeResult, Alarm> {
+    pub(crate) fn op_jmp(&mut self, _ctx: &Context) -> Result<OpcodeResult, Alarm> {
         // For JMP the configuration field in the instruction controls
         // the behaviour of the instruction, without involving
         // a load from F-memory.
@@ -94,12 +95,16 @@ impl ControlUnit {
     ///
     /// The SKM instruction is documented on pages 7-34 and 7-35 of
     /// the User Handbook.
-    pub(crate) fn op_skm(&mut self, mem: &mut MemoryUnit) -> Result<OpcodeResult, Alarm> {
+    pub(crate) fn op_skm(
+        &mut self,
+        ctx: &Context,
+        mem: &mut MemoryUnit,
+    ) -> Result<OpcodeResult, Alarm> {
         let bit = index_address_to_bit_selection(self.regs.n.index_address());
         // Determine the operand address; any initial deferred cycle
         // must use 0 as the indexation, as the index address of the
         // SKM instruction is used to identify the bit to operate on.
-        let target = self.resolve_operand_address(mem, Some(Unsigned6Bit::ZERO))?;
+        let target = self.resolve_operand_address(ctx, mem, Some(Unsigned6Bit::ZERO))?;
         let cf: u8 = u8::from(self.regs.n.configuration());
         let change: WordChange = WordChange {
             bit,
@@ -112,7 +117,7 @@ impl ControlUnit {
             },
             cycle: cf & 0b100 != 0,
         };
-        let prev_bit_value: Option<bool> = match mem.change_bit(&target, &change) {
+        let prev_bit_value: Option<bool> = match mem.change_bit(ctx, &target, &change) {
             Ok(prev) => prev,
             Err(MemoryOpFailure::NotMapped(addr)) => {
                 self.alarm_unit.fire_if_not_masked(Alarm::QSAL(
@@ -172,12 +177,22 @@ impl ControlUnit {
 
 #[cfg(test)]
 mod tests {
+    use crate::context::Context;
     use crate::control::{OpcodeResult, PanicOnUnmaskedAlarm, ProgramCounterChange};
     use crate::{ControlUnit, MemoryConfiguration, MemoryUnit};
     use base::instruction::{Opcode, SymbolicInstruction};
     use base::prelude::*;
+    use core::time::Duration;
+
+    fn make_ctx() -> Context {
+        Context {
+            simulated_time: Duration::new(42, 42),
+            real_elapsed_time: Duration::new(7, 12),
+        }
+    }
 
     fn setup(
+        ctx: &Context,
         j: Unsigned6Bit,
         initial: Signed18Bit,
         e: Unsigned36Bit,
@@ -185,9 +200,12 @@ mod tests {
         q: Address,
     ) -> (ControlUnit, MemoryUnit) {
         let mut control = ControlUnit::new(PanicOnUnmaskedAlarm::Yes);
-        let mem = MemoryUnit::new(&MemoryConfiguration {
-            with_u_memory: false,
-        });
+        let mem = MemoryUnit::new(
+            ctx,
+            &MemoryConfiguration {
+                with_u_memory: false,
+            },
+        );
         if j == Unsigned6Bit::ZERO {
             assert_eq!(initial, 0, "Cannot set X₀ to a nonzero value");
         } else {
@@ -204,6 +222,7 @@ mod tests {
 
     /// Simulate a JMP instruction; return (destination, Xj, E, dismissed).
     fn simulate_jmp(
+        ctx: &Context,
         j: Unsigned6Bit,
         initial: Signed18Bit,
         e: Unsigned36Bit,
@@ -212,11 +231,11 @@ mod tests {
         inst: &SymbolicInstruction,
     ) -> (Address, Signed18Bit, Unsigned36Bit, bool) {
         const COMPLAIN: &str = "failed to set up JMP test data";
-        let (mut control, _mem) = setup(j, initial, e, p, q);
+        let (mut control, _mem) = setup(ctx, j, initial, e, p, q);
         control
             .update_n_register(Instruction::from(inst).bits())
             .expect(COMPLAIN);
-        let result = control.op_jmp();
+        let result = control.op_jmp(ctx);
         match result {
             Err(e) => {
                 panic!("JMP instruction failed: {}", e);
@@ -241,10 +260,12 @@ mod tests {
     /// Users Handbook.
     #[test]
     fn test_jmp_example_1_jmp() {
+        let context = make_ctx();
         let expected_target = Address::from(u18!(0o3733));
         let orig_xj = Signed18Bit::from(20_i8);
         let orig_e = u36!(0o606_202_333_123);
         let (target, xj, e, dismissed) = simulate_jmp(
+            &context,
             u6!(1),
             orig_xj,
             orig_e,
@@ -270,10 +291,12 @@ mod tests {
     /// Users Handbook.
     #[test]
     fn test_jmp_example_2_brc() {
+        let context = make_ctx();
         let target_base = Address::from(u18!(0o3702));
         let orig_xj = Signed18Bit::from(0o20_i8);
         let orig_e = u36!(0o606_202_333_123);
         let (target, xj, e, dismissed) = simulate_jmp(
+            &context,
             u6!(1),
             orig_xj,
             orig_e,
@@ -298,10 +321,12 @@ mod tests {
     /// Users Handbook.
     #[test]
     fn test_jmp_example_3_jps() {
+        let context = make_ctx();
         let target_base = Address::from(u18!(0o3702));
         let orig_xj = Signed18Bit::from(0o20_i8);
         let orig_e = u36!(0o606_202_333_123);
         let (target, xj, e, dismissed) = simulate_jmp(
+            &context,
             u6!(1),
             orig_xj,
             orig_e,
@@ -326,10 +351,12 @@ mod tests {
     /// Users Handbook.
     #[test]
     fn test_jmp_example_4_brs() {
+        let context = make_ctx();
         let target_base = Address::from(u18!(0o3302));
         let orig_xj = Signed18Bit::from(0o20_i8);
         let orig_e = u36!(0o606_202_333_123);
         let (target, xj, e, dismissed) = simulate_jmp(
+            &context,
             u6!(1),                      // j
             orig_xj,                     // Xj
             orig_e,                      // E
@@ -355,10 +382,12 @@ mod tests {
     /// Users Handbook.
     #[test]
     fn test_jmp_example_5() {
+        let context = make_ctx();
         let target_base = Address::from(u18!(0o3302));
         let orig_xj = Signed18Bit::from(0o20_i8);
         let orig_e = u36!(0o606_202_333_123);
         let (target, xj, e, dismissed) = simulate_jmp(
+            &context,
             u6!(1),                      // j
             orig_xj,                     // Xj
             orig_e,                      // E
@@ -383,10 +412,12 @@ mod tests {
     /// Users Handbook.
     #[test]
     fn test_jmp_example_6_brc() {
+        let context = make_ctx();
         let target_base = Address::from(u18!(0o3302));
         let orig_xj = Signed18Bit::from(0o20_i8);
         let orig_e = u36!(0o606_202_333_123);
         let (target, xj, e, dismissed) = simulate_jmp(
+            &context,
             u6!(1),                      // j
             orig_xj,                     // Xj
             orig_e,                      // E
@@ -411,10 +442,12 @@ mod tests {
     /// Users Handbook.
     #[test]
     fn test_jmp_example_7_jps() {
+        let context = make_ctx();
         let target_base = Address::from(u18!(0o3302));
         let orig_xj = Signed18Bit::from(0o20_i8);
         let orig_e = u36!(0o606_202_333_123);
         let (target, xj, e, dismissed) = simulate_jmp(
+            &context,
             u6!(1),                      // j
             orig_xj,                     // Xj
             orig_e,                      // E
@@ -439,10 +472,12 @@ mod tests {
     /// Users Handbook.
     #[test]
     fn test_jmp_example_8_brs() {
+        let context = make_ctx();
         let target_base = Address::from(u18!(0o3302));
         let orig_xj = Signed18Bit::from(0o20_i8);
         let orig_e = u36!(0o606_202_333_123);
         let (target, xj, e, dismissed) = simulate_jmp(
+            &context,
             u6!(1),                      // j
             orig_xj,                     // Xj
             orig_e,                      // E
@@ -468,12 +503,14 @@ mod tests {
     /// Users Handbook.
     #[test]
     fn test_jmp_example_9() {
+        let context = make_ctx();
         let target_base = Address::from(u18!(0o3302));
         let orig_xj = Signed18Bit::from(0o20_i8);
         let orig_e = u36!(0o606_202_333_123);
         let orig_q = u18!(0o2777);
 
         let (target, xj, e, dismissed) = simulate_jmp(
+            &context,
             u6!(1),                     // j
             orig_xj,                    // Xj
             orig_e,                     // E
@@ -499,12 +536,14 @@ mod tests {
     /// Users Handbook.
     #[test]
     fn test_jmp_example_10_jpq() {
+        let context = make_ctx();
         let target_base = Address::from(u18!(0o3302));
         let orig_xj = Signed18Bit::from(0o20_i8);
         let orig_e = u36!(0o606_202_333_123);
         let orig_q = u18!(0o2777);
         let orig_p = u18!(0o200);
         let (target, xj, e, dismissed) = simulate_jmp(
+            &context,
             u6!(1),                // j
             orig_xj,               // Xj
             orig_e,                // E
@@ -531,12 +570,14 @@ mod tests {
     /// Users Handbook.
     #[test]
     fn test_jmp_example_11_bpq() {
+        let context = make_ctx();
         let target_base = Address::from(u18!(0o3302));
         let orig_xj = Signed18Bit::from(0o20_i8);
         let orig_e = u36!(0o606_202_333_123);
         let orig_q = u18!(0o2777);
         let orig_p = u18!(0o200);
         let (target, xj, e, dismissed) = simulate_jmp(
+            &context,
             u6!(1),                // j
             orig_xj,               // Xj
             orig_e,                // E
@@ -563,12 +604,14 @@ mod tests {
     /// Users Handbook.
     #[test]
     fn test_jmp_example_12_jes() {
+        let context = make_ctx();
         let target_base = Address::from(u18!(0o3302));
         let orig_xj = Signed18Bit::from(0o20_i8);
         let orig_e = u36!(0o606_202_333_123);
         let orig_q = u18!(0o2777);
         let orig_p = u18!(0o200);
         let (target, xj, e, dismissed) = simulate_jmp(
+            &context,
             u6!(1),                // j
             orig_xj,               // Xj
             orig_e,                // E
@@ -593,12 +636,14 @@ mod tests {
     /// Users Handbook.
     #[test]
     fn test_jmp_example_13() {
+        let context = make_ctx();
         let target_base = Address::from(u18!(0o3302));
         let orig_xj = Signed18Bit::from(0o20_i8);
         let orig_e = u36!(0o606_202_333_123);
         let orig_q = u18!(0o2777);
         let orig_p = u18!(0o200);
         let (target, xj, e, dismissed) = simulate_jmp(
+            &context,
             u6!(1),                // j
             orig_xj,               // Xj
             orig_e,                // E
@@ -623,12 +668,14 @@ mod tests {
     /// Users Handbook.
     #[test]
     fn test_jmp_example_14() {
+        let context = make_ctx();
         let target_base = Address::from(u18!(0o3302));
         let orig_xj = Signed18Bit::from(0o20_i8);
         let orig_e = u36!(0o606_202_333_123);
         let orig_q = u18!(0o2777);
         let orig_p = u18!(0o200);
         let (target, xj, e, dismissed) = simulate_jmp(
+            &context,
             u6!(1),                // j
             orig_xj,               // Xj
             orig_e,                // E
@@ -653,12 +700,14 @@ mod tests {
     /// Users Handbook.
     #[test]
     fn test_jmp_example_15() {
+        let context = make_ctx();
         let target_base = Address::from(u18!(0o3302));
         let orig_xj = Signed18Bit::from(0o20_i8);
         let orig_e = u36!(0o606_202_333_123);
         let orig_q = u18!(0o2777);
         let orig_p = u18!(0o200);
         let (target, xj, e, dismissed) = simulate_jmp(
+            &context,
             u6!(1),                // j
             orig_xj,               // Xj
             orig_e,                // E
@@ -683,12 +732,14 @@ mod tests {
     /// Users Handbook.
     #[test]
     fn test_jmp_example_16() {
+        let context = make_ctx();
         let target_base = Address::from(u18!(0o3302));
         let orig_xj = Signed18Bit::from(0o20_i8);
         let orig_e = u36!(0o606_202_333_123);
         let orig_q = u18!(0o2777);
         let orig_p = u18!(0o200);
         let (target, xj, e, dismissed) = simulate_jmp(
+            &context,
             u6!(1),                // j
             orig_xj,               // Xj
             orig_e,                // E

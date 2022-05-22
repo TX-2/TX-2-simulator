@@ -31,6 +31,7 @@ use base::subword;
 
 use super::*;
 use crate::alarm::{Alarm, AlarmUnit, BadMemOp};
+use crate::context::Context;
 use crate::exchanger::{exchanged_value_for_load, exchanged_value_for_store, SystemConfiguration};
 use crate::io::DeviceManager;
 use crate::memory::{self, ExtraBits, MemoryMapped, MemoryOpFailure, MemoryUnit, MetaBitChange};
@@ -339,12 +340,12 @@ pub enum ResetMode {
 }
 
 impl ResetMode {
-    fn address(&self, mem: &mut MemoryUnit) -> Option<Address> {
+    fn address(&self, ctx: &Context, mem: &mut MemoryUnit) -> Option<Address> {
         use ResetMode::*;
         match self {
             Reset0 | Reset1 | Reset2 | Reset3 | Reset4 | Reset5 | Reset6 | Reset7 => {
                 let loc: Address = Address::from(Unsigned18Bit::try_from(*self as u32).unwrap());
-                match mem.fetch(&loc, &MetaBitChange::None) {
+                match mem.fetch(ctx, &loc, &MetaBitChange::None) {
                     Ok((word, _)) => {
                         // word is 36 bits wide but we only want the bottom 17 bits.
                         let (left, right) = subword::split_halves(word);
@@ -420,14 +421,14 @@ pub enum PanicOnUnmaskedAlarm {
     Yes,
 }
 
-fn please_poll_soon(devices: &mut DeviceManager, seq: SequenceNumber, now: Duration) {
+fn please_poll_soon(ctx: &Context, devices: &mut DeviceManager, seq: SequenceNumber) {
     event!(
         Level::TRACE,
         "please_poll_soon: seq={:?}, requesting poll at {:?}",
         seq,
-        now
+        &ctx.simulated_time
     );
-    devices.update_poll_time(seq, now);
+    devices.update_poll_time(ctx, seq);
 }
 
 impl ControlUnit {
@@ -473,8 +474,8 @@ impl ControlUnit {
     /// which states that this is so.
     pub fn codabo(
         &mut self,
+        ctx: &Context,
         reset_mode: &ResetMode,
-        system_time: &Duration,
         devices: &mut DeviceManager,
         mem: &mut MemoryUnit,
     ) {
@@ -493,9 +494,9 @@ impl ControlUnit {
 			 reset_mode=?reset_mode);
         let _enter = span.enter();
         event!(Level::INFO, "Starting CODABO {:?}", &reset_mode);
-        self.disconnect_all_devices(devices, system_time);
+        self.disconnect_all_devices(ctx, devices);
         self.regs.flags.lower_all();
-        self.startover(reset_mode, mem);
+        self.startover(ctx, reset_mode, mem);
         event!(
             Level::DEBUG,
             "After CODABO, control unit contains {:#?}",
@@ -503,8 +504,8 @@ impl ControlUnit {
         );
     }
 
-    pub fn disconnect_all_devices(&mut self, devices: &mut DeviceManager, system_time: &Duration) {
-        devices.disconnect_all(system_time);
+    pub fn disconnect_all_devices(&mut self, ctx: &Context, devices: &mut DeviceManager) {
+        devices.disconnect_all(ctx);
     }
 
     /// There are 9 separate RESET buttons, for 8 fixed addresses and
@@ -515,8 +516,8 @@ impl ControlUnit {
     /// addresses 3777710 through 3777717, inclusive.
     ///
     /// RESET *only* loads the Start Point Register, nothing else.
-    pub fn reset(&mut self, reset_mode: &ResetMode, mem: &mut MemoryUnit) {
-        self.regs.set_spr(&match reset_mode.address(mem) {
+    pub fn reset(&mut self, ctx: &Context, reset_mode: &ResetMode, mem: &mut MemoryUnit) {
+        self.regs.set_spr(&match reset_mode.address(ctx, mem) {
             Some(address) => address,
             None => self.tsp(),
         });
@@ -524,8 +525,8 @@ impl ControlUnit {
 
     /// Handle press of STARTOVER (or part of the operation of
     /// CODABO).  STARTOVER does RESET and then raises flag zero.
-    pub fn startover(&mut self, reset_mode: &ResetMode, mem: &mut MemoryUnit) {
-        self.reset(reset_mode, mem);
+    pub fn startover(&mut self, ctx: &Context, reset_mode: &ResetMode, mem: &mut MemoryUnit) {
+        self.reset(ctx, reset_mode, mem);
         self.regs.current_sequence_is_runnable = false;
         self.regs.flags.raise(&SequenceNumber::ZERO);
         self.change_sequence(None, SequenceNumber::ZERO);
@@ -750,7 +751,7 @@ impl ControlUnit {
         }
     }
 
-    fn fetch_instruction(&mut self, mem: &mut MemoryUnit) -> Result<(), Alarm> {
+    fn fetch_instruction(&mut self, ctx: &Context, mem: &mut MemoryUnit) -> Result<(), Alarm> {
         // TODO: This implementation begins the instruction fetch
         // operation by considering a possible change of sequence.
         // The TX-2 itself considers a sequence change as the PK cycle
@@ -776,7 +777,7 @@ impl ControlUnit {
         } else {
             MetaBitChange::None
         };
-        let instruction_word = match mem.fetch(&p_physical_address, &meta_op) {
+        let instruction_word = match mem.fetch(ctx, &p_physical_address, &meta_op) {
             Ok((inst, extra_bits)) => {
                 if extra_bits.meta && self.trap.trap_on_marked_instruction() {
                     self.raise_trap();
@@ -813,11 +814,11 @@ impl ControlUnit {
 
     pub fn poll_hardware(
         &mut self,
+        ctx: &Context,
         devices: &mut DeviceManager,
         mut run_mode: RunMode,
-        system_time: &Duration,
     ) -> Result<(RunMode, Option<Duration>), Alarm> {
-        let (mut raised_flags, alarm, next_poll) = devices.poll(system_time);
+        let (mut raised_flags, alarm, next_poll) = devices.poll(ctx);
         // If there are no hardware flags being raised, we may still
         // not be in limbo if there were already runnable sequences.
         // That is, if some sequence's flag was raised.  The hardware
@@ -912,37 +913,37 @@ impl ControlUnit {
     /// to execute the instruction.
     pub fn execute_instruction(
         &mut self,
-        system_time: &Duration,
+        ctx: &Context,
         devices: &mut DeviceManager,
         mem: &mut MemoryUnit,
         poll_order_change: &mut Option<SequenceNumber>,
     ) -> Result<(u64, RunMode, Option<OutputEvent>), (Alarm, Address)> {
         fn execute(
+            ctx: &Context,
             prev_program_counter: Address,
             opcode: &Opcode,
             control: &mut ControlUnit,
             devices: &mut DeviceManager,
-            system_time: &Duration,
             mem: &mut MemoryUnit,
         ) -> Result<OpcodeResult, Alarm> {
             match opcode {
-                Opcode::Aux => control.op_aux(mem),
-                Opcode::Lda => control.op_lda(mem),
-                Opcode::Ldb => control.op_ldb(mem),
-                Opcode::Ldc => control.op_ldc(mem),
-                Opcode::Ldd => control.op_ldd(mem),
-                Opcode::Lde => control.op_lde(mem),
-                Opcode::Ste => control.op_ste(mem),
-                Opcode::Rsx => control.op_rsx(mem),
-                Opcode::Skx => control.op_skx(),
-                Opcode::Dpx => control.op_dpx(mem),
-                Opcode::Jmp => control.op_jmp(),
-                Opcode::Jpx => control.op_jpx(mem),
-                Opcode::Jnx => control.op_jnx(mem),
-                Opcode::Skm => control.op_skm(mem),
-                Opcode::Spg => control.op_spg(mem),
-                Opcode::Ios => control.op_ios(devices, system_time),
-                Opcode::Tsd => control.op_tsd(devices, prev_program_counter, system_time, mem),
+                Opcode::Aux => control.op_aux(ctx, mem),
+                Opcode::Lda => control.op_lda(ctx, mem),
+                Opcode::Ldb => control.op_ldb(ctx, mem),
+                Opcode::Ldc => control.op_ldc(ctx, mem),
+                Opcode::Ldd => control.op_ldd(ctx, mem),
+                Opcode::Lde => control.op_lde(ctx, mem),
+                Opcode::Ste => control.op_ste(ctx, mem),
+                Opcode::Rsx => control.op_rsx(ctx, mem),
+                Opcode::Skx => control.op_skx(ctx),
+                Opcode::Dpx => control.op_dpx(ctx, mem),
+                Opcode::Jmp => control.op_jmp(ctx),
+                Opcode::Jpx => control.op_jpx(ctx, mem),
+                Opcode::Jnx => control.op_jnx(ctx, mem),
+                Opcode::Skm => control.op_skm(ctx, mem),
+                Opcode::Spg => control.op_spg(ctx, mem),
+                Opcode::Ios => control.op_ios(ctx, devices),
+                Opcode::Tsd => control.op_tsd(ctx, devices, prev_program_counter, mem),
                 _ => Err(Alarm::ROUNDTUITAL(format!(
                     "The emulator does not yet implement opcode {}",
                     opcode,
@@ -962,7 +963,7 @@ impl ControlUnit {
 			     seq=%seq_desc,
 			     p=?self.regs.p);
             let _enter = span.enter();
-            self.fetch_instruction(mem)
+            self.fetch_instruction(ctx, mem)
                 .map_err(|alarm| (alarm, self.regs.p))?;
         }
 
@@ -982,7 +983,7 @@ impl ControlUnit {
 				 op=%sym.opcode());
                 let _enter = span.enter();
                 event!(Level::TRACE, "executing instruction {}", &sym);
-                match execute(p, &sym.opcode(), self, devices, system_time, mem) {
+                match execute(ctx, p, &sym.opcode(), self, devices, mem) {
                     Ok(opcode_result) => {
                         event!(
                             Level::TRACE,
@@ -991,7 +992,7 @@ impl ControlUnit {
                         );
                         if let Some(seq) = opcode_result.poll_order_change {
                             *poll_order_change = Some(seq);
-                            please_poll_soon(devices, seq, *system_time);
+                            please_poll_soon(ctx, devices, seq);
                         }
                         match opcode_result.program_counter_change {
                             None => {
@@ -1060,19 +1061,21 @@ impl ControlUnit {
 
     fn fetch_operand_from_address_with_exchange(
         &mut self,
+        ctx: &Context,
         mem: &mut MemoryUnit,
         operand_address: &Address,
         existing_dest: &Unsigned36Bit,
         update_e: &UpdateE,
     ) -> Result<(Unsigned36Bit, ExtraBits), Alarm> {
         let (memword, extra) =
-            self.fetch_operand_from_address_without_exchange(mem, operand_address, update_e)?;
+            self.fetch_operand_from_address_without_exchange(ctx, mem, operand_address, update_e)?;
         let exchanged = exchanged_value_for_load(&self.get_config(), &memword, existing_dest);
         Ok((exchanged, extra))
     }
 
     fn fetch_operand_from_address_without_exchange(
         &mut self,
+        ctx: &Context,
         mem: &mut MemoryUnit,
         operand_address: &Address,
         update_e: &UpdateE,
@@ -1082,7 +1085,7 @@ impl ControlUnit {
         } else {
             MetaBitChange::None
         };
-        match mem.fetch(operand_address, &meta_op) {
+        match mem.fetch(ctx, operand_address, &meta_op) {
             Ok((word, extra_bits)) => {
                 if extra_bits.meta && self.trap.trap_on_operand() {
                     self.raise_trap();
@@ -1115,6 +1118,7 @@ impl ControlUnit {
 
     fn memory_store_without_exchange(
         &mut self,
+        ctx: &Context,
         mem: &mut MemoryUnit,
         target: &Address,
         value: &Unsigned36Bit,
@@ -1133,7 +1137,7 @@ impl ControlUnit {
             // 10 on page 3-17 of the Users Handbook).
             self.regs.e = *value;
         }
-        if let Err(e) = mem.store(target, value, meta_op) {
+        if let Err(e) = mem.store(ctx, target, value, meta_op) {
             self.alarm_unit.fire_if_not_masked(Alarm::QSAL(
                 self.regs.n,
                 BadMemOp::Write(Unsigned36Bit::from(*target)),
@@ -1145,8 +1149,10 @@ impl ControlUnit {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn memory_store_with_exchange(
         &mut self,
+        ctx: &Context,
         mem: &mut MemoryUnit,
         target: &Address,
         value: &Unsigned36Bit,
@@ -1155,6 +1161,7 @@ impl ControlUnit {
         meta_op: &MetaBitChange,
     ) -> Result<(), Alarm> {
         self.memory_store_without_exchange(
+            ctx,
             mem,
             target,
             &exchanged_value_for_store(&self.get_config(), value, existing),
@@ -1167,18 +1174,20 @@ impl ControlUnit {
     /// indexing.
     fn operand_address_with_optional_defer_and_index(
         self: &mut ControlUnit,
+        ctx: &Context,
         mem: &mut MemoryUnit,
     ) -> Result<Address, Alarm> {
-        self.resolve_operand_address(mem, None)
+        self.resolve_operand_address(ctx, mem, None)
     }
 
     /// Determine the address of the operand for instructions that do
     /// not use indexing.
     fn operand_address_with_optional_defer_without_index(
         self: &mut ControlUnit,
+        ctx: &Context,
         mem: &mut MemoryUnit,
     ) -> Result<Address, Alarm> {
-        self.resolve_operand_address(mem, Some(Unsigned6Bit::ZERO))
+        self.resolve_operand_address(ctx, mem, Some(Unsigned6Bit::ZERO))
     }
 
     /// Resolve the address of the operand of the current instruction,
@@ -1189,6 +1198,7 @@ impl ControlUnit {
     /// initial_index_override.
     fn resolve_operand_address(
         self: &mut ControlUnit,
+        ctx: &Context,
         mem: &mut MemoryUnit,
         initial_index_override: Option<Unsigned6Bit>,
     ) -> Result<Address, Alarm> {
@@ -1233,7 +1243,7 @@ impl ControlUnit {
             } else {
                 MetaBitChange::None
             };
-            let fetched = match mem.fetch(&physical, &meta_op) {
+            let fetched = match mem.fetch(ctx, &physical, &meta_op) {
                 Err(e) => {
                     let msg = || {
                         format!(
@@ -1343,6 +1353,7 @@ impl ControlUnit {
 
     fn memory_read_and_update_with_exchange<F>(
         &mut self,
+        ctx: &Context,
         mem: &mut MemoryUnit,
         target: &Address,
         update_e: &UpdateE,
@@ -1359,11 +1370,12 @@ impl ControlUnit {
         // For example, `²STA T` modifies L(T) but not R(T) and so if
         // there were a hardware parity error affecting T, this
         // instruction would likely fail on the real hardware.
-        match self.fetch_operand_from_address_without_exchange(mem, target, &UpdateE::No) {
+        match self.fetch_operand_from_address_without_exchange(ctx, mem, target, &UpdateE::No) {
             Ok((existing, _meta)) => {
                 let newval = transform(existing);
                 // TODO: handle "memory" stores to AE registers.
                 self.memory_store_with_exchange(
+                    ctx,
                     mem,
                     target,
                     &newval,

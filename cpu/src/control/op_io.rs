@@ -1,12 +1,12 @@
 use std::ops::BitAnd;
 
 use base::prelude::*;
-use std::time::Duration;
 
 use tracing::{event, Level};
 
 use super::super::*;
 use crate::alarm::{Alarm, AlarmUnit, BadMemOp};
+use crate::context::Context;
 use crate::control::{
     ControlRegisters, ControlUnit, DeviceManager, OpcodeResult, ProgramCounterChange, TrapCircuit,
 };
@@ -45,8 +45,8 @@ impl ControlUnit {
     /// Implements the IOS opcode
     pub(crate) fn op_ios(
         &mut self,
+        ctx: &Context,
         devices: &mut DeviceManager,
-        system_time: &Duration,
     ) -> Result<OpcodeResult, Alarm> {
         let j = self.regs.n.index_address();
         let cf = self.regs.n.configuration();
@@ -57,7 +57,7 @@ impl ControlUnit {
             // change to be copied into the E register.  (as stated in
             // section 4-3.6 of the User Handbook).
             let flag_raised: bool = self.regs.flags.current_flag_state(&j);
-            self.regs.e = devices.report(system_time, j, flag_raised, &self.alarm_unit)?;
+            self.regs.e = devices.report(ctx, j, flag_raised, &self.alarm_unit)?;
         }
         let mut dismiss_reason: Option<&str> = if cf & 0o20 != 0 {
             Some("dismiss bit set in config")
@@ -71,10 +71,10 @@ impl ControlUnit {
             0o30_000..=0o37_777 => {
                 let mode: Unsigned12Bit = Unsigned12Bit::try_from(operand & 0o07_777).unwrap();
                 ControlUnit::connect_unit(
+                    ctx,
                     devices,
                     &mut self.regs,
                     &mut self.trap,
-                    system_time,
                     j,
                     mode,
                     &self.alarm_unit,
@@ -131,20 +131,20 @@ impl ControlUnit {
     }
 
     fn connect_unit(
+        ctx: &Context,
         devices: &mut DeviceManager,
         regs: &mut ControlRegisters,
         trap: &mut TrapCircuit,
-        system_time: &Duration,
         unit: Unsigned6Bit,
         mode: Unsigned12Bit,
         alarm_unit: &AlarmUnit,
     ) -> Result<(), Alarm> {
         let maybe_flag_change: Option<FlagChange> = match u8::from(unit) {
             0o42 => {
-                trap.connect(system_time, mode);
+                trap.connect(ctx, mode);
                 None
             }
-            _ => devices.connect(system_time, &unit, mode, alarm_unit)?,
+            _ => devices.connect(ctx, &unit, mode, alarm_unit)?,
         };
         if let Some(FlagChange::Raise) = maybe_flag_change {
             regs.flags.raise(&unit);
@@ -154,9 +154,9 @@ impl ControlUnit {
 
     pub(crate) fn op_tsd(
         &mut self,
+        ctx: &Context,
         devices: &mut DeviceManager,
         execution_address: Address,
-        system_time: &Duration,
         mem: &mut MemoryUnit,
     ) -> Result<OpcodeResult, Alarm> {
         fn make_tsd_qsal(inst: Instruction, op: BadMemOp) -> Alarm {
@@ -164,7 +164,7 @@ impl ControlUnit {
         }
 
         let result: Result<TransferOutcome, Alarm> = if let Some(unit) = self.regs.k {
-            let target: Address = self.operand_address_with_optional_defer_and_index(mem)?;
+            let target: Address = self.operand_address_with_optional_defer_and_index(ctx, mem)?;
             let not_mapped = |op_conv: OpConversion| -> Alarm {
                 let op: BadMemOp = op_conv(target);
                 make_tsd_qsal(self.regs.n, op)
@@ -180,7 +180,7 @@ impl ControlUnit {
                 // Non-INOUT sequences just cycle the target location;
                 // see section 4-1 (page 4-3) of the Users Handbook;
                 // also pages 4-2 and 4-9).
-                match mem.cycle_word(&target) {
+                match mem.cycle_word(ctx, &target) {
                     Ok(extra_bits) => Ok(TransferOutcome::Success {
                         metabit_was_set: extra_bits.meta,
                         output: None,
@@ -233,6 +233,7 @@ impl ControlUnit {
                             let transfer_mode = device.transfer_mode();
                             let (m_register, extra_bits) = self
                                 .fetch_operand_from_address_without_exchange(
+                                    ctx,
                                     mem,
                                     &target,
                                     &UpdateE::No,
@@ -243,7 +244,7 @@ impl ControlUnit {
                                 // IOBM bus, into the E register.  See
                                 // figure 15-18 in Volume 2 of the TX-2
                                 // Techical Manual.
-                                match device.read(system_time) {
+                                match device.read(ctx) {
                                     Ok(masked_word) => {
                                         const UPDATE_E_YES: UpdateE = UpdateE::Yes;
                                         let newval: Unsigned36Bit =
@@ -253,6 +254,7 @@ impl ControlUnit {
                                                 let bits: Unsigned6Bit =
                                                     newval.bitand(Unsigned6Bit::MAX);
                                                 self.memory_store_without_exchange(
+                                                    ctx,
                                                     mem,
                                                     &target,
                                                     &cycle_and_splay(m_register, bits),
@@ -262,6 +264,7 @@ impl ControlUnit {
                                             }
                                             TransferMode::Exchange => {
                                                 self.memory_store_with_exchange(
+                                                    ctx,
                                                     mem,
                                                     &target,
                                                     &newval,
@@ -295,7 +298,7 @@ impl ControlUnit {
                                 );
                                 match transfer_mode {
                                     TransferMode::Exchange => {
-                                        match device.write(system_time, self.regs.e) {
+                                        match device.write(ctx, self.regs.e) {
                                             Err(TransferFailed::BufferNotFree) => {
                                                 Ok(TransferOutcome::DismissAndWait)
                                             }

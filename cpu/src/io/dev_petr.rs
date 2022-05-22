@@ -277,7 +277,8 @@ impl Petr {
 }
 
 impl Unit for Petr {
-    fn poll(&mut self, system_time: &Duration) -> UnitStatus {
+    fn poll(&mut self, ctx: &Context) -> UnitStatus {
+        let system_time = &ctx.simulated_time;
         self.maybe_simulate_event(system_time);
         let data_ready: bool = self.data.is_some();
         let poll_after = self.next_poll_time(system_time);
@@ -298,7 +299,8 @@ impl Unit for Petr {
         }
     }
 
-    fn connect(&mut self, system_time: &Duration, mode: Unsigned12Bit) {
+    fn connect(&mut self, ctx: &Context, mode: Unsigned12Bit) {
+        let system_time = &ctx.simulated_time;
         self.direction = if mode & 0o04 != 0 {
             Direction::Bin
         } else {
@@ -333,7 +335,8 @@ impl Unit for Petr {
         self.transfer_mode()
     }
 
-    fn read(&mut self, system_time: &Duration) -> Result<MaskedWord, TransferFailed> {
+    fn read(&mut self, ctx: &Context) -> Result<MaskedWord, TransferFailed> {
+        let system_time = &ctx.simulated_time;
         match self.data.take() {
             None => {
                 event!(Level::DEBUG, "no data is ready yet");
@@ -355,7 +358,7 @@ impl Unit for Petr {
 
     fn write(
         &mut self,
-        _system_time: &Duration,
+        _ctx: &Context,
         _source: Unsigned36Bit,
     ) -> Result<Option<OutputEvent>, TransferFailed> {
         unreachable!()
@@ -365,11 +368,11 @@ impl Unit for Petr {
         "PETR photoelectric paper tape reader".to_string()
     }
 
-    fn disconnect(&mut self, _system_time: &Duration) {
+    fn disconnect(&mut self, _ctx: &Context) {
         self.activity = Activity::Stopped;
     }
 
-    fn on_input_event(&mut self, event: InputEvent) {
+    fn on_input_event(&mut self, _ctx: &Context, event: InputEvent) {
         match event {
             InputEvent::PetrMountPaperTape { data } => {
                 event!(Level::DEBUG, "Mounting a tape ({} bytes)", data.len());

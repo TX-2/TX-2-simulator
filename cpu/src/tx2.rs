@@ -6,6 +6,7 @@ use tracing::{event, span, Level};
 use base::prelude::*;
 
 use crate::alarm::UnmaskedAlarm;
+use crate::context::Context;
 use crate::control::{ControlUnit, ResetMode, RunMode};
 use crate::event::{InputEvent, OutputEvent};
 use crate::io::{set_up_peripherals, DeviceManager};
@@ -24,9 +25,9 @@ pub struct Tx2 {
 
 impl Tx2 {
     pub fn new(
+        ctx: &Context,
         panic_on_unmasked_alarm: PanicOnUnmaskedAlarm,
         mem_config: &MemoryConfiguration,
-        system_time: Duration,
     ) -> Tx2 {
         let control = ControlUnit::new(panic_on_unmasked_alarm);
         event!(
@@ -35,15 +36,15 @@ impl Tx2 {
             &control
         );
 
-        let mem = MemoryUnit::new(mem_config);
+        let mem = MemoryUnit::new(ctx, mem_config);
         let mut devices = DeviceManager::new();
-        set_up_peripherals(&mut devices, &system_time);
+        set_up_peripherals(ctx, &mut devices);
         Tx2 {
             control,
             mem,
             devices,
             next_execution_due: None,
-            next_hw_poll_due: system_time,
+            next_hw_poll_due: ctx.simulated_time,
             run_mode: RunMode::InLimbo,
         }
     }
@@ -72,14 +73,14 @@ impl Tx2 {
         self.next_hw_poll_due = newval;
     }
 
-    pub fn codabo(&mut self, now: &Duration, reset_mode: &ResetMode) {
+    pub fn codabo(&mut self, ctx: &Context, reset_mode: &ResetMode) {
         self.control
-            .codabo(reset_mode, now, &mut self.devices, &mut self.mem);
+            .codabo(ctx, reset_mode, &mut self.devices, &mut self.mem);
     }
 
-    pub fn mount_tape(&mut self, data: Vec<u8>) {
+    pub fn mount_tape(&mut self, ctx: &Context, data: Vec<u8>) {
         self.devices
-            .on_input_event(PETR, InputEvent::PetrMountPaperTape { data });
+            .on_input_event(ctx, PETR, InputEvent::PetrMountPaperTape { data });
     }
 
     pub fn next_tick(&self) -> Duration {
@@ -93,16 +94,13 @@ impl Tx2 {
         }
     }
 
-    fn poll_hw(&mut self, now: &Duration) -> Result<(), UnmaskedAlarm> {
+    fn poll_hw(&mut self, ctx: &Context) -> Result<(), UnmaskedAlarm> {
         // check for I/O alarms, flag changes.
-        event!(
-            Level::TRACE,
-            "polling hardware for updates (now={:?})",
-            &now
-        );
+        let now = &ctx.simulated_time;
+        event!(Level::TRACE, "polling hardware for updates (now={:?})", now);
         match self
             .control
-            .poll_hardware(&mut self.devices, self.run_mode, now)
+            .poll_hardware(ctx, &mut self.devices, self.run_mode)
         {
             Ok((mode, next)) => {
                 self.run_mode = mode;
@@ -136,11 +134,11 @@ impl Tx2 {
 
     fn execute_one_instruction(
         &mut self,
-        now: &Duration,
+        ctx: &Context,
     ) -> Result<(u64, Option<OutputEvent>), UnmaskedAlarm> {
         let mut hardware_state_changed: Option<SequenceNumber> = None;
         match self.control.execute_instruction(
-            now,
+            ctx,
             &mut self.devices,
             &mut self.mem,
             &mut hardware_state_changed,
@@ -150,15 +148,16 @@ impl Tx2 {
                     Level::INFO,
                     "Alarm raised during instruction execution at {:o} at system time {:?}",
                     address,
-                    now
+                    &ctx.simulated_time
                 );
                 Err(UnmaskedAlarm {
                     alarm,
                     address: Some(address),
-                    when: *now,
+                    when: ctx.simulated_time,
                 })
             }
             Ok((ns, new_run_mode, maybe_output)) => {
+                let now = &ctx.simulated_time;
                 match (self.run_mode, new_run_mode) {
                     (RunMode::Running, RunMode::InLimbo) => {
                         event!(Level::DEBUG, "Entering LIMBO");
@@ -194,12 +193,13 @@ impl Tx2 {
         }
     }
 
-    pub fn tick(&mut self, system_time: Duration) -> Result<Option<OutputEvent>, UnmaskedAlarm> {
+    pub fn tick(&mut self, ctx: &Context) -> Result<Option<OutputEvent>, UnmaskedAlarm> {
+        let system_time = ctx.simulated_time;
         let tick_span = span!(Level::INFO, "tick", t=?system_time);
         let _enter = tick_span.enter();
-        if system_time >= self.next_hw_poll_due {
+        if ctx.simulated_time >= self.next_hw_poll_due {
             let prev_poll_due = self.next_hw_poll_due;
-            match self.poll_hw(&system_time) {
+            match self.poll_hw(ctx) {
                 Ok(()) => {
                     if self.next_hw_poll_due == prev_poll_due {
                         event!(Level::WARN, "polled hardware successfully at system time {:?}, but poll_hw returned with next_hw_poll_due={:?}",
@@ -235,7 +235,7 @@ impl Tx2 {
             // Not in limbo, it may be time to execute an instruction.
             match self.next_execution_due {
                 Some(next) if next <= system_time => {
-                    let (ns, maybe_output) = self.execute_one_instruction(&system_time)?;
+                    let (ns, maybe_output) = self.execute_one_instruction(ctx)?;
                     let mut due = next + Duration::from_nanos(ns);
                     if due <= system_time {
                         due = system_time + Duration::from_nanos(1);
@@ -262,7 +262,7 @@ impl Tx2 {
         }
     }
 
-    pub fn disconnect_all_devices(&mut self, alarm_time: &Duration) {
-        self.devices.disconnect_all(alarm_time);
+    pub fn disconnect_all_devices(&mut self, ctx: &Context) {
+        self.devices.disconnect_all(ctx);
     }
 }

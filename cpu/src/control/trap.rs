@@ -4,6 +4,7 @@ use base::prelude::*;
 use std::time::Duration;
 
 use super::super::*;
+use crate::context::Context;
 use crate::event::InputEvent;
 use crate::io::{Unit, UnitStatus};
 
@@ -110,7 +111,7 @@ impl TrapCircuit {
 }
 
 impl Unit for TrapCircuit {
-    fn poll(&mut self, _system_time: &Duration) -> UnitStatus {
+    fn poll(&mut self, ctx: &Context) -> UnitStatus {
         UnitStatus {
             special: Unsigned12Bit::ZERO,
             change_flag: None,
@@ -119,12 +120,12 @@ impl Unit for TrapCircuit {
             missed_data: false,
             mode: self.mode,
             // The trap circuit does not need to be polled.
-            poll_after: Duration::from_secs(60),
+            poll_after: ctx.simulated_time + Duration::from_secs(60),
             is_input_unit: true,
         }
     }
 
-    fn connect(&mut self, _system_time: &Duration, mode: Unsigned12Bit) {
+    fn connect(&mut self, _ctx: &Context, mode: Unsigned12Bit) {
         self.mode = mode;
     }
 
@@ -136,7 +137,7 @@ impl Unit for TrapCircuit {
     /// cycle-left and dismiss features (See Users Handbook, section
     /// 4-15 ("TRAP").  Because it cycles left, it must be an "input"
     /// unit.
-    fn read(&mut self, _system_time: &Duration) -> Result<MaskedWord, TransferFailed> {
+    fn read(&mut self, _ctx: &Context) -> Result<MaskedWord, TransferFailed> {
         // TODO: add unit tests for the cycle-left and dismiss
         // behaviours.
         Ok(MaskedWord {
@@ -149,7 +150,7 @@ impl Unit for TrapCircuit {
     /// unit or an output unit.
     fn write(
         &mut self,
-        _system_time: &Duration,
+        _ctx: &Context,
         _source: Unsigned36Bit,
     ) -> Result<Option<OutputEvent>, TransferFailed> {
         unreachable!()
@@ -159,11 +160,11 @@ impl Unit for TrapCircuit {
         "trap circuit".to_string()
     }
 
-    fn disconnect(&mut self, _system_time: &Duration) {
+    fn disconnect(&mut self, _ctx: &Context) {
         // Does nothing.
     }
 
-    fn on_input_event(&mut self, _event: InputEvent) {
+    fn on_input_event(&mut self, _ctx: &Context, _event: InputEvent) {
         // Does nothing.
     }
 }

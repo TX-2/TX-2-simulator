@@ -44,6 +44,7 @@ use tracing::{event, span, Level};
 
 use super::types::*;
 use crate::alarm::{Alarm, AlarmUnit};
+use crate::context::Context;
 use crate::event::*;
 use crate::PETR;
 use base::prelude::*;
@@ -141,20 +142,20 @@ fn make_report_word_for_invalid_unit(unit: Unsigned6Bit, current_flag: bool) -> 
 }
 
 pub trait Unit {
-    fn poll(&mut self, system_time: &Duration) -> UnitStatus;
-    fn connect(&mut self, system_time: &Duration, mode: Unsigned12Bit);
-    fn disconnect(&mut self, system_time: &Duration);
+    fn poll(&mut self, ctx: &Context) -> UnitStatus;
+    fn connect(&mut self, ctx: &Context, mode: Unsigned12Bit);
+    fn disconnect(&mut self, ctx: &Context);
     fn transfer_mode(&self) -> TransferMode;
     /// Handle a TSD on an input channel.
-    fn read(&mut self, system_time: &Duration) -> Result<MaskedWord, TransferFailed>;
+    fn read(&mut self, ctx: &Context) -> Result<MaskedWord, TransferFailed>;
     /// Handle a TSD on an output channel.
     fn write(
         &mut self,
-        system_time: &Duration,
+        ctx: &Context,
         source: Unsigned36Bit,
     ) -> Result<Option<OutputEvent>, TransferFailed>;
     fn name(&self) -> String;
-    fn on_input_event(&mut self, event: InputEvent);
+    fn on_input_event(&mut self, ctx: &Context, event: InputEvent);
 }
 
 pub struct AttachedUnit {
@@ -174,36 +175,36 @@ impl AttachedUnit {
         (!self.is_input_unit) && (!self.connected)
     }
 
-    pub fn poll(&self, system_time: &Duration) -> UnitStatus {
-        self.inner.borrow_mut().poll(system_time)
+    pub fn poll(&self, ctx: &Context) -> UnitStatus {
+        self.inner.borrow_mut().poll(ctx)
     }
 
-    pub fn connect(&self, system_time: &Duration, mode: Unsigned12Bit) {
-        self.inner.borrow_mut().connect(system_time, mode)
+    pub fn connect(&self, ctx: &Context, mode: Unsigned12Bit) {
+        self.inner.borrow_mut().connect(ctx, mode)
     }
 
-    pub fn disconnect(&self, system_time: &Duration) {
-        self.inner.borrow_mut().disconnect(system_time)
+    pub fn disconnect(&self, ctx: &Context) {
+        self.inner.borrow_mut().disconnect(ctx)
     }
 
     pub fn transfer_mode(&self) -> TransferMode {
         self.inner.borrow().transfer_mode()
     }
 
-    pub fn read(&self, system_time: &Duration) -> Result<MaskedWord, TransferFailed> {
-        self.inner.borrow_mut().read(system_time)
+    pub fn read(&self, ctx: &Context) -> Result<MaskedWord, TransferFailed> {
+        self.inner.borrow_mut().read(ctx)
     }
 
     pub fn write(
         &mut self,
-        system_time: &Duration,
+        ctx: &Context,
         source: Unsigned36Bit,
     ) -> Result<Option<OutputEvent>, TransferFailed> {
-        self.inner.borrow_mut().write(system_time, source)
+        self.inner.borrow_mut().write(ctx, source)
     }
 
-    pub fn on_input_event(&self, event: InputEvent) {
-        self.inner.borrow_mut().on_input_event(event)
+    pub fn on_input_event(&self, ctx: &Context, event: InputEvent) {
+        self.inner.borrow_mut().on_input_event(ctx, event)
     }
 
     pub fn name(&self) -> String {
@@ -255,8 +256,8 @@ impl DeviceManager {
         self.devices.get_mut(unit_number)
     }
 
-    pub fn update_poll_time(&mut self, seq: SequenceNumber, when: Duration) {
-        if self.poll_queue.update(seq, when).is_err() {
+    pub fn update_poll_time(&mut self, ctx: &Context, seq: SequenceNumber) {
+        if self.poll_queue.update(seq, ctx.simulated_time).is_err() {
             // This happens when we complete an IOS or TSD
             // instruction from a sequence that has no attached
             // hardware.  For example software-only sequences such
@@ -284,12 +285,12 @@ impl DeviceManager {
 
     pub fn attach(
         &mut self,
-        system_time: &Duration,
+        ctx: &Context,
         unit_number: Unsigned6Bit,
         in_maintenance: bool,
         mut unit: Box<dyn Unit>,
     ) {
-        let status: UnitStatus = unit.poll(system_time);
+        let status: UnitStatus = unit.poll(ctx);
         self.devices.insert(
             unit_number,
             AttachedUnit {
@@ -302,9 +303,14 @@ impl DeviceManager {
         self.poll_queue.push(unit_number, status.poll_after);
     }
 
-    pub fn on_input_event(&mut self, unit_number: Unsigned6Bit, input_event: InputEvent) {
+    pub fn on_input_event(
+        &mut self,
+        ctx: &Context,
+        unit_number: Unsigned6Bit,
+        input_event: InputEvent,
+    ) {
         match self.devices.get_mut(&unit_number) {
-            Some(attached) => attached.on_input_event(input_event),
+            Some(attached) => attached.on_input_event(ctx, input_event),
             None => {
                 // TODO: consider returning an error result for this
                 // case.
@@ -314,7 +320,7 @@ impl DeviceManager {
 
     pub fn report(
         &mut self,
-        system_time: &Duration,
+        ctx: &Context,
         unit: Unsigned6Bit,
         current_flag: bool,
         alarm_unit: &AlarmUnit,
@@ -325,7 +331,7 @@ impl DeviceManager {
                 // (2.6) and `Maintenance` bit (2.7) we need to be
                 // able to collect status from a unit which is
                 // attached but not otherwise usable.
-                let unit_status = attached.poll(system_time);
+                let unit_status = attached.poll(ctx);
                 self.poll_queue.push(unit, unit_status.poll_after);
                 Ok(make_unit_report_word(
                     unit,
@@ -347,11 +353,11 @@ impl DeviceManager {
         }
     }
 
-    pub fn poll(&mut self, system_time: &Duration) -> (u64, Option<Alarm>, Option<Duration>) {
+    pub fn poll(&mut self, ctx: &Context) -> (u64, Option<Alarm>, Option<Duration>) {
+        let system_time = &ctx.simulated_time;
         let mut raised_flags: u64 = 0;
         let mut alarm: Option<Alarm> = None;
         let mut next_poll: Option<Duration> = None;
-
         loop {
             match self.poll_queue.peek() {
                 None => {
@@ -406,7 +412,7 @@ impl DeviceManager {
                         "polling unit at system time {:?}",
                         system_time
                     );
-                    let unit_status = attached.poll(system_time);
+                    let unit_status = attached.poll(ctx);
                     event!(Level::TRACE, "unit status is {:?}", unit_status);
                     self.poll_queue.push(devno, unit_status.poll_after);
                     if let Some(FlagChange::Raise) = unit_status.change_flag {
@@ -433,10 +439,10 @@ impl DeviceManager {
         (raised_flags, alarm, next_poll)
     }
 
-    pub fn disconnect_all(&mut self, system_time: &Duration) {
+    pub fn disconnect_all(&mut self, ctx: &Context) {
         for (_, attached) in self.devices.iter_mut() {
             if attached.connected {
-                attached.disconnect(system_time);
+                attached.disconnect(ctx);
                 attached.connected = false;
             }
         }
@@ -468,7 +474,7 @@ impl DeviceManager {
 
     pub fn connect(
         &mut self,
-        system_time: &Duration,
+        ctx: &Context,
         device: &Unsigned6Bit,
         mode: Unsigned12Bit,
         alarm_unit: &AlarmUnit,
@@ -487,7 +493,7 @@ impl DeviceManager {
                     } else {
                         None
                     };
-                    attached.connect(system_time, mode);
+                    attached.connect(ctx, mode);
                     attached.connected = true;
                     Ok(flag_change)
                 }
@@ -511,11 +517,11 @@ impl Default for DeviceManager {
     }
 }
 
-pub fn set_up_peripherals(devices: &mut DeviceManager, now: &Duration) {
-    fn attach_lw_output(unit: Unsigned6Bit, now: &Duration, devices: &mut DeviceManager) {
-        devices.attach(now, unit, false, Box::new(LincolnWriterOutput::new(unit)));
+pub fn set_up_peripherals(ctx: &Context, devices: &mut DeviceManager) {
+    fn attach_lw_output(ctx: &Context, unit: Unsigned6Bit, devices: &mut DeviceManager) {
+        devices.attach(ctx, unit, false, Box::new(LincolnWriterOutput::new(unit)));
     }
 
-    devices.attach(now, PETR, false, Box::new(Petr::new()));
-    attach_lw_output(u6!(0o66), now, devices);
+    devices.attach(ctx, PETR, false, Box::new(Petr::new()));
+    attach_lw_output(ctx, u6!(0o66), devices);
 }
