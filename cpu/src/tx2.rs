@@ -204,6 +204,21 @@ impl Tx2 {
         let system_time = ctx.simulated_time;
         let tick_span = span!(Level::INFO, "tick", t=?system_time);
         let _enter = tick_span.enter();
+        event!(
+            Level::TRACE,
+            "tick: system_time={:?}, next_execution_due={:?}, next_hw_poll_due={:?}",
+            system_time,
+            self.next_execution_due,
+            self.next_hw_poll_due
+        );
+        let premature = match (self.next_hw_poll_due, self.next_execution_due) {
+            (t1, Some(t2)) => t1 >= system_time && t2 >= system_time,
+            (t1, None) => t1 >= system_time,
+        };
+        if premature {
+            event!(Level::WARN, "tick() was called prematurely");
+        }
+
         if ctx.simulated_time >= self.next_hw_poll_due {
             let prev_poll_due = self.next_hw_poll_due;
             match self.poll_hw(ctx) {

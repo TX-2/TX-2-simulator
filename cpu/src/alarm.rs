@@ -164,6 +164,7 @@ impl Display for Alarm {
 
 impl Error for Alarm {}
 
+#[derive(Debug)]
 pub struct UnmaskedAlarm {
     pub alarm: Alarm,
     pub address: Option<Address>,
