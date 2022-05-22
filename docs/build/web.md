@@ -46,3 +46,13 @@ You should not need `cargo-generate`.
 $ cd wasm
 $ wasm-pack build
 ```
+
+### Trying it Out
+
+```sh
+$ cd wasm/www
+$ npm run start
+```
+
+The `npm` command will print the URL from which the pages are served,
+just visit that in your browser.

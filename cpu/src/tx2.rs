@@ -3,6 +3,8 @@ use std::time::Duration;
 
 use tracing::{event, span, Level};
 
+use wasm_bindgen::prelude::*;
+
 use base::prelude::*;
 
 use crate::alarm::UnmaskedAlarm;
@@ -14,13 +16,14 @@ use crate::memory::{MemoryConfiguration, MemoryUnit};
 use crate::PanicOnUnmaskedAlarm;
 use crate::PETR;
 
+#[wasm_bindgen]
 pub struct Tx2 {
     control: ControlUnit,
     mem: MemoryUnit,
     devices: DeviceManager,
-    pub next_execution_due: Option<Duration>,
-    pub next_hw_poll_due: Duration,
-    pub run_mode: RunMode,
+    next_execution_due: Option<Duration>,
+    next_hw_poll_due: Duration,
+    run_mode: RunMode,
 }
 
 impl Tx2 {
@@ -49,7 +52,11 @@ impl Tx2 {
         }
     }
 
-    fn set_next_execution_due(&mut self, now: Duration, newval: Option<Duration>) {
+    pub fn set_run_mode(&mut self, run_mode: RunMode) {
+        self.run_mode = run_mode;
+    }
+
+    pub fn set_next_execution_due(&mut self, now: Duration, newval: Option<Duration>) {
         if let Some(t) = newval {
             assert!(now <= t);
         }
