@@ -3,23 +3,44 @@ use std::time::Duration;
 
 mod utils;
 
+use base::charset::{Colour, DescribedChar, LincolnChar, LincolnState, Script};
+use base::Unsigned6Bit;
+use cpu::*;
 use float_next_after::NextAfter;
 use tracing::{event, Level};
 use wasm_bindgen::prelude::*;
+use web_sys::{Document, Window};
 
-use cpu::*;
+#[wasm_bindgen]
+extern "C" {
+    // Use `js_namespace` here to bind `console.log(..)` instead of just
+    // `log(..)`
+    #[wasm_bindgen(js_namespace = console)]
+    fn log(s: &str);
+}
 
 #[wasm_bindgen(start)]
 pub fn start() -> Result<(), JsValue> {
+    log("start...");
     utils::set_panic_hook();
+    Ok(())
+}
 
-    // print pretty errors in wasm https://github.com/rustwasm/console_error_panic_hook
-    // This is not needed for tracing_wasm to work, but it is a common tool for getting proper error line numbers for panics.
-    console_error_panic_hook::set_once();
-
-    // Add this line:
-    tracing_wasm::set_as_global_default();
-
+#[wasm_bindgen]
+pub fn init() -> Result<(), JsValue> {
+    tracing_wasm::set_as_global_default_with_config(
+        tracing_wasm::WASMLayerConfigBuilder::new()
+            .set_max_level(Level::INFO)
+            .build(),
+    );
+    event!(
+        Level::INFO,
+        "start: tracing iniialised (you should see this message)"
+    );
+    event!(
+        Level::TRACE,
+        "start: you should not see 'TRACE' messages like this one, though."
+    );
     Ok(())
 }
 
@@ -48,22 +69,103 @@ pub fn tx2_next_simulated_tick(tx2: &Tx2) -> f64 {
     // different time to the current tick.
     let f = next.as_secs_f64().next_after(std::f64::INFINITY);
     event!(
-        Level::INFO,
+        Level::TRACE,
         "tx2_next_simulated_tick: next={next:?}, f={f:?}"
     );
     f
+}
+
+fn window() -> Window {
+    web_sys::window().expect("no global window exists")
+}
+
+fn document() -> Document {
+    window()
+        .document()
+        .expect("should have a document on the window")
+}
+
+fn generate_html_for_char(uch: char, attributes: &LincolnState, _advance: bool) -> String {
+    let colour_class = match attributes.colour {
+        Colour::Black => "lw-black",
+        Colour::Red => "lw-red",
+    };
+    let (script_open, script_close) = match attributes.script {
+        Script::Normal => ("", ""),
+        Script::Super => ("<sup>", "</sup>"),
+        Script::Sub => ("<sub>", "</sub>"),
+    };
+    // TODO: By recalling existing colour and script information we
+    // could save on olume of output here.
+    format!("<span class=\"{colour_class}\">{script_open}{uch}{script_close}</span>")
+}
+
+fn display_lw_unit_output_event(unit: Unsigned6Bit, ch: DescribedChar) {
+    event!(
+        Level::INFO,
+        "display_lw_unit_output_event: handling output event for LW unit {unit:?}"
+    );
+    let current_line_element_id = format!("lw{:o}-current-line", unit);
+    let current_line_el = document()
+        .get_element_by_id(&current_line_element_id)
+        .expect("LW current line element is missing from HTML document");
+    let mut current_line_text = current_line_el.inner_html();
+    match ch {
+        DescribedChar {
+            base_char: LincolnChar::UnicodeBaseChar('\r'),
+            ..
+        } => {
+            let history_element_id = format!("lw{:o}-history", unit);
+            let history_el = document()
+                .get_element_by_id(&history_element_id)
+                .expect("LW history element is missing from HTML document");
+            // Append the current line to the history.
+            let mut history_text = history_el.inner_html();
+            history_text.push_str(&current_line_text);
+            history_text.push_str("\r\n");
+            history_el.set_inner_html(&history_text);
+            // Clear the current line.
+            current_line_el.set_inner_html("");
+        }
+        DescribedChar {
+            base_char: LincolnChar::Unprintable(_),
+            ..
+        } => {
+            // We don't print unprintable characters.
+        }
+        DescribedChar {
+            base_char: LincolnChar::UnicodeBaseChar(uch),
+            attributes,
+            advance,
+            unicode_representation: _,
+        } => {
+            let s: String = generate_html_for_char(uch, &attributes, advance);
+            current_line_text.push_str(&s);
+            current_line_el.set_inner_html(&current_line_text);
+        }
+    }
+}
+
+fn display_output_event(output_event: OutputEvent) {
+    match output_event {
+        OutputEvent::LincolnWriterPrint { unit, ch } => display_lw_unit_output_event(unit, ch),
+    }
 }
 
 #[wasm_bindgen]
 pub fn tx2_do_tick(tx2: &mut Tx2, simulated_time: f64, real_elapsed_time: f64) {
     let context = make_context(simulated_time, real_elapsed_time);
     event!(
-        Level::INFO,
+        Level::TRACE,
         "tx2_do_tick: simulated_time={simulated_time:?}, real_elapsed_time={real_elapsed_time:?}, context={context:?}"
     );
     match tx2.tick(&context) {
-        Ok(Some(_output)) => {
-            event!(Level::DEBUG, "dropping a Tx2 output event");
+        Ok(Some(output)) => {
+            event!(
+                Level::INFO,
+                "tx2_do_tick: handling output event for {output:?}"
+            );
+            display_output_event(output);
         }
         Ok(None) => (),
         Err(e) => {

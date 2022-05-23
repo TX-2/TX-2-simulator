@@ -7,9 +7,7 @@ function clamped_elapsed_time(then) {
 
 function call_after(t, f) {
     var delay_ms = t * 1000.0;
-    var id = setTimeout(f, delay_ms);
-    console.log("call_after: timeout id = " + id + ", delay_ms=" + delay_ms);
-    return id;
+    return setTimeout(f, delay_ms);
 }
 
 function tick_after(interval, system_time_then) {
@@ -134,6 +132,9 @@ function get_current_elapsed_time() {
     return clamped_elapsed_time(start);
 }
 
+console.log("Calling WASM initialise routine.");
+wasm.init();
+console.log("Starting TX-2 set-up.");
 /* Set up the TX-2. */
 var running = false;
 var start = Date.now();
