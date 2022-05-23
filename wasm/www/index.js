@@ -19,9 +19,13 @@ function tick_after(interval, system_time_then) {
 function do_tick(tick_time) {
     var elapsed = clamped_elapsed_time(start);
     wasm.tx2_do_tick(tx2, tick_time, elapsed);
-    var next_tick_at = wasm.tx2_next_simulated_tick(tx2);
-    var interval = next_tick_at - tick_time;
-    tick_after(interval, next_tick_at);
+    if (running) {
+	var next_tick_at = wasm.tx2_next_simulated_tick(tx2);
+	var interval = next_tick_at - tick_time;
+	tick_after(interval, next_tick_at);
+    } else {
+	console.log("Sync system is not running, not scheduling next tick");
+    }
 }
 
 function codabo(simulated_system_time_secs, real_elapsed_time) {
@@ -45,6 +49,36 @@ function load_petr_tape() {
     reader.readAsArrayBuffer(file);
 }
 
+
+function update_sync_button_text() {
+    var syncBtn = document.getElementById("syncBtn");
+    if (running) {
+	syncBtn.innerHTML = "Sync: Stop";
+    } else {
+	syncBtn.innerHTML = "Sync: Start";
+    }
+}
+
+
+function set_up_sync_system() {
+    var syncBtn = document.getElementById("syncBtn");
+    syncBtn.onclick = sync_start_stop;
+    running = false;
+    update_sync_button_text();
+}
+
+function sync_start_stop() {
+    if (running) {
+	console.log("sync: stop");
+    } else {
+	console.log("sync: stop");
+    }
+    running = !running;
+    update_sync_button_text();
+    if (running) {
+	tick_after(get_current_system_time() + 1e-6, get_current_elapsed_time() + 1e-6);
+    }
+}
 
 function set_up_tape_loading_dialog() {
     console.log("set_up_tape_loading_dialog...");
@@ -87,6 +121,7 @@ function set_up_codabo_button() {
 }
 
 function set_up_ui() {
+    set_up_sync_system();
     set_up_codabo_button();
     set_up_tape_loading_dialog();
 }
@@ -100,6 +135,7 @@ function get_current_elapsed_time() {
 }
 
 /* Set up the TX-2. */
+var running = false;
 var start = Date.now();
 var sleep_multiplier = 1.0;
 var current_system_time = 0.0;
@@ -108,10 +144,3 @@ const tx2 = wasm.create_tx2(0.0, 0.0);
 
 /* Set up event listeners. */
 set_up_ui();
-
-/* Start the TX-2 machine running. */
-console.log("preparing for first tick");
-codabo(0.0, start)
-/* Set up the first tick callback.  Ultimately this will be part of
-   the sync system implementation. */
- tick_after(1e-6, 1e-6);
