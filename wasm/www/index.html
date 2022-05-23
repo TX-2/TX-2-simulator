@@ -42,24 +42,34 @@
       </div>
     </div>
 
+    <div class="instructions">
+	Here are some getting-started instructions.
+	<ol>
+	  <li> Press "Mount Paper Tape" and select
+	    the <code>hello.tape</code> file.
+	  <li> Press the CODABO (TSR) button
+	  <li> Press the "Sync: Start" button.
+	</ol>
+	Presently you should see some output.
+    </div>
+
     <!-- TX-2 controls, Lincoln Writer etc. -->
     <div class="wrapper">
       <!-- this is just static content for now. -->
-      <div class="box status">Machine Status; adding some long content
-	here to see if we get a wide column.</div>
+      <div class="box status">Machine status information will
+      eventually go here.</div>
       <div class="box buttons">
 	<button id="codaboTSRBtn">CODABO (TSR)</button>
 	<button id="tapeLoadBtn">Mount Paper Tape</button>
 	<button id="syncBtn">Sync</button>
       </div>
-      <div class="box paper lw66">
-	<pre>
-	  <span class=lw-red>Lincoln Writer Content</span>
-	  100| REX<sub>66</sub> 200  ** Set X<sub>66</sub> to 200.
-	  <sup>21</sup>IOS<sub>66</sub> 30000 ** Connect the Lincoln Writer (<span class=lw-red>unit 66</span>).
-	  FOO<sup>Y</sup>
-	</pre>
+      <div class="box lw66">
+	<div class="paper">
+	  <!-- really we'd like the paper to vertically fill the lw66
+	  box even when there is nothing printed on it. -->
+	  <pre class="paper" id="lw66-history"></pre>
+	  <pre class="paper" id="lw66-current-line"></pre>
+	</div>
       </div>
-    </div>
   </body>
 </html>

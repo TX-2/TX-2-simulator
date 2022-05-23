@@ -2,6 +2,11 @@ body {
   margin: 40px;
 }
 
+.instructions {
+    background-color: rgb(255, 255, 240);
+    color: black;
+}
+
 .wrapper {
     display: grid;
     grid-gap: 10px;
@@ -22,11 +27,34 @@ body {
   }
 
   .paper {
-      background-color: rgb(255, 255, 240);
       border: 1px;
-      border-style: solid;
       border-color: black;
+      border-style: solid;
+
+      margin-top: 0px;
+      margin-bottom: 0px;
+      margin-right: 1em;
+      margin-left: 1em;
+
       font-family: monospace;
+      background-color: rgb(255, 255, 240);
+  }
+
+  .lw66 {
+      grid-column: 2 / 2;
+      grid-row: 2 / 2;
+
+      overflow-y: scroll;
+      padding: 20px;
+  }
+
+  #lw66-history {
+      border: 0px;
+  }
+
+  #lw66-current-line {
+      border: 0px;
+      background-color: rgb(255, 255, 180);
   }
 
   .nojs-warning {
@@ -42,11 +70,6 @@ body {
   }
   .buttons {
     grid-column: 1 / 2;
-    grid-row: 2 / 2;
-  }
-
-  .lw66 {
-    grid-column: 2 / 2;
     grid-row: 2 / 2;
   }
 
