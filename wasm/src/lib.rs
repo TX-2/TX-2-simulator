@@ -80,3 +80,9 @@ pub fn tx2_codabo(tx2: &mut Tx2, simulated_time: f64, elapsed_time_secs: f64) {
     tx2.set_next_execution_due(context.simulated_time, Some(context.simulated_time));
     tx2.set_run_mode(RunMode::Running);
 }
+
+#[wasm_bindgen]
+pub fn tx2_load_tape(tx2: &mut Tx2, simulated_time: f64, elapsed_time_secs: f64, data: &[u8]) {
+    let context = make_context(simulated_time, elapsed_time_secs);
+    tx2.mount_tape(&context, data.to_vec());
+}

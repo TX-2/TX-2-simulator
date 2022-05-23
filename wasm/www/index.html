@@ -21,12 +21,35 @@
     </noscript>
     <script src="./bootstrap.js">
     </script>
+    <!-- Modal dialog for loading a tape. -->
+    <div id="tapeLoadModal" class="modal">
+      <div class="modal-content">
+	<span class="close">&times;</span>
+	<p>Please select a paper tape image file to load.
+	  If you don't already have one, you can assemble
+	  a program to generate a tape image.
+	</p>
+	<p>
+	  An example tape image, <code>hello.tape</code>, is also
+	  included in the git repository for the simulator.
+	</p>
+        <label>Load a tape image file:
+          <input type="file"
+		 id="tape_load_file"
+		 accept=".tape,application/binary"
+		 />
+        </label>
+      </div>
+    </div>
+
+    <!-- TX-2 controls, Lincoln Writer etc. -->
     <div class="wrapper">
       <!-- this is just static content for now. -->
       <div class="box status">Machine Status; adding some long content
 	here to see if we get a wide column.</div>
       <div class="box buttons">
-	<button>CODABO</button>
+	<button id="codaboTSRBtn">CODABO (TSR)</button>
+	<button id="tapeLoadBtn">Mount Paper Tape</button>
       </div>
       <div class="box paper lw66">
 	<pre>
