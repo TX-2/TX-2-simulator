@@ -1,0 +1,2 @@
+The files in this directory are binaries.  For assembly source code,
+see [the assembler folder](../assembler/README.md).
