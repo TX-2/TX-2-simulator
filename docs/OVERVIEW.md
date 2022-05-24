@@ -68,6 +68,15 @@ This part of the design likely won't last very long, because it won't
 support devices like the light pen or CRT without significant change.
 But it should allow us to test and debug the loading of programs.
 
+### wasm
+
+This directory contains a version of the simulator which can run in
+your web browser.  Essentially this is based on the implementation in
+`cpu` compiled to Web Assembly.
+
+We were inspired to create this by the example of Matt Godbolt's
+[jsbeeb](https://bbc.godbolt.org/).
+
 ### assembler
 
 This is a command-line assembler which will eventually read Unicode
@@ -76,6 +85,9 @@ paper tapes.
 
 The syntax of the assembler input is intended to follow that of the
 standard TX-2 assembler which was called M4.
+
+Right now we support a quite limited subset (no support for symbols,
+for example).  This is enough to generate some test programs.
 
 The reason for using Unicode as input is so that the input file can,
 as far as possible, look like the normal representation of M4 source
@@ -86,11 +98,8 @@ for `☛☛`.  But nothing like this is implemented right now.
 ## Future Directions
 
 Clearly, we hope to implement more of the missing features
-(e.g. remaining opcodes and hardware devices).  We'd like to end up
-with a working [WASM-based
-simulator](https://github.com/TX-2/TX-2-simulator/issues/45) which
-people can try out over the web.  We're inspired by the example of
-Matt Godbolt's [jsbeeb](https://bbc.godbolt.org/).
+(e.g. remaining opcodes and hardware devices).  Most of all, we would
+like to locate authentic TX-2 code to test our simulator.
 
 ## Other Sources of Information
 
