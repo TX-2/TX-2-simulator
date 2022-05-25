@@ -50,14 +50,13 @@ jobs:
         wasm-pack test --firefox
 
     - name: WASM Build
-      run: |
-        cd wasm
-        wasm-pack build
+      run: cd wasm && wasm-pack build
+
+    - name: NPM install (latest)
+      run: cd wasm/www && npm install npm@latest
 
     - name: NPM Build
-      run: |
-        cd wasm/www
-        npm run build
+      run: cd wasm/www && npm run build
 
     # Save wasm build so that we can optionally deploy it without rebuilding
     - name: Save wasm dist artifact
