@@ -97,4 +97,15 @@ jobs:
         keep_history: false
         jekyll: false
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN_GITHUB_DEMO }}
+
+#    - name: Push to demo repository
+#      uses: cpina/github-action-push-to-another-repository@main
+#      env:
+#        API_TOKEN_GITHUB: ${{ secrets.API_TOKEN_GITHUB }}
+#      with:
+#        source-directory: 'output'
+#        destination-github-username: 'cpina'
+#        destination-repository-name: 'pandoc-test-output'
+#        user-email: carles3@pina.cat
+#        target-branch: main
