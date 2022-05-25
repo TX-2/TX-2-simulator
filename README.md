@@ -16,6 +16,9 @@ of the simulator.
 
 ## Trying It Out
 
+The simulator doesn't emulate all the features of the original TX-2
+yet, but you can still try it out.
+
 ### Building and Running The Command-Line Tools
 
 You can [try out the command-line simulator and tools by following
@@ -23,8 +26,9 @@ these instructions](docs/build/cli.md).
 
 ### Building and Running the Web-based simulator
 
-This is a work-in-progress.  See the [draft instructions for building
-the web-based simulator](docs/build/web.md).
+You can either try it on-line [here](https://tx-2.github.io/demo/) or
+build and run it youself, by following [these
+instructions](docs/build/web.md).
 
 ## Contributing
 
