@@ -97,7 +97,7 @@ jobs:
         keep_history: false
         jekyll: false
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN_GITHUB_DEMO }}
+        GITHUB_TOKEN: ${{ secrets.API_TOKEN_GITHUB_DEMO }}
 
 #    - name: Push to demo repository
 #      uses: cpina/github-action-push-to-another-repository@main
