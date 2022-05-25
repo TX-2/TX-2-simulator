@@ -36,15 +36,36 @@ jobs:
       # so that the build of wasm-pack will be cached by rust-cache action.
       run: CARGO_TARGET_DIR=`pwd`/target cargo install wasm-pack
 
-    - name: Run tests
-      run: cargo test
+    - name: Run Cargo tests
+      run: cargo test --workspace
+
+    - name: Run Chrome tests
+      run: |
+        cd wasm
+        wasm-pack test --chrome
+
+    - name: Run Firefox tests
+      run: |
+        cd wasm
+        wasm-pack test --firefox
+
+    - name: WASM Build
+      run: |
+        cd wasm
+        wasm-pack build
+
+    - name: NPM Build
+      run: |
+        cd wasm/www
+        npm run build
 
     # Save wasm build so that we can optionally deploy it without rebuilding
     - name: Save wasm dist artifact
       uses: actions/upload-artifact@v2
       with:
         name: wasm-dist
-        path: wasm/dist
+        path: wasm/www/dist/
+        if-no-files-found: error
 
   deploy:
     needs: build
@@ -61,11 +82,13 @@ jobs:
     if: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/pages-alt') }}
 
     steps:
+
     - name: Download wasm dist artifact
       uses: actions/download-artifact@v2
       with:
         name: wasm-dist
         path: dist-for-deploy
+
     - name: Deploy to GitHub Pages
       uses: crazy-max/ghaction-github-pages@v2
       with:
