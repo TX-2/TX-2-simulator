@@ -18,5 +18,12 @@ members = [
 	"assembler",
 
 	# Web-based simulator.
-	"wasm",
+	"tx2-web",
 ]
+
+[profile.wasm-release]
+inherits = "release"
+
+[profile.wasm-release.build-override]
+# Tell `rustc` to optimize for small code size.
+opt-level = "s"

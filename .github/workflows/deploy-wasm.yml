@@ -36,34 +36,21 @@ jobs:
       # so that the build of wasm-pack will be cached by rust-cache action.
       run: CARGO_TARGET_DIR=`pwd`/target cargo install wasm-pack
 
+    - name: NPM install (latest)
+      run: cd tx2-web && npm install npm@latest
+
     - name: Run Cargo tests
       run: cargo test --workspace
 
-    - name: Run Chrome tests
-      run: |
-        cd wasm
-        wasm-pack test --chrome
-
-    - name: Run Firefox tests
-      run: |
-        cd wasm
-        wasm-pack test --firefox
-
-    - name: WASM Build
-      run: cd wasm && wasm-pack build
-
-    - name: NPM install (latest)
-      run: cd wasm/www && npm install npm@latest
-
-    - name: NPM Build
-      run: cd wasm/www && npm run build
+    - name: NPM (including WASM) Build
+      run: cd tx2-web && npm run build
 
     # Save wasm build so that we can optionally deploy it without rebuilding
     - name: Save wasm dist artifact
       uses: actions/upload-artifact@v2
       with:
-        name: wasm-dist
-        path: wasm/www/dist/
+        name: tx2-web-dist
+        path: tx2-web/dist
         if-no-files-found: error
 
   deploy:
@@ -85,7 +72,7 @@ jobs:
     - name: Download wasm dist artifact
       uses: actions/download-artifact@v2
       with:
-        name: wasm-dist
+        name: tx2-web-dist
         path: dist-for-deploy
 
     - name: Deploy to GitHub Pages
@@ -98,14 +85,3 @@ jobs:
         jekyll: false
       env:
         GITHUB_TOKEN: ${{ secrets.API_TOKEN_GITHUB_DEMO }}
-
-#    - name: Push to demo repository
-#      uses: cpina/github-action-push-to-another-repository@main
-#      env:
-#        API_TOKEN_GITHUB: ${{ secrets.API_TOKEN_GITHUB }}
-#      with:
-#        source-directory: 'output'
-#        destination-github-username: 'cpina'
-#        destination-repository-name: 'pandoc-test-output'
-#        user-email: carles3@pina.cat
-#        target-branch: main
