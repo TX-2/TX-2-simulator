@@ -1,9 +1,10 @@
 import React, { useState, FunctionComponent } from 'react';
 import ReactDOM from 'react-dom';
 import Modal from 'react-modal';
+import Checkbox from './checkbox';
 import styled from 'styled-components';
 
-import { codabo, load_tape } from './machine'
+import { codabo, load_tape, start_clock, stop_clock, is_clock_running } from './model/machine'
 
 const Box = styled.div`
 background-color: lightgray;
@@ -23,20 +24,10 @@ grid-column: 1 / span 2;
 grid-row: 1 / 1;
 `;
 
-import {
-  Wrapper,
-  Header,
-  StyledModal,
-  HeaderText,
-  CloseButton,
-  Content,
-  Backdrop,
-} from './modal.style';
-
-
 const Buttons: FunctionComponent = () => {
     let subtitle;
     const [ modalIsOpen, setIsOpen ] = React.useState(false);
+    const [ isRunning, setIsRunning ] = React.useState(false);
 
     function openModal() {
 	setIsOpen(true);
@@ -91,11 +82,23 @@ const Buttons: FunctionComponent = () => {
 	    </Modal>;
     };
 
+    function handleChangeRun(e: React.ChangeEvent<HTMLInputElement>) {
+	console.log("handleChangeRun: " + e.target.checked);
+	if (e.target.checked) {
+	    setIsRunning(true);
+	    start_clock();
+	} else {
+	    setIsRunning(false);
+	    stop_clock();
+	}
+    }
+
+
     return <ButtonsBox>
 	<TapeLoadModal />
 	<button id="codaboTSRBtn" onClick={codabo}>CODABO (TSR)</button>
 	<button id="tapeLoadBtn" onClick={openModal}>Mount Paper Tape</button>
-	<button id="syncBtn">Sync</button>
+	<Checkbox label="Run" handleChange={handleChangeRun} isChecked={is_clock_running()} />
 	</ButtonsBox>;
 };
 

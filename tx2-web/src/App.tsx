@@ -2,7 +2,7 @@ import React, { useState, useRef } from "react";
 
 import { Instructions } from './Instructions';
 import { MainGrid } from './MainGrid';
-import { create_tx2 } from './machine'
+import { create_tx2 } from './model/machine'
 
 type AppState = {
     running: boolean;

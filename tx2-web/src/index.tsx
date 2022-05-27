@@ -1,7 +1,7 @@
 import React, { useState, useRef } from "react";
 import ReactDOM from "react-dom";
 import styled from 'styled-components';
-import { set_app_wasm_mod } from './machine'
+import { set_app_wasm_mod } from './model/machine'
 import Modal from 'react-modal';
 
 import { App } from './App';
