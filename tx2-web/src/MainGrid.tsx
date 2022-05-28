@@ -129,8 +129,24 @@ font-family: monospace;
 background-color: rgb(255, 255, 240);
 `;
 
+const ComputerOutput = styled.pre`
+border: 0px;
+border-style: none;
+margin: 0px 0px;
+font-family: monospace;
+`;
+
+const History = styled(ComputerOutput)`
+background-color: rgb(255, 255, 240);
+`;
+const CurrentLine = styled(ComputerOutput)`
+background-color: rgb(255, 255, 100);
+`;
+
 const Lw66 = () => {
-	return <LincolnWriterBox><Paper>This is the LW66 output.</Paper></LincolnWriterBox>;
+  return <LincolnWriterBox>
+    <Paper><History id="lw66-history"></History><CurrentLine id="lw66-current-line"></CurrentLine></Paper>
+  </LincolnWriterBox>;
 };
 
 const GridWrapper = styled.div`
