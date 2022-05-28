@@ -4,9 +4,8 @@
   "description": "A web-based simulator for the TX-2 computer.",
   "main": "src/index.tsx",
   "scripts": {
-    "build:wasm": "cd .. && cargo build --profile wasm-release --target wasm32-unknown-unknown",
-    "build:bindgen": "wasm-bindgen ../target/wasm32-unknown-unknown/debug/tx2_web.wasm --out-dir build",
-    "build": "npm run build:wasm && npm run build:bindgen && npx webpack",
+    "build:wasm": "wasm-pack build --out-dir build",
+    "build": "npm run build:wasm && npx webpack",
     "dev": "webpack server"
   },
   "keywords": [],
