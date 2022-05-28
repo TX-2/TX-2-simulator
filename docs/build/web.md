@@ -43,15 +43,15 @@ You should not need `cargo-generate`.
 ### Build Steps
 
 ```sh
-$ cd wasm
-$ wasm-pack build
+$ cd tx2-web
+$ npm run build
 ```
 
 ### Trying it Out
 
 ```sh
-$ cd wasm/www
-$ npm run start
+$ cd tx2-web
+$ npm run dev
 ```
 
 The `npm` command will print the URL from which the pages are served,
