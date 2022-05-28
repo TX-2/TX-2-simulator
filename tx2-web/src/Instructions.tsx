@@ -2,7 +2,6 @@ import React from 'react';
 import styled from 'styled-components';
 
 const Wrapper = styled.section`
-  background-color: rgb(255, 255, 240);
   color: black;
 `;
 

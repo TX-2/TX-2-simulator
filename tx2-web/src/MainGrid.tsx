@@ -1,7 +1,9 @@
-import React, { useState, FunctionComponent } from 'react';
+import React, { useEffect, useState, FunctionComponent, Component } from 'react';
 import ReactDOM from 'react-dom';
+import { Instructions } from './Instructions';
 import Modal from 'react-modal';
 import Checkbox from './checkbox';
+import { LincolnWriter } from './LincolnWriter';
 import styled from 'styled-components';
 
 import { codabo, load_tape, start_clock, stop_clock, is_clock_running } from './model/machine'
@@ -103,7 +105,7 @@ const Buttons: FunctionComponent = () => {
 };
 
 const MachineStatus = () => {
-	return <MachineStatusBox>Machine status information will
+	return <MachineStatusBox><Instructions />Machine status information will
 		eventually go here.</MachineStatusBox>;
 };
 
@@ -115,45 +117,15 @@ overflow-y: scroll;
 padding: 20px;
 `;
 
-const Paper = styled.div`
-border: 1px;
-border-color: black;
-border-style: solid;
-
-margin-top: 0px;
-margin-bottom: 0px;
-margin-right: 1em;
-margin-left: 1em;
-
-font-family: monospace;
-background-color: rgb(255, 255, 240);
-`;
-
-const ComputerOutput = styled.pre`
-border: 0px;
-border-style: none;
-margin: 0px 0px;
-font-family: monospace;
-`;
-
-const History = styled(ComputerOutput)`
-background-color: rgb(255, 255, 240);
-`;
-const CurrentLine = styled(ComputerOutput)`
-background-color: rgb(255, 255, 100);
-`;
-
 const Lw66 = () => {
-  return <LincolnWriterBox>
-    <Paper><History id="lw66-history"></History><CurrentLine id="lw66-current-line"></CurrentLine></Paper>
-  </LincolnWriterBox>;
+  return <LincolnWriterBox><LincolnWriter unit={"66"} cursor_blink_ms={750} /></LincolnWriterBox>;
 };
 
 const GridWrapper = styled.div`
 display: grid;
 grid-gap: 10px;
 grid-template-columns: 1fr 9fr;
-grid-template-rows: 100px minmax(100px, auto);
+grid-template-rows: 1fr 9fr;
 background-color: #fff;
 color: #444;
 width: 90vw;

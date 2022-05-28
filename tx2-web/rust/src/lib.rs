@@ -115,6 +115,7 @@ fn display_lw_unit_output_event(unit: Unsigned6Bit, ch: DescribedChar) {
             base_char: LincolnChar::UnicodeBaseChar('\r'),
             ..
         } => {
+            event!(Level::INFO, "LW: processing a carriage return");
             let history_element_id = format!("lw{:o}-history", unit);
             let history_el = document()
                 .get_element_by_id(&history_element_id)
@@ -122,7 +123,7 @@ fn display_lw_unit_output_event(unit: Unsigned6Bit, ch: DescribedChar) {
             // Append the current line to the history.
             let mut history_text = history_el.inner_html();
             history_text.push_str(&current_line_text);
-            history_text.push_str("\r\n");
+            history_text.push_str("<br/>\r\n");
             history_el.set_inner_html(&history_text);
             // Clear the current line.
             current_line_el.set_inner_html("");

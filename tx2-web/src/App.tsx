@@ -29,6 +29,6 @@ export class App extends React.Component {
 	}
 
 	render() {
-		return <div><Instructions /><MainGrid /></div>;
+		return <div><MainGrid /></div>;
 	}
 }
