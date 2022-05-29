@@ -1,4 +1,4 @@
-import React from "react";
+import React, { FC, ReactElement } from "react";
 
 interface Props {
 	isChecked: boolean;
@@ -6,15 +6,15 @@ interface Props {
 	label: string;
 }
 
-const Checkbox = (props: Props) => {
+const Checkbox: FC<Props> = ({isChecked, handleChange, label}): ReactElement => {
 	return (
 		<div>
-			<label htmlFor={props.label}>{props.label}</label>
+			<label htmlFor={label}>{label}</label>
 			<input
 				type="checkbox"
-				id={props.label}
-				checked={props.isChecked}
-				onChange={props.handleChange}
+				id={label}
+				checked={isChecked}
+				onChange={handleChange}
 			/>
 		</div>
 	);

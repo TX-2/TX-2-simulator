@@ -60,7 +60,7 @@ class Cursor extends Component<CursorProps, CursorState> {
   componentWillUnmount() {
     clearInterval(this.intervalId);
   }
-  render() {
+  render(): React.ReactElement {
     if (this.state.isSolid) {
       return <OpaqueCursor>&#9608;</OpaqueCursor>;
     } else {
@@ -78,7 +78,7 @@ export class LincolnWriter extends React.Component<LincolnWriterProps, {}> {
   historyId = this.prefix + "-history";
   currentId = this.prefix + "-current-line";
 
-  render() {
+  render(): React.ReactElement {
     return <Paper>
       <ComputerOutput id={this.historyId}></ComputerOutput>
       <ComputerOutput id={this.currentId}></ComputerOutput>

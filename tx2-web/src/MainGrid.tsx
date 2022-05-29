@@ -1,12 +1,11 @@
-import React, { useEffect, useState, FunctionComponent, Component } from 'react';
-import ReactDOM from 'react-dom';
+import React, { FunctionComponent, ReactElement } from 'react';
 import { Instructions } from './Instructions';
-import Modal from 'react-modal';
 import Checkbox from './checkbox';
 import { LincolnWriter } from './LincolnWriter';
+import TapeLoadModal from './TapeLoadModal';
 import styled from 'styled-components';
 
-import { codabo, load_tape, start_clock, stop_clock, is_clock_running } from './model/machine'
+import { codabo, start_clock, stop_clock, is_clock_running } from './model/machine'
 
 const Box = styled.div`
 background-color: lightgray;
@@ -26,8 +25,7 @@ grid-column: 1 / span 2;
 grid-row: 1 / 1;
 `;
 
-const Buttons: FunctionComponent = () => {
-	let subtitle;
+const Buttons: FunctionComponent = (): ReactElement => {
 	const [modalIsOpen, setIsOpen] = React.useState(false);
 	const [isRunning, setIsRunning] = React.useState(false);
 
@@ -37,53 +35,6 @@ const Buttons: FunctionComponent = () => {
 	function closeModal() {
 		setIsOpen(false);
 	}
-	const customStyles = {
-		content: {
-			top: '50%',
-			left: '50%',
-			right: 'auto',
-			bottom: 'auto',
-			marginRight: '-50%',
-			transform: 'translate(-50%, -50%)',
-		},
-	};
-
-	const TapeLoadModal: FunctionComponent = () => {
-
-		const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-			const file: File = e.target.files![0];
-			console.log("Attempting to load a tape " + file.name + " which has length " + file.size);
-			let reader = new FileReader();
-			reader.onloadend = function() {
-				var bytes = new Uint8Array(reader.result as ArrayBuffer)
-				load_tape(bytes);
-				closeModal();
-			};
-			reader.readAsArrayBuffer(file);
-		}
-
-		return <Modal
-			isOpen={modalIsOpen}
-			onRequestClose={closeModal}
-			style={customStyles}
-			contentLabel="Load Paper Tape"
-		>
-			<h2 ref={(_subtitle) => (subtitle = _subtitle)}>Load Paper Tape Image</h2>
-			<div>
-				<p>Please select a paper tape image file to load. If you do not already have one, you can assemble a program to generate a tape image. </p>
-				<p> An example tape image, <code>hello.tape</code>, is also included in the git repository for the simulator. <a href="https://github.com/TX-2/TX-2-simulator/raw/main/examples/hello.tape">Download it here</a>.</p>
-				<p>After you have chosen the tape file, start the
-					computer by pressing the CODABO button.</p>
-			</div>
-			<form>
-				<label>Load a tape image file:&nbsp;
-					<input type="file" id="tape_load_file" accept=".tape,application/binary"
-						onChange={handleChange} />
-				</label>
-			</form>
-		</Modal>;
-	};
-
 	function handleChangeRun(e: React.ChangeEvent<HTMLInputElement>) {
 		console.log("handleChangeRun: " + e.target.checked);
 		if (e.target.checked) {
@@ -97,7 +48,9 @@ const Buttons: FunctionComponent = () => {
 
 
 	return <ButtonsBox>
-		<TapeLoadModal />
+		<TapeLoadModal
+			modalIsOpen={modalIsOpen}
+			closeModal={closeModal} />
 		<button id="codaboTSRBtn" onClick={codabo}>CODABO (TSR)</button>
 		<button id="tapeLoadBtn" onClick={openModal}>Mount Paper Tape</button>
 		<Checkbox label="Run" handleChange={handleChangeRun} isChecked={is_clock_running()} />
@@ -118,7 +71,7 @@ padding: 20px;
 `;
 
 const Lw66 = () => {
-  return <LincolnWriterBox><LincolnWriter unit={"66"} cursor_blink_ms={750} /></LincolnWriterBox>;
+	return <LincolnWriterBox><LincolnWriter unit={"66"} cursor_blink_ms={750} /></LincolnWriterBox>;
 };
 
 const GridWrapper = styled.div`
