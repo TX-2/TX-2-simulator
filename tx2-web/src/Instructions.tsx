@@ -12,10 +12,9 @@ export function Instructions() {
 				Here are some getting-started instructions.
 			</p>
 			<ol>
-				<li> Press "Mount Paper Tape" and select</li>
-				the <code>hello.tape</code> file.
+				<li> Press "Mount Paper Tape" and select the <code>hello.tape</code> file.</li>
 				<li> Press the CODABO (TSR) button</li>
-				<li> Press the "Sync: Start" button.</li>
+				<li> Check the "Run" checkbox.</li>
 			</ol>
 			<p>
 				Presently you should see some output.
