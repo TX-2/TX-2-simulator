@@ -57,7 +57,7 @@ impl ControlUnit {
             // change to be copied into the E register.  (as stated in
             // section 4-3.6 of the User Handbook).
             let flag_raised: bool = self.regs.flags.current_flag_state(&j);
-            self.regs.e = devices.report(ctx, j, flag_raised, &self.alarm_unit)?;
+            self.regs.e = devices.report(ctx, j, flag_raised, &mut self.alarm_unit)?;
         }
         let mut dismiss_reason: Option<&str> = if cf & 0o20 != 0 {
             Some("dismiss bit set in config")
@@ -67,7 +67,7 @@ impl ControlUnit {
 
         let operand = self.regs.n.operand_address_and_defer_bit();
         let result = match u32::from(operand) {
-            0o20_000 => devices.disconnect(&j, &self.alarm_unit),
+            0o20_000 => devices.disconnect(&j, &mut self.alarm_unit),
             0o30_000..=0o37_777 => {
                 let mode: Unsigned12Bit = Unsigned12Bit::try_from(operand & 0o07_777).unwrap();
                 ControlUnit::connect_unit(
@@ -77,7 +77,7 @@ impl ControlUnit {
                     &mut self.trap,
                     j,
                     mode,
-                    &self.alarm_unit,
+                    &mut self.alarm_unit,
                 )
             }
             0o40_000 => {
@@ -137,7 +137,7 @@ impl ControlUnit {
         trap: &mut TrapCircuit,
         unit: Unsigned6Bit,
         mode: Unsigned12Bit,
-        alarm_unit: &AlarmUnit,
+        alarm_unit: &mut AlarmUnit,
     ) -> Result<(), Alarm> {
         let maybe_flag_change: Option<FlagChange> = match u8::from(unit) {
             0o42 => {

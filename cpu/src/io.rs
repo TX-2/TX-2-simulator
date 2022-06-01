@@ -323,7 +323,7 @@ impl DeviceManager {
         ctx: &Context,
         unit: Unsigned6Bit,
         current_flag: bool,
-        alarm_unit: &AlarmUnit,
+        alarm_unit: &mut AlarmUnit,
     ) -> Result<Unsigned36Bit, Alarm> {
         match self.devices.get_mut(&unit) {
             Some(attached) => {
@@ -451,7 +451,7 @@ impl DeviceManager {
     pub fn disconnect(
         &mut self,
         device: &Unsigned6Bit,
-        alarm_unit: &AlarmUnit,
+        alarm_unit: &mut AlarmUnit,
     ) -> Result<(), Alarm> {
         if *device == u6!(0o42) {
             return Ok(());
@@ -477,7 +477,7 @@ impl DeviceManager {
         ctx: &Context,
         device: &Unsigned6Bit,
         mode: Unsigned12Bit,
-        alarm_unit: &AlarmUnit,
+        alarm_unit: &mut AlarmUnit,
     ) -> Result<Option<FlagChange>, Alarm> {
         match self.devices.get_mut(device) {
             Some(attached) => {

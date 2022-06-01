@@ -7,7 +7,7 @@ use wasm_bindgen::prelude::*;
 
 use base::prelude::*;
 
-use crate::alarm::UnmaskedAlarm;
+use crate::alarm::{Alarm, AlarmKind, AlarmStatus, UnmaskedAlarm};
 use crate::context::Context;
 use crate::control::{ControlUnit, ResetMode, RunMode};
 use crate::event::{InputEvent, OutputEvent};
@@ -50,6 +50,18 @@ impl Tx2 {
             next_hw_poll_due: ctx.simulated_time,
             run_mode: RunMode::InLimbo,
         }
+    }
+
+    pub fn get_status_of_alarm(&self, name: &str) -> Option<AlarmStatus> {
+        self.control.get_status_of_alarm(name)
+    }
+
+    pub fn get_alarm_statuses(&self) -> Vec<AlarmStatus> {
+        self.control.get_alarm_statuses()
+    }
+
+    pub fn set_alarm_masked(&mut self, kind: AlarmKind, masked: bool) -> Result<(), Alarm> {
+        self.control.set_alarm_masked(kind, masked)
     }
 
     pub fn set_run_mode(&mut self, run_mode: RunMode) {
@@ -253,6 +265,12 @@ impl Tx2 {
             // There can be no output event, because no instruction
             // was executed to generate it.
             Ok(None)
+        } else if self.unmasked_alarm_active() {
+            event!(
+                Level::DEBUG,
+                "will not execute the next instruction because there is an an unmasked alarm."
+            );
+            Ok(None) // no output event (as we executed no instruction)
         } else {
             // Not in limbo, it may be time to execute an instruction.
             match self.next_execution_due {
@@ -282,6 +300,10 @@ impl Tx2 {
                 }
             }
         }
+    }
+
+    fn unmasked_alarm_active(&self) -> bool {
+        self.control.unmasked_alarm_active()
     }
 
     pub fn disconnect_all_devices(&mut self, ctx: &Context) {

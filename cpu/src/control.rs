@@ -30,7 +30,7 @@ use base::prelude::*;
 use base::subword;
 
 use super::*;
-use crate::alarm::{Alarm, AlarmUnit, BadMemOp};
+use crate::alarm::{Alarm, AlarmKind, AlarmUnit, BadMemOp};
 use crate::context::Context;
 use crate::exchanger::{exchanged_value_for_load, exchanged_value_for_store, SystemConfiguration};
 use crate::io::DeviceManager;
@@ -441,6 +441,27 @@ impl ControlUnit {
                 PanicOnUnmaskedAlarm::Yes => true,
             }),
         }
+    }
+
+    pub fn set_alarm_masked(&mut self, kind: AlarmKind, masked: bool) -> Result<(), Alarm> {
+        if masked {
+            self.alarm_unit.mask(kind)
+        } else {
+            self.alarm_unit.unmask(kind);
+            Ok(())
+        }
+    }
+
+    pub fn unmasked_alarm_active(&self) -> bool {
+        self.alarm_unit.unmasked_alarm_active()
+    }
+
+    pub fn get_status_of_alarm(&self, name: &str) -> Option<AlarmStatus> {
+        self.alarm_unit.get_status_of_alarm(name)
+    }
+
+    pub fn get_alarm_statuses(&self) -> Vec<AlarmStatus> {
+        self.alarm_unit.get_alarm_statuses()
     }
 
     pub fn set_metabits_disabled(&mut self, disable: bool) {
