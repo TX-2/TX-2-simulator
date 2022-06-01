@@ -2,10 +2,11 @@ import React, { FunctionComponent, ReactElement } from 'react';
 import { Instructions } from './Instructions';
 import Checkbox from './checkbox';
 import { LincolnWriter } from './LincolnWriter';
+import AlarmPanel, { AlarmControlProps } from './AlarmPanel';
 import TapeLoadModal from './TapeLoadModal';
 import styled from 'styled-components';
 
-import { codabo, start_clock, stop_clock, is_clock_running } from './model/machine'
+import { all_alarm_info, codabo, start_clock, stop_clock, is_clock_running, AlarmStatus } from './model/machine'
 
 const Box = styled.div`
 background-color: lightgray;
@@ -85,6 +86,23 @@ width: 90vw;
 height: 90vh;
 `;
 
+function convert_alarm_status_to_alarm_control_props(info: AlarmStatus): AlarmControlProps {
+  return {
+    name: info.name,
+    maskable: info.maskable,
+    masked: info.masked,
+    active: info.active,
+    message: info.message
+  };
+}
+
 export const MainGrid = () => {
-	return <GridWrapper><MachineStatus /><Buttons /><Lw66 /></GridWrapper>;
+  let info = all_alarm_info()
+  .map(convert_alarm_status_to_alarm_control_props);
+  return (
+    <div>
+      <GridWrapper><MachineStatus /><Buttons /><Lw66 /></GridWrapper>
+      <AlarmPanel info={info}/>
+    </div>
+  );
 };

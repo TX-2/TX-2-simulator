@@ -23,6 +23,7 @@ members = [
 
 [profile.wasm-release]
 inherits = "release"
+lto = true
 
 [profile.wasm-release.build-override]
 # Tell `rustc` to optimize for small code size.

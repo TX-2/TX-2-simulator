@@ -6,6 +6,7 @@ mod utils;
 use base::charset::{Colour, DescribedChar, LincolnChar, LincolnState, Script};
 use base::Unsigned6Bit;
 use cpu::*;
+
 use float_next_after::NextAfter;
 use tracing::{event, Level};
 use wasm_bindgen::prelude::*;
@@ -170,7 +171,7 @@ pub fn tx2_do_tick(tx2: &mut Tx2, simulated_time: f64, real_elapsed_time: f64) {
         }
         Ok(None) => (),
         Err(e) => {
-            panic!("TX-2 alarm: {:?}", e);
+            event!(Level::INFO, "New unmasked TX-2 alarm: {:?}", e);
         }
     }
 }
@@ -188,4 +189,33 @@ pub fn tx2_codabo(tx2: &mut Tx2, simulated_time: f64, elapsed_time_secs: f64) {
 pub fn tx2_load_tape(tx2: &mut Tx2, simulated_time: f64, elapsed_time_secs: f64, data: &[u8]) {
     let context = make_context(simulated_time, elapsed_time_secs);
     tx2.mount_tape(&context, data.to_vec());
+}
+
+#[wasm_bindgen]
+pub fn get_alarm_statuses(tx2: &Tx2) -> Result<JsValue, String> {
+    let alarm_status = tx2.get_alarm_statuses();
+    match serde_wasm_bindgen::to_value(&alarm_status) {
+        Ok(val) => {
+            //event!(
+            //    Level::DEBUG,
+            //    "get_alarm_statuses: success result is {:?}",
+            //    &val
+            //);
+            Ok(val)
+        }
+        Err(e) => {
+            //event!(Level::DEBUG, "get_alarm_statuses: error result is {:?}", &e);
+            Err(e.to_string())
+        }
+    }
+}
+
+#[wasm_bindgen]
+pub fn set_alarm_masked(tx2: &mut Tx2, alarm_name: &str, masked: bool) -> Result<(), String> {
+    match AlarmKind::try_from(alarm_name) {
+        Ok(kind) => tx2
+            .set_alarm_masked(kind, masked)
+            .map_err(|e| e.to_string()),
+        Err(e) => Err(e.to_string()),
+    }
 }
