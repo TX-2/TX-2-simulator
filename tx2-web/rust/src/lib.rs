@@ -22,7 +22,6 @@ extern "C" {
 
 #[wasm_bindgen(start)]
 pub fn start() -> Result<(), JsValue> {
-    log("start...");
     utils::set_panic_hook();
     Ok(())
 }
@@ -30,17 +29,15 @@ pub fn start() -> Result<(), JsValue> {
 #[wasm_bindgen]
 pub fn init() -> Result<(), JsValue> {
     tracing_wasm::set_as_global_default_with_config(
-        tracing_wasm::WASMLayerConfigBuilder::new()
-            //.set_max_level(Level::INFO)
-            .build(),
+        tracing_wasm::WASMLayerConfigBuilder::new().build(),
     );
     event!(
         Level::INFO,
-        "start: tracing iniialised (you should see this message)"
+        "init: tracing iniialised (you should see this message)"
     );
     event!(
         Level::TRACE,
-        "start: you should not see 'TRACE' messages like this one, though."
+        "init: you should not see 'TRACE' messages like this one, though."
     );
     Ok(())
 }
