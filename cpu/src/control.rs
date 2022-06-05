@@ -500,7 +500,6 @@ impl ControlUnit {
         devices: &mut DeviceManager,
         mem: &mut MemoryUnit,
     ) {
-        // TODO: clear alarms.
         // We probably don't need an equivalent of resetting the
         // control flip-flops in an emulator.  But if we did, that
         // would happen here.
@@ -515,14 +514,49 @@ impl ControlUnit {
 			 reset_mode=?reset_mode);
         let _enter = span.enter();
         event!(Level::INFO, "Starting CODABO {:?}", &reset_mode);
-        self.disconnect_all_devices(ctx, devices);
-        self.regs.flags.lower_all();
+        // CODABO's first action is supposed to be "STOP" but the
+        // simulator has no analogue for "STOP".  One reason we need
+        // to perform STOP is that PRESET has no effect unless the
+        // computer is stopped.
+        self.clear_alarms();
+        self.preset(ctx, devices);
         self.startover(ctx, reset_mode, mem);
+        self.calaco();
         event!(
             Level::DEBUG,
             "After CODABO, control unit contains {:#?}",
             &self
         );
+    }
+
+    /// Simulate the effect of the PRESET button.  This is described
+    /// on page 5-19 of the Users Handbook. It:
+    /// 1. clears all flags
+    /// 2. Clears all "Connect" flip-flops
+    /// 3. Set all interlocks and indicators to their proper "PRESET" value.
+    ///
+    /// PRESET is supposedly interlocked so that it is ineffective
+    /// unless the machine is in the STOP state.  But our simulation,
+    /// right now, has no representation for the STOP state.
+    fn preset(&mut self, ctx: &Context, devices: &mut DeviceManager) {
+        // 1. Clear all flags.
+        self.regs.flags.lower_all();
+        // 2. Clear all "Connect" flip-flops
+        self.disconnect_all_devices(ctx, devices);
+        // 3. Set all interlocks and indicators to their proper "PRESET" value.
+        // (interlocks are not simulated)
+    }
+
+    /// Simulate the effect of the CALACO button.  This is described
+    /// on page 5-19 of the Users Handbook.
+    fn calaco(&mut self) {
+        self.clear_alarms();
+        // TODO: there is currently no simulator representation for
+        // STOP/START, but CALACO is supposed to perform START.
+    }
+
+    fn clear_alarms(&mut self) {
+        self.alarm_unit.clear_all_alarms();
     }
 
     pub fn disconnect_all_devices(&mut self, ctx: &Context, devices: &mut DeviceManager) {

@@ -425,6 +425,7 @@ impl AlarmUnit {
     }
 
     pub fn clear_all_alarms(&mut self) {
+        event!(Level::INFO, "clearing all alarms");
         self.active.clear()
     }
 

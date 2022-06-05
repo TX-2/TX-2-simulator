@@ -21,6 +21,7 @@ export function create_tx2() {
 
 export function codabo() {
     wasm.tx2_codabo(tx2, systemTime, clamped_elapsed_time());
+    update_alarm_status_changes(null, alarm_status_by_alarm_name());
     tick_after(0.0, systemTime + 1.0e-6);
 }
 
@@ -84,7 +85,6 @@ interface AlarmStatusByAlarmName {
 function alarm_status_by_alarm_name(): AlarmStatusByAlarmName {
     let alarm_status: AlarmStatusByAlarmName = {};
     all_alarm_info().forEach((st) => {
-	console.log({st});
 	alarm_status[st.name] = st;
     });
     console.log({alarm_status});
@@ -119,7 +119,13 @@ interface AlarmControlState {
   message: string;
 }
 
-function alarm_status_changed(old_state: AlarmStatus, new_state: AlarmStatus): boolean {
+function alarm_status_changed(
+    old_state: AlarmStatus | undefined,
+    new_state: AlarmStatus
+): boolean {
+    if (!old_state) {
+	return true;
+    }
     if (old_state.name != new_state.name) {
 	console.error("comparing states for different alarms is not allowed");
 	return true;
@@ -148,12 +154,12 @@ export function set_alarm_status_callback(name: string, f: AlarmStatusCallback |
     alarm_status_callbacks[name] = f;
 }
 
-function update_alarm_status_changes(prev: AlarmStatusByAlarmName, current: AlarmStatusByAlarmName): void {
-    let anything_changed: boolean = false;
+function update_alarm_status_changes(prev: AlarmStatusByAlarmName | null, current: AlarmStatusByAlarmName): void {
+    let anything_changed: boolean = !prev;
     for (let name in current) {
-	const old_status = prev[name];
+	const old_status = prev?.[name];
 	const current_status = current[name];
-	if (alarm_status_changed(old_status, current_status)) {
+	if ((!prev) || alarm_status_changed(old_status, current_status)) {
 	    console.log("Status change for " + name + " alarm", {old_status, current_status});
 	    let callback = alarm_status_callbacks[name];
 	    if (callback != null) {
