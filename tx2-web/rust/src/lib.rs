@@ -73,6 +73,11 @@ pub fn tx2_next_simulated_tick(tx2: &Tx2) -> f64 {
     f
 }
 
+#[wasm_bindgen]
+pub fn tx2_unmasked_alarm_active(tx2: &Tx2) -> bool {
+    tx2.unmasked_alarm_active()
+}
+
 fn window() -> Window {
     web_sys::window().expect("no global window exists")
 }
@@ -168,7 +173,7 @@ pub fn tx2_do_tick(tx2: &mut Tx2, simulated_time: f64, real_elapsed_time: f64) {
         }
         Ok(None) => (),
         Err(e) => {
-            event!(Level::INFO, "New unmasked TX-2 alarm: {:?}", e);
+            event!(Level::ERROR, "New unmasked TX-2 alarm: {:?}", e);
         }
     }
 }

@@ -1,14 +1,26 @@
 import React from "react";
 import { MainGrid } from './MainGrid';
-import { create_tx2 } from './model/machine'
+import { Tx2Controller } from './controller/tx2';
+import { AlarmController } from './controller/alarms'
 
-export class App extends React.Component {
-	constructor(props) {
-		super(props);
-		create_tx2();
-	}
+interface AppProps {
+  tx2Controller: Tx2Controller,
+}
+interface AppState {
+}
 
-	render(): React.ReactElement {
-		return <div><MainGrid /></div>;
-	}
+export class App extends React.Component<AppProps, AppState> {
+  constructor(props) {
+    super(props);
+  }
+
+  render(): React.ReactElement {
+    return <div>
+      <MainGrid
+	tx2Controller={this.props.tx2Controller}
+	alarmController={this.props.tx2Controller.alarmController}
+	loadTape={this.props.tx2Controller.loadTape.bind(this.props.tx2Controller)}
+      />
+    </div>;
+  }
 }

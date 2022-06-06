@@ -5,8 +5,8 @@ import { LincolnWriter } from './LincolnWriter';
 import AlarmPanel, { AlarmControlProps } from './AlarmPanel';
 import TapeLoadModal from './TapeLoadModal';
 import styled from 'styled-components';
-
-import { all_alarm_info, codabo, start_clock, stop_clock, is_clock_running, AlarmStatus } from './model/machine'
+import { Tx2Controller } from 'controller/tx2';
+import { AlarmController } from 'controller/alarms';
 
 const Box = styled.div`
 background-color: lightgray;
@@ -26,35 +26,47 @@ grid-column: 1 / span 2;
 grid-row: 1 / 1;
 `;
 
-const Buttons: FunctionComponent = (): ReactElement => {
+interface ButtonsProps {
+  changeRunCallback(run: boolean): void,
+  tx2Controller: Tx2Controller,
+  isClockRunning: boolean,
+  loadTape: (Uint8Array) => void,
+}
+
+const Buttons = ({changeRunCallback, tx2Controller, isClockRunning, loadTape}: ButtonsProps) => {
 	const [modalIsOpen, setIsOpen] = React.useState(false);
-	const [isRunning, setIsRunning] = React.useState(false);
+	const [isRunning, setIsRunning] = React.useState(isClockRunning);
 
 	function openModal() {
 		setIsOpen(true);
 	}
+
 	function closeModal() {
 		setIsOpen(false);
 	}
+
+        React.useEffect(() => {
+            tx2Controller.setRunChangeCallback(setIsRunning);
+            return function cleanup() {
+                tx2Controller.unsetRunChangeCallback()
+            }
+        });
+
 	function handleChangeRun(e: React.ChangeEvent<HTMLInputElement>) {
 		console.log("handleChangeRun: " + e.target.checked);
-		if (e.target.checked) {
-			setIsRunning(true);
-			start_clock();
-		} else {
-			setIsRunning(false);
-			stop_clock();
-		}
+                const run = !!e.target.checked;
+                changeRunCallback(run);
 	}
 
 
-	return <ButtonsBox>
-		<TapeLoadModal
-			modalIsOpen={modalIsOpen}
-			closeModal={closeModal} />
-		<button id="codaboTSRBtn" onClick={codabo}>CODABO (TSR)</button>
-		<button id="tapeLoadBtn" onClick={openModal}>Mount Paper Tape</button>
-		<Checkbox label="Run" handleChange={handleChangeRun} isChecked={is_clock_running()} />
+  return <ButtonsBox>
+    <TapeLoadModal
+      modalIsOpen={modalIsOpen}
+      closeModal={closeModal} loadTape={loadTape} />
+    <button id="codaboTSRBtn"
+      onClick={tx2Controller.codabo.bind(tx2Controller)}>CODABO (TSR)</button>
+    <button id="tapeLoadBtn" onClick={openModal}>Mount Paper Tape</button>
+    <Checkbox label="Run" handleChange={handleChangeRun.bind(this)} isChecked={isRunning} />
 	</ButtonsBox>;
 };
 
@@ -86,23 +98,31 @@ width: 90vw;
 height: 90vh;
 `;
 
-function convert_alarm_status_to_alarm_control_props(info: AlarmStatus): AlarmControlProps {
-  return {
-    name: info.name,
-    maskable: info.maskable,
-    masked: info.masked,
-    active: info.active,
-    message: info.message
-  };
+interface MainGridProps {
+  tx2Controller: Tx2Controller,
+  alarmController: AlarmController,
+  loadTape: (bytes: Uint8Array) => void,
 }
 
-export const MainGrid = () => {
-  let info = all_alarm_info()
-  .map(convert_alarm_status_to_alarm_control_props);
-  return (
-    <div>
-      <GridWrapper><MachineStatus /><Buttons /><Lw66 /></GridWrapper>
-      <AlarmPanel info={info}/>
-    </div>
-  );
-};
+type LoadTapeCallback = (bytes: Uint8Array) => void;
+
+
+export const MainGrid = (props: MainGridProps) => (
+  <div>
+    <GridWrapper>
+      <MachineStatus />
+      <Buttons
+	changeRunCallback={props.tx2Controller.changeRun.bind(props.tx2Controller)}
+	tx2Controller={props.tx2Controller}
+	isClockRunning={props.tx2Controller.isClockRunning()}
+	loadTape={props.loadTape}
+      />
+      <Lw66 />
+    </GridWrapper>
+    <AlarmPanel
+      alarmStatuses={props.alarmController.all_alarm_info()}
+      maskedChangeCallback={props.alarmController.set_alarm_masked.bind(props.alarmController)}
+      registerStatusCallback={props.alarmController.set_alarm_status_callback.bind(props.alarmController)}
+    />
+  </div>
+);

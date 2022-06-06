@@ -1,11 +1,10 @@
 import React, { FunctionComponent, ChangeEvent } from 'react';
 import Modal from 'react-modal';
 
-import { load_tape } from './model/machine'
-
 interface TapeLoadModalProps {
   modalIsOpen: boolean;
   closeModal: () => void;
+  loadTape: (Uint8Array) => void;
 }
 
 const customStyles = {
@@ -19,7 +18,7 @@ const customStyles = {
 	},
 };
 
-const TapeLoadModal: FunctionComponent<TapeLoadModalProps> = ({modalIsOpen, closeModal}) => {
+const TapeLoadModal: FunctionComponent<TapeLoadModalProps> = ({modalIsOpen, closeModal, loadTape}) => {
 
 	const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 		const file: File = e.target.files![0];
@@ -27,7 +26,7 @@ const TapeLoadModal: FunctionComponent<TapeLoadModalProps> = ({modalIsOpen, clos
 		let reader = new FileReader();
 		reader.onloadend = function() {
 			var bytes = new Uint8Array(reader.result as ArrayBuffer)
-			load_tape(bytes);
+			loadTape(bytes);
 			closeModal();
 		};
 		reader.readAsArrayBuffer(file);

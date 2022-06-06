@@ -22,6 +22,8 @@ mod op_index;
 mod op_io;
 mod op_jump;
 mod op_loadstore;
+#[cfg(test)]
+mod tests;
 pub mod timing;
 mod trap;
 
@@ -1066,10 +1068,28 @@ impl ControlUnit {
                         }
                         Ok(opcode_result.output)
                     }
-                    Err(e) => {
-                        event!(Level::WARN, "instruction {} raised alarm {}", inst, e);
-                        self.set_program_counter(ProgramCounterChange::Stop(p));
-                        Err((e, p))
+                    Err(alarm) => {
+                        event!(Level::WARN, "instruction {} raised alarm {}", inst, alarm);
+                        match self.alarm_unit.fire_if_not_masked(alarm.clone()) {
+                            Err(alarm) => {
+                                event!(
+                                    Level::DEBUG,
+                                    "execute_instruction: unmasked_alarm_active: {}",
+                                    self.unmasked_alarm_active()
+                                );
+                                self.set_program_counter(ProgramCounterChange::Stop(p));
+                                Err((alarm, p))
+                            }
+                            Ok(()) => {
+                                // The alarm is active but masked.
+                                event!(
+                                    Level::DEBUG,
+                                    "execute_instruction: alarm {:?} is active but masked",
+                                    alarm
+                                );
+                                Ok(None) // no output event.
+                            }
+                        }
                     }
                 }
             } else {
@@ -1082,7 +1102,10 @@ impl ControlUnit {
                     .alarm_unit
                     .fire_if_not_masked(self.invalid_opcode_alarm())
                 {
-                    Err(e) => Err((e, p)),
+                    Err(e) => {
+                        self.set_program_counter(ProgramCounterChange::Stop(p));
+                        Err((e, p))
+                    }
                     Ok(()) => Ok(None),
                 }
             };
