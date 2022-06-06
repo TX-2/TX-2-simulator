@@ -1,7 +1,8 @@
 import React, { Component } from 'react';
 import Checkbox from './checkbox';
 import styled from 'styled-components';
-import { set_alarm_masked, set_alarm_status_callback } from './model/machine'
+
+import { AlarmStatus, AlarmStatusCallback, AlarmControlState } from './controller/alarms'
 
 export interface AlarmControlProps {
   name: string;
@@ -9,11 +10,8 @@ export interface AlarmControlProps {
   masked: boolean,
   active: boolean,
   message: string | null,
-}
-interface AlarmControlState {
-  masked: boolean;
-  active: boolean;
-  message: string;
+  setMaskedCallback: (name: string, masked: boolean) => void;
+  registerStatusCallback: (name: string, f: AlarmStatusCallback | null) => void;
 }
 
 const AlarmRowHeader = styled.th`
@@ -44,6 +42,20 @@ class AlarmControl extends Component<AlarmControlProps, AlarmControlState> {
     }
   }
 
+  componentDidMount() {
+    // TODO: should more of this mount/unmount logic go into the
+    // controller somehow?
+    this.props.registerStatusCallback(this.props.name, this.updateStatus.bind(this));
+  }
+
+  componentWillUnmount() {
+    this.props.registerStatusCallback(this.props.name, null);
+  }
+
+  updateStatus(newAlarmState: AlarmControlState) {
+    this.setState(newAlarmState);
+  }
+
   yesno(flag: boolean): string {
     if (flag) {
       return "yes";
@@ -54,37 +66,20 @@ class AlarmControl extends Component<AlarmControlProps, AlarmControlState> {
 
   handleMaskedChange(e: React.ChangeEvent<HTMLInputElement>) {
     let masked: boolean = e.target.checked;
-    set_alarm_masked(this.props.name, masked);
+    this.props.setMaskedCallback(this.props.name, masked);
     this.setState({
       masked: masked,
       active: this.state.active,
-      message: this.state.message,
-    });
-  }
-
-  update_from_model(new_alarm_state: AlarmControlState) {
-    console.log("AlarmControl: updating from ", {new_alarm_state});
-    this.setState({
-      masked: new_alarm_state.masked,
-      active: new_alarm_state.active,
-      message: new_alarm_state.message,
+      message: this.state.message
     })
-  }
-
-  componentDidMount() {
-    set_alarm_status_callback(this.props.name, this.update_from_model.bind(this))
-  }
-
-  componentWillUnmount() {
-    set_alarm_status_callback(this.props.name, null)
   }
 
   masked(): React.ReactElement {
     if (this.props.maskable) {
-      return <Checkbox
+      return (<Checkbox
 	isChecked={this.state.masked}
 	handleChange={this.handleMaskedChange.bind(this)}
-	label={""} />;
+	label={""} />);
     } else {
       return <span>never</span>;
     }
@@ -111,26 +106,40 @@ const AlarmHeader = styled.th`
 `;
 
 interface AlarmPanelProps {
-  info: AlarmControlProps[];
+    alarmStatuses: AlarmStatus[];
+    maskedChangeCallback: (name: string, masked: boolean) => void;
+    registerStatusCallback: (name: string, f: AlarmStatusCallback | null) => void;
 }
+
 interface AlarmPanelState {
 }
+
+function make_control(
+  name: string,
+  alarmStatus: AlarmStatus,
+  maskedChangeCallback: (name: string, masked: boolean) => void,
+  registerStatusCallback: (name: string, f: AlarmStatusCallback | null) => void,
+): JSX.Element {
+	return (<AlarmControl
+		key={name}
+		name={name}
+		maskable={alarmStatus.maskable}
+		masked={alarmStatus.masked}
+		active={alarmStatus.active}
+		message={alarmStatus.message}
+                setMaskedCallback={maskedChangeCallback}
+                registerStatusCallback={registerStatusCallback} />);
+}
+
+
 export default class AlarmPanel extends Component<AlarmPanelProps, AlarmPanelState> {
   constructor(props: AlarmPanelProps) {
     super(props);
   }
 
   render() {
-    const alarmControls = this.props.info.map((info) =>
-      <AlarmControl
-	key={info.name}
-	name={info.name}
-	maskable={info.maskable}
-	masked={info.masked}
-	active={info.active}
-	message={info.message}
-      />
-    );
+    let alarmControls: JSX.Element[] = this.props.alarmStatuses.map((status) =>
+      make_control(status.name, status, this.props.maskedChangeCallback, this.props.registerStatusCallback));
     return (
       <AlarmTable>
 	<caption>Alarm Status:</caption>

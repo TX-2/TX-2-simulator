@@ -155,6 +155,7 @@ impl Tx2 {
         &mut self,
         ctx: &Context,
     ) -> Result<(u64, Option<OutputEvent>), UnmaskedAlarm> {
+        let now = &ctx.simulated_time;
         let mut hardware_state_changed: Option<SequenceNumber> = None;
         match self.control.execute_instruction(
             ctx,
@@ -169,6 +170,8 @@ impl Tx2 {
                     address,
                     &ctx.simulated_time
                 );
+                self.set_next_execution_due(*now, None);
+                assert!(self.unmasked_alarm_active());
                 Err(UnmaskedAlarm {
                     alarm,
                     address: Some(address),
@@ -176,15 +179,14 @@ impl Tx2 {
                 })
             }
             Ok((ns, new_run_mode, maybe_output)) => {
-                let now = &ctx.simulated_time;
                 match (self.run_mode, new_run_mode) {
                     (RunMode::Running, RunMode::InLimbo) => {
                         event!(Level::DEBUG, "Entering LIMBO");
-                        self.next_execution_due = None;
+                        self.set_next_execution_due(*now, None);
                     }
                     (RunMode::InLimbo, RunMode::Running) => {
                         event!(Level::DEBUG, "Leaving LIMBO");
-                        self.next_execution_due = Some(*now + Duration::from_nanos(1));
+                        self.set_next_execution_due(*now, Some(*now + Duration::from_nanos(1)));
                     }
                     (old, new) => {
                         assert_eq!(old, new);
@@ -223,12 +225,17 @@ impl Tx2 {
             self.next_execution_due,
             self.next_hw_poll_due
         );
-        let premature = match (self.next_hw_poll_due, self.next_execution_due) {
-            (t1, Some(t2)) => t1 >= system_time && t2 >= system_time,
-            (t1, None) => t1 >= system_time,
+        let due: Duration = if let Some(inst_due) = self.next_execution_due {
+            min(self.next_hw_poll_due, inst_due)
+        } else {
+            self.next_hw_poll_due
         };
-        if premature {
-            event!(Level::WARN, "tick() was called prematurely");
+        if due > system_time {
+            let premature_by = due - system_time;
+            event!(
+                Level::WARN,
+                "tick() was called {premature_by:?} prematurely"
+            );
         }
 
         if ctx.simulated_time >= self.next_hw_poll_due {
@@ -302,7 +309,7 @@ impl Tx2 {
         }
     }
 
-    fn unmasked_alarm_active(&self) -> bool {
+    pub fn unmasked_alarm_active(&self) -> bool {
         self.control.unmasked_alarm_active()
     }
 

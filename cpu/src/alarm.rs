@@ -430,7 +430,13 @@ impl AlarmUnit {
     }
 
     pub fn unmasked_alarm_active(&self) -> bool {
-        self.active.keys().any(|kind| !self.masked.contains(kind))
+        self.active.keys().any(|kind| match kind.maskable() {
+            AlarmMaskability::Unmaskable => {
+                assert!(!self.masked.contains(kind));
+                true
+            }
+            AlarmMaskability::Maskable => !self.masked.contains(kind),
+        })
     }
 
     fn set_active(&mut self, alarm_instance: Alarm) -> Result<(), Alarm> {
@@ -467,6 +473,38 @@ impl AlarmUnit {
             }
         }
     }
+}
+
+#[test]
+fn unmaskable_alarms_are_not_maskable() {
+    let mut alarm_unit = AlarmUnit::new_with_panic(false);
+    assert!(!alarm_unit.unmasked_alarm_active());
+    // Any attempt to mask an unmaskable alarm should itself result in an error.
+    assert!(alarm_unit.mask(AlarmKind::ROUNDTUITAL).is_err());
+    // Now we raise some non-maskable alarm.
+    assert!(matches!(
+        alarm_unit.fire_if_not_masked(Alarm::ROUNDTUITAL("I am not maskable!".to_string())),
+        Err(Alarm::ROUNDTUITAL(_))
+    ));
+    // Verify that the alarm manager considers that an unmasked (in
+    // this case because unmaskable) alarm is active.
+    assert!(alarm_unit.unmasked_alarm_active());
+}
+
+#[test]
+fn maskable_alarms_are_not_masked_by_default() {
+    let mut alarm_unit = AlarmUnit::new_with_panic(false);
+    assert!(!alarm_unit.unmasked_alarm_active());
+    // Now we raise some maskable, but not masked, alarm.
+    let the_alarm = Alarm::PSAL(22, "some PPSAL alarm".to_string());
+    // raise the alarm, verify that it really fires.
+    assert!(matches!(
+        alarm_unit.fire_if_not_masked(the_alarm),
+        Err(Alarm::PSAL(22, _))
+    ));
+    // Verify that the alarm manager considers that an unmasked (in
+    // this case because maskable but not actually masked) alarm is active.
+    assert!(alarm_unit.unmasked_alarm_active());
 }
 
 // Alarm conditions we expect to use in the emulator but
