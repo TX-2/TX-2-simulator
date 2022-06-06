@@ -141,8 +141,7 @@ export default class AlarmPanel extends Component<AlarmPanelProps, AlarmPanelSta
     let alarmControls: JSX.Element[] = this.props.alarmStatuses.map((status) =>
       make_control(status.name, status, this.props.maskedChangeCallback, this.props.registerStatusCallback));
     return (
-      <AlarmTable>
-	<caption>Alarm Status:</caption>
+      <AlarmTable aria-label="Alarm Status">
 	<thead>
 	  <tr>
 	    <AlarmHeader scope="col">Alarm</AlarmHeader>

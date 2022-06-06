@@ -29,7 +29,7 @@ const OpaqueCursor = styled(ComputerOutput)`
   opacity: 1.0;
 `;
 const TransparentCursor = styled(ComputerOutput)`
-  opacity: 0.0;
+  opacity: 0.2;
 `;
 
 type CursorState = {

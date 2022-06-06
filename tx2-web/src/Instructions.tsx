@@ -3,6 +3,7 @@ import styled from 'styled-components';
 
 const Wrapper = styled.section`
   color: black;
+  font-family: sans-serif;
 `;
 
 export const Instructions: FunctionComponent = (): ReactElement => (
@@ -17,8 +18,6 @@ export const Instructions: FunctionComponent = (): ReactElement => (
 		</ol>
 		<p>
 			Presently you should see some output.
-		</p>
-		<p>
 			You can <a href="https://tx-2.github.io/"> find out more about
 				the simulator project on our website</a>
 			or <a href="https://github.com/TX-2/TX-2-simulator">take a
