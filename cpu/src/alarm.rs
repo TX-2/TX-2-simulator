@@ -226,7 +226,6 @@ impl Alarm {
 impl Display for Alarm {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         use Alarm::*;
-        f.write_str("ALARM: ")?;
         match self {
             QSAL(instruction, op, msg) => {
                 write!(
@@ -238,15 +237,16 @@ impl Display for Alarm {
             PSAL(address, msg) => {
                 write!(
                     f,
-                    "PSAL: P register set to illegal address {:>013o}: {}",
+                    "PSAL: P register set to illegal address {:>06o}: {}",
                     address, msg
                 )
             }
             OCSAL(inst, msg) => {
                 write!(
                     f,
-                    "OCSAL: N register set to invalid instruction {:?}: {}",
-                    inst, msg
+                    "OCSAL: N register set to invalid instruction {:>012o}: {}",
+                    inst.bits(),
+                    msg
                 )
             }
             ROUNDTUITAL(msg) => {
