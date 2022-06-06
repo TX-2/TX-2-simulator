@@ -45,10 +45,12 @@ const Buttons = ({ changeRunCallback, tx2Controller, isClockRunning, loadTape }:
       <TapeLoadModal
 	modalIsOpen={modalIsOpen}
 	closeModal={closeModal} loadTape={loadTape} />
-      <button id="codaboTSRBtn"
-	onClick={tx2Controller.codabo.bind(tx2Controller)}>CODABO (TSR)</button>
-      <button id="tapeLoadBtn" onClick={openModal}>Mount Paper Tape</button>
-      <Checkbox label="Run" handleChange={handleChangeRun.bind(this)} isChecked={isRunning} />
+      <Grid gap="2px" columns="auto" rows="auto auto auto">
+      <Grid.Item><button id="tapeLoadBtn" onClick={openModal}>Mount Paper Tape</button></Grid.Item>
+      <Grid.Item><button id="codaboTSRBtn"
+	onClick={tx2Controller.codabo.bind(tx2Controller)}>CODABO (TSR)</button></Grid.Item>
+      <Grid.Item><Checkbox label="Run" handleChange={handleChangeRun.bind(this)} isChecked={isRunning} /></Grid.Item>
+      </Grid>
     </div>
   );
 };
