@@ -267,24 +267,6 @@ impl DeviceManager {
         }
     }
 
-    // TODO: actually delete this
-    //fn get_type(&self, unit_number: Unsigned6Bit) -> DeviceType {
-    //    match self.devices.get(&unit_number) {
-    //        Some(attached) => {
-    //            if attached.is_input_unit {
-    //                DeviceType::Input {
-    //                    in_maintenance: attached.in_maintenance,
-    //                }
-    //            } else {
-    //                DeviceType::Output {
-    //                    in_maintenance: attached.in_maintenance,
-    //                }
-    //            }
-    //        }
-    //        None => DeviceType::Nonexistent,
-    //    }
-    //}
-
     pub fn attach(
         &mut self,
         ctx: &Context,
