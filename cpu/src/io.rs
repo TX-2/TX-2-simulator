@@ -36,14 +36,15 @@
 //! 77: Not for physical devices.
 use std::cell::RefCell;
 use std::collections::BTreeMap;
-use std::fmt::{self, Debug, Formatter};
+use std::fmt::{self, Debug, Display, Formatter};
 use std::ops::Shl;
 use std::time::Duration;
 
+use serde::Serialize;
 use tracing::{event, span, Level};
 
 use super::types::*;
-use crate::alarm::{Alarm, AlarmUnit};
+use crate::alarm::{Alarm, AlarmUnit, Alarmer};
 use crate::context::Context;
 use crate::event::*;
 use crate::PETR;
@@ -74,9 +75,28 @@ pub const IO_MASK_AVAIL: Unsigned36Bit = Unsigned36Bit::MAX.and(0o_000_000_200_0
 /// TSD instruction or has just been connected.
 pub const IO_MASK_FLAG: Unsigned36Bit = Unsigned36Bit::MAX.and(0o_000_000_400_000);
 
+#[derive(Debug)]
+pub enum TransferFailed {
+    BufferNotFree,
+    Alarm(Alarm),
+}
+
+impl Display for TransferFailed {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        match self {
+            TransferFailed::BufferNotFree => {
+                f.write_str("Unit buffer not available for use by the CPU")
+            }
+            TransferFailed::Alarm(alarm) => write!(f, "{}", alarm),
+        }
+    }
+}
+
+impl std::error::Error for TransferFailed {}
+
 /// Units report their status (which is used to construct their report
 /// word) with this struct.
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct UnitStatus {
     pub special: Unsigned12Bit,
     pub change_flag: Option<FlagChange>,
@@ -93,6 +113,27 @@ pub struct UnitStatus {
     /// Writers for example) occupy two units, one for read (input)o
     /// and the other for write (output).
     pub is_input_unit: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ExtendedConnectedUnitStatus {
+    pub buffer_available_to_cpu: bool,
+    pub inability: bool,
+    pub missed_data: bool,
+    pub special: u16,
+    pub mode: u16,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ExtendedUnitState {
+    pub flag: bool,
+    pub connected: bool,
+    pub in_maintenance: bool,
+    pub name: String,
+    pub text_info: String,
+    /// status is None for units which are attached but not currently
+    /// connected.
+    pub status: Option<ExtendedConnectedUnitStatus>,
 }
 
 fn make_unit_report_word(
@@ -143,6 +184,8 @@ fn make_report_word_for_invalid_unit(unit: Unsigned6Bit, current_flag: bool) -> 
 
 pub trait Unit {
     fn poll(&mut self, ctx: &Context) -> UnitStatus;
+    /// Provide a text summary of the state of the device.
+    fn text_info(&self, ctx: &Context) -> String;
     fn connect(&mut self, ctx: &Context, mode: Unsigned12Bit);
     fn disconnect(&mut self, ctx: &Context);
     fn transfer_mode(&self) -> TransferMode;
@@ -161,6 +204,8 @@ pub trait Unit {
 pub struct AttachedUnit {
     inner: RefCell<Box<dyn Unit>>,
 
+    unit: Unsigned6Bit,
+
     /// True for units which are input units.  Some devices (Lincoln
     /// Writers for example) occupy two units, one for read (input)
     /// and the other for write (output).
@@ -175,24 +220,92 @@ impl AttachedUnit {
         (!self.is_input_unit) && (!self.connected)
     }
 
-    pub fn poll(&self, ctx: &Context) -> UnitStatus {
-        self.inner.borrow_mut().poll(ctx)
+    fn call_inner<A, F, T>(&self, what: &str, alarmer: &mut A, f: F) -> Result<T, Alarm>
+    where
+        A: Alarmer,
+        F: Fn(&dyn Unit) -> T,
+    {
+        if self.connected {
+            let output = f(self.inner.borrow().as_ref());
+            Ok(output)
+        } else {
+            Err(alarmer.always_fire(Alarm::BUGAL {
+                instr: None,
+                message: format!(
+                    "attempt read-only use (for {}) of disconnected unit {:o}",
+                    what, self.unit
+                ),
+            }))
+        }
+    }
+
+    fn call_mut_inner<A, F, T>(&self, what: &str, alarmer: &mut A, mut f: F) -> Result<T, Alarm>
+    where
+        A: Alarmer,
+        F: FnMut(&mut dyn Unit) -> T,
+    {
+        if self.connected {
+            let output = f(self.inner.borrow_mut().as_mut());
+            Ok(output)
+        } else {
+            Err(alarmer.always_fire(Alarm::BUGAL {
+                instr: None,
+                message: format!(
+                    "attempt read-write use (for {}) of disconnected unit {:o}",
+                    what, self.unit
+                ),
+            }))
+        }
+    }
+
+    pub fn poll<A: Alarmer>(&self, ctx: &Context, _alarmer: &mut A) -> Result<UnitStatus, Alarm> {
+        Ok(self.inner.borrow_mut().poll(ctx))
+    }
+
+    fn text_info(&self, ctx: &Context) -> String {
+        // It is OK to call text_info on an attached but not connected unit.
+        self.inner.borrow().text_info(ctx)
     }
 
     pub fn connect(&self, ctx: &Context, mode: Unsigned12Bit) {
+        // It's permissible to call connect() on an attached but not connected unit.
         self.inner.borrow_mut().connect(ctx, mode)
     }
 
-    pub fn disconnect(&self, ctx: &Context) {
-        self.inner.borrow_mut().disconnect(ctx)
+    pub fn disconnect<A: Alarmer>(&self, ctx: &Context, _alarmer: &mut A) -> Result<(), Alarm> {
+        if !self.connected {
+            // It's permissible to disconnect an attached but not
+            // connected unit.  But we generate a warning, since the
+            // code shouldn't do it.
+            //
+            // TODO: eliminate this special case (i.e. don't
+            // disconnect a disconnected unit).
+            event!(
+                Level::WARN,
+                "disconnecting the not-connected unit {:o}",
+                self.unit
+            );
+        }
+        self.inner.borrow_mut().disconnect(ctx);
+        Ok(())
     }
 
-    pub fn transfer_mode(&self) -> TransferMode {
-        self.inner.borrow().transfer_mode()
+    pub fn transfer_mode<A: Alarmer>(&self, alarmer: &mut A) -> Result<TransferMode, Alarm> {
+        self.call_inner("transfer_mode", alarmer, |unit: &dyn Unit| {
+            unit.transfer_mode()
+        })
     }
 
-    pub fn read(&self, ctx: &Context) -> Result<MaskedWord, TransferFailed> {
-        self.inner.borrow_mut().read(ctx)
+    pub fn read<A: Alarmer>(
+        &self,
+        ctx: &Context,
+        alarmer: &mut A,
+    ) -> Result<MaskedWord, TransferFailed> {
+        match self.call_mut_inner("read", alarmer, |unit: &mut dyn Unit| unit.read(ctx)) {
+            Ok(Ok(mw)) => Ok(mw),
+            Ok(Err(e)) => Err(e),
+            Err(alarm) => Err(TransferFailed::Alarm(alarm)),
+        }
     }
 
     pub fn write(
@@ -265,23 +378,47 @@ impl DeviceManager {
         }
     }
 
-    // TODO: actually delete this
-    //fn get_type(&self, unit_number: Unsigned6Bit) -> DeviceType {
-    //    match self.devices.get(&unit_number) {
-    //        Some(attached) => {
-    //            if attached.is_input_unit {
-    //                DeviceType::Input {
-    //                    in_maintenance: attached.in_maintenance,
-    //                }
-    //            } else {
-    //                DeviceType::Output {
-    //                    in_maintenance: attached.in_maintenance,
-    //                }
-    //            }
-    //        }
-    //        None => DeviceType::Nonexistent,
-    //    }
-    //}
+    pub fn device_statuses<A: Alarmer>(
+        &self,
+        ctx: &Context,
+        alarmer: &mut A,
+    ) -> Result<BTreeMap<Unsigned6Bit, ExtendedUnitState>, Alarm> {
+        fn get_extended_status<A: Alarmer>(
+            ctx: &Context,
+            unit: &AttachedUnit,
+            alarmer: &mut A,
+        ) -> Result<ExtendedUnitState, Alarm> {
+            let (extended_unit_status, flag): (Option<ExtendedConnectedUnitStatus>, bool) =
+                if unit.connected {
+                    let unit_status = unit.poll(ctx, alarmer)?;
+                    let flag: bool = matches!(unit_status.change_flag, Some(FlagChange::Raise));
+                    let ext_status = ExtendedConnectedUnitStatus {
+                        buffer_available_to_cpu: unit_status.buffer_available_to_cpu,
+                        inability: unit_status.inability,
+                        missed_data: unit_status.missed_data,
+                        special: u16::from(unit_status.special),
+                        mode: u16::from(unit_status.mode),
+                    };
+                    (Some(ext_status), flag)
+                } else {
+                    (None, false)
+                };
+            Ok(ExtendedUnitState {
+                flag,
+                connected: unit.connected,
+                in_maintenance: unit.in_maintenance,
+                name: unit.name(),
+                text_info: unit.text_info(ctx),
+                status: extended_unit_status,
+            })
+        }
+        let mut result: BTreeMap<Unsigned6Bit, ExtendedUnitState> = BTreeMap::new();
+        for (unit, attached) in self.devices.iter() {
+            let ext_status = get_extended_status(ctx, attached, alarmer)?;
+            result.insert(*unit, ext_status);
+        }
+        Ok(result)
+    }
 
     pub fn attach(
         &mut self,
@@ -295,6 +432,7 @@ impl DeviceManager {
             unit_number,
             AttachedUnit {
                 inner: RefCell::new(unit),
+                unit: unit_number,
                 is_input_unit: status.is_input_unit,
                 connected: false,
                 in_maintenance,
@@ -331,7 +469,7 @@ impl DeviceManager {
                 // (2.6) and `Maintenance` bit (2.7) we need to be
                 // able to collect status from a unit which is
                 // attached but not otherwise usable.
-                let unit_status = attached.poll(ctx);
+                let unit_status = attached.poll(ctx, alarm_unit)?;
                 self.poll_queue.push(unit, unit_status.poll_after);
                 Ok(make_unit_report_word(
                     unit,
@@ -353,7 +491,11 @@ impl DeviceManager {
         }
     }
 
-    pub fn poll(&mut self, ctx: &Context) -> (u64, Option<Alarm>, Option<Duration>) {
+    pub fn poll(
+        &mut self,
+        ctx: &Context,
+        alarm_unit: &mut AlarmUnit,
+    ) -> Result<(u64, Option<Alarm>, Option<Duration>), Alarm> {
         let system_time = &ctx.simulated_time;
         let mut raised_flags: u64 = 0;
         let mut alarm: Option<Alarm> = None;
@@ -412,7 +554,7 @@ impl DeviceManager {
                         "polling unit at system time {:?}",
                         system_time
                     );
-                    let unit_status = attached.poll(ctx);
+                    let unit_status = attached.poll(ctx, alarm_unit)?;
                     event!(Level::TRACE, "unit status is {:?}", unit_status);
                     self.poll_queue.push(devno, unit_status.poll_after);
                     if let Some(FlagChange::Raise) = unit_status.change_flag {
@@ -436,20 +578,26 @@ impl DeviceManager {
                 }
             }
         }
-        (raised_flags, alarm, next_poll)
+        Ok((raised_flags, alarm, next_poll))
     }
 
-    pub fn disconnect_all(&mut self, ctx: &Context) {
+    pub fn disconnect_all<A: Alarmer>(
+        &mut self,
+        ctx: &Context,
+        alarmer: &mut A,
+    ) -> Result<(), Alarm> {
         for (_, attached) in self.devices.iter_mut() {
             if attached.connected {
-                attached.disconnect(ctx);
+                attached.disconnect(ctx, alarmer)?;
                 attached.connected = false;
             }
         }
+        Ok(())
     }
 
     pub fn disconnect(
         &mut self,
+        ctx: &Context,
         device: &Unsigned6Bit,
         alarm_unit: &mut AlarmUnit,
     ) -> Result<(), Alarm> {
@@ -458,8 +606,15 @@ impl DeviceManager {
         }
         match self.devices.get_mut(device) {
             Some(attached) => {
-                attached.connected = false;
-                Ok(())
+                if attached.connected {
+                    attached.connected = false;
+                } else {
+                    event!(
+                        Level::WARN,
+                        "disconnecting unit {device:o} but it is not connected"
+                    );
+                }
+                attached.disconnect(ctx, alarm_unit)
             }
             None => {
                 alarm_unit.fire_if_not_masked(Alarm::IOSAL {

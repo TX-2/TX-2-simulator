@@ -1,13 +1,15 @@
-use cpu::Context;
 use std::time::Duration;
 
 mod utils;
 
 use base::charset::{Colour, DescribedChar, LincolnChar, LincolnState, Script};
 use base::Unsigned6Bit;
+use cpu::Context;
 use cpu::*;
 
 use float_next_after::NextAfter;
+use js_sys::Array;
+use serde::Serialize;
 use tracing::{event, Level};
 use wasm_bindgen::prelude::*;
 use web_sys::{Document, Window};
@@ -182,7 +184,9 @@ pub fn tx2_do_tick(tx2: &mut Tx2, simulated_time: f64, real_elapsed_time: f64) {
 pub fn tx2_codabo(tx2: &mut Tx2, simulated_time: f64, elapsed_time_secs: f64) {
     event!(Level::INFO, "codabo");
     let context = make_context(simulated_time, elapsed_time_secs);
-    tx2.codabo(&context, &ResetMode::ResetTSP);
+    if let Err(e) = tx2.codabo(&context, &ResetMode::ResetTSP) {
+        panic!("codabo failed: {}", e);
+    }
     tx2.set_next_execution_due(context.simulated_time, Some(context.simulated_time));
     tx2.set_run_mode(RunMode::Running);
 }
@@ -219,5 +223,40 @@ pub fn set_alarm_masked(tx2: &mut Tx2, alarm_name: &str, masked: bool) -> Result
             .set_alarm_masked(kind, masked)
             .map_err(|e| e.to_string()),
         Err(e) => Err(e.to_string()),
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct UnitState {
+    unit: u8,
+    unit_state: ExtendedUnitState,
+}
+
+#[wasm_bindgen]
+pub fn tx2_device_statuses(
+    tx2: &mut Tx2,
+    simulated_system_time_secs: f64,
+    elapsed_time_secs: f64,
+) -> Array {
+    let context = make_context(simulated_system_time_secs, elapsed_time_secs);
+    match tx2.sequence_statuses(&context) {
+        Err(e) => {
+            panic!("tx2_device_statuses: failed: {}", e);
+        }
+        Ok(statuses) => statuses
+            .into_iter()
+            .map(|(unit, status)| {
+                let tmp = UnitState {
+                    unit: u8::from(unit),
+                    unit_state: status,
+                };
+                match serde_wasm_bindgen::to_value(&tmp) {
+                    Ok(jsval) => jsval,
+                    Err(e) => {
+                        panic!("failed to convert {tmp:?} to JsValue: {e}");
+                    }
+                }
+            })
+            .collect(),
     }
 }

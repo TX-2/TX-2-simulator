@@ -32,7 +32,7 @@ use base::prelude::*;
 use base::subword;
 
 use super::*;
-use crate::alarm::{Alarm, AlarmKind, AlarmUnit, BadMemOp};
+use crate::alarm::{Alarm, AlarmKind, AlarmUnit, Alarmer, BadMemOp};
 use crate::context::Context;
 use crate::exchanger::{exchanged_value_for_load, exchanged_value_for_store, SystemConfiguration};
 use crate::io::DeviceManager;
@@ -326,6 +326,10 @@ impl ControlRegisters {
         let pos: usize = n.into();
         self.f_memory[pos]
     }
+
+    pub fn current_flag_state(&self, seq: &Unsigned6Bit) -> bool {
+        self.flags.current_flag_state(seq)
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -501,7 +505,7 @@ impl ControlUnit {
         reset_mode: &ResetMode,
         devices: &mut DeviceManager,
         mem: &mut MemoryUnit,
-    ) {
+    ) -> Result<(), Alarm> {
         // We probably don't need an equivalent of resetting the
         // control flip-flops in an emulator.  But if we did, that
         // would happen here.
@@ -521,7 +525,7 @@ impl ControlUnit {
         // to perform STOP is that PRESET has no effect unless the
         // computer is stopped.
         self.clear_alarms();
-        self.preset(ctx, devices);
+        self.preset(ctx, devices)?;
         self.startover(ctx, reset_mode, mem);
         self.calaco();
         event!(
@@ -529,6 +533,7 @@ impl ControlUnit {
             "After CODABO, control unit contains {:#?}",
             &self
         );
+        Ok(())
     }
 
     /// Simulate the effect of the PRESET button.  This is described
@@ -540,11 +545,11 @@ impl ControlUnit {
     /// PRESET is supposedly interlocked so that it is ineffective
     /// unless the machine is in the STOP state.  But our simulation,
     /// right now, has no representation for the STOP state.
-    fn preset(&mut self, ctx: &Context, devices: &mut DeviceManager) {
+    fn preset(&mut self, ctx: &Context, devices: &mut DeviceManager) -> Result<(), Alarm> {
         // 1. Clear all flags.
         self.regs.flags.lower_all();
         // 2. Clear all "Connect" flip-flops
-        self.disconnect_all_devices(ctx, devices);
+        self.disconnect_all_devices(ctx, devices)
         // 3. Set all interlocks and indicators to their proper "PRESET" value.
         // (interlocks are not simulated)
     }
@@ -561,8 +566,12 @@ impl ControlUnit {
         self.alarm_unit.clear_all_alarms();
     }
 
-    pub fn disconnect_all_devices(&mut self, ctx: &Context, devices: &mut DeviceManager) {
-        devices.disconnect_all(ctx);
+    pub fn disconnect_all_devices(
+        &mut self,
+        ctx: &Context,
+        devices: &mut DeviceManager,
+    ) -> Result<(), Alarm> {
+        devices.disconnect_all(ctx, &mut self.alarm_unit)
     }
 
     /// There are 9 separate RESET buttons, for 8 fixed addresses and
@@ -875,7 +884,7 @@ impl ControlUnit {
         devices: &mut DeviceManager,
         mut run_mode: RunMode,
     ) -> Result<(RunMode, Option<Duration>), Alarm> {
-        let (mut raised_flags, alarm, next_poll) = devices.poll(ctx);
+        let (mut raised_flags, alarm, next_poll) = devices.poll(ctx, &mut self.alarm_unit)?;
         // If there are no hardware flags being raised, we may still
         // not be in limbo if there were already runnable sequences.
         // That is, if some sequence's flag was raised.  The hardware
@@ -1497,10 +1506,24 @@ impl ControlUnit {
             true
         }
     }
+
+    pub fn current_flag_state(&self, unit: &SequenceNumber) -> bool {
+        self.regs.current_flag_state(unit)
+    }
 }
 
 impl Default for ControlUnit {
     fn default() -> Self {
         Self::new(PanicOnUnmaskedAlarm::No)
+    }
+}
+
+impl Alarmer for ControlUnit {
+    fn fire_if_not_masked(&mut self, alarm_instance: Alarm) -> Result<(), Alarm> {
+        self.alarm_unit.fire_if_not_masked(alarm_instance)
+    }
+
+    fn always_fire(&mut self, alarm_instance: Alarm) -> Alarm {
+        self.alarm_unit.always_fire(alarm_instance)
     }
 }

@@ -4,7 +4,7 @@ import Modal from 'react-modal';
 interface TapeLoadModalProps {
   modalIsOpen: boolean;
   closeModal: () => void;
-  loadTape: (Uint8Array) => void;
+  loadTape: (bytes: Uint8Array) => void;
 }
 
 const customStyles = {

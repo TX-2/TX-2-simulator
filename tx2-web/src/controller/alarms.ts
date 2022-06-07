@@ -56,10 +56,10 @@ interface AlarmStatusCallbackByName {
 
 export class AlarmController {
     alarm_status_callbacks: AlarmStatusCallbackByName;
-    tx2;
+    tx2: Tx2Controller;
     wasm;
 
-    constructor(tx2) {
+    constructor(tx2: Tx2Controller) {
 	this.alarm_status_callbacks = {};
 	this.tx2 = tx2;
 	this.wasm = get_app_wasm_mod();
@@ -86,24 +86,12 @@ export class AlarmController {
 	    const old_status = prev?.[name];
 	    const current_status = current[name];
 	    if ((!prev) || alarm_status_changed(old_status, current_status)) {
-		console.log("Status change for " + name + " alarm", {old_status, current_status});
 		let callback = this.alarm_status_callbacks[name];
 		if (callback != null) {
-		    console.log("Calling the callback for " + name + " alarm");
 		    anything_changed = true;
 		    callback(current_status);
-		} else {
-		    console.log("There is no update callback for " + name + " alarm");
 		}
-	    } else {
-		let status = current[name];
-		console.log("Status of " + name + " alarm is unchanged: ", {status});
 	    }
-	}
-	if (anything_changed) {
-	    console.log("An alarm status changed");
-	} else {
-	    console.log("No alarm status changed");
 	}
     }
 
@@ -119,13 +107,12 @@ export class AlarmController {
 	this.all_alarm_info().forEach((st) => {
 	    alarm_status[st.name] = st;
 	});
-	console.log({alarm_status});
 	return alarm_status;
     }
 
     all_alarm_info(): AlarmStatus[] {
 	const result: AlarmStatus[] = this.wasm.get_alarm_statuses(this.tx2)
-	    .map((wasm_status) => {
+	    .map((wasm_status: any) => {
 		return {
 		    name: wasm_status.name,
 		    maskable: wasm_status.maskable,
@@ -134,7 +121,6 @@ export class AlarmController {
 		    message: wasm_status.message
 		};
 	    });
-	console.log({result});
 	return result;
     }
 

@@ -16,6 +16,7 @@ default = ["console_error_panic_hook"]
 
 [dependencies]
 float_next_after = "0.1"	# License: MIT
+js-sys = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tracing = "0.1"			# License: MIT

@@ -5,14 +5,14 @@ use base::prelude::*;
 use tracing::{event, Level};
 
 use super::super::*;
-use crate::alarm::{Alarm, AlarmUnit, BadMemOp};
+use crate::alarm::{Alarm, AlarmUnit, Alarmer, BadMemOp};
 use crate::context::Context;
 use crate::control::{
     ControlRegisters, ControlUnit, DeviceManager, OpcodeResult, ProgramCounterChange, TrapCircuit,
 };
 use crate::event::OutputEvent;
 use crate::exchanger::exchanged_value_for_load;
-use crate::io::Unit;
+use crate::io::{TransferFailed, Unit};
 use crate::memory::{MemoryMapped, MemoryOpFailure, MemoryUnit, MetaBitChange};
 
 #[derive(Debug, PartialEq, Eq)]
@@ -67,7 +67,7 @@ impl ControlUnit {
 
         let operand = self.regs.n.operand_address_and_defer_bit();
         let result = match u32::from(operand) {
-            0o20_000 => devices.disconnect(&j, &mut self.alarm_unit),
+            0o20_000 => devices.disconnect(ctx, &j, &mut self.alarm_unit),
             0o30_000..=0o37_777 => {
                 let mode: Unsigned12Bit = Unsigned12Bit::try_from(operand & 0o07_777).unwrap();
                 ControlUnit::connect_unit(
@@ -230,7 +230,7 @@ impl ControlUnit {
                             // We're actually going to do the (input or output) transfer.
                             // First load into the M register the existing contents of
                             // memory.
-                            let transfer_mode = device.transfer_mode();
+                            let transfer_mode = device.transfer_mode(&mut self.alarm_unit)?;
                             let (m_register, extra_bits) = self
                                 .fetch_operand_from_address_without_exchange(
                                     ctx,
@@ -244,7 +244,7 @@ impl ControlUnit {
                                 // IOBM bus, into the E register.  See
                                 // figure 15-18 in Volume 2 of the TX-2
                                 // Techical Manual.
-                                match device.read(ctx) {
+                                match device.read(ctx, &mut self.alarm_unit) {
                                     Ok(masked_word) => {
                                         const UPDATE_E_YES: UpdateE = UpdateE::Yes;
                                         let newval: Unsigned36Bit =
@@ -279,11 +279,12 @@ impl ControlUnit {
                                             output: None, // because this is a read unit.
                                         })
                                     }
-                                    Err(e) => match e {
-                                        TransferFailed::BufferNotFree => {
-                                            Ok(TransferOutcome::DismissAndWait)
-                                        }
-                                    },
+                                    Err(TransferFailed::BufferNotFree) => {
+                                        Ok(TransferOutcome::DismissAndWait)
+                                    }
+                                    Err(TransferFailed::Alarm(alarm)) => {
+                                        return Err(alarm);
+                                    }
                                 }
                             } else {
                                 // In write operations, data is
@@ -302,6 +303,7 @@ impl ControlUnit {
                                             Err(TransferFailed::BufferNotFree) => {
                                                 Ok(TransferOutcome::DismissAndWait)
                                             }
+                                            Err(TransferFailed::Alarm(alarm)) => Err(alarm),
                                             Ok(maybe_output) => Ok(TransferOutcome::Success {
                                                 metabit_was_set: extra_bits.meta,
                                                 output: maybe_output,

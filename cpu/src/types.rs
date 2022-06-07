@@ -1,8 +1,10 @@
-use std::fmt::{self, Debug, Display, Formatter};
+use std::fmt::Debug;
+
+use serde::Serialize;
 
 use base::prelude::*;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum FlagChange {
     Raise,
 }
@@ -28,21 +30,6 @@ pub enum TransferMode {
     /// TSD instructions use assembly mode.
     Assembly,
 }
-
-#[derive(Debug)]
-pub enum TransferFailed {
-    BufferNotFree,
-}
-
-impl Display for TransferFailed {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        f.write_str(match self {
-            TransferFailed::BufferNotFree => "Unit buffer not available for use by the CPU",
-        })
-    }
-}
-
-impl std::error::Error for TransferFailed {}
 
 /// Determines whether a memory operation updates the E register.
 #[derive(Debug)]

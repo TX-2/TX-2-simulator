@@ -16,7 +16,7 @@ use crate::context::Context;
 use crate::event::OutputEvent;
 use crate::io::{FlagChange, TransferFailed, Unit, UnitStatus};
 use crate::types::*;
-use base::charset::{lincoln_char_to_described_char, LincolnState};
+use base::charset::{lincoln_char_to_described_char, Colour, LincolnState, Script};
 use base::prelude::*;
 use tracing::{event, Level};
 
@@ -166,5 +166,35 @@ impl Unit for LincolnWriterOutput {
 
     fn on_input_event(&mut self, _ctx: &Context, _event: crate::event::InputEvent) {
         // Does nothing
+    }
+
+    fn text_info(&self, _ctx: &Context) -> String {
+        format!(
+            "{}. {}. {}. {}. {}.",
+            if self.connected {
+                "Connected"
+            } else {
+                "Disconnected"
+            },
+            if self.transmit_will_be_finished_at.is_some() {
+                "Transmitting"
+            } else {
+                "Idle"
+            },
+            match self.state.script {
+                Script::Normal => "Normal script",
+                Script::Super => "Superscript",
+                Script::Sub => "Subscript",
+            },
+            if self.state.uppercase {
+                "Uppercase"
+            } else {
+                "Lower case"
+            },
+            match self.state.colour {
+                Colour::Black => "Black",
+                Colour::Red => "Red",
+            }
+        )
     }
 }

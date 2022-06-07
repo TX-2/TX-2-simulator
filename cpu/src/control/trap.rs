@@ -1,12 +1,14 @@
 //! Emulates the trap circuit and I/O Unit 42.  See TX-2 User Handbook
 //! Chapter 4 section 42.
+use std::fmt::Write;
+
 use base::prelude::*;
 use std::time::Duration;
 
 use super::super::*;
 use crate::context::Context;
 use crate::event::InputEvent;
-use crate::io::{Unit, UnitStatus};
+use crate::io::{TransferFailed, Unit, UnitStatus};
 
 #[derive(Debug)]
 pub struct TrapCircuit {
@@ -166,5 +168,54 @@ impl Unit for TrapCircuit {
 
     fn on_input_event(&mut self, _ctx: &Context, _event: InputEvent) {
         // Does nothing.
+    }
+
+    fn text_info(&self, _ctx: &Context) -> String {
+        const STRING_WRITE_SUCCESS: &str = "write! calls on a String should always succeed";
+        let mut result = String::new();
+
+        if self.is_set_metabits_disabled() {
+            result.push_str("Set-metabits is disabled. ");
+        } else {
+            let mut metabit_setting_text: Vec<&str> = Vec::new();
+            if self.set_metabits_of_instructions() {
+                metabit_setting_text.push("instructions");
+            }
+            if self.set_metabits_of_deferred_addresses() {
+                metabit_setting_text.push("deferred addresses");
+            }
+            if self.set_metabits_of_operands() {
+                metabit_setting_text.push("operands");
+            }
+            if metabit_setting_text.is_empty() {
+                result.push_str("No metabits will be set. ");
+            } else {
+                write!(
+                    result,
+                    "Setting metabits for {}. ",
+                    metabit_setting_text.join(", ")
+                )
+                .expect(STRING_WRITE_SUCCESS);
+            }
+        }
+        let mut trap_on_text: Vec<&str> = Vec::new();
+        if self.trap_on_marked_instruction() {
+            trap_on_text.push("marked instruction");
+        }
+        if self.trap_on_deferred_address() {
+            trap_on_text.push("deferred address");
+        }
+        if self.trap_on_deferred_address() {
+            trap_on_text.push("operand");
+        }
+        if self.trap_on_changed_sequence() {
+            trap_on_text.push("sequence change");
+        }
+        if trap_on_text.is_empty() {
+            result.push_str("No traps are active. ");
+        } else {
+            write!(result, "Trap on {}. ", trap_on_text.join(", ")).expect(STRING_WRITE_SUCCESS);
+        }
+        result
     }
 }

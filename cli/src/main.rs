@@ -25,7 +25,10 @@ use cpu::{self, Alarm, MemoryConfiguration, OutputEvent, ResetMode, RunMode, Tx2
 const AUTHOR: &str = "James Youngman <james@youngman.org>";
 
 fn run(tx2: &mut Tx2, clk: &mut BasicClock, sleep_multiplier: Option<f64>) -> i32 {
-    tx2.codabo(&clk.make_fresh_context(), &ResetMode::ResetTSP);
+    if let Err(e) = tx2.codabo(&clk.make_fresh_context(), &ResetMode::ResetTSP) {
+        event!(Level::ERROR, "CODABO failed: {}", e);
+        return 1;
+    }
 
     // TODO: setting next_execution_due is basically the 'start'
     // operaiton of the TX-2's sync system.  We should model that
@@ -58,7 +61,9 @@ fn run(tx2: &mut Tx2, clk: &mut BasicClock, sleep_multiplier: Option<f64>) -> i3
             event!(Level::ERROR, "Execution stopped: {}", alarm);
         }
     };
-    tx2.disconnect_all_devices(&clk.make_fresh_context());
+    if let Err(e) = tx2.disconnect_all_devices(&clk.make_fresh_context()) {
+        event!(Level::ERROR, "Failed in device shutdown: {}", e);
+    }
     1
 }
 
