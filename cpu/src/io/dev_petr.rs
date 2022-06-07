@@ -18,10 +18,12 @@
 //! tape.  On start, reading begins immediately at full speed, and on
 //! stop, the tape movement stops immediately.  This will likely
 //! change in the future.
-use base::prelude::*;
-use std::cmp;
+use std::fmt::Write;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::time::Duration;
+
+use base::prelude::*;
+use std::cmp;
 
 use tracing::{event, Level};
 
@@ -379,5 +381,31 @@ impl Unit for Petr {
                 self.tape_data = data;
             }
         }
+    }
+
+    fn text_info(&mut self, _ctx: &Context) -> String {
+        let build = || -> Result<String, std::fmt::Error> {
+            let mut result = String::new();
+            write!(result, "Motor {}", self.activity)?;
+            match self.activity {
+                Activity::Started => {
+                    write!(result, "(direction {})", self.direction)?;
+                }
+                Activity::Stopped => (),
+            }
+            write!(result, ". ")?;
+            if self.tape_data.is_empty() {
+                write!(result, "No tape (or blank tape) loaded. ")?;
+            } else {
+                write!(
+                    result,
+                    "Loaded tape has {} lines, we have read {}. ",
+                    self.tape_data.len(),
+                    self.tape_pos
+                )?;
+            }
+            Ok(result)
+        };
+        build().expect("write! calls on a String should always succeed")
     }
 }

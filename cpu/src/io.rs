@@ -143,6 +143,8 @@ fn make_report_word_for_invalid_unit(unit: Unsigned6Bit, current_flag: bool) -> 
 
 pub trait Unit {
     fn poll(&mut self, ctx: &Context) -> UnitStatus;
+    /// Provide a text summary of the state of the device.
+    fn text_info(&mut self, ctx: &Context) -> String;
     fn connect(&mut self, ctx: &Context, mode: Unsigned12Bit);
     fn disconnect(&mut self, ctx: &Context);
     fn transfer_mode(&self) -> TransferMode;
