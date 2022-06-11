@@ -274,11 +274,22 @@ impl Display for Alarm {
             }
 
             BUGAL { instr, message } => {
-                write!(
-                    f,
-                    "BUGAL: encountered simulator bug during execution of instruction {:?}: {}",
-                    instr, message,
-                )
+                if let Some(instruction) = instr.as_ref() {
+                    if let Ok(symbolic) = SymbolicInstruction::try_from(instruction) {
+                        write!(
+			    f,
+			    "BUGAL: encountered simulator bug during execution of instruction {symbolic}: {message}"
+			)
+                    } else {
+                        write!(
+			    f,
+			    "BUGAL: encountered simulator bug during execution of instruction {:o}: {}",
+			    instruction.bits(), message,
+			)
+                    }
+                } else {
+                    write!(f, "BUGAL: encountered simulator bug: {message}")
+                }
             }
             DEFERLOOPAL { address } => {
                 write!(
@@ -307,6 +318,11 @@ pub struct AlarmStatus {
     pub masked: bool,
     pub active: bool,
     pub message: String,
+}
+
+pub trait Alarmer {
+    fn fire_if_not_masked(&mut self, alarm_instance: Alarm) -> Result<(), Alarm>;
+    fn always_fire(&mut self, alarm_instance: Alarm) -> Alarm;
 }
 
 /// The TX-2 can "mask" some alarms, and whether or not this is
@@ -450,12 +466,14 @@ impl AlarmUnit {
             Err(alarm_instance)
         }
     }
+}
 
-    pub fn fire_if_not_masked(&mut self, alarm_instance: Alarm) -> Result<(), Alarm> {
+impl Alarmer for AlarmUnit {
+    fn fire_if_not_masked(&mut self, alarm_instance: Alarm) -> Result<(), Alarm> {
         self.set_active(alarm_instance)
     }
 
-    pub fn always_fire(&mut self, alarm_instance: Alarm) -> Alarm {
+    fn always_fire(&mut self, alarm_instance: Alarm) -> Alarm {
         let kind = alarm_instance.kind();
         match self.set_active(alarm_instance) {
             Err(a) => a,

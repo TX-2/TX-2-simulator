@@ -1,7 +1,7 @@
 use base::prelude::*;
 use base::subword;
 
-use crate::alarm::{Alarm, BadMemOp};
+use crate::alarm::{Alarm, Alarmer, BadMemOp};
 use crate::context::Context;
 use crate::control::{ControlUnit, OpcodeResult, ProgramCounterChange};
 use crate::memory::{BitChange, MemoryMapped, MemoryOpFailure, MemoryUnit, WordChange};

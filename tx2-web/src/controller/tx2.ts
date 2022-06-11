@@ -1,11 +1,13 @@
 import { get_app_wasm_mod } from '../model/machine'
 import { AlarmController } from './alarms'
+import { IoController } from './io'
 
 type RunChangeCallback = (boolean) => void;
 
 // TODO: use a consistent naming scheme for methods.
 export class Tx2Controller {
     alarmController: AlarmController;
+    ioController: IoController;
     running: boolean;
     startTime: number;
     systemTime: number;
@@ -21,6 +23,7 @@ export class Tx2Controller {
 	console.log("Tx2Controller.constructor: wasm=", this.wasm);
 	this.tx2 = this.wasm.create_tx2(this.systemTime, this.clamped_elapsed_time());
 	this.alarmController = new AlarmController(this.tx2);
+	this.ioController = new IoController(this);
 	this.runChangeCallback = null;
     }
 
@@ -99,4 +102,7 @@ export class Tx2Controller {
 	return result;
     }
 
+    get_device_statuses() {
+	return this.wasm.tx2_device_statuses(this.tx2, this.systemTime, this.clamped_elapsed_time());
+    }
 }

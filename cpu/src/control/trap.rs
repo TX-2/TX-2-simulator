@@ -8,7 +8,7 @@ use std::time::Duration;
 use super::super::*;
 use crate::context::Context;
 use crate::event::InputEvent;
-use crate::io::{Unit, UnitStatus};
+use crate::io::{TransferFailed, Unit, UnitStatus};
 
 #[derive(Debug)]
 pub struct TrapCircuit {
@@ -170,7 +170,7 @@ impl Unit for TrapCircuit {
         // Does nothing.
     }
 
-    fn text_info(&mut self, _ctx: &Context) -> String {
+    fn text_info(&self, _ctx: &Context) -> String {
         const STRING_WRITE_SUCCESS: &str = "write! calls on a String should always succeed";
         let mut result = String::new();
 

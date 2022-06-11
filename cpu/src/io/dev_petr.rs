@@ -383,7 +383,7 @@ impl Unit for Petr {
         }
     }
 
-    fn text_info(&mut self, _ctx: &Context) -> String {
+    fn text_info(&self, _ctx: &Context) -> String {
         let build = || -> Result<String, std::fmt::Error> {
             let mut result = String::new();
             write!(result, "Motor {}", self.activity)?;

@@ -86,24 +86,12 @@ export class AlarmController {
 	    const old_status = prev?.[name];
 	    const current_status = current[name];
 	    if ((!prev) || alarm_status_changed(old_status, current_status)) {
-		console.log("Status change for " + name + " alarm", {old_status, current_status});
 		let callback = this.alarm_status_callbacks[name];
 		if (callback != null) {
-		    console.log("Calling the callback for " + name + " alarm");
 		    anything_changed = true;
 		    callback(current_status);
-		} else {
-		    console.log("There is no update callback for " + name + " alarm");
 		}
-	    } else {
-		let status = current[name];
-		console.log("Status of " + name + " alarm is unchanged: ", {status});
 	    }
-	}
-	if (anything_changed) {
-	    console.log("An alarm status changed");
-	} else {
-	    console.log("No alarm status changed");
 	}
     }
 
@@ -119,7 +107,6 @@ export class AlarmController {
 	this.all_alarm_info().forEach((st) => {
 	    alarm_status[st.name] = st;
 	});
-	console.log({alarm_status});
 	return alarm_status;
     }
 
@@ -134,7 +121,6 @@ export class AlarmController {
 		    message: wasm_status.message
 		};
 	    });
-	console.log({result});
 	return result;
     }
 

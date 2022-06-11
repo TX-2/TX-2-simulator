@@ -1,4 +1,5 @@
 use std::cmp::min;
+use std::collections::BTreeMap;
 use std::time::Duration;
 
 use tracing::{event, span, Level};
@@ -11,7 +12,7 @@ use crate::alarm::{Alarm, AlarmKind, AlarmStatus, UnmaskedAlarm};
 use crate::context::Context;
 use crate::control::{ControlUnit, ResetMode, RunMode};
 use crate::event::{InputEvent, OutputEvent};
-use crate::io::{set_up_peripherals, DeviceManager};
+use crate::io::{set_up_peripherals, DeviceManager, ExtendedUnitState};
 use crate::memory::{MemoryConfiguration, MemoryUnit};
 use crate::PanicOnUnmaskedAlarm;
 use crate::PETR;
@@ -92,9 +93,9 @@ impl Tx2 {
         self.next_hw_poll_due = newval;
     }
 
-    pub fn codabo(&mut self, ctx: &Context, reset_mode: &ResetMode) {
+    pub fn codabo(&mut self, ctx: &Context, reset_mode: &ResetMode) -> Result<(), Alarm> {
         self.control
-            .codabo(ctx, reset_mode, &mut self.devices, &mut self.mem);
+            .codabo(ctx, reset_mode, &mut self.devices, &mut self.mem)
     }
 
     pub fn mount_tape(&mut self, ctx: &Context, data: Vec<u8>) {
@@ -313,7 +314,38 @@ impl Tx2 {
         self.control.unmasked_alarm_active()
     }
 
-    pub fn disconnect_all_devices(&mut self, ctx: &Context) {
-        self.devices.disconnect_all(ctx);
+    pub fn disconnect_all_devices(&mut self, ctx: &Context) -> Result<(), Alarm> {
+        self.devices.disconnect_all(ctx, &mut self.control)
+    }
+
+    fn software_sequence_statuses(&self) -> BTreeMap<Unsigned6Bit, ExtendedUnitState> {
+        [u6!(0), u6!(0o76), u6!(0o77)]
+            .into_iter()
+            .map(|seq| -> (Unsigned6Bit, ExtendedUnitState) {
+                (
+                    seq,
+                    ExtendedUnitState {
+                        flag: self.control.current_flag_state(&seq),
+                        connected: false,
+                        in_maintenance: false,
+                        name: format!("Sequence {:>02o}", seq),
+                        status: None,
+                        text_info: "(software only)".to_string(),
+                    },
+                )
+            })
+            .collect()
+    }
+
+    pub fn sequence_statuses(
+        &mut self,
+        ctx: &Context,
+    ) -> Result<BTreeMap<Unsigned6Bit, ExtendedUnitState>, Alarm> {
+        // Get the status of the hardware units
+        let mut result: BTreeMap<Unsigned6Bit, ExtendedUnitState> =
+            self.devices.device_statuses(ctx, &mut self.control)?;
+        // Merge in the status of the software units
+        result.append(&mut self.software_sequence_statuses());
+        Ok(result)
     }
 }

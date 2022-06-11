@@ -168,7 +168,7 @@ impl Unit for LincolnWriterOutput {
         // Does nothing
     }
 
-    fn text_info(&mut self, _ctx: &Context) -> String {
+    fn text_info(&self, _ctx: &Context) -> String {
         format!(
             "{}. {}. {}. {}. {}.",
             if self.connected {

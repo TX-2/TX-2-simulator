@@ -19,6 +19,7 @@ export class App extends React.Component<AppProps, AppState> {
       <MainGrid
 	tx2Controller={this.props.tx2Controller}
 	alarmController={this.props.tx2Controller.alarmController}
+	ioController={this.props.tx2Controller.ioController}
 	loadTape={this.props.tx2Controller.loadTape.bind(this.props.tx2Controller)}
       />
     </div>;

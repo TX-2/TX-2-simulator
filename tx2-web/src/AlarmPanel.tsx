@@ -100,15 +100,17 @@ class AlarmControl extends Component<AlarmControlProps, AlarmControlState> {
 const AlarmTable = styled.table`
   border-collapse: collapse;
   border: 1px solid black;
+  margin: 0.5em;
 `;
 const AlarmHeader = styled.th`
   border: 1px solid black;
 `;
 
 interface AlarmPanelProps {
-    alarmStatuses: AlarmStatus[];
-    maskedChangeCallback: (name: string, masked: boolean) => void;
-    registerStatusCallback: (name: string, f: AlarmStatusCallback | null) => void;
+  alarmStatuses: AlarmStatus[];
+  maskedChangeCallback: (name: string, masked: boolean) => void;
+  registerStatusCallback: (name: string, f: AlarmStatusCallback | null) => void;
+  customStyles: any,
 }
 
 interface AlarmPanelState {
@@ -141,7 +143,7 @@ export default class AlarmPanel extends Component<AlarmPanelProps, AlarmPanelSta
     let alarmControls: JSX.Element[] = this.props.alarmStatuses.map((status) =>
       make_control(status.name, status, this.props.maskedChangeCallback, this.props.registerStatusCallback));
     return (
-      <AlarmTable aria-label="Alarm Status">
+      <AlarmTable aria-label="Alarm Status" style={this.props.customStyles}>
 	<thead>
 	  <tr>
 	    <AlarmHeader scope="col">Alarm</AlarmHeader>

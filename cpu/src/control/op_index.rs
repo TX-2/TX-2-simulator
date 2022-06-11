@@ -13,7 +13,7 @@ use tracing::{event, Level};
 use base::prelude::*;
 use base::subword;
 
-use crate::alarm::{Alarm, BadMemOp};
+use crate::alarm::{Alarm, Alarmer, BadMemOp};
 use crate::context::Context;
 use crate::control::{
     sign_extend_index_value, ControlUnit, OpcodeResult, ProgramCounterChange, UpdateE,

@@ -2,10 +2,13 @@ import React, { FunctionComponent, ReactElement } from 'react';
 import { Instructions } from './Instructions';
 import Checkbox from './checkbox';
 import { LincolnWriter } from './LincolnWriter';
+import { IoPanel } from './IoPanel';
 import AlarmPanel, { AlarmControlProps } from './AlarmPanel';
 import TapeLoadModal from './TapeLoadModal';
+import Flex from './Flex';
 import { Tx2Controller } from 'controller/tx2';
 import { AlarmController } from 'controller/alarms';
+import { IoController } from 'controller/io';
 import { Grid } from '@react-css/grid';
 
 interface ButtonsProps {
@@ -45,7 +48,7 @@ const Buttons = ({ changeRunCallback, tx2Controller, isClockRunning, loadTape }:
       <TapeLoadModal
 	modalIsOpen={modalIsOpen}
 	closeModal={closeModal} loadTape={loadTape} />
-      <Grid gap="2px" columns="auto" rows="auto auto auto">
+      <Grid gap="2px" columns="auto" rows="min-content min-content auto">
       <Grid.Item><button id="tapeLoadBtn" onClick={openModal}>Mount Paper Tape</button></Grid.Item>
       <Grid.Item><button id="codaboTSRBtn"
 	onClick={tx2Controller.codabo.bind(tx2Controller)}>CODABO (TSR)</button></Grid.Item>
@@ -58,6 +61,7 @@ const Buttons = ({ changeRunCallback, tx2Controller, isClockRunning, loadTape }:
 interface MainGridProps {
   tx2Controller: Tx2Controller,
   alarmController: AlarmController,
+  ioController: IoController,
   loadTape: (bytes: Uint8Array) => void,
 }
 
@@ -84,11 +88,14 @@ export const MainGrid = (props: MainGridProps) => (
       <Box column="1 / span 3" row="1" overflowY="scroll">
 <Instructions /></Box>
       <Box column="1 / span 3" row="2">
-	<AlarmPanel
-	  alarmStatuses={props.alarmController.all_alarm_info()}
-	  maskedChangeCallback={props.alarmController.set_alarm_masked.bind(props.alarmController)}
-	  registerStatusCallback={props.alarmController.set_alarm_status_callback.bind(props.alarmController)}
-	/>
+	<Flex flexDirection="row">
+	  <AlarmPanel customStyles={{float: "left"}}
+	    alarmStatuses={props.alarmController.all_alarm_info()}
+	    maskedChangeCallback={props.alarmController.set_alarm_masked.bind(props.alarmController)}
+	    registerStatusCallback={props.alarmController.set_alarm_status_callback.bind(props.alarmController)}
+	  />
+	  <IoPanel ioController={props.ioController} customStyles={{float: "left"}} />
+	</Flex>
       </Box>
       <Box column="1" row="3">
 	<Buttons

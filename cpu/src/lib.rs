@@ -16,7 +16,7 @@ pub use alarm::{Alarm, AlarmKind, AlarmStatus, UnmaskedAlarm};
 pub use context::Context;
 pub use control::{ControlUnit, PanicOnUnmaskedAlarm, ResetMode, RunMode};
 pub use event::*;
-pub use io::{set_up_peripherals, DeviceManager};
+pub use io::{set_up_peripherals, DeviceManager, ExtendedUnitState};
 pub use memory::{MemoryConfiguration, MemoryUnit};
 pub use tx2::Tx2;
 pub use types::*;
