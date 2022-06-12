@@ -50,8 +50,12 @@ interface IoUnitHeaderProps {
   value: number;
 }
 
-function IoUnitHeader(props: IoUnitHeaderProps) {
-  return (<th scope="row" className={styles['io-panel']}>{props.value.toString(8).padStart(2, '0')}</th>);
+function IoUnitHeader({value}: IoUnitHeaderProps) {
+  return (<th
+    scope="row"
+    className={styles['io-panel']}
+  >{value.toString(8).padStart(2, '0')}</th>
+  );
 }
 
 function IoCell(props: any) {
@@ -115,7 +119,6 @@ function IoPanelTable(props: any) {
 
 export interface IoUnitStatusPanelProps {
   ioController: IoController,
-  customStyles: any,
   //units: IoUnitStatusRowProps[];
 }
 
@@ -148,7 +151,7 @@ export class IoPanel extends Component<IoUnitStatusPanelProps, EmptyState> {
 	registerCallback={props.registerCallback}
       />);
     return (
-      <IoPanelTable style={this.props.customStyles}>
+      <IoPanelTable>
 	<thead>
 	  <tr>
 	    <IoColHeader>Unit</IoColHeader>

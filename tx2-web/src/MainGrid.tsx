@@ -89,18 +89,18 @@ export const MainGrid = (props: MainGridProps) => (
     <Grid
       gap="10px"
       columns="1fr 9fr"
-      rows="auto auto 60%"
+      rows="auto auto 40ex"
     >
       <Box column="1 / span 3" row="1" style={{overflowY: "scroll"}}>
-<Instructions /></Box>
+	<Instructions /></Box>
       <Box column="1 / span 3" row="2">
 	<Flex flexDirection="row">
-	  <AlarmPanel customStyles={{float: "left"}}
+	  <AlarmPanel
 	    alarmStatuses={props.alarmController.all_alarm_info()}
 	    maskedChangeCallback={props.alarmController.set_alarm_masked.bind(props.alarmController)}
 	    registerStatusCallback={props.alarmController.set_alarm_status_callback.bind(props.alarmController)}
 	  />
-	  <IoPanel ioController={props.ioController} customStyles={{float: "left"}} />
+	  <IoPanel ioController={props.ioController} />
 	</Flex>
       </Box>
       <Box column="1" row="3">

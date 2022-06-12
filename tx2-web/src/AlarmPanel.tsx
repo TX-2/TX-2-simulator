@@ -1,6 +1,5 @@
 import React, { Component } from 'react';
 import Checkbox from './checkbox';
-import styled from 'styled-components';
 import styles from './styles.scss'
 
 import { AlarmStatus, AlarmStatusCallback, AlarmControlState } from './controller/alarms'
@@ -11,27 +10,38 @@ export interface AlarmControlProps {
   masked: boolean,
   active: boolean,
   message: string | null,
+  className: string,
   setMaskedCallback: (name: string, masked: boolean) => void;
   registerStatusCallback: (name: string, f: AlarmStatusCallback | null) => void;
 }
 
-const AlarmRowHeader = styled.th`
-  text-align: right;
-  border: 1px solid black;
-`;
-const AlarmCell = styled.td`
-  border: 1px solid black;
-`;
-const MaskedCell = styled(AlarmCell)`
-  text-align: center;
-`;
-const ActiveCell = styled(AlarmCell)`
-  text-align: center;
-`;
-const MessageCell = styled.td`
-  border: 1px solid black;
-  width: 20em;
-`;
+
+function AlarmCell(props: any) {
+  return <td>{props.children}</td>;
+}
+
+function MaskedCell(props: any) {
+  return (<td
+    className={styles['alarm-panel__masked']}>
+    {props.children}
+  </td>);
+}
+
+function ActiveCell(props: any) {
+  return (
+    <td className={styles['alarm-panel__active']}>
+      {props.children}
+    </td>
+    );
+}
+
+function MessageCell(props: any) {
+  return (
+    <td className={styles['alarm-panel__message']}>
+      {props.children}
+    </td>
+    );
+}
 
 class AlarmControl extends Component<AlarmControlProps, AlarmControlState> {
   constructor(props: AlarmControlProps) {
@@ -93,7 +103,7 @@ class AlarmControl extends Component<AlarmControlProps, AlarmControlState> {
   render() {
     return (
       <tr>
-	<AlarmRowHeader scope="row">{this.props.name}</AlarmRowHeader>
+	<th scope="row" className={styles['alarm-panel__name']}>{this.props.name}</th>
 	<MaskedCell>{this.masked()}</MaskedCell>
 	<ActiveCell>{this.yesno(this.state.active)}</ActiveCell>
 	<MessageCell>{this.state.message}</MessageCell>
@@ -102,21 +112,10 @@ class AlarmControl extends Component<AlarmControlProps, AlarmControlState> {
   }
 }
 
-const AlarmTable = styled.table`
-  border-collapse: collapse;
-  border: 1px solid black;
-  margin: 0.5em;
-  table-layout: fixed;
-`;
-const AlarmHeader = styled.th`
-  border: 1px solid black;
-`;
-
 interface AlarmPanelProps {
   alarmStatuses: AlarmStatus[];
   maskedChangeCallback: (name: string, masked: boolean) => void;
   registerStatusCallback: (name: string, f: AlarmStatusCallback | null) => void;
-  customStyles: any,
 }
 
 interface AlarmPanelState {
@@ -128,7 +127,7 @@ function make_control(
   maskedChangeCallback: (name: string, masked: boolean) => void,
   registerStatusCallback: (name: string, f: AlarmStatusCallback | null) => void,
 ): JSX.Element {
-	return (<AlarmControl
+	return (<AlarmControl className={styles['alarm-panel__name']}
 		key={name}
 		name={name}
 		maskable={alarmStatus.maskable}
@@ -149,19 +148,19 @@ export default class AlarmPanel extends Component<AlarmPanelProps, AlarmPanelSta
     let alarmControls: JSX.Element[] = this.props.alarmStatuses.map((status) =>
       make_control(status.name, status, this.props.maskedChangeCallback, this.props.registerStatusCallback));
     return (
-      <AlarmTable aria-label="Alarm Status" style={this.props.customStyles}>
+      <table className={styles['alarm-panel']} aria-label="Alarm Status">
 	<thead>
 	  <tr>
-	    <AlarmHeader scope="col">Alarm</AlarmHeader>
-	    <AlarmHeader scope="col">Masked</AlarmHeader>
-	    <AlarmHeader scope="col">Active</AlarmHeader>
-	    <AlarmHeader scope="col">Message</AlarmHeader>
+	    <th className={styles['alarm-panel__name']} scope="col">Alarm</th>
+	    <th className={styles['alarm-panel__masked']} scope="col">Masked</th>
+	    <th className={styles['alarm-panel__active']} scope="col">Active</th>
+	    <th className={styles['alarm-panel__message']} scope="col">Message</th>
 	  </tr>
 	</thead>
 	<tbody>
 	  {alarmControls}
 	</tbody>
-      </AlarmTable>
+      </table>
     );
   }
 }
