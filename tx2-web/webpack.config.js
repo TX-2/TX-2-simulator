@@ -47,6 +47,13 @@ module.exports = {
 			modules: true
 		    }
 		},
+		{
+		    loader: "sass-loader",
+		    options: {
+			sourceMap: true,
+			warnRuleAsWarning: true,
+		    }
+		},
 	    ]
 	},
 	{
