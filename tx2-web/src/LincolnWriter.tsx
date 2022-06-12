@@ -1,22 +1,12 @@
 import React, { Component } from 'react';
 import styled from 'styled-components';
+import styles from './styles.scss'
 
-const Paper = styled.div`
-border: 1px;
-border-color: black;
-border-style: solid;
+//function Box(props: GridItemProps) {
 
-margin-top: 0px;
-margin-bottom: 0px;
-margin-right: 1em;
-margin-left: 1em;
-
-padding-left: 0.5ex;
-padding-right: 0.5ex;
-
-font-family: monospace;
-background-color: rgb(255, 255, 240);
-`;
+function Paper(props: any) {
+  return <div className={styles['lw__paper']}>{props.children}</div>;
+}
 
 const ComputerOutput = styled.span`
 border: 0px;

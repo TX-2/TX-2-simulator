@@ -1,0 +1,62 @@
+/* Many UI elements are styled directly in the React code, still. */
+
+.status-panel {
+    font-family: Sans-Serif;
+    margin: 0.5em;
+    border: 1px solid black;
+    border-collapse: collapse;
+
+    table {
+	float: left;
+	table-layout: fixed;
+
+	th {
+	    text-align: left;
+	}
+
+	td {
+	}
+    }
+}
+
+.io-panel {
+    @extend .status-panel;
+}
+
+.alarm-panel {
+    @extend .status-panel;
+}
+.alarm-panel__active {
+    @extend .alarm-panel;
+    text-align: center;
+}
+.alarm-panel__masked {
+    @extend .alarm-panel;
+    text-align: center;
+}
+.alarm-panel__message {
+    @extend .alarm-panel;
+    width: 20em;
+}
+.alarm-panel__name {
+    @extend .alarm-panel;
+    text-align: right;
+}
+
+.lw__paper {
+    overflowY: scroll;
+    border: 1px;
+    border-color: black;
+    border-style: solid;
+
+    margin-top: 0px;
+    margin-bottom: 0px;
+    margin-right: 1em;
+    margin-left: 1em;
+
+    padding-left: 0.5ex;
+    padding-right: 0.5ex;
+
+    font-family: monospace;
+    background-color: rgb(255, 255, 240);
+}
