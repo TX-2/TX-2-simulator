@@ -2,7 +2,7 @@ import { get_app_wasm_mod } from '../model/machine'
 import { AlarmController } from './alarms'
 import { IoController } from './io'
 
-type RunChangeCallback = (boolean) => void;
+type RunChangeCallback = (run: boolean) => void;
 
 // TODO: use a consistent naming scheme for methods.
 export class Tx2Controller {
@@ -33,14 +33,18 @@ export class Tx2Controller {
     }
 
     codabo(): void {
-	this.alarmController.update_status_around(() => {
+	this.ioController.update_status_around(() => {
+	    this.alarmController.update_status_around(() => {
 	    this.wasm.tx2_codabo(this.tx2, this.systemTime, this.clamped_elapsed_time());
-	})
+	    });
+	});
 	this.tick_after(0.0, this.systemTime + 1.0e-6);
     }
 
     loadTape(bytes: Uint8Array): void {
-	this.wasm.tx2_load_tape(this.tx2, this.systemTime, this.clamped_elapsed_time(), bytes);
+	this.ioController.update_status_around(() => {
+	    this.wasm.tx2_load_tape(this.tx2, this.systemTime, this.clamped_elapsed_time(), bytes);
+	})
     }
 
     tick_after(interval: number, system_time_then: number): void {
@@ -51,10 +55,12 @@ export class Tx2Controller {
     do_tick(tick_time: number): void {
 	console.log("do_tick for tick_time=" + tick_time);
 	this.systemTime = tick_time;
-	this.alarmController.update_status_around(
-	    () => {
-		this.wasm.tx2_do_tick(this.tx2, tick_time, this.clamped_elapsed_time());
-	    });
+	this.ioController.update_status_around(() => {
+	    this.alarmController.update_status_around(
+		() => {
+		    this.wasm.tx2_do_tick(this.tx2, tick_time, this.clamped_elapsed_time());
+		});
+	});
 	if (this.wasm.tx2_unmasked_alarm_active(this.tx2)) {
 	    console.log("An unmasked alarm is active.");
 	    this.changeRun(false);

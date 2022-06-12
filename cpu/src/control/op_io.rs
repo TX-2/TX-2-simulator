@@ -67,7 +67,7 @@ impl ControlUnit {
 
         let operand = self.regs.n.operand_address_and_defer_bit();
         let result = match u32::from(operand) {
-            0o20_000 => devices.disconnect(&j, &mut self.alarm_unit),
+            0o20_000 => devices.disconnect(ctx, &j, &mut self.alarm_unit),
             0o30_000..=0o37_777 => {
                 let mode: Unsigned12Bit = Unsigned12Bit::try_from(operand & 0o07_777).unwrap();
                 ControlUnit::connect_unit(

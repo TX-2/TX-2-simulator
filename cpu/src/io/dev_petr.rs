@@ -77,12 +77,12 @@ fn next_line_time(direction: Direction, system_time: &Duration) -> Duration {
             Direction::Bin => {
                 // At 2500 lines per second, the interval between
                 // lines is 1s / 2500 = 400 microseconds.
-                Duration::from_micros(2500)
+                Duration::from_micros(400)
             }
             Direction::Reel => {
                 // At 400 lines per second, the interval between lines
                 // is 1s / 400 = 2500 microseconds.
-                Duration::from_micros(400)
+                Duration::from_micros(2500)
             }
         }
 }
@@ -371,6 +371,7 @@ impl Unit for Petr {
     }
 
     fn disconnect(&mut self, _ctx: &Context) {
+        event!(Level::INFO, "PETR disconnecting");
         self.activity = Activity::Stopped;
     }
 
@@ -389,7 +390,7 @@ impl Unit for Petr {
             write!(result, "Motor {}", self.activity)?;
             match self.activity {
                 Activity::Started => {
-                    write!(result, "(direction {})", self.direction)?;
+                    write!(result, " (direction {})", self.direction)?;
                 }
                 Activity::Stopped => (),
             }

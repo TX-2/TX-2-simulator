@@ -1,7 +1,7 @@
 // CSS Flexbox
 import React from 'react';
 
-const Flex = (props) => (
+const Flex = (props: any) => (
   <div
     className={props.className}
     style={{

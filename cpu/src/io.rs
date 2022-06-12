@@ -258,9 +258,8 @@ impl AttachedUnit {
         }
     }
 
-    pub fn poll<A: Alarmer>(&self, ctx: &Context, alarmer: &mut A) -> Result<UnitStatus, Alarm> {
-        let do_poll = |unit: &mut dyn Unit| -> UnitStatus { unit.poll(ctx) };
-        self.call_mut_inner("poll", alarmer, do_poll)
+    pub fn poll<A: Alarmer>(&self, ctx: &Context, _alarmer: &mut A) -> Result<UnitStatus, Alarm> {
+        Ok(self.inner.borrow_mut().poll(ctx))
     }
 
     fn text_info(&self, ctx: &Context) -> String {
@@ -273,10 +272,22 @@ impl AttachedUnit {
         self.inner.borrow_mut().connect(ctx, mode)
     }
 
-    pub fn disconnect<A: Alarmer>(&self, ctx: &Context, alarmer: &mut A) -> Result<(), Alarm> {
-        self.call_mut_inner("disconnect", alarmer, |unit: &mut dyn Unit| {
-            unit.disconnect(ctx)
-        })
+    pub fn disconnect<A: Alarmer>(&self, ctx: &Context, _alarmer: &mut A) -> Result<(), Alarm> {
+        if !self.connected {
+            // It's permissible to disconnect an attached but not
+            // connected unit.  But we generate a warning, since the
+            // code shouldn't do it.
+            //
+            // TODO: eliminate this special case (i.e. don't
+            // disconnect a disconnected unit).
+            event!(
+                Level::WARN,
+                "disconnecting the not-connected unit {:o}",
+                self.unit
+            );
+        }
+        self.inner.borrow_mut().disconnect(ctx);
+        Ok(())
     }
 
     pub fn transfer_mode<A: Alarmer>(&self, alarmer: &mut A) -> Result<TransferMode, Alarm> {
@@ -586,6 +597,7 @@ impl DeviceManager {
 
     pub fn disconnect(
         &mut self,
+        ctx: &Context,
         device: &Unsigned6Bit,
         alarm_unit: &mut AlarmUnit,
     ) -> Result<(), Alarm> {
@@ -594,8 +606,15 @@ impl DeviceManager {
         }
         match self.devices.get_mut(device) {
             Some(attached) => {
-                attached.connected = false;
-                Ok(())
+                if attached.connected {
+                    attached.connected = false;
+                } else {
+                    event!(
+                        Level::WARN,
+                        "disconnecting unit {device:o} but it is not connected"
+                    );
+                }
+                attached.disconnect(ctx, alarm_unit)
             }
             None => {
                 alarm_unit.fire_if_not_masked(Alarm::IOSAL {

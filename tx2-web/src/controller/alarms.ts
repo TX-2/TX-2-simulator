@@ -56,10 +56,10 @@ interface AlarmStatusCallbackByName {
 
 export class AlarmController {
     alarm_status_callbacks: AlarmStatusCallbackByName;
-    tx2;
+    tx2: Tx2Controller;
     wasm;
 
-    constructor(tx2) {
+    constructor(tx2: Tx2Controller) {
 	this.alarm_status_callbacks = {};
 	this.tx2 = tx2;
 	this.wasm = get_app_wasm_mod();
@@ -112,7 +112,7 @@ export class AlarmController {
 
     all_alarm_info(): AlarmStatus[] {
 	const result: AlarmStatus[] = this.wasm.get_alarm_statuses(this.tx2)
-	    .map((wasm_status) => {
+	    .map((wasm_status: any) => {
 		return {
 		    name: wasm_status.name,
 		    maskable: wasm_status.maskable,

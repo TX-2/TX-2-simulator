@@ -9,13 +9,13 @@ import Flex from './Flex';
 import { Tx2Controller } from 'controller/tx2';
 import { AlarmController } from 'controller/alarms';
 import { IoController } from 'controller/io';
-import { Grid } from '@react-css/grid';
+import { Grid, GridItemProps } from '@react-css/grid';
 
 interface ButtonsProps {
   changeRunCallback(run: boolean): void,
   tx2Controller: Tx2Controller,
   isClockRunning: boolean,
-  loadTape: (Uint8Array) => void,
+  loadTape: (bytes: Uint8Array) => void,
 }
 
 const Buttons = ({ changeRunCallback, tx2Controller, isClockRunning, loadTape }: ButtonsProps) => {
@@ -67,12 +67,18 @@ interface MainGridProps {
 
 type LoadTapeCallback = (bytes: Uint8Array) => void;
 
+//interface BoxProps: extends GridItemProps {
+//  row: string,
+//  column: string,
+//  style: any,
+//  children: any,
+//}
 
-function Box(props) {
+function Box(props: GridItemProps) {
   return (<Grid.Item
     row={props.row}
     column={props.column}
-    style={{ backgroundColor: "lightgray", color: "black", borderRadius: "5px", padding: "20px"}}
+    style={{ backgroundColor: "lightgray", color: "black", borderRadius: "5px", padding: "20px", ...props.style}}
   >{props.children}</Grid.Item>
   );
 }
@@ -85,7 +91,7 @@ export const MainGrid = (props: MainGridProps) => (
       columns="1fr 9fr"
       rows="auto auto 60%"
     >
-      <Box column="1 / span 3" row="1" overflowY="scroll">
+      <Box column="1 / span 3" row="1" style={{overflowY: "scroll"}}>
 <Instructions /></Box>
       <Box column="1 / span 3" row="2">
 	<Flex flexDirection="row">
@@ -105,7 +111,7 @@ export const MainGrid = (props: MainGridProps) => (
 	  loadTape={props.loadTape}
 	/>
       </Box>
-      <Box column="2" row="3" padding="20px" overflowY="scroll">
+      <Box column="2" row="3" style={{padding: "20px", overflowY: "scroll"}}>
 	<LincolnWriter unit={"66"} cursor_blink_ms={750} />
       </Box>
     </Grid>

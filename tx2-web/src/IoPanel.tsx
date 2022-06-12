@@ -50,7 +50,6 @@ interface OctalNumberCellProps {
 }
 
 function OctalNumberCell(props: OctalNumberCellProps) {
-  console.log("OctalNumberCellProps", {props});
   if (props.value === undefined || props.value === null) {
     return <IoCell></IoCell>;
   } else {
@@ -70,26 +69,41 @@ function IoUnitHeader(props: IoUnitHeaderProps) {
 export interface EmptyState {
 }
 
-export class IoUnitStatusRow extends Component<IoUnitProps, EmptyState> {
+export class IoUnitStatusRow extends Component<IoUnitProps, IoUnitProps> {
+
   constructor(props: IoUnitProps) {
     super(props);
+    this.state = props;
+  }
+
+  componentDidMount() {
+    // TODO: should more of this mount/unmount logic go into the
+    // controller somehow?
+    this.props.registerCallback(this.props.name, this.updateStatus.bind(this));
+  }
+
+  componentWillUnmount() {
+    this.props.registerCallback(this.props.name, null);
+  }
+
+  updateStatus(newprops: IoUnitProps): void {
+    this.setState(newprops);
   }
 
   render() {
-    let pro = this.props;
-    console.log("IoUnitStatusRowProps", {pro});
+    let state = this.state;
     return (<tr>
       <IoUnitHeader value={this.props.unit} />
-      <IoCell>{this.props.name}</IoCell>
-      <IoCell>{choose(this.props.flag, "down", "up")}</IoCell>
-      <IoCell>{yesno(this.props.connected)}</IoCell>
-      <IoCell>{chooseblank(this.props.connected, this.props.status?.buffer_available_to_cpu, "busy", "free")}</IoCell>
-      <IoCell>{yesno(this.props.in_maintenance)}</IoCell>
-      <IoCell>{yesnoblank(!!this.props.connected, this.props.status?.inability)}</IoCell>
-      <IoCell>{yesnoblank(!!this.props.connected, this.props.status?.missed_data)}</IoCell>
-      <OctalNumberCell value={this.props.status?.special} width={4} />
-      <OctalNumberCell value={this.props.status?.mode} width={4} />
-      <IoCell>{this.props.text_info}</IoCell>
+      <IoCell>{this.state.name}</IoCell>
+      <IoCell>{choose(this.state.flag, "down", "up")}</IoCell>
+      <IoCell>{yesno(this.state.connected)}</IoCell>
+      <IoCell>{chooseblank(this.state.connected, this.state.status?.buffer_available_to_cpu, "busy", "free")}</IoCell>
+      <IoCell>{yesno(this.state.in_maintenance)}</IoCell>
+      <IoCell>{yesnoblank(!!this.state.connected, this.state.status?.inability)}</IoCell>
+      <IoCell>{yesnoblank(!!this.state.connected, this.state.status?.missed_data)}</IoCell>
+      <OctalNumberCell value={this.state.status?.special} width={4} />
+      <OctalNumberCell value={this.state.status?.mode} width={4} />
+      <IoCell>{this.state.text_info}</IoCell>
     </tr>
     );
   }
@@ -133,6 +147,7 @@ export class IoPanel extends Component<IoUnitStatusPanelProps, EmptyState> {
 	name={props.name}
 	text_info={props.text_info}
 	status={props.status}
+	registerCallback={props.registerCallback}
       />);
     return (
       <IoPanelTable style={this.props.customStyles}>
