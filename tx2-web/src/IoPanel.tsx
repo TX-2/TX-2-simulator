@@ -1,6 +1,6 @@
 import React, { Component } from 'react';
 import { IoController, IoUnitProps } from './controller/io'
-import styled from 'styled-components';
+import styles from './styles.scss'
 
 function choose(flag: boolean, noval: string, yesval: string): string {
   if (flag) {
@@ -31,30 +31,19 @@ function chooseblank(nonblank: boolean, flag: boolean | null | undefined, noval:
   }
 }
 
-const IoRowHeader = styled.th`
-  text-align: right;
-  border: 1px solid black;
-`;
-const IoColHeader = styled.th`
-  text-align: right;
-  border: 1px solid black;
-`;
-
-const IoCell = styled.td`
-  border: 1px solid black;
-`;
-
 interface OctalNumberCellProps {
   value: number | undefined | null;
-  width: number;
+  digits: number;
 }
 
 function OctalNumberCell(props: OctalNumberCellProps) {
+  var content: string = "";
   if (props.value === undefined || props.value === null) {
-    return <IoCell></IoCell>;
+    content = "";
   } else {
-    return (<IoCell>{props.value.toString(8).padStart(props.width, '0')}</IoCell>);
+    content = props.value.toString(8).padStart(props.digits, '0');
   }
+  return (<IoCell>{content}</IoCell>);
 }
 
 interface IoUnitHeaderProps {
@@ -62,9 +51,20 @@ interface IoUnitHeaderProps {
 }
 
 function IoUnitHeader(props: IoUnitHeaderProps) {
-  return (<IoRowHeader>{props.value.toString(8).padStart(2, '0')}</IoRowHeader>);
+  return (<th scope="row" className={styles['io-panel']}>{props.value.toString(8).padStart(2, '0')}</th>);
 }
 
+function IoCell(props: any) {
+  return <td className={styles['io-panel']}>{props.children}</td>;
+}
+
+function IoColHeader(props: any) {
+  return <th
+    scope="col"
+    className={styles['io-panel']}>
+    {props.children}
+  </th>;
+}
 
 export interface EmptyState {
 }
@@ -101,19 +101,17 @@ export class IoUnitStatusRow extends Component<IoUnitProps, IoUnitProps> {
       <IoCell>{yesno(this.state.in_maintenance)}</IoCell>
       <IoCell>{yesnoblank(!!this.state.connected, this.state.status?.inability)}</IoCell>
       <IoCell>{yesnoblank(!!this.state.connected, this.state.status?.missed_data)}</IoCell>
-      <OctalNumberCell value={this.state.status?.special} width={4} />
-      <OctalNumberCell value={this.state.status?.mode} width={4} />
+      <OctalNumberCell value={this.state.status?.special} digits={4} />
+      <OctalNumberCell value={this.state.status?.mode} digits={4} />
       <IoCell>{this.state.text_info}</IoCell>
     </tr>
     );
   }
 }
 
-const IoPanelTable = styled.table`
-  margin: 0.5em;
-  border-collapse: collapse;
-  border: 1px solid black;
-`;
+function IoPanelTable(props: any) {
+  return (<table className={styles['io-panel']}>{props.children}</table>);
+}
 
 export interface IoUnitStatusPanelProps {
   ioController: IoController,
@@ -153,17 +151,17 @@ export class IoPanel extends Component<IoUnitStatusPanelProps, EmptyState> {
       <IoPanelTable style={this.props.customStyles}>
 	<thead>
 	  <tr>
-	    <IoColHeader scope="col">Unit</IoColHeader>
-	    <IoColHeader scope="col">Name</IoColHeader>
-	    <IoColHeader scope="col">Flag</IoColHeader>
-	    <IoColHeader scope="col">Connected</IoColHeader>
-	    <IoColHeader scope="col">Status</IoColHeader>
-	    <IoColHeader scope="col">Maintenance</IoColHeader>
-	    <IoColHeader scope="col">Inability</IoColHeader>
-	    <IoColHeader scope="col">Missed Data</IoColHeader>
-	    <IoColHeader scope="col">Special</IoColHeader>
-	    <IoColHeader scope="col">Mode</IoColHeader>
-	    <IoColHeader scope="col">Info</IoColHeader>
+	    <IoColHeader>Unit</IoColHeader>
+	    <IoColHeader>Name</IoColHeader>
+	    <IoColHeader>Flag</IoColHeader>
+	    <IoColHeader>Connected</IoColHeader>
+	    <IoColHeader>Status</IoColHeader>
+	    <IoColHeader>Maintenance</IoColHeader>
+	    <IoColHeader>Inability</IoColHeader>
+	    <IoColHeader>Missed Data</IoColHeader>
+	    <IoColHeader>Special</IoColHeader>
+	    <IoColHeader>Mode</IoColHeader>
+	    <IoColHeader>Info</IoColHeader>
 	  </tr>
 	</thead>
 	<tbody>

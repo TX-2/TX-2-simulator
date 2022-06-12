@@ -1,0 +1,17 @@
+/* Many UI elements are styled directly in the React code, still. */
+
+.io-panel {
+  border-collapse: collapse;
+  border: 1px solid black;
+}
+
+.io-panel table {
+  margin: 0.5em;
+  table-layout: fixed;
+}
+.io-panel th {
+  text-align: left;
+}
+
+.io-panel td {
+}

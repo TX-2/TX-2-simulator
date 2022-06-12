@@ -1,6 +1,7 @@
 import React, { Component } from 'react';
 import Checkbox from './checkbox';
 import styled from 'styled-components';
+import styles from './styles.scss'
 
 import { AlarmStatus, AlarmStatusCallback, AlarmControlState } from './controller/alarms'
 
@@ -26,6 +27,10 @@ const MaskedCell = styled(AlarmCell)`
 `;
 const ActiveCell = styled(AlarmCell)`
   text-align: center;
+`;
+const MessageCell = styled.td`
+  border: 1px solid black;
+  width: 20em;
 `;
 
 class AlarmControl extends Component<AlarmControlProps, AlarmControlState> {
@@ -91,7 +96,7 @@ class AlarmControl extends Component<AlarmControlProps, AlarmControlState> {
 	<AlarmRowHeader scope="row">{this.props.name}</AlarmRowHeader>
 	<MaskedCell>{this.masked()}</MaskedCell>
 	<ActiveCell>{this.yesno(this.state.active)}</ActiveCell>
-	<AlarmCell>{this.state.message}</AlarmCell>
+	<MessageCell>{this.state.message}</MessageCell>
       </tr>
     );
   }
@@ -101,6 +106,7 @@ const AlarmTable = styled.table`
   border-collapse: collapse;
   border: 1px solid black;
   margin: 0.5em;
+  table-layout: fixed;
 `;
 const AlarmHeader = styled.th`
   border: 1px solid black;
