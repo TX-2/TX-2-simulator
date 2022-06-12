@@ -5,7 +5,9 @@
   "main": "src/index.tsx",
   "scripts": {
     "build:wasm": "wasm-pack build --out-dir build",
-    "build": "npm run build:wasm && npx webpack",
+    "build:webpack-once": "npx webpack",
+    "build:webpack-with-repeat": "npm run build:webpack-once || npm run build:webpack-once",
+    "build": "npm run build:wasm && npm run build:webpack-with-repeat",
     "dev": "webpack server"
   },
   "keywords": [],
