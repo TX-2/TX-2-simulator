@@ -78,7 +78,7 @@ function Box(props: GridItemProps) {
   return (<Grid.Item
     row={props.row}
     column={props.column}
-    style={{ backgroundColor: "lightgray", color: "black", borderRadius: "5px", padding: "20px", ...props.style}}
+    style={{ backgroundColor: "lightgray", color: "black", borderRadius: "5px", padding: "10px", ...props.style}}
   >{props.children}</Grid.Item>
   );
 }
