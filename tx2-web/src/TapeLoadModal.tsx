@@ -23,7 +23,7 @@ const TapeLoadModal: FunctionComponent<TapeLoadModalProps> = ({modalIsOpen, clos
         const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
                 const file: File = e.target.files![0];
                 console.log("Attempting to load a tape " + file.name + " which has length " + file.size);
-                let reader = new FileReader();
+                const reader = new FileReader();
                 reader.onloadend = function() {
                         var bytes = new Uint8Array(reader.result as ArrayBuffer)
                         loadTape(bytes);

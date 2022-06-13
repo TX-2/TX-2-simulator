@@ -95,7 +95,7 @@ export class IoUnitStatusRow extends Component<IoUnitProps, IoUnitProps> {
   }
 
   render() {
-    let state = this.state;
+    const state = this.state;
     return (<tr>
       <IoUnitHeader value={this.props.unit} />
       <IoCell>{this.state.name}</IoCell>
@@ -137,8 +137,8 @@ export class IoPanel extends Component<IoUnitStatusPanelProps, EmptyState> {
   }
 
   render() {
-    let unitPropsArray: IoUnitProps[] = this.props.ioController.allUnitProps();
-    let rows: React.ReactNode[] = unitPropsArray.map((props) =>
+    const unitPropsArray: IoUnitProps[] = this.props.ioController.allUnitProps();
+    const rows: React.ReactNode[] = unitPropsArray.map((props) =>
       <IoUnitStatusRow
         unit={props.unit}
         key={props.key}

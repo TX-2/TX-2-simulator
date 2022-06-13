@@ -12,6 +12,6 @@ wasm.then(m => {
   Modal.setAppElement('body')
   m.init();
   set_app_wasm_mod(m);
-  let tx2: Tx2Controller = new Tx2Controller();
+  const tx2: Tx2Controller = new Tx2Controller();
   ReactDOM.render(<App tx2Controller={tx2} />, document.getElementById("root"));
 });
