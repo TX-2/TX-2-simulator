@@ -1,7 +1,6 @@
 import React from "react";
 import { MainGrid } from './MainGrid';
 import { Tx2Controller } from './controller/tx2';
-import { AlarmController } from './controller/alarms'
 
 interface AppProps {
   tx2Controller: Tx2Controller,

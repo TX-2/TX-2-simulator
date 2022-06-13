@@ -1,9 +1,9 @@
-import React, { FunctionComponent, ReactElement } from 'react';
+import React from 'react';
 import { Instructions } from './Instructions';
 import Checkbox from './checkbox';
 import { LincolnWriter } from './LincolnWriter';
 import { IoPanel } from './IoPanel';
-import AlarmPanel, { AlarmControlProps } from './AlarmPanel';
+import AlarmPanel from './AlarmPanel';
 import TapeLoadModal from './TapeLoadModal';
 import Flex from './Flex';
 import { Tx2Controller } from 'controller/tx2';
@@ -64,15 +64,6 @@ interface MainGridProps {
   ioController: IoController,
   loadTape: (bytes: Uint8Array) => void,
 }
-
-type LoadTapeCallback = (bytes: Uint8Array) => void;
-
-//interface BoxProps: extends GridItemProps {
-//  row: string,
-//  column: string,
-//  style: any,
-//  children: any,
-//}
 
 function Box(props: GridItemProps) {
   return (<Grid.Item

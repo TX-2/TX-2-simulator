@@ -1,4 +1,3 @@
-import { get_app_wasm_mod } from '../model/machine'
 import { Tx2Controller } from './tx2'
 
 
@@ -43,10 +42,6 @@ export interface WasmUnitState { // mirrors struct UnitState in WASM (lib.rs)
 
 export interface AlarmStatusCallback {
     (status: IoUnitProps): void;
-}
-
-interface IoStatusCallbackByName {
-    [index: number]: ChangeCallback | null
 }
 
 export class IoController {
