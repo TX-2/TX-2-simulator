@@ -46,12 +46,12 @@ const Buttons = ({ changeRunCallback, tx2Controller, isClockRunning, loadTape }:
   return (
     <div>
       <TapeLoadModal
-	modalIsOpen={modalIsOpen}
-	closeModal={closeModal} loadTape={loadTape} />
+        modalIsOpen={modalIsOpen}
+        closeModal={closeModal} loadTape={loadTape} />
       <Grid gap="2px" columns="auto" rows="min-content min-content auto">
       <Grid.Item><button id="tapeLoadBtn" onClick={openModal}>Mount Paper Tape</button></Grid.Item>
       <Grid.Item><button id="codaboTSRBtn"
-	onClick={tx2Controller.codabo.bind(tx2Controller)}>CODABO (TSR)</button></Grid.Item>
+        onClick={tx2Controller.codabo.bind(tx2Controller)}>CODABO (TSR)</button></Grid.Item>
       <Grid.Item><Checkbox label="Run" handleChange={handleChangeRun.bind(this)} isChecked={isRunning} /></Grid.Item>
       </Grid>
     </div>
@@ -92,27 +92,27 @@ export const MainGrid = (props: MainGridProps) => (
       rows="auto auto 40ex"
     >
       <Box column="1 / span 3" row="1" style={{overflowY: "scroll"}}>
-	<Instructions /></Box>
+        <Instructions /></Box>
       <Box column="1 / span 3" row="2">
-	<Flex flexDirection="row">
-	  <AlarmPanel
-	    alarmStatuses={props.alarmController.all_alarm_info()}
-	    maskedChangeCallback={props.alarmController.set_alarm_masked.bind(props.alarmController)}
-	    registerStatusCallback={props.alarmController.set_alarm_status_callback.bind(props.alarmController)}
-	  />
-	  <IoPanel ioController={props.ioController} />
-	</Flex>
+        <Flex flexDirection="row">
+          <AlarmPanel
+            alarmStatuses={props.alarmController.all_alarm_info()}
+            maskedChangeCallback={props.alarmController.set_alarm_masked.bind(props.alarmController)}
+            registerStatusCallback={props.alarmController.set_alarm_status_callback.bind(props.alarmController)}
+          />
+          <IoPanel ioController={props.ioController} />
+        </Flex>
       </Box>
       <Box column="1" row="3">
-	<Buttons
-	  changeRunCallback={props.tx2Controller.changeRun.bind(props.tx2Controller)}
-	  tx2Controller={props.tx2Controller}
-	  isClockRunning={props.tx2Controller.isClockRunning()}
-	  loadTape={props.loadTape}
-	/>
+        <Buttons
+          changeRunCallback={props.tx2Controller.changeRun.bind(props.tx2Controller)}
+          tx2Controller={props.tx2Controller}
+          isClockRunning={props.tx2Controller.isClockRunning()}
+          loadTape={props.loadTape}
+        />
       </Box>
       <Box column="2" row="3" style={{padding: "20px", overflowY: "scroll"}}>
-	<LincolnWriter unit={"66"} cursor_blink_ms={750} />
+        <LincolnWriter unit={"66"} cursor_blink_ms={750} />
       </Box>
     </Grid>
   </div>
