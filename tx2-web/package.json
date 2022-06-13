@@ -8,7 +8,8 @@
     "build:webpack-once": "npx webpack",
     "build:webpack-with-repeat": "npm run build:webpack-once || npm run build:webpack-once",
     "build": "npm run build:wasm && npm run build:webpack-with-repeat",
-    "dev": "webpack server"
+    "dev": "webpack server",
+    "lint": "eslint ."
   },
   "keywords": [],
   "author": "James Youngman <youngman@google.com>",
@@ -30,6 +31,8 @@
     "@types/react-dom": "^18.0.5",
     "@types/react-table": "^7.7.12",
     "@types/styled-components": "^5.1.25",
+    "@typescript-eslint/eslint-plugin": "^5.28.0",
+    "@typescript-eslint/parser": "^5.28.0",
     "@wasm-tool/wasm-pack-plugin": "^1.6.0",
     "autoprefixer": "^10.4.0",
     "babel-core": "^6.26.3",
@@ -37,6 +40,7 @@
     "css-loader": "^6.7.1",
     "css-modules-typescript-loader": "^4.0.1",
     "csstype": "^3.1.0",
+    "eslint": "^8.17.0",
     "html-webpack-plugin": "^5.5.0",
     "postcss-cli": "^9.0.2",
     "react-table": "^7.8.0",
@@ -47,7 +51,7 @@
     "styled-components": "^5.3.5",
     "tailwindcss": "^2.2.19",
     "ts-loader": "^9.3.0",
-    "typescript": "^4.7.2",
+    "typescript": "^4.7.3",
     "webpack": "^5.73.0",
     "webpack-cli": "^4.9.2",
     "webpack-dev-server": "^4.5.0"
