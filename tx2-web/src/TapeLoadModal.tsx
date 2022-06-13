@@ -1,4 +1,4 @@
-import React, { FunctionComponent, ChangeEvent } from 'react';
+import React, { FunctionComponent } from 'react';
 import Modal from 'react-modal';
 
 interface TapeLoadModalProps {
@@ -25,7 +25,7 @@ const TapeLoadModal: FunctionComponent<TapeLoadModalProps> = ({modalIsOpen, clos
                 console.log("Attempting to load a tape " + file.name + " which has length " + file.size);
                 const reader = new FileReader();
                 reader.onloadend = function() {
-                        var bytes = new Uint8Array(reader.result as ArrayBuffer)
+                        const bytes = new Uint8Array(reader.result as ArrayBuffer)
                         loadTape(bytes);
                         closeModal();
                 };

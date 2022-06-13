@@ -37,7 +37,7 @@ interface OctalNumberCellProps {
 }
 
 function OctalNumberCell(props: OctalNumberCellProps) {
-  var content: string = "";
+  let content: string;
   if (props.value === undefined || props.value === null) {
     content = "";
   } else {
@@ -95,7 +95,6 @@ export class IoUnitStatusRow extends Component<IoUnitProps, IoUnitProps> {
   }
 
   render() {
-    const state = this.state;
     return (<tr>
       <IoUnitHeader value={this.props.unit} />
       <IoCell>{this.state.name}</IoCell>
@@ -121,15 +120,6 @@ export interface IoUnitStatusPanelProps {
   ioController: IoController,
   //units: IoUnitStatusRowProps[];
 }
-
-function nvl(input: any | null, default_value: any): any {
-  if (input == null) {
-    return default_value;
-  } else {
-    return input;
-  }
-}
-
 
 export class IoPanel extends Component<IoUnitStatusPanelProps, EmptyState> {
   constructor(props: IoUnitStatusPanelProps) {
