@@ -40,11 +40,11 @@ class Cursor extends Component<CursorProps, CursorState> {
   componentDidMount() {
     this.intervalId = setInterval(
       () => {
-	this.setState(prevState => {
-	  return {
-	    isSolid: !prevState.isSolid,
-	  };
-	});
+        this.setState(prevState => {
+          return {
+            isSolid: !prevState.isSolid,
+          };
+        });
       }, this.props.blinkMs);
   }
   componentWillUnmount() {
