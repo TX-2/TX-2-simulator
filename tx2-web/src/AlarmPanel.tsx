@@ -16,27 +16,23 @@ export interface AlarmControlProps {
 }
 
 
-function MaskedCell(props: any) {
+type MaskedCellProps = {
+  children: JSX.Element,
+}
+
+function MaskedCell(props: MaskedCellProps) {
   return (<td
     className={styles['alarm-panel__masked']}>
     {props.children}
   </td>);
 }
 
-function ActiveCell(props: any) {
-  return (
-    <td className={styles['alarm-panel__active']}>
-      {props.children}
-    </td>
-    );
+function ActiveCell({children}: {children: JSX.Element | string}) {
+  return <td className={styles['alarm-panel__active']}>{children}</td>;
 }
 
-function MessageCell(props: any) {
-  return (
-    <td className={styles['alarm-panel__message']}>
-      {props.children}
-    </td>
-    );
+function MessageCell({children}: {children: JSX.Element | string}) {
+  return <td className={styles['alarm-panel__message']}>{children}</td>;
 }
 
 class AlarmControl extends Component<AlarmControlProps, AlarmControlState> {
