@@ -1,7 +1,14 @@
 // CSS Flexbox
 import React from 'react';
+import { Properties } from 'csstype';
 
-const Flex = (props: any) => (
+interface FlexProperties extends Properties {
+  className?: string,
+  children?: JSX.Element[] | string,
+  container?: boolean,
+}
+
+const Flex = (props: FlexProperties) => (
   <div
     className={props.className}
     style={{

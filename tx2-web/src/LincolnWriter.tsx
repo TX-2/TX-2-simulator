@@ -4,8 +4,8 @@ import styles from './styles.scss'
 
 //function Box(props: GridItemProps) {
 
-function Paper(props: any) {
-  return <div className={styles['lw__paper']}>{props.children}</div>;
+function Paper({children}: {children: JSX.Element | JSX.Element[] | string}) {
+  return <div className={styles['lw__paper']}>{children}</div>;
 }
 
 const ComputerOutput = styled.span`
