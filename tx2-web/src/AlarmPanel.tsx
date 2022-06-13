@@ -92,9 +92,9 @@ class AlarmControl extends Component<AlarmControlProps, AlarmControlState> {
   masked(): React.ReactElement {
     if (this.props.maskable) {
       return (<Checkbox
-	isChecked={this.state.masked}
-	handleChange={this.handleMaskedChange.bind(this)}
-	label={""} />);
+        isChecked={this.state.masked}
+        handleChange={this.handleMaskedChange.bind(this)}
+        label={""} />);
     } else {
       return <span>never</span>;
     }
@@ -103,10 +103,10 @@ class AlarmControl extends Component<AlarmControlProps, AlarmControlState> {
   render() {
     return (
       <tr>
-	<th scope="row" className={styles['alarm-panel__name']}>{this.props.name}</th>
-	<MaskedCell>{this.masked()}</MaskedCell>
-	<ActiveCell>{this.yesno(this.state.active)}</ActiveCell>
-	<MessageCell>{this.state.message}</MessageCell>
+        <th scope="row" className={styles['alarm-panel__name']}>{this.props.name}</th>
+        <MaskedCell>{this.masked()}</MaskedCell>
+        <ActiveCell>{this.yesno(this.state.active)}</ActiveCell>
+        <MessageCell>{this.state.message}</MessageCell>
       </tr>
     );
   }
@@ -127,13 +127,13 @@ function make_control(
   maskedChangeCallback: (name: string, masked: boolean) => void,
   registerStatusCallback: (name: string, f: AlarmStatusCallback | null) => void,
 ): JSX.Element {
-	return (<AlarmControl className={styles['alarm-panel__name']}
-		key={name}
-		name={name}
-		maskable={alarmStatus.maskable}
-		masked={alarmStatus.masked}
-		active={alarmStatus.active}
-		message={alarmStatus.message}
+        return (<AlarmControl className={styles['alarm-panel__name']}
+                key={name}
+                name={name}
+                maskable={alarmStatus.maskable}
+                masked={alarmStatus.masked}
+                active={alarmStatus.active}
+                message={alarmStatus.message}
                 setMaskedCallback={maskedChangeCallback}
                 registerStatusCallback={registerStatusCallback} />);
 }
@@ -149,17 +149,17 @@ export default class AlarmPanel extends Component<AlarmPanelProps, AlarmPanelSta
       make_control(status.name, status, this.props.maskedChangeCallback, this.props.registerStatusCallback));
     return (
       <table className={styles['alarm-panel']} aria-label="Alarm Status">
-	<thead>
-	  <tr>
-	    <th className={styles['alarm-panel__name']} scope="col">Alarm</th>
-	    <th className={styles['alarm-panel__masked']} scope="col">Masked</th>
-	    <th className={styles['alarm-panel__active']} scope="col">Active</th>
-	    <th className={styles['alarm-panel__message']} scope="col">Message</th>
-	  </tr>
-	</thead>
-	<tbody>
-	  {alarmControls}
-	</tbody>
+        <thead>
+          <tr>
+            <th className={styles['alarm-panel__name']} scope="col">Alarm</th>
+            <th className={styles['alarm-panel__masked']} scope="col">Masked</th>
+            <th className={styles['alarm-panel__active']} scope="col">Active</th>
+            <th className={styles['alarm-panel__message']} scope="col">Message</th>
+          </tr>
+        </thead>
+        <tbody>
+          {alarmControls}
+        </tbody>
       </table>
     );
   }

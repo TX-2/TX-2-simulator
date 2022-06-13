@@ -12,9 +12,9 @@ export function Instructions() {
     <p>
       Presently you should see some output.
       You can <a href="https://tx-2.github.io/">find out more about
-	the simulator project on our website</a> or <a
-	href="https://github.com/TX-2/TX-2-simulator">take a
-	look at the source code</a>.
+        the simulator project on our website</a> or <a
+        href="https://github.com/TX-2/TX-2-simulator">take a
+        look at the source code</a>.
     </p>
   </section>);
 }

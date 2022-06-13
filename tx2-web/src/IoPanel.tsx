@@ -140,36 +140,36 @@ export class IoPanel extends Component<IoUnitStatusPanelProps, EmptyState> {
     let unitPropsArray: IoUnitProps[] = this.props.ioController.allUnitProps();
     let rows: React.ReactNode[] = unitPropsArray.map((props) =>
       <IoUnitStatusRow
-	unit={props.unit}
-	key={props.key}
-	flag={props.flag}
-	connected={props.connected}
-	in_maintenance={props.in_maintenance}
-	name={props.name}
-	text_info={props.text_info}
-	status={props.status}
-	registerCallback={props.registerCallback}
+        unit={props.unit}
+        key={props.key}
+        flag={props.flag}
+        connected={props.connected}
+        in_maintenance={props.in_maintenance}
+        name={props.name}
+        text_info={props.text_info}
+        status={props.status}
+        registerCallback={props.registerCallback}
       />);
     return (
       <IoPanelTable>
-	<thead>
-	  <tr>
-	    <IoColHeader>Unit</IoColHeader>
-	    <IoColHeader>Name</IoColHeader>
-	    <IoColHeader>Flag</IoColHeader>
-	    <IoColHeader>Connected</IoColHeader>
-	    <IoColHeader>Status</IoColHeader>
-	    <IoColHeader>Maintenance</IoColHeader>
-	    <IoColHeader>Inability</IoColHeader>
-	    <IoColHeader>Missed Data</IoColHeader>
-	    <IoColHeader>Special</IoColHeader>
-	    <IoColHeader>Mode</IoColHeader>
-	    <IoColHeader>Info</IoColHeader>
-	  </tr>
-	</thead>
-	<tbody>
-	  {rows}
-	</tbody>
+        <thead>
+          <tr>
+            <IoColHeader>Unit</IoColHeader>
+            <IoColHeader>Name</IoColHeader>
+            <IoColHeader>Flag</IoColHeader>
+            <IoColHeader>Connected</IoColHeader>
+            <IoColHeader>Status</IoColHeader>
+            <IoColHeader>Maintenance</IoColHeader>
+            <IoColHeader>Inability</IoColHeader>
+            <IoColHeader>Missed Data</IoColHeader>
+            <IoColHeader>Special</IoColHeader>
+            <IoColHeader>Mode</IoColHeader>
+            <IoColHeader>Info</IoColHeader>
+          </tr>
+        </thead>
+        <tbody>
+          {rows}
+        </tbody>
       </IoPanelTable>
     );
   }
