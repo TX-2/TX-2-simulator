@@ -16,10 +16,6 @@ export interface AlarmControlProps {
 }
 
 
-function AlarmCell(props: any) {
-  return <td>{props.children}</td>;
-}
-
 function MaskedCell(props: any) {
   return (<td
     className={styles['alarm-panel__masked']}>

@@ -63,7 +63,9 @@ type LincolnWriterProps = {
   cursor_blink_ms: number,
   unit: string,
 };
-export class LincolnWriter extends React.Component<LincolnWriterProps, {}> {
+type LincolnWriterState = Record<string, never>;
+
+export class LincolnWriter extends React.Component<LincolnWriterProps, LincolnWriterState> {
   prefix: string = "lw" + this.props.unit;
   historyId = this.prefix + "-history";
   currentId = this.prefix + "-current-line";

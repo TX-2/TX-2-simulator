@@ -81,14 +81,12 @@ export class AlarmController {
 
     private update_alarm_status_changes(prev: AlarmStatusByAlarmName | null,
                                         current: AlarmStatusByAlarmName): void {
-        let anything_changed: boolean = !prev;
         for (const name in current) {
             const old_status = prev?.[name];
             const current_status = current[name];
             if ((!prev) || alarm_status_changed(old_status, current_status)) {
                 const callback = this.alarm_status_callbacks[name];
                 if (callback != null) {
-                    anything_changed = true;
                     callback(current_status);
                 }
             }
