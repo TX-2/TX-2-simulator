@@ -28,7 +28,7 @@ export class Tx2Controller {
     }
 
     clamped_elapsed_time(): number {
-        let  now = Date.now();
+        const  now = Date.now();
         return Math.max(now - this.startTime, 0.0);
     }
 
@@ -48,7 +48,7 @@ export class Tx2Controller {
     }
 
     tick_after(interval: number, system_time_then: number): void {
-        let delay_ms = interval * 1000.0;
+        const delay_ms = interval * 1000.0;
         setTimeout(this.do_tick.bind(this), delay_ms, system_time_then);
     }
 
@@ -66,8 +66,8 @@ export class Tx2Controller {
             this.changeRun(false);
         }
         if (this.running) {
-            let next_tick_at: number = this.wasm.tx2_next_simulated_tick(this.tx2);
-            let interval: number = next_tick_at - tick_time;
+            const next_tick_at: number = this.wasm.tx2_next_simulated_tick(this.tx2);
+            const interval: number = next_tick_at - tick_time;
             console.log("do_tick: interval=" + interval + "; next_tick_at=", next_tick_at);
             this.tick_after(interval, next_tick_at);
         } else {

@@ -80,7 +80,7 @@ class AlarmControl extends Component<AlarmControlProps, AlarmControlState> {
   }
 
   handleMaskedChange(e: React.ChangeEvent<HTMLInputElement>) {
-    let masked: boolean = e.target.checked;
+    const masked: boolean = e.target.checked;
     this.props.setMaskedCallback(this.props.name, masked);
     this.setState({
       masked: masked,
@@ -145,7 +145,7 @@ export default class AlarmPanel extends Component<AlarmPanelProps, AlarmPanelSta
   }
 
   render() {
-    let alarmControls: JSX.Element[] = this.props.alarmStatuses.map((status) =>
+    const alarmControls: JSX.Element[] = this.props.alarmStatuses.map((status) =>
       make_control(status.name, status, this.props.maskedChangeCallback, this.props.registerStatusCallback));
     return (
       <table className={styles['alarm-panel']} aria-label="Alarm Status">

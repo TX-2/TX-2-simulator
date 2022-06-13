@@ -82,11 +82,11 @@ export class AlarmController {
     private update_alarm_status_changes(prev: AlarmStatusByAlarmName | null,
                                         current: AlarmStatusByAlarmName): void {
         let anything_changed: boolean = !prev;
-        for (let name in current) {
+        for (const name in current) {
             const old_status = prev?.[name];
             const current_status = current[name];
             if ((!prev) || alarm_status_changed(old_status, current_status)) {
-                let callback = this.alarm_status_callbacks[name];
+                const callback = this.alarm_status_callbacks[name];
                 if (callback != null) {
                     anything_changed = true;
                     callback(current_status);
@@ -103,7 +103,7 @@ export class AlarmController {
 
     private alarm_status_by_alarm_name(): AlarmStatusByAlarmName {
         // TODO: is this function used?
-        let alarm_status: AlarmStatusByAlarmName = {};
+        const alarm_status: AlarmStatusByAlarmName = {};
         this.all_alarm_info().forEach((st) => {
             alarm_status[st.name] = st;
         });
