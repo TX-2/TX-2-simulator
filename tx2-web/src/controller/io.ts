@@ -77,7 +77,7 @@ export class IoController {
     }
 
     allUnitProps(): IoUnitProps[] {
-        let statuses = this.tx2Controller.get_device_statuses();
+        const statuses = this.tx2Controller.get_device_statuses();
         return Array.from(statuses, this.convert_wasm_unit_state_to_props.bind(this));
     }
 
@@ -90,7 +90,7 @@ export class IoController {
     private update_io_status_changes(prev: IoUnitProps[] | null,
                                      current: IoUnitProps[]): void {
         const performUpdate = (unit_props: IoUnitProps): void => {
-            let cb = this.io_status_callbacks.get(unit_props.name);
+            const cb = this.io_status_callbacks.get(unit_props.name);
             if (cb) {
                 cb(unit_props);
             }
