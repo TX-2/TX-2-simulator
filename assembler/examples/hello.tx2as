@@ -52,7 +52,8 @@
          ³TSD 302  ** Print Q1 of the word at 302
          ⁶TSD 303  ** Print Q4 of the word at 303
          ¹JNX₁ 201 ** Loop to 201 if X₁<0, increment X₁
-	   000000  ** An invalid instruction; terminates simulation
+	  IOS₆₆ 20000 ** Disconnect the Lincoln Writer (unit 66).
+	  000000      ** An invalid instruction; terminates simulation
 
 ** The text we want to print follows.  The Lincoln Writer doesn't use
 ** ASCII (it predates the invention of ASCII).  Lincoln Writer

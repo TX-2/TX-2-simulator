@@ -20,6 +20,9 @@ nom = "7"
 # https://github.com/fflorent/nom_locate/blob/master/LICENSE
 nom_locate = "4"
 
+# tempfile has an "MIT or Apache-2.0" copyright license
+tempfile = "3"
+
 # tracing has an MIT copyright license.
 # https://github.com/tokio-rs/tracing/blob/master/LICENSE
 tracing = "0.1"
