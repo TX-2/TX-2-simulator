@@ -45,6 +45,9 @@ jobs:
     - name: NPM (including WASM) Build
       run: cd tx2-web && npm run build
 
+    - name: eslint
+      run: cd tx2-web && npm run lint
+
     # Save wasm build so that we can optionally deploy it without rebuilding
     - name: Save wasm dist artifact
       uses: actions/upload-artifact@v2
