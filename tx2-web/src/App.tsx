@@ -5,10 +5,8 @@ import { Tx2Controller } from './controller/tx2';
 interface AppProps {
   tx2Controller: Tx2Controller,
 }
-interface AppState {
-}
 
-export class App extends React.Component<AppProps, AppState> {
+export class App extends React.Component<AppProps> {
   constructor(props: AppProps) {
     super(props);
   }

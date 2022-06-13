@@ -70,9 +70,6 @@ function IoColHeader(props: any) {
   </th>;
 }
 
-export interface EmptyState {
-}
-
 export class IoUnitStatusRow extends Component<IoUnitProps, IoUnitProps> {
 
   constructor(props: IoUnitProps) {
@@ -121,7 +118,7 @@ export interface IoUnitStatusPanelProps {
   //units: IoUnitStatusRowProps[];
 }
 
-export class IoPanel extends Component<IoUnitStatusPanelProps, EmptyState> {
+export class IoPanel extends Component<IoUnitStatusPanelProps> {
   constructor(props: IoUnitStatusPanelProps) {
     super(props);
   }
