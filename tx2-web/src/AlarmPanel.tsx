@@ -114,9 +114,6 @@ interface AlarmPanelProps {
   registerStatusCallback: (name: string, f: AlarmStatusCallback | null) => void;
 }
 
-interface AlarmPanelState {
-}
-
 function make_control(
   name: string,
   alarmStatus: AlarmStatus,
@@ -135,7 +132,7 @@ function make_control(
 }
 
 
-export default class AlarmPanel extends Component<AlarmPanelProps, AlarmPanelState> {
+export default class AlarmPanel extends Component<AlarmPanelProps> {
   constructor(props: AlarmPanelProps) {
     super(props);
   }
