@@ -1,4 +1,4 @@
-import { get_app_wasm_mod } from '../model/machine'
+import { Tx2, create_tx2, tx2_codabo, tx2_load_tape, tx2_do_tick, tx2_unmasked_alarm_active, tx2_next_simulated_tick, tx2_device_statuses } from '../../build/tx2_web';
 import { AlarmController } from './alarms'
 import { IoController } from './io'
 
@@ -12,16 +12,13 @@ export class Tx2Controller {
     startTime: number;
     systemTime: number;
     runChangeCallback: RunChangeCallback | null;
-    wasm;
-    tx2;
+    tx2: Tx2;
 
     constructor() {
         this.startTime = Date.now();
         this.systemTime = 0.0;
         this.running = false;
-        this.wasm = get_app_wasm_mod();
-        console.log("Tx2Controller.constructor: wasm=", this.wasm);
-        this.tx2 = this.wasm.create_tx2(this.systemTime, this.clamped_elapsed_time());
+        this.tx2 = create_tx2(this.systemTime, this.clamped_elapsed_time());
         this.alarmController = new AlarmController(this.tx2);
         this.ioController = new IoController(this);
         this.runChangeCallback = null;
@@ -35,7 +32,7 @@ export class Tx2Controller {
     codabo(): void {
         this.ioController.update_status_around(() => {
             this.alarmController.update_status_around(() => {
-		this.wasm.tx2_codabo(this.tx2, this.systemTime, this.clamped_elapsed_time());
+		tx2_codabo(this.tx2, this.systemTime, this.clamped_elapsed_time());
             });
         });
         this.tick_after(0.0, this.systemTime + 1.0e-6);
@@ -43,7 +40,7 @@ export class Tx2Controller {
 
     loadTape(bytes: Uint8Array): void {
         this.ioController.update_status_around(() => {
-            this.wasm.tx2_load_tape(this.tx2, this.systemTime, this.clamped_elapsed_time(), bytes);
+            tx2_load_tape(this.tx2, this.systemTime, this.clamped_elapsed_time(), bytes);
         })
     }
 
@@ -58,15 +55,15 @@ export class Tx2Controller {
         this.ioController.update_status_around(() => {
             this.alarmController.update_status_around(
                 () => {
-                    this.wasm.tx2_do_tick(this.tx2, tick_time, this.clamped_elapsed_time());
+                    tx2_do_tick(this.tx2, tick_time, this.clamped_elapsed_time());
                 });
         });
-        if (this.wasm.tx2_unmasked_alarm_active(this.tx2)) {
+        if (tx2_unmasked_alarm_active(this.tx2)) {
             console.log("An unmasked alarm is active.");
             this.changeRun(false);
         }
         if (this.running) {
-            const next_tick_at: number = this.wasm.tx2_next_simulated_tick(this.tx2);
+            const next_tick_at: number = tx2_next_simulated_tick(this.tx2);
             const interval: number = next_tick_at - tick_time;
             console.log("do_tick: interval=" + interval.toString() + "; next_tick_at=", next_tick_at.toString());
             this.tick_after(interval, next_tick_at);
@@ -109,6 +106,6 @@ export class Tx2Controller {
     }
 
     get_device_statuses() {
-        return this.wasm.tx2_device_statuses(this.tx2, this.systemTime, this.clamped_elapsed_time());
+        return tx2_device_statuses(this.tx2, this.systemTime, this.clamped_elapsed_time());
     }
 }

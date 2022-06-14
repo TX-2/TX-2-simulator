@@ -1,5 +1,4 @@
-import { get_app_wasm_mod } from '../model/machine'
-import { Tx2Controller } from './tx2'
+import { get_alarm_statuses, set_alarm_masked, Tx2 } from '../../build/tx2_web';
 
 export interface AlarmStatus {
     name: string,
@@ -56,13 +55,11 @@ interface AlarmStatusCallbackByName {
 
 export class AlarmController {
     alarm_status_callbacks: AlarmStatusCallbackByName;
-    tx2: Tx2Controller;
-    wasm;
+    tx2: Tx2;
 
-    constructor(tx2: Tx2Controller) {
-        this.alarm_status_callbacks = {};
+    constructor(tx2: Tx2) {
         this.tx2 = tx2;
-        this.wasm = get_app_wasm_mod();
+        this.alarm_status_callbacks = {};
     }
 
     // TODO: The binding between this callback and the properties of
@@ -109,7 +106,7 @@ export class AlarmController {
     }
 
     all_alarm_info(): AlarmStatus[] {
-        const result: AlarmStatus[] = this.wasm.get_alarm_statuses(this.tx2)
+        const result: AlarmStatus[] = get_alarm_statuses(this.tx2)
             .map((wasm_status: any) => {
                 return {
                     name: wasm_status.name,
@@ -124,6 +121,6 @@ export class AlarmController {
 
     set_alarm_masked(alarm_name: string, masked: boolean): void {
         // TODO: error handling of failure in set_alarm_masked
-        this.wasm.set_alarm_masked(this.tx2, alarm_name, masked);
+        set_alarm_masked(this.tx2, alarm_name, masked);
     }
 }
