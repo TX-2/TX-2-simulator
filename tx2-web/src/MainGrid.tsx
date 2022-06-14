@@ -16,9 +16,10 @@ interface ButtonsProps {
   tx2Controller: Tx2Controller,
   isClockRunning: boolean,
   loadTape: (bytes: Uint8Array) => void,
+  loadSample: (name: string) => void,
 }
 
-const Buttons = ({ changeRunCallback, tx2Controller, isClockRunning, loadTape }: ButtonsProps) => {
+const Buttons = ({ changeRunCallback, tx2Controller, isClockRunning, loadTape, loadSample }: ButtonsProps) => {
   const [modalIsOpen, setIsOpen] = React.useState(false);
   const [isRunning, setIsRunning] = React.useState(isClockRunning);
 
@@ -46,7 +47,7 @@ const Buttons = ({ changeRunCallback, tx2Controller, isClockRunning, loadTape }:
     <div>
       <TapeLoadModal
         modalIsOpen={modalIsOpen}
-        closeModal={closeModal} loadTape={loadTape} />
+        closeModal={closeModal} loadTape={loadTape} loadSample={loadSample}/>
       <Grid gap="2px" columns="auto" rows="min-content min-content auto">
       <Grid.Item><button id="tapeLoadBtn" onClick={openModal}>Mount Paper Tape</button></Grid.Item>
       <Grid.Item><button id="codaboTSRBtn"
@@ -62,6 +63,7 @@ interface MainGridProps {
   alarmController: AlarmController,
   ioController: IoController,
   loadTape: (bytes: Uint8Array) => void,
+  loadSample: (name: string) => void,
 }
 
 function Box(props: GridItemProps) {
@@ -99,6 +101,7 @@ export const MainGrid = (props: MainGridProps) => (
           tx2Controller={props.tx2Controller}
           isClockRunning={props.tx2Controller.isClockRunning()}
           loadTape={props.loadTape}
+          loadSample={props.loadSample}
         />
       </Box>
       <Box column="2" row="3" style={{padding: "20px", overflowY: "scroll"}}>

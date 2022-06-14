@@ -18,6 +18,7 @@ export class App extends React.Component<AppProps> {
         alarmController={this.props.tx2Controller.alarmController}
         ioController={this.props.tx2Controller.ioController}
         loadTape={this.props.tx2Controller.loadTape.bind(this.props.tx2Controller)}
+        loadSample={this.props.tx2Controller.loadSample.bind(this.props.tx2Controller)}
       />
     </div>;
   }

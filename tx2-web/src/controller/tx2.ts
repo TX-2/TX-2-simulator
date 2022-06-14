@@ -1,4 +1,4 @@
-import { create_tx2, Tx2, tx2_codabo, tx2_device_statuses, tx2_do_tick, tx2_load_tape, tx2_next_simulated_tick, tx2_unmasked_alarm_active } from '../../build/tx2_web';
+import { create_tx2, get_builtin_sample_tape, Tx2, tx2_codabo, tx2_device_statuses, tx2_do_tick, tx2_load_tape, tx2_next_simulated_tick, tx2_unmasked_alarm_active } from '../../build/tx2_web';
 import { AlarmController } from './alarms'
 import { IoController } from './io'
 import { WasmUnitState } from './types'
@@ -42,6 +42,14 @@ export class Tx2Controller {
     loadTape(bytes: Uint8Array): void {
         this.ioController.update_status_around(() => {
             tx2_load_tape(this.tx2, this.systemTime, this.clamped_elapsed_time(), bytes);
+        })
+    }
+
+    loadSample(name: string): void {
+	const data = get_builtin_sample_tape(name);
+	console.log({data});
+        this.ioController.update_status_around(() => {
+            tx2_load_tape(this.tx2, this.systemTime, this.clamped_elapsed_time(), data);
         })
     }
 

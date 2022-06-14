@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+mod samples;
 mod utils;
 
 use base::charset::{Colour, DescribedChar, LincolnChar, LincolnState, Script};
@@ -9,6 +10,7 @@ use cpu::*;
 
 use float_next_after::NextAfter;
 use js_sys::Array;
+use samples::sample_binary_hello;
 use serde::Serialize;
 use tracing::{event, Level};
 use wasm_bindgen::prelude::*;
@@ -195,6 +197,15 @@ pub fn tx2_codabo(tx2: &mut Tx2, simulated_time: f64, elapsed_time_secs: f64) {
 pub fn tx2_load_tape(tx2: &mut Tx2, simulated_time: f64, elapsed_time_secs: f64, data: &[u8]) {
     let context = make_context(simulated_time, elapsed_time_secs);
     tx2.mount_tape(&context, data.to_vec());
+}
+
+#[wasm_bindgen]
+pub fn get_builtin_sample_tape(sample_name: &str) -> Result<Vec<u8>, String> {
+    match sample_name {
+        "hello" => Ok(sample_binary_hello()),
+        _ => Err(format!("unknown sample file '{}'", sample_name)),
+    }
+    .map(|data| data.to_vec())
 }
 
 #[wasm_bindgen]

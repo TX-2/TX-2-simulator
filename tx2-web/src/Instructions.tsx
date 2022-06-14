@@ -5,7 +5,7 @@ export function Instructions(): JSX.Element {
   return (<section className={styles['instructions']}>
     <p>Here are some getting-started instructions.</p>
     <ol>
-      <li> Press &quot;Mount Paper Tape&quot; and select the <code>hello.tape</code> file.</li>
+      <li> Press &quot;Mount Paper Tape&quot; and press the button to load the &lsquo;hello&rsquo; sample file.</li>
       <li> Press the CODABO (TSR) button</li>
       <li> Check the &quot;Run&quot; checkbox.</li>
     </ol>
