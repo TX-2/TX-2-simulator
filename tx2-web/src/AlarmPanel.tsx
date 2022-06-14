@@ -1,8 +1,7 @@
+import { AlarmControlState, AlarmStatus, AlarmStatusCallback } from './controller/alarms'
 import React, { Component } from 'react';
 import Checkbox from './checkbox';
 import styles from './styles.scss'
-
-import { AlarmStatus, AlarmStatusCallback, AlarmControlState } from './controller/alarms'
 
 export interface AlarmControlProps {
   name: string;

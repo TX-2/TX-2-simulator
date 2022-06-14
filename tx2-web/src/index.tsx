@@ -1,10 +1,9 @@
-import React from "react";
-import ReactDOM from "react-dom";
-import Modal from 'react-modal';
-import { Tx2Controller } from './controller/tx2'
-
 import { App } from './App';
 import { init } from '../build/tx2_web';
+import Modal from 'react-modal';
+import React from "react";
+import ReactDOM from "react-dom";
+import { Tx2Controller } from './controller/tx2'
 
 const has = <K extends string>(
   key: K,

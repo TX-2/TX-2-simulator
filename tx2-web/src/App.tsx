@@ -1,5 +1,5 @@
-import React from "react";
 import { MainGrid } from './MainGrid';
+import React from "react";
 import { Tx2Controller } from './controller/tx2';
 
 interface AppProps {

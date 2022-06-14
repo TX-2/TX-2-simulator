@@ -1,5 +1,5 @@
-import { Tx2Controller } from './tx2'
 import { WasmExtendedConnectedUnitStatus, WasmUnitState } from './types'
+import { Tx2Controller } from './tx2'
 
 
 type ChangeCallback = (props: IoUnitProps) => void;

@@ -1,15 +1,15 @@
-import React from 'react';
-import { Instructions } from './Instructions';
-import Checkbox from './checkbox';
-import { LincolnWriter } from './LincolnWriter';
-import { IoPanel } from './IoPanel';
-import AlarmPanel from './AlarmPanel';
-import TapeLoadModal from './TapeLoadModal';
-import Flex from './Flex';
-import { Tx2Controller } from 'controller/tx2';
-import { AlarmController } from 'controller/alarms';
-import { IoController } from 'controller/io';
 import { Grid, GridItemProps } from '@react-css/grid';
+import { AlarmController } from 'controller/alarms';
+import AlarmPanel from './AlarmPanel';
+import Checkbox from './checkbox';
+import Flex from './Flex';
+import { Instructions } from './Instructions';
+import { IoController } from 'controller/io';
+import { IoPanel } from './IoPanel';
+import { LincolnWriter } from './LincolnWriter';
+import React from 'react';
+import TapeLoadModal from './TapeLoadModal';
+import { Tx2Controller } from 'controller/tx2';
 
 interface ButtonsProps {
   changeRunCallback(run: boolean): void,

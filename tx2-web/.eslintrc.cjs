@@ -9,7 +9,8 @@ module.exports = {
   },
   plugins: [
       '@typescript-eslint',
-      'react'
+      'react',
+      'sort-import'
   ],
   extends: [
       'plugin:react/jsx-runtime',
@@ -18,6 +19,15 @@ module.exports = {
       'plugin:@typescript-eslint/recommended',
       'plugin:@typescript-eslint/recommended-requiring-type-checking'
   ],
+  "rules": {
+    "sort-imports": [
+      "error",
+      {
+        "ignoreCase": true,
+        "ignoreMemberSort": false,
+      }
+    ]
+  },
   "settings": {
     "react": {
 	"version": "detect"

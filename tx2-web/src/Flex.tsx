@@ -1,6 +1,6 @@
 // CSS Flexbox
-import React from 'react';
 import { Properties } from 'csstype';
+import React from 'react';
 
 interface FlexProperties extends Properties {
   className?: string,

@@ -1,5 +1,5 @@
-import React, { Component } from 'react';
 import { IoController, IoUnitProps } from './controller/io'
+import React, { Component } from 'react';
 import styles from './styles.scss'
 
 function choose(flag: boolean, noval: string, yesval: string): string {

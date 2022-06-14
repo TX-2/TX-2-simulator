@@ -1,4 +1,4 @@
-import { Tx2, create_tx2, tx2_codabo, tx2_load_tape, tx2_do_tick, tx2_unmasked_alarm_active, tx2_next_simulated_tick, tx2_device_statuses } from '../../build/tx2_web';
+import { create_tx2, Tx2, tx2_codabo, tx2_device_statuses, tx2_do_tick, tx2_load_tape, tx2_next_simulated_tick, tx2_unmasked_alarm_active } from '../../build/tx2_web';
 import { AlarmController } from './alarms'
 import { IoController } from './io'
 import { WasmUnitState } from './types'
