@@ -35,7 +35,7 @@ export class Tx2Controller {
     codabo(): void {
         this.ioController.update_status_around(() => {
             this.alarmController.update_status_around(() => {
-            this.wasm.tx2_codabo(this.tx2, this.systemTime, this.clamped_elapsed_time());
+		this.wasm.tx2_codabo(this.tx2, this.systemTime, this.clamped_elapsed_time());
             });
         });
         this.tick_after(0.0, this.systemTime + 1.0e-6);
@@ -53,7 +53,7 @@ export class Tx2Controller {
     }
 
     do_tick(tick_time: number): void {
-        console.log("do_tick for tick_time=" + tick_time);
+        console.log("do_tick for tick_time=" + tick_time.toString());
         this.systemTime = tick_time;
         this.ioController.update_status_around(() => {
             this.alarmController.update_status_around(
@@ -68,7 +68,7 @@ export class Tx2Controller {
         if (this.running) {
             const next_tick_at: number = this.wasm.tx2_next_simulated_tick(this.tx2);
             const interval: number = next_tick_at - tick_time;
-            console.log("do_tick: interval=" + interval + "; next_tick_at=", next_tick_at);
+            console.log("do_tick: interval=" + interval.toString() + "; next_tick_at=", next_tick_at.toString());
             this.tick_after(interval, next_tick_at);
         } else {
             console.log("System clock is not running, not scheduling next tick");
@@ -104,7 +104,7 @@ export class Tx2Controller {
 
     isClockRunning(): boolean {
         const result = !!this.running;
-        console.log("Tx2Controller: isClockRunning: " + result);
+        console.log("Tx2Controller: isClockRunning: " + result.toString());
         return result;
     }
 

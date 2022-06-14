@@ -38,7 +38,6 @@ const Buttons = ({ changeRunCallback, tx2Controller, isClockRunning, loadTape }:
   });
 
   function handleChangeRun(e: React.ChangeEvent<HTMLInputElement>) {
-    console.log("handleChangeRun: " + e.target.checked);
     const run = !!e.target.checked;
     changeRunCallback(run);
   }
