@@ -15,22 +15,17 @@ items you have done should be updated with a check mark (that is,
    * [ ] You have only one commit.  If not, either squash them into one
          commit or contribute your change as a sequence of smaller Pull
          Requests.
-* If your change is a bugfix and it fully fixes an issue:
-   * [ ] Put `closes #XXXX` in your commit message to auto-close the
-         issue that your PR fixes.
+* Basic sanity checks
+   * [ ] You have run `runchecks.sh` and it said "Everything is OK".
 * Testing and Documentation
    * [ ] Your changes include unit tests (if they are code changes).
    * [ ] If your change relates to the behaviour of the simulator, please
          include comments explaining which part of the [reference
          documentation](https://tx-2.github.io/documentation.html)
          describes the thing you're changing.
-* Rust
-   * [ ] `cargo test` passes.
-   * [ ] `cargo clippy` does not generate any warnings.
-   * [ ] Your code is formatted with `cargo fmt`.
-* Web UI / TypeScript (skip if there are no changes under `tx2-web`).
-   * [ ] `npm run lint` does not generate any warnings or errors.
-   * [ ] `npm run build` succeeds.
+* If your change is a bugfix and it fully fixes an issue:
+   * [ ] Put `closes #XXXX` in your pull request description to
+         auto-close the issue that your PR fixes.
 
 If any of the checklist items don't apply, please leave them
 un-checked.
