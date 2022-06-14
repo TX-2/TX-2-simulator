@@ -117,12 +117,8 @@ export class AlarmController {
                 message: wasm_status.message
             };
         }
-        const result = [];
-        for (const wasm_status in get_alarm_statuses(this.tx2)) {
-            const unk = wasm_status as unknown;
-            result.push(wasm_alarm_status_to_alarm_status(unk as WasmAlarmStatus));
-        }
-        return result;
+	const statuses = get_alarm_statuses(this.tx2) as WasmAlarmStatus[];
+	return statuses.map(wasm_alarm_status_to_alarm_status);
     }
 
     set_alarm_masked(alarm_name: string, masked: boolean): void {
