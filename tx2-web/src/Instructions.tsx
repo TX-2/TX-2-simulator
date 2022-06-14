@@ -1,13 +1,13 @@
 import React from 'react';
 import styles from './styles.scss'
 
-export function Instructions() {
+export function Instructions(): JSX.Element {
   return (<section className={styles['instructions']}>
     <p>Here are some getting-started instructions.</p>
     <ol>
-      <li> Press "Mount Paper Tape" and select the <code>hello.tape</code> file.</li>
+      <li> Press &quot;Mount Paper Tape&quot; and select the <code>hello.tape</code> file.</li>
       <li> Press the CODABO (TSR) button</li>
-      <li> Check the "Run" checkbox.</li>
+      <li> Check the &quot;Run&quot; checkbox.</li>
     </ol>
     <p>
       Presently you should see some output.
