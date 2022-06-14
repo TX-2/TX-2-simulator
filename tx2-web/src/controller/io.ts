@@ -1,24 +1,6 @@
 import { Tx2Controller } from './tx2'
+import { WasmExtendedConnectedUnitStatus, WasmUnitState } from './types'
 
-
-// WasmExtendedConnectedUnitStatus mirrors struct ExtendedConnectedUnitStatus in WASM (cpu/src/io.rs)
-interface WasmExtendedConnectedUnitStatus {
-    buffer_available_to_cpu: boolean;
-    inability: boolean;
-    missed_data: boolean;
-    special: number;
-    mode: number;
-}
-
-// WasmExtendedUnitState mirrors struct UnitState in WASM (cpu/src/io.rs)
-interface WasmExtendedUnitState {
-    flag: boolean;
-    connected: boolean;
-    in_maintenance: boolean;
-    name: string;
-    text_info: string;
-    status: WasmExtendedConnectedUnitStatus | null;
-}
 
 type ChangeCallback = (props: IoUnitProps) => void;
 type RegisterCallback = (name: string, f: ChangeCallback | null) => void;
@@ -33,11 +15,6 @@ export interface IoUnitProps {
     text_info: string;
     status: WasmExtendedConnectedUnitStatus | null;
     registerCallback: RegisterCallback;
-}
-
-export interface WasmUnitState { // mirrors struct UnitState in WASM (lib.rs)
-    unit: number,
-    unit_state: WasmExtendedUnitState,
 }
 
 export interface AlarmStatusCallback {

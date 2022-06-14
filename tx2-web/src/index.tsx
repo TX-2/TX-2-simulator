@@ -31,7 +31,7 @@ function handleError(error: unknown) {
 }
 
 import("../build/tx2_web")
-  .then(m => {
+  .then(_module => { // eslint-disable-line @typescript-eslint/no-unused-vars
     Modal.setAppElement('body')
     init();
     const tx2: Tx2Controller = new Tx2Controller();

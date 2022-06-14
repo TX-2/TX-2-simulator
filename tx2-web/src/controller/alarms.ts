@@ -53,6 +53,14 @@ interface AlarmStatusCallbackByName {
     [index: string]: AlarmStatusCallback | null
 }
 
+interface WasmAlarmStatus {
+    name: string,
+    maskable: boolean,
+    masked: boolean,
+    active: boolean,
+    message: string,
+}
+
 export class AlarmController {
     alarm_status_callbacks: AlarmStatusCallbackByName;
     tx2: Tx2;
@@ -90,12 +98,6 @@ export class AlarmController {
         }
     }
 
-    alarm_names(): string[] {
-        // TODO: is this function used?
-        return this.all_alarm_info()
-            .map((item) => item.name);
-    }
-
     private alarm_status_by_alarm_name(): AlarmStatusByAlarmName {
         // TODO: is this function used?
         const alarm_status: AlarmStatusByAlarmName = {};
@@ -106,16 +108,20 @@ export class AlarmController {
     }
 
     all_alarm_info(): AlarmStatus[] {
-        const result: AlarmStatus[] = get_alarm_statuses(this.tx2)
-            .map((wasm_status: any) => {
-                return {
-                    name: wasm_status.name,
-                    maskable: wasm_status.maskable,
-                    masked: wasm_status.masked,
-                    active: wasm_status.active,
-                    message: wasm_status.message
-                };
-            });
+        function wasm_alarm_status_to_alarm_status(wasm_status: WasmAlarmStatus): AlarmStatus {
+            return {
+                name: wasm_status.name,
+                maskable: wasm_status.maskable,
+                masked: wasm_status.masked,
+                active: wasm_status.active,
+                message: wasm_status.message
+            };
+        }
+        const result = [];
+        for (const wasm_status in get_alarm_statuses(this.tx2)) {
+            const unk = wasm_status as unknown;
+            result.push(wasm_alarm_status_to_alarm_status(unk as WasmAlarmStatus));
+        }
         return result;
     }
 

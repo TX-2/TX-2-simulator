@@ -1,6 +1,7 @@
 import { Tx2, create_tx2, tx2_codabo, tx2_load_tape, tx2_do_tick, tx2_unmasked_alarm_active, tx2_next_simulated_tick, tx2_device_statuses } from '../../build/tx2_web';
 import { AlarmController } from './alarms'
 import { IoController } from './io'
+import { WasmUnitState } from './types'
 
 type RunChangeCallback = (run: boolean) => void;
 
@@ -105,7 +106,7 @@ export class Tx2Controller {
         return result;
     }
 
-    get_device_statuses() {
-        return tx2_device_statuses(this.tx2, this.systemTime, this.clamped_elapsed_time());
+    get_device_statuses(): ArrayLike<WasmUnitState> {
+        return (tx2_device_statuses(this.tx2, this.systemTime, this.clamped_elapsed_time()) as ArrayLike<WasmUnitState>);
     }
 }
