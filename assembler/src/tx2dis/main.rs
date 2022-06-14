@@ -1,4 +1,5 @@
 use base::prelude::*;
+use clap::ArgAction::Set;
 use clap::Parser;
 use std::error::Error;
 use std::ffi::{OsStr, OsString};
@@ -20,6 +21,7 @@ const ABOUT: &str = "Disassembler for TX-2 punched-tape image files";
 struct Cli {
     /// File from which the binary program (punched-tape image) is
     /// read
+    #[clap(action=Set)]
     input: OsString,
 }
 

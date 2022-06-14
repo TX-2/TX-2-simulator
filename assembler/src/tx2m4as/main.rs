@@ -1,5 +1,6 @@
 use std::ffi::OsString;
 
+use clap::ArgAction::Set;
 use clap::Parser;
 use tracing::{event, span, Level};
 use tracing_subscriber::prelude::*;
@@ -15,11 +16,12 @@ const AUTHOR: &str = "James Youngman <james@youngman.org>";
 #[derive(Parser, Debug)]
 #[clap(author = AUTHOR, version, about, long_about = None)]
 struct Cli {
-    /// File from which assembly source is read
+    /// File from which assembly source is read.
+    #[clap(action=Set)]
     input: OsString,
 
     /// File to which assembler output is written
-    #[clap(short = 'o', long)]
+    #[clap(action = Set, short = 'o', long)]
     output: OsString,
 }
 

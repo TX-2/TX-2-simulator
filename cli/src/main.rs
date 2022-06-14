@@ -10,7 +10,7 @@ use std::io::{BufReader, Read};
 use std::str::FromStr;
 use std::time::Duration;
 
-use clap::{ArgEnum, Parser};
+use clap::{ArgAction::Set, ArgEnum, Parser};
 use tracing::{event, Level};
 use tracing_subscriber::filter::{EnvFilter, LevelFilter};
 use tracing_subscriber::prelude::*;
@@ -163,16 +163,17 @@ impl FromStr for PanicOnUnmaskedAlarm {
 #[clap(author = AUTHOR, version, about, long_about = None)]
 struct Cli {
     /// Run this many times faster than real-time ('MAX' for as-fast-as-possible)
-    #[clap(long = "speed-multiplier")]
+    #[clap(action = Set, long = "speed-multiplier")]
     speed_multiplier: Option<String>,
 
     /// When set, panic if an alarm occurs (so that a stack backtrace
     /// is produced when the RUST_BACKTRACE environment variable is
     /// also set).  When unset, stop the emulator without panic.
-    #[clap(long = "panic-on-unmasked-alarm", arg_enum)]
+    #[clap(action = Set, long = "panic-on-unmasked-alarm", arg_enum)]
     panic_on_unmasked_alarm: Option<PanicOnUnmaskedAlarm>,
 
     /// File containing paper tape data
+    #[clap(action = Set)]
     tape: Option<OsString>,
 }
 
