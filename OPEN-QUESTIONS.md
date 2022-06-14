@@ -11,6 +11,8 @@
    41, is the TRAP sequence (42) activated?   If so, what will it see
    in the E register when it begins to run?
 5. What sets the CODABO start point registers 03777710-03777717?
+   Or are those the actual addresses (i.e. would execution begin
+   at 03777710 rather than [03777710])?
 6. What constitutes an invalid address for the purposes of the PSAL
    alarm?  For example, the gap between U-memory and V-memory?   Does
    PSAL fire when P points to a location in S-memory but the S-memory
@@ -47,11 +49,6 @@
 2. The manual states that "flip-flops" are reset by CODABO.  Does this
    include zeroing all the flip-flops in V memory?  Does this include
    registers N, P, Q, K, F, FA?
-3. Does the "regular" CODABO operation load the value of the TSP
-   toggle into index register 0?  Generally what is the relationship
-   between the actual program counter used for sequence 0, the TSP and
-   index register zero?  (Recall that the user guide states that index
-   register 0 always holds 0).
 
 ## Peripherals
 
