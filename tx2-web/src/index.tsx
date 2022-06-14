@@ -6,12 +6,6 @@ import { Tx2Controller } from './controller/tx2'
 
 import { App } from './App';
 
-const wasm = import("../build/tx2_web");
-
-function showErrorAlert(message: string) {
-  alert("Failed to initialise the WASM code; please report this as a bug: " + message);
-}
-
 const has = <K extends string>(
   key: K,
   x: object,
@@ -32,10 +26,11 @@ function extractMessage(error: unknown): string {
 }
 
 function handleError(error: unknown) {
-  showErrorAlert(extractMessage(error))
+  alert("Failed to initialise the WASM code; please report this as a bug: " +
+    extractMessage(error))
 }
 
-wasm
+import("../build/tx2_web")
   .then(m => {
     Modal.setAppElement('body')
     m.init();
