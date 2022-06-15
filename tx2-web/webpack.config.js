@@ -72,7 +72,18 @@ module.exports = {
 	  filename: "index.html"
       }),
       new WasmPackPlugin({
-	  crateDirectory: path.resolve(__dirname, ".")
+	crateDirectory: path.resolve(__dirname, "."),
+        watchDirectories: [
+	  "../base/src",
+	  "../base/src/collections",
+	  "../base/src/instruction",
+	  "../base/src/onescomplement",
+	  "../base/src/onescomplement/signed",
+	  "../base/src/onescomplement/unsigned",
+	  "../cpu/src",
+	  "../cpu/src/control",
+	  "../cpu/src/io"
+	].map(relative => path.resolve(__dirname, relative))
       }),
   ],
   mode: "development",
