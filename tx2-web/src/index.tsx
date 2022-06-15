@@ -29,10 +29,19 @@ function handleError(error: unknown) {
     extractMessage(error))
 }
 
+function get_log_level(hashval: string) {
+  if (hashval == "") {
+    return "debug";
+  } else {
+    return hashval.substring(1);
+  }
+}
+
+
 import("../build/tx2_web")
   .then(_module => { // eslint-disable-line @typescript-eslint/no-unused-vars
     Modal.setAppElement('body')
-    init();
+    init(get_log_level(window.location.hash));
     const tx2: Tx2Controller = new Tx2Controller();
     ReactDOM.render(<App tx2Controller={tx2} />, document.getElementById("root"));
   })

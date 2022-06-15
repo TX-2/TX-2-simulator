@@ -30,18 +30,27 @@ pub fn start() -> Result<(), JsValue> {
     Ok(())
 }
 
+fn try_log_level_from_str(log_level: &str) -> Result<Level, String> {
+    match log_level {
+        "trace" => Ok(Level::TRACE),
+        "debug" => Ok(Level::DEBUG),
+        "info" => Ok(Level::INFO),
+        "warn" => Ok(Level::WARN),
+        "error" => Ok(Level::ERROR),
+        invalid => Err(format!("invalid log level '{invalid}'")),
+    }
+}
+
 #[wasm_bindgen]
-pub fn init() -> Result<(), JsValue> {
+pub fn init(log_level: &str) -> Result<(), JsValue> {
     tracing_wasm::set_as_global_default_with_config(
-        tracing_wasm::WASMLayerConfigBuilder::new().build(),
+        tracing_wasm::WASMLayerConfigBuilder::new()
+            .set_max_level(try_log_level_from_str(log_level)?)
+            .build(),
     );
     event!(
         Level::INFO,
-        "init: tracing iniialised (you should see this message)"
-    );
-    event!(
-        Level::TRACE,
-        "init: you should not see 'TRACE' messages like this one, though."
+        "init: tracing iniialised (max level is {log_level})"
     );
     Ok(())
 }
