@@ -6,8 +6,7 @@ export function Instructions(): JSX.Element {
     <p>Here are some getting-started instructions.</p>
     <ol>
       <li> Press &quot;Mount Paper Tape&quot; and press the button to load the &lsquo;hello&rsquo; sample file.</li>
-      <li> Press the CODABO (TSR) button</li>
-      <li> Check the &quot;Run&quot; checkbox.</li>
+      <li> Press the CODABO (TSR) button.</li>
     </ol>
     <p>
       Presently you should see some output.

@@ -36,7 +36,7 @@ export class Tx2Controller {
 		tx2_codabo(this.tx2, this.systemTime, this.clamped_elapsed_time());
             });
         });
-        this.tick_after(0.0, this.systemTime + 1.0e-6);
+        this.changeRun(true);
     }
 
     loadTape(bytes: Uint8Array): void {
