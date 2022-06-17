@@ -1,5 +1,5 @@
 import { App } from './App';
-import { init } from '../build/tx2_web';
+import { init } from '../built-files/build/tx2_web';
 import Modal from 'react-modal';
 import React from "react";
 import ReactDOM from "react-dom";
@@ -38,7 +38,7 @@ function get_log_level(hashval: string) {
 }
 
 
-import("../build/tx2_web")
+import("../built-files/build/tx2_web")
   .then(_module => { // eslint-disable-line @typescript-eslint/no-unused-vars
     Modal.setAppElement('body')
     init(get_log_level(window.location.hash));

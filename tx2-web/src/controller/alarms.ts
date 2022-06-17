@@ -1,4 +1,4 @@
-import { drain_alarm_changes, get_alarm_statuses, set_alarm_masked, Tx2 } from '../../build/tx2_web';
+import { drain_alarm_changes, get_alarm_statuses, set_alarm_masked, Tx2 } from '../../built-files/build/tx2_web';
 
 export interface AlarmStatus {
     name: string,
