@@ -51,7 +51,7 @@ $ npm run build
 
 ```sh
 $ cd tx2-web
-$ npm run dev
+$ npm run serve:dev
 ```
 
 The `npm` command will print the URL from which the pages are served,

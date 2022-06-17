@@ -4,12 +4,32 @@
   "description": "A web-based simulator for the TX-2 computer.",
   "main": "src/index.tsx",
   "scripts": {
-    "build:wasm": "wasm-pack build --out-dir build",
-    "build:webpack-once": "npx webpack",
-    "build:webpack-with-repeat": "npm run build:webpack-once || npm run build:webpack-once",
-    "build": "npm run build:wasm && npm run build:webpack-with-repeat",
-    "dev": "webpack server",
-    "lint": "eslint ."
+    "symlink:dev": "ln -sf development/build built-files/",
+    "symlink:release": "ln -sf release/build built-files/",
+    "symlink:profiling": "ln -sf profiling/build built-files/",
+
+    "build:dev:wasm": "wasm-pack build --out-dir built-files/development/build --dev",
+    "build:release:wasm": "wasm-pack build --out-dir built-files/release/build --release",
+    "build:profiling:wasm": "wasm-pack build --out-dir built-files/profiling/build --profiling",
+
+    "build:dev:webpack-once": "npm run symlink:dev && npx webpack --config webpack.development.js",
+    "build:release:webpack-once": "npm run symlink:release && npx webpack --config webpack.release.js",
+    "build:profiling:webpack-once": "npm run symlink:profiling && npx webpack --config webpack.profiling.js",
+
+    "build:dev:webpack-with-repeat": "npm run build:dev:webpack-once || npm run build:dev:webpack-once",
+    "build:release:webpack-with-repeat": "npm run build:release:webpack-once || npm run build:release:webpack-once",
+    "build:profiling:webpack-with-repeat": "npm run build:profiling:webpack-once || npm run build:profiling:webpack-once",
+
+    "build:dev": "npm run build:dev:wasm && npm run build:dev:webpack-with-repeat",
+    "build:release": "npm run build:release:wasm && npm run build:release:webpack-with-repeat",
+    "build:profiling": "npm run build:profiling:wasm && npm run build:profiling:webpack-with-repeat",
+
+    "serve:dev": "npm run symlink:dev && webpack server --config webpack.development.js",
+    "serve:release": "npm run symlink:release && webpack server --config webpack.release.js",
+    "serve:profiling": "npm run symlink:profiling && webpack server --config webpack.profiling.js",
+
+    "build": "npm run build:dev",
+    "lint": "eslint src"
   },
   "keywords": [],
   "author": "James Youngman <youngman@google.com>",
