@@ -43,8 +43,10 @@ jobs:
       run: cargo test --workspace
 
     - name: NPM (including WASM) Build
-      run: cd tx2-web && npm run build
+      run: cd tx2-web && npm run build:release
 
+    # We run lint after the built so that eslint can resolve imports
+    # of generated files.
     - name: eslint
       run: cd tx2-web && npm run lint
 
@@ -53,7 +55,7 @@ jobs:
       uses: actions/upload-artifact@v2
       with:
         name: tx2-web-dist
-        path: tx2-web/dist
+        path: tx2-web/built-files/release/dist
         if-no-files-found: error
 
   deploy:
