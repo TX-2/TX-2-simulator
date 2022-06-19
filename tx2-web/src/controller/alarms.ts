@@ -1,4 +1,4 @@
-import { get_alarm_statuses, set_alarm_masked, Tx2 } from '../../build/tx2_web';
+import { drain_alarm_changes, get_alarm_statuses, set_alarm_masked, Tx2 } from '../../build/tx2_web';
 
 export interface AlarmStatus {
     name: string,
@@ -20,33 +20,6 @@ export interface AlarmControlState {
   masked: boolean;
   active: boolean;
   message: string;
-}
-
-function alarm_status_changed(
-    old_state: AlarmStatus | undefined,
-    new_state: AlarmStatus
-): boolean {
-    if (!old_state) {
-        return true;
-    }
-    if (old_state.name != new_state.name) {
-        console.error("comparing states for different alarms is not allowed");
-        return true;
-    }
-    if (old_state.maskable != new_state.maskable) {
-        console.error("maskable should be an immutable property");
-        return true;
-    }
-    if (old_state.masked != new_state.masked) {
-        return true;
-    }
-    if (old_state.active != new_state.active) {
-        return true;
-    }
-    if (old_state.message != new_state.message) {
-        return true;
-    }
-    return false;
 }
 
 interface AlarmStatusCallbackByName {
@@ -79,23 +52,14 @@ export class AlarmController {
     }
 
     update_status_around(f: ()=>void): void {
-        const prev_alarm_status: AlarmStatusByAlarmName = this.alarm_status_by_alarm_name();
         f();
-        this.update_alarm_status_changes(prev_alarm_status, this.alarm_status_by_alarm_name());
-    }
-
-    private update_alarm_status_changes(prev: AlarmStatusByAlarmName | null,
-                                        current: AlarmStatusByAlarmName): void {
-        for (const name in current) {
-            const old_status = prev?.[name];
-            const current_status = current[name];
-            if ((!prev) || alarm_status_changed(old_status, current_status)) {
-                const callback = this.alarm_status_callbacks[name];
-                if (callback != null) {
-                    callback(current_status);
-                }
+        const changes = drain_alarm_changes(this.tx2) as Map<string, AlarmStatus>;
+	changes.forEach((current_status: AlarmStatus, alarm_name: string) => {
+            const callback = this.alarm_status_callbacks[alarm_name];
+            if (callback != null) {
+                callback(current_status);
             }
-        }
+	});
     }
 
     private alarm_status_by_alarm_name(): AlarmStatusByAlarmName {

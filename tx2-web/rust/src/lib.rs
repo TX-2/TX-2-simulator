@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::time::Duration;
 
 mod samples;
@@ -234,6 +235,16 @@ pub fn get_alarm_statuses(tx2: &Tx2) -> Result<JsValue, String> {
             Err(e.to_string())
         }
     }
+}
+
+#[wasm_bindgen]
+pub fn drain_alarm_changes(tx2: &mut Tx2) -> Result<JsValue, String> {
+    let change_map: BTreeMap<String, AlarmStatus> = tx2
+        .drain_alarm_changes()
+        .into_iter()
+        .map(|(kind, status)| (kind.to_string(), status))
+        .collect();
+    serde_wasm_bindgen::to_value(&change_map).map_err(|e| e.to_string())
 }
 
 #[wasm_bindgen]

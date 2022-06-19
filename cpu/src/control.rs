@@ -11,7 +11,7 @@
 //! - Keep track of the placeholder of each sequence
 //! - Manage switching between sequences
 //! - Remember the setting of the TSP (Toggle Start Point) register
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::ops::BitAnd;
 use std::time::Duration;
 
@@ -32,7 +32,8 @@ use base::prelude::*;
 use base::subword;
 
 use super::*;
-use crate::alarm::{Alarm, AlarmKind, AlarmUnit, Alarmer, BadMemOp};
+use crate::alarm::{Alarm, AlarmKind, Alarmer, BadMemOp};
+use crate::alarmunit::AlarmUnit;
 use crate::context::Context;
 use crate::exchanger::{exchanged_value_for_load, exchanged_value_for_store, SystemConfiguration};
 use crate::io::DeviceManager;
@@ -1509,6 +1510,10 @@ impl ControlUnit {
 
     pub fn current_flag_state(&self, unit: &SequenceNumber) -> bool {
         self.regs.current_flag_state(unit)
+    }
+
+    pub fn drain_alarm_changes(&mut self) -> BTreeMap<AlarmKind, AlarmStatus> {
+        self.alarm_unit.drain_alarm_changes()
     }
 }
 
