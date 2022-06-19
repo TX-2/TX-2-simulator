@@ -5,7 +5,8 @@ use base::prelude::*;
 use tracing::{event, Level};
 
 use super::super::*;
-use crate::alarm::{Alarm, AlarmUnit, Alarmer, BadMemOp};
+use crate::alarm::{Alarm, Alarmer, BadMemOp};
+use crate::alarmunit::AlarmUnit;
 use crate::context::Context;
 use crate::control::{
     ControlRegisters, ControlUnit, DeviceManager, OpcodeResult, ProgramCounterChange, TrapCircuit,

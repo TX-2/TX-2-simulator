@@ -3,6 +3,8 @@
 #![crate_name = "cpu"]
 
 mod alarm;
+mod alarmunit;
+mod changelog;
 mod context;
 mod control;
 mod event;
@@ -12,7 +14,8 @@ mod memory;
 mod tx2;
 mod types;
 
-pub use alarm::{Alarm, AlarmKind, AlarmStatus, UnmaskedAlarm};
+pub use alarm::{Alarm, AlarmKind, UnmaskedAlarm};
+pub use alarmunit::AlarmStatus;
 pub use context::Context;
 pub use control::{ControlUnit, PanicOnUnmaskedAlarm, ResetMode, RunMode};
 pub use event::*;

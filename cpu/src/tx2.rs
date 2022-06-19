@@ -8,7 +8,8 @@ use wasm_bindgen::prelude::*;
 
 use base::prelude::*;
 
-use crate::alarm::{Alarm, AlarmKind, AlarmStatus, UnmaskedAlarm};
+use crate::alarm::{Alarm, AlarmKind, UnmaskedAlarm};
+use crate::alarmunit::AlarmStatus;
 use crate::context::Context;
 use crate::control::{ControlUnit, ResetMode, RunMode};
 use crate::event::{InputEvent, OutputEvent};
@@ -312,6 +313,10 @@ impl Tx2 {
 
     pub fn unmasked_alarm_active(&self) -> bool {
         self.control.unmasked_alarm_active()
+    }
+
+    pub fn drain_alarm_changes(&mut self) -> BTreeMap<AlarmKind, AlarmStatus> {
+        self.control.drain_alarm_changes()
     }
 
     pub fn disconnect_all_devices(&mut self, ctx: &Context) -> Result<(), Alarm> {

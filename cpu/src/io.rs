@@ -44,7 +44,8 @@ use serde::Serialize;
 use tracing::{event, span, Level};
 
 use super::types::*;
-use crate::alarm::{Alarm, AlarmUnit, Alarmer};
+use crate::alarm::{Alarm, Alarmer};
+use crate::alarmunit::AlarmUnit;
 use crate::context::Context;
 use crate::event::*;
 use crate::PETR;
