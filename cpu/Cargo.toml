@@ -11,8 +11,9 @@ publish = false
 
 [dependencies]
 base = { path = "../base" }
+conv = "0.3"			# MIT license
 serde = { version = "1", features = ["derive"] }
-tracing = "0.1" # MIT license
+tracing = "0.1"			# MIT license
 wasm-bindgen = "0.2"
 
 [lib]

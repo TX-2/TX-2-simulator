@@ -25,6 +25,7 @@ use std::time::Duration;
 use base::prelude::*;
 use std::cmp;
 
+use conv::*;
 use tracing::{event, Level};
 
 use super::*;
@@ -101,6 +102,8 @@ pub(crate) struct Petr {
     read_failed: bool,
     overrun: bool,
     time_of_next_read: Option<Duration>,
+    connected_at_system_time: Option<Duration>,
+    connected_at_elapsed_time: Option<Duration>,
     rewind_line_counter: usize,
     mode: Unsigned12Bit,
 }
@@ -117,6 +120,8 @@ impl Debug for Petr {
             .field("read_failed", &self.read_failed)
             .field("overrun", &self.overrun)
             .field("time_of_next_read", &self.time_of_next_read)
+            .field("connected_at_system_time", &self.connected_at_system_time)
+            .field("connected_at_elapsed_time", &self.connected_at_elapsed_time)
             .field("rewind_line_counter", &self.rewind_line_counter)
             .field("mode", &self.mode)
             .finish_non_exhaustive()
@@ -135,6 +140,8 @@ impl Petr {
             read_failed: false,
             overrun: false,
             time_of_next_read: None,
+            connected_at_system_time: None,
+            connected_at_elapsed_time: None,
             rewind_line_counter: 0,
             mode: Unsigned12Bit::ZERO,
         }
@@ -142,7 +149,16 @@ impl Petr {
 
     fn next_poll_time(&mut self, system_time: &Duration) -> Duration {
         match self.time_of_next_read {
-            Some(t) => cmp::max(t, *system_time),
+            Some(t) => {
+                let result = cmp::max(t, *system_time);
+                if let Some(interval) = result.checked_sub(*system_time) {
+                    event!(
+                        Level::DEBUG,
+                        "next_poll_time: please poll after {interval:?} at system time {t:?}"
+                    );
+                }
+                result
+            }
             None => {
                 let interval = Duration::from_secs(1);
                 let next = *system_time + interval;
@@ -278,9 +294,36 @@ impl Petr {
     }
 }
 
+struct Throughput {
+    pub lines_per_second: f64,
+    pub total_seconds: f64,
+}
+
+fn compute_throughput(
+    pos: usize,
+    connect_time: Option<Duration>,
+    now: Duration,
+) -> Option<Throughput> {
+    if let Some(connected_at) = connect_time {
+        if let Some(elapsed) = now.checked_sub(connected_at) {
+            let elapsed = elapsed.as_secs_f64();
+            if let Ok(n) = f64::value_from(pos) {
+                let throughput = n / elapsed;
+                return Some(Throughput {
+                    lines_per_second: throughput,
+                    total_seconds: elapsed,
+                });
+            }
+        }
+    }
+    None
+}
+
 impl Unit for Petr {
     fn poll(&mut self, ctx: &Context) -> UnitStatus {
         let system_time = &ctx.simulated_time;
+        event!(Level::TRACE, "poll called at system time  {system_time:?}");
+
         self.maybe_simulate_event(system_time);
         let data_ready: bool = self.data.is_some();
         let poll_after = self.next_poll_time(system_time);
@@ -303,6 +346,8 @@ impl Unit for Petr {
 
     fn connect(&mut self, ctx: &Context, mode: Unsigned12Bit) {
         let system_time = &ctx.simulated_time;
+        self.connected_at_elapsed_time = Some(ctx.real_elapsed_time);
+        self.connected_at_system_time = Some(ctx.simulated_time);
         self.direction = if mode & 0o04 != 0 {
             Direction::Bin
         } else {
@@ -384,7 +429,7 @@ impl Unit for Petr {
         }
     }
 
-    fn text_info(&self, _ctx: &Context) -> String {
+    fn text_info(&self, ctx: &Context) -> String {
         let build = || -> Result<String, std::fmt::Error> {
             let mut result = String::new();
             write!(result, "Motor {}", self.activity)?;
@@ -404,6 +449,27 @@ impl Unit for Petr {
                     self.tape_data.len(),
                     self.tape_pos
                 )?;
+                if let Some(throughput) = compute_throughput(
+                    self.tape_pos,
+                    self.connected_at_system_time,
+                    ctx.simulated_time,
+                ) {
+                    write!(result, "Emulated duration {:.1} seconds, so emulated throughput is {:.1} lines/sec. ",
+			   throughput.total_seconds,
+			   throughput.lines_per_second,
+		    )?;
+                }
+                if let Some(throughput) = compute_throughput(
+                    self.tape_pos,
+                    self.connected_at_elapsed_time,
+                    ctx.real_elapsed_time,
+                ) {
+                    write!(
+                        result,
+                        "Real duration {:.1} seconds, so real throughput is {:.1} lines/sec.",
+                        throughput.total_seconds, throughput.lines_per_second,
+                    )?;
+                }
             }
             Ok(result)
         };
