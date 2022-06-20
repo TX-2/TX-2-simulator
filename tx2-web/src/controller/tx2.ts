@@ -44,7 +44,6 @@ export class Tx2Controller {
 
     loadSample(name: string): void {
 	const data = get_builtin_sample_tape(name);
-	console.log({data});
         tx2_load_tape(this.tx2, this.systemTime, this.clamped_elapsed_time(), data);
         this.ioController.update_status();
     }
@@ -55,7 +54,6 @@ export class Tx2Controller {
     }
 
     do_tick(tick_time: number): void {
-        console.log("do_tick for tick_time=" + tick_time.toString());
         this.systemTime = tick_time;
         tx2_do_tick(this.tx2, tick_time, this.clamped_elapsed_time());
         this.ioController.update_status();
@@ -68,7 +66,6 @@ export class Tx2Controller {
         if (this.running) {
             const next_tick_at: number = tx2_next_simulated_tick(this.tx2);
             const interval: number = next_tick_at - tick_time;
-            console.log("do_tick: interval=" + interval.toString() + "; next_tick_at=", next_tick_at.toString());
             this.tick_after(interval, next_tick_at);
         } else {
             console.log("System clock is not running, not scheduling next tick");
@@ -84,13 +81,8 @@ export class Tx2Controller {
         if (this.running != wasRunning) {
             // Update the UI.
             if (this.runChangeCallback != null) {
-                console.log("Tx2Controller: invoking runChangeCallback");
                 this.runChangeCallback(this.running);
-            } else {
-                console.log("Tx2Controller: skipping runChangeCallback, no callback is registered");
             }
-        } else {
-            console.log("Tx2Controller: skipping runChangeCallback, no change");
         }
     }
 
@@ -103,9 +95,7 @@ export class Tx2Controller {
     }
 
     isClockRunning(): boolean {
-        const result = !!this.running;
-        console.log("Tx2Controller: isClockRunning: " + result.toString());
-        return result;
+        return !!this.running;
     }
 
     get_device_statuses(): ArrayLike<WasmUnitState> {
