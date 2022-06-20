@@ -27,7 +27,7 @@ pub struct AlarmUnit {
     panic_on_unmasked_alarm: bool,
     masked: BTreeSet<AlarmKind>,
     active: BTreeMap<AlarmKind, Alarm>,
-    changes: ChangeIndex,
+    changes: ChangeIndex<AlarmKind>,
 }
 
 impl AlarmUnit {
@@ -58,7 +58,7 @@ impl AlarmUnit {
 
     pub fn drain_alarm_changes(&mut self) -> BTreeMap<AlarmKind, AlarmStatus> {
         self.changes
-            .drain_alarm_changes()
+            .drain()
             .into_iter()
             .map(|kind| (kind, self.status_for_alarm_kind(&kind)))
             .collect()
@@ -87,7 +87,7 @@ impl AlarmUnit {
                 Err(self.always_fire(bug))
             }
             AlarmMaskability::Maskable => {
-                self.changes.alarm_changed(kind);
+                self.changes.add(kind);
                 self.masked.insert(kind);
                 Ok(())
             }
@@ -96,7 +96,7 @@ impl AlarmUnit {
 
     pub fn unmask(&mut self, kind: AlarmKind) {
         if self.masked.remove(&kind) {
-            self.changes.alarm_changed(kind);
+            self.changes.add(kind);
         }
     }
 
@@ -158,7 +158,7 @@ impl AlarmUnit {
 
     fn set_active(&mut self, alarm_instance: Alarm) -> Result<(), Alarm> {
         let kind: AlarmKind = alarm_instance.kind();
-        self.changes.alarm_changed(kind);
+        self.changes.add(kind);
         if self.is_masked(&alarm_instance) {
             self.active.insert(kind, alarm_instance);
             Ok(())
@@ -172,13 +172,13 @@ impl AlarmUnit {
 
 impl Alarmer for AlarmUnit {
     fn fire_if_not_masked(&mut self, alarm_instance: Alarm) -> Result<(), Alarm> {
-        self.changes.alarm_changed(alarm_instance.kind());
+        self.changes.add(alarm_instance.kind());
         self.set_active(alarm_instance)
     }
 
     fn always_fire(&mut self, alarm_instance: Alarm) -> Alarm {
         let kind = alarm_instance.kind();
-        self.changes.alarm_changed(kind);
+        self.changes.add(kind);
         match self.set_active(alarm_instance) {
             Err(a) => a,
             Ok(()) => {

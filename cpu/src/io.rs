@@ -353,7 +353,7 @@ impl Debug for AttachedUnit {
 pub struct DeviceManager {
     devices: BTreeMap<Unsigned6Bit, AttachedUnit>,
     poll_queue: PollQueue,
-    changes: ChangeIndex,
+    changes: ChangeIndex<Unsigned6Bit>,
 }
 
 impl DeviceManager {
@@ -693,7 +693,7 @@ impl DeviceManager {
     }
 
     pub fn mark_device_changed(&mut self, unit: Unsigned6Bit) {
-        self.changes.device_changed(unit);
+        self.changes.add(unit);
     }
 
     pub fn drain_changes<A: Alarmer>(
@@ -702,7 +702,7 @@ impl DeviceManager {
         alarmer: &mut A,
     ) -> Result<BTreeMap<Unsigned6Bit, ExtendedUnitState>, Alarm> {
         let mut result: BTreeMap<Unsigned6Bit, ExtendedUnitState> = BTreeMap::new();
-        for unit_with_change in self.changes.drain_device_changes().into_iter() {
+        for unit_with_change in self.changes.drain().into_iter() {
             if let Some(attached_unit) = self.get(&unit_with_change) {
                 match self.get_extended_status(ctx, attached_unit, alarmer) {
                     Ok(state) => {

@@ -1,33 +1,29 @@
 use serde::Serialize;
 use std::collections::BTreeSet;
 
-use crate::alarm::AlarmKind;
-use base::prelude::*;
-
-#[derive(Debug, Serialize, Default)]
-pub struct ChangeIndex {
-    alarm_changes: BTreeSet<AlarmKind>,
-    device_changes: BTreeSet<Unsigned6Bit>,
+#[derive(Debug, Serialize)]
+pub struct ChangeIndex<K: Ord + Serialize> {
+    changes: BTreeSet<K>,
 }
 
-impl ChangeIndex {
-    pub fn alarm_changed(&mut self, kind: AlarmKind) {
-        self.alarm_changes.insert(kind);
+impl<K: Ord + Serialize> Default for ChangeIndex<K> {
+    // Cannot use derive for Default because that would require K to
+    // implement Derive, while in reality it doesn't need to.
+    fn default() -> Self {
+        Self {
+            changes: BTreeSet::new(),
+        }
+    }
+}
+
+impl<K: Ord + Serialize> ChangeIndex<K> {
+    pub fn add(&mut self, k: K) {
+        self.changes.insert(k);
     }
 
-    pub fn device_changed(&mut self, dev: Unsigned6Bit) {
-        self.device_changes.insert(dev);
-    }
-
-    pub fn drain_alarm_changes(&mut self) -> BTreeSet<AlarmKind> {
+    pub fn drain(&mut self) -> BTreeSet<K> {
         let mut result: BTreeSet<_> = BTreeSet::new();
-        result.append(&mut self.alarm_changes);
-        result
-    }
-
-    pub fn drain_device_changes(&mut self) -> BTreeSet<Unsigned6Bit> {
-        let mut result: BTreeSet<_> = BTreeSet::new();
-        result.append(&mut self.device_changes);
+        result.append(&mut self.changes);
         result
     }
 }
