@@ -31,26 +31,22 @@ export class Tx2Controller {
     }
 
     codabo(): void {
-        this.ioController.update_status_around(() => {
-            this.alarmController.update_status_around(() => {
-		tx2_codabo(this.tx2, this.systemTime, this.clamped_elapsed_time());
-            });
-        });
+	tx2_codabo(this.tx2, this.systemTime, this.clamped_elapsed_time());
+        this.ioController.update_status();
+        this.alarmController.update_status();
         this.changeRun(true);
     }
 
     loadTape(bytes: Uint8Array): void {
-        this.ioController.update_status_around(() => {
-            tx2_load_tape(this.tx2, this.systemTime, this.clamped_elapsed_time(), bytes);
-        })
+        tx2_load_tape(this.tx2, this.systemTime, this.clamped_elapsed_time(), bytes);
+        this.ioController.update_status();
     }
 
     loadSample(name: string): void {
 	const data = get_builtin_sample_tape(name);
 	console.log({data});
-        this.ioController.update_status_around(() => {
-            tx2_load_tape(this.tx2, this.systemTime, this.clamped_elapsed_time(), data);
-        })
+        tx2_load_tape(this.tx2, this.systemTime, this.clamped_elapsed_time(), data);
+        this.ioController.update_status();
     }
 
     tick_after(interval: number, system_time_then: number): void {
@@ -61,12 +57,10 @@ export class Tx2Controller {
     do_tick(tick_time: number): void {
         console.log("do_tick for tick_time=" + tick_time.toString());
         this.systemTime = tick_time;
-        this.ioController.update_status_around(() => {
-            this.alarmController.update_status_around(
-                () => {
-                    tx2_do_tick(this.tx2, tick_time, this.clamped_elapsed_time());
-                });
-        });
+        tx2_do_tick(this.tx2, tick_time, this.clamped_elapsed_time());
+        this.ioController.update_status();
+        this.alarmController.update_status();
+
         if (tx2_unmasked_alarm_active(this.tx2)) {
             console.log("An unmasked alarm is active.");
             this.changeRun(false);

@@ -53,8 +53,7 @@ export class IoController {
         return Array.from(statuses, this.convert_wasm_unit_state_to_props.bind(this));
     }
 
-    update_status_around(f: ()=>void): void {
-        f();
+    update_status() {
         const changes: Map<number, WasmUnitState> = this.tx2Controller.drain_device_status_changes();
         this.update_io_status_changes(changes);
     }

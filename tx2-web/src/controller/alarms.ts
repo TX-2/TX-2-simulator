@@ -51,8 +51,7 @@ export class AlarmController {
         this.alarm_status_callbacks[name] = f;
     }
 
-    update_status_around(f: ()=>void): void {
-        f();
+    update_status() {
         const changes = drain_alarm_changes(this.tx2) as Map<string, AlarmStatus>;
 	changes.forEach((current_status: AlarmStatus, alarm_name: string) => {
             const callback = this.alarm_status_callbacks[alarm_name];
