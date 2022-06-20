@@ -83,16 +83,39 @@ pub enum ProgramCounterChange {
 #[derive(Debug)]
 struct SequenceFlags {
     flag_values: u64,
+    flag_changes: u64,
+}
+
+fn ones_of_value_as_vec(mut bits: u64) -> Vec<SequenceNumber> {
+    let popcount_or_zero: usize = usize::try_from(bits.count_ones()).unwrap_or(0usize);
+    let mut result = Vec::with_capacity(popcount_or_zero);
+    while bits != 0 {
+        let pos = bits.trailing_zeros();
+        result.push(SequenceNumber::try_from(pos).expect("SequenceNumber::MAX should be > 32"));
+        bits &= !(1 << pos);
+    }
+    result
+}
+
+#[test]
+fn test_ones_of_value_as_vec() {
+    assert!(ones_of_value_as_vec(0).is_empty());
+    assert_eq!(ones_of_value_as_vec(0b1), vec![u6!(0)]);
+    assert_eq!(ones_of_value_as_vec(0b101), vec![u6!(0), u6!(2)]);
 }
 
 impl SequenceFlags {
     fn new() -> SequenceFlags {
         // New instances start with no flags raised (i.e. in "Limbo",
         // STARTOVER not running).
-        SequenceFlags { flag_values: 0 }
+        SequenceFlags {
+            flag_values: 0,
+            flag_changes: 0,
+        }
     }
 
     fn lower_all(&mut self) {
+        self.flag_changes |= self.flag_values;
         self.flag_values = 0;
     }
 
@@ -108,7 +131,9 @@ impl SequenceFlags {
         #![allow(clippy::cmp_owned)]
         assert!(u16::from(*flag) < 0o100_u16);
         event!(Level::DEBUG, "Lowering flag {}", flag,);
-        self.flag_values &= !SequenceFlags::flagbit(flag);
+        let mask = SequenceFlags::flagbit(flag);
+        self.flag_values &= !mask;
+        self.flag_changes |= mask;
     }
 
     fn raise(&mut self, flag: &SequenceNumber) {
@@ -119,7 +144,9 @@ impl SequenceFlags {
         #![allow(clippy::cmp_owned)]
         assert!(u16::from(*flag) < 0o100_u16);
         event!(Level::DEBUG, "Raising flag {}", flag,);
-        self.flag_values |= SequenceFlags::flagbit(flag);
+        let mask = SequenceFlags::flagbit(flag);
+        self.flag_values |= mask;
+        self.flag_changes |= mask;
     }
 
     fn current_flag_state(&self, flag: &SequenceNumber) -> bool {
@@ -143,26 +170,37 @@ impl SequenceFlags {
             Some(n.try_into().unwrap())
         }
     }
+
+    fn drain_flag_changes(&mut self) -> Vec<SequenceNumber> {
+        let result = ones_of_value_as_vec(self.flag_changes);
+        self.flag_changes = 0;
+        result
+    }
 }
 
 #[test]
-fn test_sequence_flags() {
+fn test_sequence_flags_highest_priority_raised() {
     let mut flags = SequenceFlags::new();
+    assert!(flags.drain_flag_changes().is_empty());
 
     flags.lower_all();
     assert_eq!(flags.highest_priority_raised_flag(), None);
+    // Lowering all flags produces no change, they were already down.
+    assert!(flags.drain_flag_changes().is_empty());
 
     flags.raise(&Unsigned6Bit::ZERO);
     assert_eq!(
         flags.highest_priority_raised_flag().map(i8::from),
         Some(0_i8)
     );
+    assert_eq!(flags.drain_flag_changes(), vec![u6!(0)]);
     flags.raise(&Unsigned6Bit::ONE);
     // 0 is still raised, so it still has the highest priority.
     assert_eq!(
         flags.highest_priority_raised_flag(),
         Some(Unsigned6Bit::ZERO)
     );
+    assert_eq!(flags.drain_flag_changes(), vec![u6!(1)]);
 
     flags.lower(&SequenceNumber::ZERO);
     assert_eq!(
@@ -170,6 +208,7 @@ fn test_sequence_flags() {
         Some(Unsigned6Bit::ONE)
     );
     flags.lower(&SequenceNumber::ONE);
+    assert_eq!(flags.drain_flag_changes(), vec![u6!(0), u6!(1)]);
     assert_eq!(flags.highest_priority_raised_flag(), None);
 
     let four = SequenceNumber::try_from(4_i8).expect("valid test data");
@@ -179,6 +218,7 @@ fn test_sequence_flags() {
     assert_eq!(flags.highest_priority_raised_flag(), Some(four));
     flags.lower(&four);
     assert_eq!(flags.highest_priority_raised_flag(), Some(six));
+    assert_eq!(flags.drain_flag_changes(), vec![u6!(4), u6!(6)]);
 }
 
 #[test]
@@ -189,6 +229,7 @@ fn test_sequence_flags_current_flag_state() {
     assert!(!flags.current_flag_state(&s52), "flag 52 should be lowered");
     flags.raise(&s52);
     assert!(flags.current_flag_state(&s52), "flag 52 should be raised");
+    assert_eq!(flags.drain_flag_changes(), vec![u6!(0o52)]);
 }
 
 #[derive(Debug)]
@@ -1514,6 +1555,10 @@ impl ControlUnit {
 
     pub fn drain_alarm_changes(&mut self) -> BTreeMap<AlarmKind, AlarmStatus> {
         self.alarm_unit.drain_alarm_changes()
+    }
+
+    pub fn drain_flag_changes(&mut self) -> Vec<SequenceNumber> {
+        self.regs.flags.drain_flag_changes()
     }
 }
 

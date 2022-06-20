@@ -207,6 +207,7 @@ impl ControlUnit {
                     }
                 }
             } else {
+                devices.mark_device_changed(unit);
                 match devices.get_mut(&unit) {
                     None => {
                         event!(Level::WARN, "TSD on unknown unit {:o}", unit);

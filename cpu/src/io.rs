@@ -46,6 +46,7 @@ use tracing::{event, span, Level};
 use super::types::*;
 use crate::alarm::{Alarm, Alarmer};
 use crate::alarmunit::AlarmUnit;
+use crate::changelog::ChangeIndex;
 use crate::context::Context;
 use crate::event::*;
 use crate::PETR;
@@ -352,6 +353,7 @@ impl Debug for AttachedUnit {
 pub struct DeviceManager {
     devices: BTreeMap<Unsigned6Bit, AttachedUnit>,
     poll_queue: PollQueue,
+    changes: ChangeIndex,
 }
 
 impl DeviceManager {
@@ -359,6 +361,7 @@ impl DeviceManager {
         DeviceManager {
             devices: BTreeMap::new(),
             poll_queue: PollQueue::new(),
+            changes: ChangeIndex::default(),
         }
     }
 
@@ -379,43 +382,45 @@ impl DeviceManager {
         }
     }
 
+    fn get_extended_status<A: Alarmer>(
+        &self,
+        ctx: &Context,
+        unit: &AttachedUnit,
+        alarmer: &mut A,
+    ) -> Result<ExtendedUnitState, Alarm> {
+        let (extended_unit_status, flag): (Option<ExtendedConnectedUnitStatus>, bool) =
+            if unit.connected {
+                let unit_status = unit.poll(ctx, alarmer)?;
+                let flag: bool = matches!(unit_status.change_flag, Some(FlagChange::Raise));
+                let ext_status = ExtendedConnectedUnitStatus {
+                    buffer_available_to_cpu: unit_status.buffer_available_to_cpu,
+                    inability: unit_status.inability,
+                    missed_data: unit_status.missed_data,
+                    special: u16::from(unit_status.special),
+                    mode: u16::from(unit_status.mode),
+                };
+                (Some(ext_status), flag)
+            } else {
+                (None, false)
+            };
+        Ok(ExtendedUnitState {
+            flag,
+            connected: unit.connected,
+            in_maintenance: unit.in_maintenance,
+            name: unit.name(),
+            text_info: unit.text_info(ctx),
+            status: extended_unit_status,
+        })
+    }
+
     pub fn device_statuses<A: Alarmer>(
         &self,
         ctx: &Context,
         alarmer: &mut A,
     ) -> Result<BTreeMap<Unsigned6Bit, ExtendedUnitState>, Alarm> {
-        fn get_extended_status<A: Alarmer>(
-            ctx: &Context,
-            unit: &AttachedUnit,
-            alarmer: &mut A,
-        ) -> Result<ExtendedUnitState, Alarm> {
-            let (extended_unit_status, flag): (Option<ExtendedConnectedUnitStatus>, bool) =
-                if unit.connected {
-                    let unit_status = unit.poll(ctx, alarmer)?;
-                    let flag: bool = matches!(unit_status.change_flag, Some(FlagChange::Raise));
-                    let ext_status = ExtendedConnectedUnitStatus {
-                        buffer_available_to_cpu: unit_status.buffer_available_to_cpu,
-                        inability: unit_status.inability,
-                        missed_data: unit_status.missed_data,
-                        special: u16::from(unit_status.special),
-                        mode: u16::from(unit_status.mode),
-                    };
-                    (Some(ext_status), flag)
-                } else {
-                    (None, false)
-                };
-            Ok(ExtendedUnitState {
-                flag,
-                connected: unit.connected,
-                in_maintenance: unit.in_maintenance,
-                name: unit.name(),
-                text_info: unit.text_info(ctx),
-                status: extended_unit_status,
-            })
-        }
         let mut result: BTreeMap<Unsigned6Bit, ExtendedUnitState> = BTreeMap::new();
         for (unit, attached) in self.devices.iter() {
-            let ext_status = get_extended_status(ctx, attached, alarmer)?;
+            let ext_status = self.get_extended_status(ctx, attached, alarmer)?;
             result.insert(*unit, ext_status);
         }
         Ok(result)
@@ -428,6 +433,7 @@ impl DeviceManager {
         in_maintenance: bool,
         mut unit: Box<dyn Unit>,
     ) {
+        self.mark_device_changed(unit_number);
         let status: UnitStatus = unit.poll(ctx);
         self.devices.insert(
             unit_number,
@@ -448,6 +454,7 @@ impl DeviceManager {
         unit_number: Unsigned6Bit,
         input_event: InputEvent,
     ) {
+        self.mark_device_changed(unit_number);
         match self.devices.get_mut(&unit_number) {
             Some(attached) => attached.on_input_event(ctx, input_event),
             None => {
@@ -501,6 +508,7 @@ impl DeviceManager {
         let mut raised_flags: u64 = 0;
         let mut alarm: Option<Alarm> = None;
         let mut next_poll: Option<Duration> = None;
+
         loop {
             match self.poll_queue.peek() {
                 None => {
@@ -525,6 +533,13 @@ impl DeviceManager {
                 Some((devno, poll_time)) => {
                     let span = span!(Level::ERROR, "poll", unit=%devno);
                     let _enter = span.enter();
+
+                    // We don't know for sure that there will be an
+                    // update to the (console-visible) state of the
+                    // device, but it might be the case.  So we mark
+                    // the device has changed so that the UI collects
+                    // the possibly-updated state.
+                    self.mark_device_changed(devno);
 
                     event!(
                         Level::TRACE,
@@ -587,11 +602,16 @@ impl DeviceManager {
         ctx: &Context,
         alarmer: &mut A,
     ) -> Result<(), Alarm> {
+        let mut changes: Vec<Unsigned6Bit> = Vec::with_capacity(self.devices.len());
         for (_, attached) in self.devices.iter_mut() {
             if attached.connected {
+                changes.push(attached.unit);
                 attached.disconnect(ctx, alarmer)?;
                 attached.connected = false;
             }
+        }
+        for unit in changes.into_iter() {
+            self.mark_device_changed(unit);
         }
         Ok(())
     }
@@ -602,10 +622,11 @@ impl DeviceManager {
         device: &Unsigned6Bit,
         alarm_unit: &mut AlarmUnit,
     ) -> Result<(), Alarm> {
+        let mut changed = false;
         if *device == u6!(0o42) {
             return Ok(());
         }
-        match self.devices.get_mut(device) {
+        let result = match self.devices.get_mut(device) {
             Some(attached) => {
                 if attached.connected {
                     attached.connected = false;
@@ -615,6 +636,7 @@ impl DeviceManager {
                         "disconnecting unit {device:o} but it is not connected"
                     );
                 }
+                changed = true;
                 attached.disconnect(ctx, alarm_unit)
             }
             None => {
@@ -625,7 +647,11 @@ impl DeviceManager {
                 })?;
                 Ok(()) // IOSAL is masked, carry on.
             }
+        };
+        if changed {
+            self.mark_device_changed(*device);
         }
+        result
     }
 
     pub fn connect(
@@ -635,6 +661,7 @@ impl DeviceManager {
         mode: Unsigned12Bit,
         alarm_unit: &mut AlarmUnit,
     ) -> Result<Option<FlagChange>, Alarm> {
+        self.mark_device_changed(*device);
         match self.devices.get_mut(device) {
             Some(attached) => {
                 if attached.in_maintenance {
@@ -663,6 +690,31 @@ impl DeviceManager {
                 Ok(None) // IOSAL is masked, carry on
             }
         }
+    }
+
+    pub fn mark_device_changed(&mut self, unit: Unsigned6Bit) {
+        self.changes.device_changed(unit);
+    }
+
+    pub fn drain_changes<A: Alarmer>(
+        &mut self,
+        ctx: &Context,
+        alarmer: &mut A,
+    ) -> Result<BTreeMap<Unsigned6Bit, ExtendedUnitState>, Alarm> {
+        let mut result: BTreeMap<Unsigned6Bit, ExtendedUnitState> = BTreeMap::new();
+        for unit_with_change in self.changes.drain_device_changes().into_iter() {
+            if let Some(attached_unit) = self.get(&unit_with_change) {
+                match self.get_extended_status(ctx, attached_unit, alarmer) {
+                    Ok(state) => {
+                        result.insert(unit_with_change, state);
+                    }
+                    Err(alarm) => {
+                        return Err(alarm);
+                    }
+                }
+            }
+        }
+        Ok(result)
     }
 }
 

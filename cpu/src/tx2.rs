@@ -323,22 +323,21 @@ impl Tx2 {
         self.devices.disconnect_all(ctx, &mut self.control)
     }
 
+    fn extended_state_of_software_sequence(&self, seq: Unsigned6Bit) -> ExtendedUnitState {
+        ExtendedUnitState {
+            flag: self.control.current_flag_state(&seq),
+            connected: false,
+            in_maintenance: false,
+            name: format!("Sequence {:>02o}", seq),
+            status: None,
+            text_info: "(software only)".to_string(),
+        }
+    }
+
     fn software_sequence_statuses(&self) -> BTreeMap<Unsigned6Bit, ExtendedUnitState> {
         [u6!(0), u6!(0o76), u6!(0o77)]
             .into_iter()
-            .map(|seq| -> (Unsigned6Bit, ExtendedUnitState) {
-                (
-                    seq,
-                    ExtendedUnitState {
-                        flag: self.control.current_flag_state(&seq),
-                        connected: false,
-                        in_maintenance: false,
-                        name: format!("Sequence {:>02o}", seq),
-                        status: None,
-                        text_info: "(software only)".to_string(),
-                    },
-                )
-            })
+            .map(|seq| (seq, self.extended_state_of_software_sequence(seq)))
             .collect()
     }
 
@@ -352,5 +351,18 @@ impl Tx2 {
         // Merge in the status of the software units
         result.append(&mut self.software_sequence_statuses());
         Ok(result)
+    }
+
+    pub fn drain_device_changes(
+        &mut self,
+        ctx: &Context,
+    ) -> Result<BTreeMap<Unsigned6Bit, ExtendedUnitState>, Alarm> {
+        let mut mapping = self.devices.drain_changes(ctx, &mut self.control)?;
+        for seq in self.control.drain_flag_changes().into_iter() {
+            mapping
+                .entry(seq)
+                .or_insert_with(|| self.extended_state_of_software_sequence(seq));
+        }
+        Ok(mapping)
     }
 }

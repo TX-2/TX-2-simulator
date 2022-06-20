@@ -54,19 +54,19 @@ export class IoController {
     }
 
     update_status_around(f: ()=>void): void {
-        const prev_io_status = this.allUnitProps();
         f();
-        this.update_io_status_changes(prev_io_status, this.allUnitProps());
+        const changes: Map<number, WasmUnitState> = this.tx2Controller.drain_device_status_changes();
+        this.update_io_status_changes(changes);
     }
 
-    private update_io_status_changes(prev: IoUnitProps[] | null,
-                                     current: IoUnitProps[]): void {
-        const performUpdate = (unit_props: IoUnitProps): void => {
-            const cb = this.io_status_callbacks.get(unit_props.name);
+    private update_io_status_changes(changes: Map<number, WasmUnitState>): void {
+        const performUpdate = (state: WasmUnitState): void => {
+            const cb = this.io_status_callbacks.get(state.unit_state.name);
             if (cb) {
+                const unit_props = this.convert_wasm_unit_state_to_props(state);
                 cb(unit_props);
             }
         };
-        current.forEach(performUpdate);
+	changes.forEach(performUpdate);
     }
 }
