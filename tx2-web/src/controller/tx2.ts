@@ -19,32 +19,32 @@ export class Tx2Controller {
         this.startTime = Date.now();
         this.systemTime = 0.0;
         this.running = false;
-        this.tx2 = create_tx2(this.systemTime, this.clamped_elapsed_time());
+        this.tx2 = create_tx2(this.systemTime, this.clamped_elapsed_seconds());
         this.alarmController = new AlarmController(this.tx2);
         this.ioController = new IoController(this);
         this.runChangeCallback = null;
     }
 
-    clamped_elapsed_time(): number {
+    clamped_elapsed_seconds(): number {
         const  now = Date.now();
-        return Math.max(now - this.startTime, 0.0);
+        return Math.max(now - this.startTime, 0.0) / 1000.0;
     }
 
     codabo(): void {
-	tx2_codabo(this.tx2, this.systemTime, this.clamped_elapsed_time());
+	tx2_codabo(this.tx2, this.systemTime, this.clamped_elapsed_seconds());
         this.ioController.update_status();
         this.alarmController.update_status();
         this.changeRun(true);
     }
 
     loadTape(bytes: Uint8Array): void {
-        tx2_load_tape(this.tx2, this.systemTime, this.clamped_elapsed_time(), bytes);
+        tx2_load_tape(this.tx2, this.systemTime, this.clamped_elapsed_seconds(), bytes);
         this.ioController.update_status();
     }
 
     loadSample(name: string): void {
 	const data = get_builtin_sample_tape(name);
-        tx2_load_tape(this.tx2, this.systemTime, this.clamped_elapsed_time(), data);
+        tx2_load_tape(this.tx2, this.systemTime, this.clamped_elapsed_seconds(), data);
         this.ioController.update_status();
     }
 
@@ -55,7 +55,7 @@ export class Tx2Controller {
 
     do_tick(tick_time: number): void {
         this.systemTime = tick_time;
-        tx2_do_tick(this.tx2, tick_time, this.clamped_elapsed_time());
+        tx2_do_tick(this.tx2, tick_time, this.clamped_elapsed_seconds());
         this.ioController.update_status();
         this.alarmController.update_status();
 
@@ -99,10 +99,10 @@ export class Tx2Controller {
     }
 
     get_device_statuses(): ArrayLike<WasmUnitState> {
-        return (tx2_device_statuses(this.tx2, this.systemTime, this.clamped_elapsed_time()) as ArrayLike<WasmUnitState>);
+        return (tx2_device_statuses(this.tx2, this.systemTime, this.clamped_elapsed_seconds()) as ArrayLike<WasmUnitState>);
     }
 
     drain_device_status_changes(): Map<number, WasmUnitState> {
-        return (tx2_drain_device_changes(this.tx2, this.systemTime, this.clamped_elapsed_time()) as Map<number, WasmUnitState>);
+        return (tx2_drain_device_changes(this.tx2, this.systemTime, this.clamped_elapsed_seconds()) as Map<number, WasmUnitState>);
     }
 }
