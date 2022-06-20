@@ -264,6 +264,33 @@ pub struct UnitState {
 }
 
 #[wasm_bindgen]
+pub fn tx2_drain_device_changes(
+    tx2: &mut Tx2,
+    simulated_system_time_secs: f64,
+    elapsed_time_secs: f64,
+) -> Result<JsValue, String> {
+    let context = make_context(simulated_system_time_secs, elapsed_time_secs);
+    match tx2.drain_device_changes(&context) {
+        Ok(changes) => {
+            let change_map: BTreeMap<u8, UnitState> = changes
+                .into_iter()
+                .map(|(unit, state)| {
+                    (
+                        u8::from(unit),
+                        UnitState {
+                            unit: unit.into(),
+                            unit_state: state,
+                        },
+                    )
+                })
+                .collect();
+            serde_wasm_bindgen::to_value(&change_map).map_err(|e| e.to_string())
+        }
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[wasm_bindgen]
 pub fn tx2_device_statuses(
     tx2: &mut Tx2,
     simulated_system_time_secs: f64,
