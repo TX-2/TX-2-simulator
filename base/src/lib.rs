@@ -3,6 +3,8 @@
 //! if you want to write an assembler, it would depend on the base
 //! crate but would not need to depend on the simulator library
 //! itself.
+#![deny(unsafe_code)]
+#![deny(unused_crate_dependencies)]
 
 mod onescomplement;
 mod types;

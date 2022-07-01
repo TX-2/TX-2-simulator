@@ -1,3 +1,5 @@
+#![deny(unsafe_code)]
+
 use std::ffi::OsString;
 
 use clap::ArgAction::Set;

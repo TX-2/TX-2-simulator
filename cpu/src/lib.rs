@@ -1,6 +1,8 @@
 //! This module decodes instructions and emulates the arithmetic unit
 //! and the exchange unit.
 #![crate_name = "cpu"]
+#![deny(unsafe_code)]
+#![deny(unused_crate_dependencies)]
 
 mod alarm;
 mod alarmunit;

@@ -1,3 +1,5 @@
+#![deny(unsafe_code)]
+
 use base::prelude::*;
 use clap::ArgAction::Set;
 use clap::Parser;
