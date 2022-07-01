@@ -26,7 +26,7 @@ export class Tx2Controller {
     }
 
     reset_start_time(): void {
-	this.startTime = Date.now() - (1000.0 * this.systemTime);
+        this.startTime = Date.now() - (1000.0 * this.systemTime);
     }
 
     clamped_elapsed_seconds(): number {
@@ -35,7 +35,7 @@ export class Tx2Controller {
     }
 
     codabo(): void {
-	tx2_codabo(this.tx2, this.systemTime, this.clamped_elapsed_seconds());
+        tx2_codabo(this.tx2, this.systemTime, this.clamped_elapsed_seconds());
         this.changeRun(true);
         this.ioController.update_status();
         this.alarmController.update_status();
@@ -47,7 +47,7 @@ export class Tx2Controller {
     }
 
     loadSample(name: string): void {
-	const data = get_builtin_sample_tape(name);
+        const data = get_builtin_sample_tape(name);
         tx2_load_tape(this.tx2, this.systemTime, this.clamped_elapsed_seconds(), data);
         this.ioController.update_status();
     }
@@ -58,34 +58,34 @@ export class Tx2Controller {
     }
 
     do_tick(tick_time: number): void {
-	if (!this.running) {
-	    console.log("System clock is not running, abandoning tick");
-	    return;
-	}
+        if (!this.running) {
+            console.log("System clock is not running, abandoning tick");
+            return;
+        }
 
         this.systemTime = tick_time;
-	for (let iterations = 0; ; ++iterations) {
-	    const elapsed = this.clamped_elapsed_seconds();
+        for (let iterations = 0; ; ++iterations) {
+            const elapsed = this.clamped_elapsed_seconds();
             tx2_do_tick(this.tx2, tick_time, elapsed);
             if (tx2_unmasked_alarm_active(this.tx2)) {
-		break;
-	    }
+                break;
+            }
             const next_tick_at: number = tx2_next_simulated_tick(this.tx2);
-	    tick_time = next_tick_at;
-	    let yield_control = false;
-	    if (iterations > 20) {
-		/* Bail out of the loop in order to give other things
-		 * access to the main thread. */
-		yield_control = true;
-	    } else if (next_tick_at > elapsed) {
-		yield_control = true;
-	    }
-	    if (yield_control) {
-		const interval: number = next_tick_at - elapsed;
-		this.tick_after(interval, next_tick_at);
-		break;
-	    }
-	}
+            tick_time = next_tick_at;
+            let yield_control = false;
+            if (iterations > 20) {
+                /* Bail out of the loop in order to give other things
+                 * access to the main thread. */
+                yield_control = true;
+            } else if (next_tick_at > elapsed) {
+                yield_control = true;
+            }
+            if (yield_control) {
+                const interval: number = next_tick_at - elapsed;
+                this.tick_after(interval, next_tick_at);
+                break;
+            }
+        }
         if (tx2_unmasked_alarm_active(this.tx2)) {
             console.log("An unmasked alarm is active.");
             this.changeRun(false);
@@ -99,7 +99,7 @@ export class Tx2Controller {
         const wasRunning = this.running;
         this.running = run;
         if (this.running &&  !wasRunning) {
-	    this.reset_start_time();
+            this.reset_start_time();
             this.tick_after(0.0, this.systemTime + 1e-6);
         }
         if (this.running != wasRunning) {
