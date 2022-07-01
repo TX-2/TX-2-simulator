@@ -61,6 +61,29 @@
     background-color: rgb(255, 255, 240);
 }
 
+.lw__output {
+    border: 0px;
+    border-style: none;
+    margin: 0px 0px;
+    font-family: monospace;
+}
+
+.lw__cursor  {
+  background-color: black;
+  animation-name: lw__cursor-animation;
+  animation-duration: 0.75s;
+  animation-iteration-count: infinite;
+  animation-timing-function: linear;
+  animation-direction: alternate;
+}
+
+@keyframes lw__cursor-animation {
+    0%   {opacity:20%; }
+    40%  {opacity:20%; }
+    41%  {opacity:100%; }
+    100% {opacity:100%; }
+}
+
 .instructions {
   color: black;
   font-family: sans-serif;

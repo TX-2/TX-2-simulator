@@ -105,7 +105,7 @@ export const MainGrid = (props: MainGridProps) => (
         />
       </Box>
       <Box column="2" row="3" style={{padding: "20px", overflowY: "scroll"}}>
-        <LincolnWriter unit={"66"} cursor_blink_ms={750} />
+        <LincolnWriter unit={"66"} />
       </Box>
     </Grid>
   </div>

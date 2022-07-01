@@ -1,66 +1,7 @@
-import React, { Component } from 'react';
-import styled from 'styled-components';
+import React from 'react';
 import styles from './styles.scss'
 
-//function Box(props: GridItemProps) {
-
-function Paper({children}: {children: JSX.Element | JSX.Element[] | string}) {
-  return <div className={styles['lw__paper']}>{children}</div>;
-}
-
-const ComputerOutput = styled.span`
-border: 0px;
-border-style: none;
-margin: 0px 0px;
-font-family: monospace;
-`;
-
-const OpaqueCursor = styled(ComputerOutput)`
-  opacity: 1.0;
-`;
-const TransparentCursor = styled(ComputerOutput)`
-  opacity: 0.2;
-`;
-
-type CursorState = {
-  isSolid: boolean;
-};
-type CursorProps = {
-  blinkMs: number,
-};
-
-class Cursor extends Component<CursorProps, CursorState> {
-  private intervalId: NodeJS.Timeout | undefined;
-  constructor(props: CursorProps) {
-    super(props);
-    this.state = {
-      isSolid: true,
-    }
-  }
-  componentDidMount() {
-    this.intervalId = setInterval(
-      () => {
-        this.setState(prevState => {
-          return {
-            isSolid: !prevState.isSolid,
-          };
-        });
-      }, this.props.blinkMs);
-  }
-  componentWillUnmount() {
-    clearInterval(this.intervalId);
-  }
-  render(): React.ReactElement {
-    if (this.state.isSolid) {
-      return <OpaqueCursor>&#9608;</OpaqueCursor>;
-    } else {
-      return <TransparentCursor>&#9608;</TransparentCursor>;
-    }
-  }
-}
-
 type LincolnWriterProps = {
-  cursor_blink_ms: number,
   unit: string,
 };
 type LincolnWriterState = Record<string, never>;
@@ -71,10 +12,10 @@ export class LincolnWriter extends React.Component<LincolnWriterProps, LincolnWr
   currentId = this.prefix + "-current-line";
 
   render(): React.ReactElement {
-    return <Paper>
-      <ComputerOutput id={this.historyId}></ComputerOutput>
-      <ComputerOutput id={this.currentId}></ComputerOutput>
-      <Cursor blinkMs={this.props.cursor_blink_ms} />
-    </Paper>;
+    return <div className={styles['lw__paper']}>
+      <span className={styles['lw__output']} id={this.historyId}></span>
+      <span  className={styles['lw__output']} id={this.currentId}></span>
+      <span className={styles['lw__cursor']}>&nbsp;</span>
+    </div>
   }
 }
