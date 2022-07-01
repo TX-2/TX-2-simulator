@@ -405,7 +405,7 @@ fn test_symbol_name_one_syllable() {
         parse_successfully_with("START4", symbol_name, no_state_setup),
         SymbolName {
             canonical: "START4".to_string(),
-            as_used: "START4".to_string(),
+            //as_used: "START4".to_string(),
         }
     );
 }
@@ -416,7 +416,7 @@ fn test_symbol_name_two_syllables() {
         parse_successfully_with("TWO WORDS", symbol_name, no_state_setup),
         SymbolName {
             canonical: "TWOWORDS".to_string(),
-            as_used: "TWO WORDS".to_string(),
+            //as_used: "TWO WORDS".to_string(),
         }
     );
 }
@@ -434,7 +434,7 @@ fn test_manuscript_with_single_syllable_tag() {
             ManuscriptItem::Instruction(ProgramInstruction {
                 tag: Some(SymbolName {
                     canonical: "START4".to_string(),
-                    as_used: "START4".to_string(),
+                    //as_used: "START4".to_string(),
                 }),
                 holdbit: HoldBit::Unspecified,
                 parts: vec![InstructionFragment {
@@ -494,7 +494,7 @@ fn test_multi_syllable_tag() {
         symbol,
         SymbolName {
             canonical: "CODEHERE".to_string(),
-            as_used: "CODE HERE".to_string(),
+            //as_used: "CODE HERE".to_string(),
         }
     );
     assert_eq!(tail, "->205\n");
@@ -513,7 +513,7 @@ fn test_manuscript_with_multi_syllable_tag() {
             ManuscriptItem::Instruction(ProgramInstruction {
                 tag: Some(SymbolName {
                     canonical: "CODEHERE".to_string(),
-                    as_used: "CODE HERE".to_string(),
+                    //as_used: "CODE HERE".to_string(),
                 }),
                 holdbit: HoldBit::Unspecified,
                 parts: vec![InstructionFragment {
@@ -535,7 +535,7 @@ fn test_manuscript_with_real_arrow_tag() {
             ManuscriptItem::Instruction(ProgramInstruction {
                 tag: Some(SymbolName {
                     canonical: "HERE".to_string(),
-                    as_used: "HERE".to_string(),
+                    //as_used: "HERE".to_string(),
                 }),
                 holdbit: HoldBit::Unspecified,
                 parts: vec![InstructionFragment {

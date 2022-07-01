@@ -31,7 +31,7 @@ fn address_to_memory_type(addr: &Address) -> MemoryType {
 
 /// These figures are taken, approximately, from section 7-8 of the
 /// User Handbook.
-pub fn estimate_instruction_ns(
+pub(crate) fn estimate_instruction_ns(
     inst_from: Address,
     op: u8,
     defer_from: Option<Address>,

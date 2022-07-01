@@ -367,9 +367,6 @@ mod tests {
                 panic!("opcode {:?} is not yet supported", opcode);
             }
         };
-        dbg!(&control.regs.e);
-        dbg!(&control.regs.f_memory[1]);
-        dbg!(&mem.s_memory[0o100]);
         if let Err(e) = f(control, ctx, mem) {
             panic!("{:?} instruction failed: {}", opcode, e);
         }

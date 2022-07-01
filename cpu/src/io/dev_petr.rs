@@ -87,7 +87,7 @@ fn next_line_time(direction: Direction, system_time: &Duration) -> Duration {
         }
 }
 
-pub struct Petr {
+pub(crate) struct Petr {
     // Activity and direction cannot just be left encoded in mode,
     // because we need to be able to start/stop the motor and change
     // direction without changing the mode value (since the programmer
@@ -124,7 +124,7 @@ impl Debug for Petr {
 }
 
 impl Petr {
-    pub fn new() -> Petr {
+    pub(crate) fn new() -> Petr {
         Petr {
             activity: Activity::Stopped,
             direction: Direction::Bin,

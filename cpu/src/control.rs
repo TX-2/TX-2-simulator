@@ -24,7 +24,7 @@ mod op_jump;
 mod op_loadstore;
 #[cfg(test)]
 mod tests;
-pub mod timing;
+mod timing;
 mod trap;
 
 use base::instruction::{Inst, Instruction, Opcode, OperandAddress, SymbolicInstruction};
@@ -48,7 +48,7 @@ pub enum RunMode {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-pub enum ProgramCounterChange {
+pub(crate) enum ProgramCounterChange {
     /// Change of current sequence.
     SequenceChange(Unsigned6Bit),
 
@@ -233,7 +233,7 @@ fn test_sequence_flags_current_flag_state() {
 }
 
 #[derive(Debug)]
-struct ControlRegisters {
+pub struct ControlRegisters {
     // TODO: the E register actually shares the meta bit with the
     // other AE registers, but our implementaiton of the E register
     // lacks this feature.  See

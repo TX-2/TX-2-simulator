@@ -35,20 +35,20 @@ use base::prelude::*;
 
 use crate::context::Context;
 
-pub const S_MEMORY_START: u32 = 0o0000000;
-pub const S_MEMORY_SIZE: u32 = 1 + 0o0177777;
-pub const T_MEMORY_START: u32 = 0o0200000;
-pub const T_MEMORY_SIZE: u32 = 1 + 0o0207777 - 0o0200000;
-pub const U_MEMORY_START: u32 = 0o0210000;
-pub const U_MEMORY_SIZE: u32 = 1 + 0o0217777 - 0o0210000;
-pub const V_MEMORY_START: u32 = 0o0377600;
-pub const V_MEMORY_SIZE: u32 = 1 + 0o0377777 - 0o0377600;
+pub(crate) const S_MEMORY_START: u32 = 0o0000000;
+pub(crate) const S_MEMORY_SIZE: u32 = 1 + 0o0177777;
+pub(crate) const T_MEMORY_START: u32 = 0o0200000;
+pub(crate) const T_MEMORY_SIZE: u32 = 1 + 0o0207777 - 0o0200000;
+pub(crate) const U_MEMORY_START: u32 = 0o0210000;
+pub(crate) const U_MEMORY_SIZE: u32 = 1 + 0o0217777 - 0o0210000;
+pub(crate) const V_MEMORY_START: u32 = 0o0377600;
+pub(crate) const V_MEMORY_SIZE: u32 = 1 + 0o0377777 - 0o0377600;
 
 //pub const STANDARD_PROGRAM_CLEAR_MEMORY: Address = Address::new(u18!(0o0377770));
-pub const STANDARD_PROGRAM_INIT_CONFIG: Address = Address::new(u18!(0o0377750));
+pub(crate) const STANDARD_PROGRAM_INIT_CONFIG: Address = Address::new(u18!(0o0377750));
 
 #[derive(Debug)]
-pub enum MemoryOpFailure {
+pub(crate) enum MemoryOpFailure {
     NotMapped(Address),
 
     // I have no idea whether the real TX-2 alarmed on writes to
@@ -75,7 +75,7 @@ impl Display for MemoryOpFailure {
 impl error::Error for MemoryOpFailure {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum MetaBitChange {
+pub(crate) enum MetaBitChange {
     None,
     Set,
 }
@@ -84,21 +84,21 @@ pub enum MetaBitChange {
 // Flip,			// not used for fetch/store
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum BitChange {
+pub(crate) enum BitChange {
     Clear,
     Set,
     Flip,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct WordChange {
-    pub bit: BitSelector,
-    pub bitop: Option<BitChange>,
-    pub cycle: bool,
+pub(crate) struct WordChange {
+    pub(crate) bit: BitSelector,
+    pub(crate) bitop: Option<BitChange>,
+    pub(crate) cycle: bool,
 }
 
 impl WordChange {
-    pub fn will_mutate_memory(&self) -> bool {
+    pub(crate) fn will_mutate_memory(&self) -> bool {
         if self.cycle {
             true
         } else if self.bitop.is_none() {
@@ -117,7 +117,7 @@ impl WordChange {
     }
 }
 
-pub trait MemoryMapped {
+pub(crate) trait MemoryMapped {
     /// Fetch a word.
     fn fetch(
         &mut self,
@@ -266,19 +266,19 @@ fn default_filled_memory_vec(size: u32) -> Vec<MemoryWord> {
 
 #[derive(Debug)]
 pub struct MemoryUnit {
-    pub(crate) s_memory: Vec<MemoryWord>,
+    s_memory: Vec<MemoryWord>,
     t_memory: Vec<MemoryWord>,
     u_memory: Option<Vec<MemoryWord>>,
     v_memory: VMemory,
 }
 
 #[derive(Debug, Eq, PartialEq)]
-pub enum MemoryAccess {
+enum MemoryAccess {
     Read,
     Write,
 }
 
-pub enum MemoryDecode {
+enum MemoryDecode {
     S(usize),
     T(usize),
     U(usize),
@@ -741,7 +741,7 @@ const fn standard_plugboard_internal() -> [MemoryWord; 32] {
 }
 
 #[cfg(test)]
-pub fn get_standard_plugboard() -> Vec<Unsigned36Bit> {
+pub(crate) fn get_standard_plugboard() -> Vec<Unsigned36Bit> {
     standard_plugboard_internal()
         .iter()
         .map(|mw| mw.into())

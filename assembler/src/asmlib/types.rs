@@ -9,7 +9,7 @@ use crate::ek;
 
 /// LineNumber values are usually derived from
 /// LocatedSpan::line_location() which returns a u32.
-pub type LineNumber = u32;
+pub(crate) type LineNumber = u32;
 
 #[derive(Debug)]
 pub enum AssemblerFailure {
@@ -108,20 +108,20 @@ impl Display for Fail {
 impl Error for Fail {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Elevation {
+pub(crate) enum Elevation {
     Superscript, // e.g. config values
     Normal,      // e.g. the address part of an instruction
     Subscript,   // e.g. the index bits
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct InstructionFragment {
-    pub elevation: Elevation,
-    pub value: Unsigned36Bit,
+pub(crate) struct InstructionFragment {
+    pub(crate) elevation: Elevation,
+    pub(crate) value: Unsigned36Bit,
 }
 
 impl InstructionFragment {
-    pub fn value(&self) -> Unsigned36Bit {
+    pub(crate) fn value(&self) -> Unsigned36Bit {
         match self.elevation {
             Elevation::Superscript => {
                 // This is a config value.
@@ -137,9 +137,9 @@ impl InstructionFragment {
 }
 
 #[derive(Debug, Clone, Eq)]
-pub struct SymbolName {
-    pub canonical: String,
-    pub as_used: String,
+pub(crate) struct SymbolName {
+    pub(crate) canonical: String,
+    // pub(crate) as_used: String,
 }
 
 impl PartialEq for SymbolName {
@@ -162,7 +162,7 @@ impl<'a, 'b> From<&ek::LocatedSpan<'a, 'b>> for SymbolName {
     fn from(location: &ek::LocatedSpan<'a, 'b>) -> SymbolName {
         SymbolName {
             canonical: SymbolName::canonical(location),
-            as_used: location.fragment().to_string(),
+            //as_used: location.fragment().to_string(),
         }
     }
 }
@@ -172,19 +172,18 @@ impl<'a, 'b> From<&ek::LocatedSpan<'a, 'b>> for SymbolName {
 /// such symbols are assigned values are indicated in "Unassigned
 /// Symexes" in section 6-2.2 of the User Handbook.
 #[derive(Debug)]
-pub struct SymbolTable {}
-
+pub(crate) struct SymbolTable {}
 impl SymbolTable {
-    pub fn new() -> SymbolTable {
+    pub(crate) fn new() -> SymbolTable {
         SymbolTable {}
     }
 
     #[cfg(test)]
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         true
     }
 
-    pub fn list(&self) -> Result<(), std::io::Error> {
+    pub(crate) fn list(&self) -> Result<(), std::io::Error> {
         Ok(())
     }
 }

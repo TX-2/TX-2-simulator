@@ -11,7 +11,7 @@ use crate::event::InputEvent;
 use crate::io::{TransferFailed, Unit, UnitStatus};
 
 #[derive(Debug)]
-pub struct TrapCircuit {
+pub(crate) struct TrapCircuit {
     mode: Unsigned12Bit,
     set_metabits_disabled: bool,
 }
@@ -47,7 +47,7 @@ impl TrapCircuit {
     /// When this bit is set, the metabits of memory words containing operands will be set.
     const SET_METABITS_OF_OPERANDS: Unsigned12Bit = Unsigned12Bit::MAX.and(0o000_400_u16);
 
-    pub const fn new() -> TrapCircuit {
+    pub(crate) const fn new() -> TrapCircuit {
         TrapCircuit {
             mode: Unsigned12Bit::ZERO,
             set_metabits_disabled: false,
@@ -56,50 +56,50 @@ impl TrapCircuit {
 
     /// Query the hardware switch setting which would disable all
     /// setting of metabits.
-    pub fn is_set_metabits_disabled(&self) -> bool {
+    pub(crate) fn is_set_metabits_disabled(&self) -> bool {
         self.set_metabits_disabled
     }
 
     /// Change the (emulated) hardware switch setting which (when
     /// `disable` is true) would disable all setting of metabits.
-    pub fn set_metabits_disabled(&mut self, disable: bool) {
+    pub(crate) fn set_metabits_disabled(&mut self, disable: bool) {
         self.set_metabits_disabled = disable
     }
 
     /// Indicate whether the machine should set the metabits of words
     /// from which it fetches instructions.
-    pub fn set_metabits_of_instructions(&self) -> bool {
+    pub(crate) fn set_metabits_of_instructions(&self) -> bool {
         !self.is_set_metabits_disabled() && self.mode & Self::SET_METABITS_OF_INSTRUCTIONS != 0
     }
 
     /// Indicate whether the machine should set the metabits of words
     /// from which it fetches deferred addresses.
-    pub fn set_metabits_of_deferred_addresses(&self) -> bool {
+    pub(crate) fn set_metabits_of_deferred_addresses(&self) -> bool {
         !self.is_set_metabits_disabled()
             && self.mode & Self::SET_METABITS_OF_DEFERRED_ADDRESSES != 0
     }
 
     /// Indicate whether the machine should set the metabits of words
     /// from which it fetches operands.
-    pub fn set_metabits_of_operands(&self) -> bool {
+    pub(crate) fn set_metabits_of_operands(&self) -> bool {
         !self.is_set_metabits_disabled() && self.mode & Self::SET_METABITS_OF_OPERANDS != 0
     }
 
     /// Indicate whether the TRAP flag should be raised during
     /// execution of an instruction whose metabit is set.
-    pub fn trap_on_marked_instruction(&self) -> bool {
+    pub(crate) fn trap_on_marked_instruction(&self) -> bool {
         self.mode & Self::TRAP_ON_MARKED_INSTRUCTION != 0
     }
 
     /// Indicate whether an instruction cycle which uses a marked
     /// deferred address causes the TRAP flag to be raised.
-    pub fn trap_on_deferred_address(&self) -> bool {
+    pub(crate) fn trap_on_deferred_address(&self) -> bool {
         self.mode & Self::TRAP_ON_DEFERRED_ADDRESS != 0
     }
 
     /// Indicate whether use of a marked operand causes the TRAP flag
     /// to be raised soon afterward (within a few instructions).
-    pub fn trap_on_operand(&self) -> bool {
+    pub(crate) fn trap_on_operand(&self) -> bool {
         self.mode & Self::TRAP_ON_OPERAND != 0
     }
 
@@ -107,7 +107,7 @@ impl TrapCircuit {
     /// flag to be raised.  Change of sequence away from sequence 0o42
     /// (the TRAP sequence itself) does not cause the flag to be
     /// raised).
-    pub fn trap_on_changed_sequence(&self) -> bool {
+    pub(crate) fn trap_on_changed_sequence(&self) -> bool {
         self.mode & Self::TRAP_ON_CHANGED_SEQUENCE != 0
     }
 }

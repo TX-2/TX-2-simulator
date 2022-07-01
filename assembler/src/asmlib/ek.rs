@@ -12,10 +12,10 @@ use nom::sequence::preceded;
 use crate::parser::ErrorLocation;
 use crate::state::{Error, State, StateExtra};
 
-pub type LocatedSpan<'a, 'b> = nom_locate::LocatedSpan<&'a str, StateExtra<'b>>;
-pub type IResult<'a, 'b, T> = nom::IResult<LocatedSpan<'a, 'b>, T>;
+pub(crate) type LocatedSpan<'a, 'b> = nom_locate::LocatedSpan<&'a str, StateExtra<'b>>;
+pub(crate) type IResult<'a, 'b, T> = nom::IResult<LocatedSpan<'a, 'b>, T>;
 
-pub trait ToRange {
+pub(crate) trait ToRange {
     fn to_range(&self) -> Range<usize>;
 }
 
@@ -27,7 +27,7 @@ impl<'a, 'b> ToRange for LocatedSpan<'a, 'b> {
     }
 }
 
-pub fn expect<'a, 'b, F, E, T>(
+pub(crate) fn expect<'a, 'b, F, E, T>(
     parser: F,
     error_msg: E,
 ) -> impl Fn(LocatedSpan<'a, 'b>) -> IResult<'a, 'b, Option<T>>

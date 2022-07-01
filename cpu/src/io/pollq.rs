@@ -7,31 +7,31 @@ use base::collections::pq::KeyedReversePriorityQueue;
 use base::prelude::*;
 
 #[derive(Debug)]
-pub struct PollQueue {
+pub(crate) struct PollQueue {
     items: KeyedReversePriorityQueue<SequenceNumber, Duration>,
 }
 
 #[derive(Debug)]
-pub enum PollQueueUpdateFailure {
+pub(crate) enum PollQueueUpdateFailure {
     UnknownSequence(SequenceNumber),
 }
 
 impl PollQueue {
-    pub fn new() -> PollQueue {
+    pub(crate) fn new() -> PollQueue {
         PollQueue {
             items: KeyedReversePriorityQueue::new(),
         }
     }
 
-    pub fn peek(&self) -> Option<(&SequenceNumber, &Duration)> {
+    pub(crate) fn peek(&self) -> Option<(&SequenceNumber, &Duration)> {
         self.items.peek()
     }
 
-    pub fn pop(&mut self) -> Option<(SequenceNumber, Duration)> {
+    pub(crate) fn pop(&mut self) -> Option<(SequenceNumber, Duration)> {
         self.items.pop()
     }
 
-    pub fn push(&mut self, key: SequenceNumber, priority: Duration) -> Option<Duration> {
+    pub(crate) fn push(&mut self, key: SequenceNumber, priority: Duration) -> Option<Duration> {
         let old_pri = self.items.push(key, priority);
         if let Some(prev) = old_pri {
             if prev < priority {
@@ -47,7 +47,7 @@ impl PollQueue {
         old_pri
     }
 
-    pub fn update(
+    pub(crate) fn update(
         &mut self,
         key: SequenceNumber,
         priority: Duration,
@@ -70,12 +70,12 @@ impl PollQueue {
     }
 
     #[cfg(test)]
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.items.len()
     }
 
     #[cfg(test)]
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.items.is_empty()
     }
 }

@@ -30,21 +30,21 @@ pub(crate) enum ExchangeDirection {
 // in the configuration values, which are 0 for active).  Quarters in
 // QuarterActivity are numbered from 0.
 #[derive(Clone, Copy, Debug)]
-pub struct QuarterActivity(u8);
+pub(crate) struct QuarterActivity(u8);
 
 impl QuarterActivity {
-    pub fn new(bits: u8) -> QuarterActivity {
+    pub(crate) fn new(bits: u8) -> QuarterActivity {
         assert_eq!(bits & !0b1111, 0);
         QuarterActivity(bits)
     }
 
-    pub fn is_active(&self, q: &u8) -> bool {
+    pub(crate) fn is_active(&self, q: &u8) -> bool {
         assert!(*q < 4, "invalid quarter {}", q);
         let mask = 1 << *q;
         self.0 & mask != 0
     }
 
-    pub fn first_active_quarter(&self) -> Option<u8> {
+    pub(crate) fn first_active_quarter(&self) -> Option<u8> {
         let n = self.0.trailing_zeros() as u8;
         if n < 4 {
             Some(n)
@@ -53,7 +53,7 @@ impl QuarterActivity {
         }
     }
 
-    pub fn masked_by(&self, mask: u8) -> QuarterActivity {
+    pub(crate) fn masked_by(&self, mask: u8) -> QuarterActivity {
         QuarterActivity::new(self.0 & mask)
     }
 }
@@ -93,7 +93,7 @@ enum Permutation {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SubwordForm {
+pub(crate) enum SubwordForm {
     FullWord = 0, // 36
     Halves = 1,   // 18, 18
     ThreeOne = 2, // 27, 9
@@ -119,7 +119,7 @@ pub enum SubwordForm {
 /// (which quarters are active) and fracture (which quarters are
 /// considered to be separate).
 #[derive(Clone, Copy, Debug)]
-pub struct SystemConfiguration(Unsigned9Bit);
+pub(crate) struct SystemConfiguration(Unsigned9Bit);
 
 impl From<u8> for SystemConfiguration {
     fn from(n: u8) -> SystemConfiguration {
@@ -152,7 +152,7 @@ impl Octal for SystemConfiguration {
 }
 
 impl SystemConfiguration {
-    pub fn zero() -> SystemConfiguration {
+    pub(crate) fn zero() -> SystemConfiguration {
         SystemConfiguration(Unsigned9Bit::ZERO)
     }
 
@@ -181,7 +181,7 @@ impl SystemConfiguration {
     /// active is given in Table 12-4 in the technical manual (volume
     /// 2, page 12-22).
     ///
-    pub fn active_quarters(&self) -> QuarterActivity {
+    pub(crate) fn active_quarters(&self) -> QuarterActivity {
         // CF7 CF6 CF5 CF4
         //   x   x   x   0 => ACT 1
         //   x   x   0   x => ACT 2
@@ -330,7 +330,7 @@ fn sign_extend_quarters(
 /// means.  The accompanying diagram shows the sign bit being extended
 /// into quarters that are to the right of an active quarter (in order
 /// words the leftward extension wraps after it hits q4).
-pub fn sign_extend(
+pub(crate) fn sign_extend(
     form: &SubwordForm,
     word: Unsigned36Bit,
     quarter_activity: QuarterActivity,
@@ -871,7 +871,7 @@ fn test_permute_p0() {
 
 /// Perform an exchange operation suitable for a load operation; that
 /// is, emulate the operation of the exchange unit diring e.g. LDA.
-pub fn exchanged_value_for_load(
+pub(crate) fn exchanged_value_for_load(
     cfg: &SystemConfiguration,
     source: &Unsigned36Bit,
     dest: &Unsigned36Bit,
@@ -896,7 +896,7 @@ pub fn exchanged_value_for_load(
 /// which follows step 4 is described in 13-4.3.". But section 13-4.2
 /// (covering stores) contains no similar statement. I suspect this
 /// means that sign extension does not happen for stores.
-pub fn exchanged_value_for_store(
+pub(crate) fn exchanged_value_for_store(
     cfg: &SystemConfiguration,
     source: &Unsigned36Bit,
     dest: &Unsigned36Bit,

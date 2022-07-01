@@ -24,12 +24,12 @@ const CHAR_TRANSMIT_TIME: Duration = Duration::from_millis(68);
 const LATER: Duration = Duration::from_secs(300);
 
 #[derive(Debug)]
-pub struct LincolnWriterOutput {
+pub(crate) struct LincolnWriterOutput {
     unit: Unsigned6Bit,
     mode: Unsigned12Bit,
     connected: bool,
     transmit_will_be_finished_at: Option<Duration>,
-    // When we implement Lincoln Writer output, we will need to
+    // When we implement Lincoln Writer input, we will need to
     // determine a way to share the state information between output
     // and input channels, since this is the way the LW works.  For
     // example, carriage return sets the LW to lower case and normal
@@ -38,7 +38,7 @@ pub struct LincolnWriterOutput {
 }
 
 impl LincolnWriterOutput {
-    pub fn new(unit: Unsigned6Bit) -> LincolnWriterOutput {
+    pub(crate) fn new(unit: Unsigned6Bit) -> LincolnWriterOutput {
         LincolnWriterOutput {
             unit,
             mode: Unsigned12Bit::ZERO,

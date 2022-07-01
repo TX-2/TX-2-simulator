@@ -3,6 +3,7 @@
 //! if you want to write an assembler, it would depend on the base
 //! crate but would not need to depend on the simulator library
 //! itself.
+#![deny(unreachable_pub)]
 #![deny(unsafe_code)]
 #![deny(unused_crate_dependencies)]
 
@@ -16,6 +17,7 @@ pub mod prelude;
 pub mod readerleader;
 pub mod splay;
 pub mod subword;
+pub use crate::onescomplement::error;
 pub use crate::onescomplement::unsigned::*;
 
 #[macro_export]

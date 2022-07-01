@@ -2,7 +2,7 @@ use serde::Serialize;
 use std::collections::BTreeSet;
 
 #[derive(Debug, Serialize)]
-pub struct ChangeIndex<K: Ord + Serialize> {
+pub(crate) struct ChangeIndex<K: Ord + Serialize> {
     changes: BTreeSet<K>,
 }
 
@@ -17,11 +17,11 @@ impl<K: Ord + Serialize> Default for ChangeIndex<K> {
 }
 
 impl<K: Ord + Serialize> ChangeIndex<K> {
-    pub fn add(&mut self, k: K) {
+    pub(crate) fn add(&mut self, k: K) {
         self.changes.insert(k);
     }
 
-    pub fn drain(&mut self) -> BTreeSet<K> {
+    pub(crate) fn drain(&mut self) -> BTreeSet<K> {
         let mut result: BTreeSet<_> = BTreeSet::new();
         result.append(&mut self.changes);
         result

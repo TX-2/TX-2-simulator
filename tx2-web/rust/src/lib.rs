@@ -1,3 +1,4 @@
+#![deny(unreachable_pub)]
 #![deny(unsafe_code)]
 #![deny(unused_crate_dependencies)]
 

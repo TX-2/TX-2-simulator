@@ -17,11 +17,11 @@ use base::prelude::*;
 const HELD_MASK: Unsigned36Bit = u36!(1 << 35);
 
 #[derive(Debug, Clone)]
-pub struct ErrorLocation {
+pub(crate) struct ErrorLocation {
     /// line is usually derived from LocatedSpan::location_line() which returns
     /// a u32.
-    pub line: LineNumber,
-    pub columns: Option<Range<usize>>,
+    pub(crate) line: LineNumber,
+    pub(crate) columns: Option<Range<usize>>,
 }
 
 impl<'a, 'b> From<&ek::LocatedSpan<'a, 'b>> for ErrorLocation {
@@ -42,14 +42,14 @@ pub(crate) enum HoldBit {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ProgramInstruction {
+pub(crate) struct ProgramInstruction {
     pub(crate) tag: Option<SymbolName>,
     pub(crate) holdbit: HoldBit,
     pub(crate) parts: Vec<InstructionFragment>,
 }
 
 impl ProgramInstruction {
-    pub fn value(&self) -> Unsigned36Bit {
+    pub(crate) fn value(&self) -> Unsigned36Bit {
         let word = self
             .parts
             .iter()
@@ -63,7 +63,7 @@ impl ProgramInstruction {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ManuscriptItem {
+pub(crate) enum ManuscriptItem {
     MetaCommand(ManuscriptMetaCommand),
     Instruction(ProgramInstruction),
 }
@@ -366,7 +366,7 @@ pub(crate) fn program_instruction_fragments<'a, 'b>(
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum DecodedOpcode {
+pub(crate) enum DecodedOpcode {
     Valid(Unsigned6Bit),
     Invalid,
 }
@@ -827,7 +827,7 @@ pub(crate) fn double_hand<'a, 'b>(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ManuscriptMetaCommand {
+pub(crate) enum ManuscriptMetaCommand {
     Invalid, // e.g."☛☛BOGUS"
     // TODO: implement the T= metacommand.
     // TODO: implement the RC metacommand.
@@ -1083,9 +1083,9 @@ pub(crate) fn parse_manuscript<'a, 'b>(
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ManuscriptBlock {
-    pub origin: Option<Origin>,
-    pub items: Vec<ManuscriptItem>,
+pub(crate) struct ManuscriptBlock {
+    pub(crate) origin: Option<Origin>,
+    pub(crate) items: Vec<ManuscriptItem>,
 }
 
 impl ManuscriptBlock {
@@ -1094,7 +1094,7 @@ impl ManuscriptBlock {
     }
 }
 
-pub fn source_file(
+pub(crate) fn source_file(
     body: &str,
     _symtab: &mut SymbolTable,
     errors: &mut Vec<Error>,

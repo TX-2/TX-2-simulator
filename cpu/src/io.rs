@@ -57,25 +57,25 @@ mod dev_petr;
 mod pollq;
 
 use dev_lincoln_writer::LincolnWriterOutput;
-pub use dev_petr::Petr;
+pub(crate) use dev_petr::Petr;
 use pollq::PollQueue;
 
 /// When set, indicates that the controlling sequence has missed a data item.
-pub const IO_MASK_MISIND: Unsigned36Bit = Unsigned36Bit::MAX.and(0o_000_000_010_000);
+const IO_MASK_MISIND: Unsigned36Bit = Unsigned36Bit::MAX.and(0o_000_000_010_000);
 
 /// When set, indicates the unit is (already) connected.
-pub const IO_MASK_CONNECTED: Unsigned36Bit = Unsigned36Bit::MAX.and(0o_000_000_040_000);
+const IO_MASK_CONNECTED: Unsigned36Bit = Unsigned36Bit::MAX.and(0o_000_000_040_000);
 
 /// When set, indicates that the unit is in maintenance mode (i.e. is not available)
-pub const IO_MASK_MAINT: Unsigned36Bit = Unsigned36Bit::MAX.and(0o_000_000_100_000);
+const IO_MASK_MAINT: Unsigned36Bit = Unsigned36Bit::MAX.and(0o_000_000_100_000);
 
 /// When set, indicates that the unit's buffer is available for use (read or write)
 /// by the CPU.
-pub const IO_MASK_AVAIL: Unsigned36Bit = Unsigned36Bit::MAX.and(0o_000_000_200_000);
+const IO_MASK_AVAIL: Unsigned36Bit = Unsigned36Bit::MAX.and(0o_000_000_200_000);
 
 /// When set, indicates that the unit wants attention.  That is, is ready for a
 /// TSD instruction or has just been connected.
-pub const IO_MASK_FLAG: Unsigned36Bit = Unsigned36Bit::MAX.and(0o_000_000_400_000);
+const IO_MASK_FLAG: Unsigned36Bit = Unsigned36Bit::MAX.and(0o_000_000_400_000);
 
 #[derive(Debug)]
 pub enum TransferFailed {
