@@ -43,6 +43,34 @@
     text-align: right;
 }
 
+.lw {
+    border: 0px;
+}
+
+.lw__output {
+}
+
+.lw__input {
+}
+
+.lw__input__keyboard {
+    position: absolute;
+    border: 1px solid black;
+    width: 800px;
+    aspect-ratio: 23.8 / 14.5;
+    font: "12px sans-serif";
+    z-index: 0;
+
+    &_hits {
+        @extend .lw__input__keyboard;
+        position: absolute;
+        opacity: 0.0;
+        /* Put the hit detector canvas in front of the keyboard picture */
+        z-index: 1;
+    }
+}
+
+
 .lw__paper {
     overflowY: scroll;
     border: 1px;
@@ -94,20 +122,20 @@
     margin: 0.5ex;
 
     div {
-	display: flex;
-	justify-content: space-around;
-	flex-direction: row;
-	flex-wrap: nowrap;
-	flex: 0 1 auto;
-	align-items: stretch;
-	padding: 0px;
-	width: 30em;
-	height: auto;
-	max-width: none;
+        display: flex;
+        justify-content: space-around;
+        flex-direction: row;
+        flex-wrap: nowrap;
+        flex: 0 1 auto;
+        align-items: stretch;
+        padding: 0px;
+        width: 30em;
+        height: auto;
+        max-width: none;
     }
 
     input {
-	flex-grow: 0;
-	width: auto;
+        flex-grow: 0;
+        width: auto;
     }
 }
