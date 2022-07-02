@@ -2,3 +2,4 @@
 Cargo.lock
 *~
 /*.tape
+/.dir-locals.el
