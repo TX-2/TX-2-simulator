@@ -43,6 +43,20 @@
     text-align: right;
 }
 
+.lw {
+    border: 0px;
+}
+
+.lw__output {
+}
+
+.lw__input {
+}
+
+.lw__input__keyboard {
+    border: 1px solid black;
+}
+
 .lw__paper {
     overflowY: scroll;
     border: 1px;
@@ -94,20 +108,20 @@
     margin: 0.5ex;
 
     div {
-	display: flex;
-	justify-content: space-around;
-	flex-direction: row;
-	flex-wrap: nowrap;
-	flex: 0 1 auto;
-	align-items: stretch;
-	padding: 0px;
-	width: 30em;
-	height: auto;
-	max-width: none;
+        display: flex;
+        justify-content: space-around;
+        flex-direction: row;
+        flex-wrap: nowrap;
+        flex: 0 1 auto;
+        align-items: stretch;
+        padding: 0px;
+        width: 30em;
+        height: auto;
+        max-width: none;
     }
 
     input {
-	flex-grow: 0;
-	width: auto;
+        flex-grow: 0;
+        width: auto;
     }
 }
