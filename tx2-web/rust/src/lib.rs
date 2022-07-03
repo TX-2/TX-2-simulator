@@ -21,6 +21,7 @@ pub use alarm::{
     drain_alarm_changes, get_alarm_statuses, set_alarm_masked, tx2_unmasked_alarm_active,
 };
 use context::make_context;
+pub use io::HtmlCanvas2DPainter;
 pub use io::*;
 
 #[wasm_bindgen(start)]
@@ -128,4 +129,11 @@ pub fn tx2_codabo(tx2: &mut Tx2, simulated_time: f64, elapsed_time_secs: f64) {
     }
     tx2.set_next_execution_due(context.simulated_time, Some(context.simulated_time));
     tx2.set_run_mode(RunMode::Running);
+}
+
+#[wasm_bindgen]
+pub fn create_html_canvas_2d_painter(
+    context: web_sys::CanvasRenderingContext2d,
+) -> Result<HtmlCanvas2DPainter, JsValue> {
+    HtmlCanvas2DPainter::new(context).map_err(|e| e.msg.into())
 }
