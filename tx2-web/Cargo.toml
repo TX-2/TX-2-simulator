@@ -15,13 +15,14 @@ crate-type = ["cdylib", "rlib"]
 default = ["console_error_panic_hook"]
 
 [dependencies]
-float_next_after = "0.1"	# License: MIT
+conv = "0.3"
+float_next_after = "0.1"        # License: MIT
 js-sys = "0.3"
 serde = { version = "1", features = ["derive"] }
-tracing = "0.1"			# License: MIT
-tracing-wasm = "0.2.1"		# License: MIT or Apache
+tracing = "0.1"                 # License: MIT
+tracing-wasm = "0.2.1"          # License: MIT or Apache
 wasm-bindgen = { version = "0.2", features = ["serde-serialize"] } # License: MIT or Apache
-serde-wasm-bindgen = "0.4.3"					   # License: MIT
+serde-wasm-bindgen = "0.4.3"                                       # License: MIT
 cpu = {path = "../cpu" }
 base = {path = "../base" }
 
@@ -32,4 +33,4 @@ base = {path = "../base" }
 # default.
 console_error_panic_hook = { version = "0.1.6", optional = true }
 
-web-sys = { version = "0.3.4", features = [ 'Document', 'Element', 'HtmlElement', 'Node', 'Window',] } # License: MIT or Apache-2.0
+web-sys = { version = "0.3.4", features = [ 'Document', 'Element', 'HtmlElement', 'Node', 'Window', 'HtmlCanvasElement', 'CanvasRenderingContext2d', 'TextMetrics'] } # License: MIT or Apache-2.0
