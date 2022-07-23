@@ -134,7 +134,7 @@ impl Display for LincolnToUnicodeStrictConversionFailure {
                     f,
                     "cannot convert code {:#o} from Lincoln Writer character set to Unicode, because it has no printable representation",
                     n
-		)
+                )
             }
             LincolnToUnicodeStrictConversionFailure::CannotSubscript(
                 u,
@@ -145,7 +145,7 @@ impl Display for LincolnToUnicodeStrictConversionFailure {
                     "cannot convert {:#o} from Lincoln Writer character set to Unicode, because Unicode has no subscript form of '{}'",
                     u,
                     ch
-		)
+                )
             }
             LincolnToUnicodeStrictConversionFailure::CannotSuperscript(
                 u,
@@ -156,7 +156,7 @@ impl Display for LincolnToUnicodeStrictConversionFailure {
                     "cannot convert {:#o} from Lincoln Writer character set to Unicode, because Unicode has no superscript form of '{}'",
                     u,
                     ch
-		)
+                )
             }
         }
     }
@@ -316,15 +316,15 @@ pub fn lincoln_char_to_described_char(
         0o35 => by_case('N', '∩'), // Intersection, U+2229
         0o36 => by_case('O', 'j'),
         0o37 => by_case('P', 'k'),
-        0o40 => by_case('Q', 'a'),
+        0o40 => by_case('Q', 'α'), // Greek small letter alpha, U+03B1
         0o41 => by_case('R', 'Δ'), // Greek capital delta, U+0394
         0o42 => by_case('S', 'p'),
         0o43 => by_case('T', '∈'), // Element of, U+2208
         0o44 => by_case('U', 'h'),
         0o45 => by_case('V', '⊃'), // Superset of, U+2283
-        0o46 => by_case('W', 'ϐ'),  // Greek beta symbol, U+03D0
-        0o47 => by_case('X', '^'),
-        0o50 => by_case('Y', 'λ'), // Greek small letter lambda, U+03BB
+        0o46 => by_case('W', 'β'),  // Greek beta symbol, U+03B2
+        0o47 => by_case('X', '∧'), // Logical And U+2227
+        0o50 => by_case('Y', 'λ'),  // Greek small letter lambda, U+03BB
         0o51 => by_case('Z', '~'),
         0o52 => by_case('(', '{'),
         0o53 => by_case(')', '}'),
@@ -663,8 +663,10 @@ fn round_trip() {
 
     let ulmap = UnicodeToLincolnMapping::new();
     must_round_trip("HELLO, WORLD.  012345", &ulmap);
-    must_round_trip("(){}^*", &ulmap);
-    must_round_trip("iyzjkaph", &ulmap);
+    must_round_trip("(){}*", &ulmap);
+    must_round_trip("\u{2227}", &ulmap); // Logical And (looks like caret but isn't)
+    must_round_trip("iyzjkph", &ulmap);
+    must_round_trip("\u{03B1}\u{03B2}", &ulmap); // Greek small letter alpha, Greek beta
     must_round_trip("\t\r", &ulmap);
     must_round_trip("\u{2080}", &ulmap); // ₀
     must_round_trip("\u{2081}", &ulmap); // ₁
@@ -713,6 +715,7 @@ fn round_trip() {
     must_round_trip("ᵂ", &ulmap);
     must_round_trip("\u{2093}", &ulmap);
     must_round_trip("YZ", &ulmap);
+    must_round_trip("|\u{2016}", &ulmap); // single, double vertical line
 
     // Some characters in the Lincoln Writer character set do not
     // advance the carriage (these are 0o12 and 0o13, both upper and
