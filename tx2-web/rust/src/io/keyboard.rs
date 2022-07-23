@@ -36,11 +36,12 @@ const HPOS_DELETE: f32 = 0.7;
 const HPOS_ARROW: f32 = 0.0;
 const HPOS_TILDE: f32 = 0.34;
 const HPOS_LOGICAL_AND: f32 = 1.0;
-//const HPOS_TAB: f32 = 0.0;
-//const HPOS_BLACK: f32 = 0.0;
-//const HPOS_BACKSPACE: f32 = 0.34;
-//const HPOS_RETURN: f32 = 0.43;
-//const HPOS_SPACE_BAR: f32 = 0.43;
+const HPOS_TAB: f32 = 0.0;
+const HPOS_BLACK: f32 = 0.0;
+const HPOS_BACKSPACE: f32 = 0.34;
+const HPOS_RETURN: f32 = 0.43;
+const HPOS_Z: f32 = 3.6;
+const HPOS_SPACE_BAR: f32 = 6.3;
 
 // Vertical gap between top of unit and the first key of each row:
 const VPOS_DELETE: f32 = 0.7;
@@ -48,11 +49,20 @@ const VPOS_ARROW: f32 = 2.17;
 const VPOS_TILDE: f32 = 3.6;
 const VPOS_LOGICAL_AND: f32 = 5.0;
 
+const VPOS_TAB: f32 = VPOS_LOGICAL_AND + KEY_HEIGHT + 1.2;
+const VPOS_RED: f32 = VPOS_LOGICAL_AND + KEY_HEIGHT + 1.9;
+const VPOS_BLACK: f32 = VPOS_RED + KEY_HEIGHT + GAP_HEIGHT;
+const VPOS_BACKSPACE: f32 = VPOS_BLACK + KEY_HEIGHT + GAP_HEIGHT;
+const VPOS_RETURN: f32 = VPOS_BACKSPACE + KEY_HEIGHT + GAP_HEIGHT;
+const VPOS_SPACE_BAR: f32 = VPOS_RETURN + KEY_HEIGHT + GAP_HEIGHT;
+
 // Key dimensions:
 const KEY_WIDTH: f32 = 1.0;
+const KEY_HEIGHT: f32 = KEY_WIDTH;
 const WIDE_KEY_WIDTH: f32 = 1.7;
 const TALL_KEY_WIDTH: f32 = KEY_WIDTH;
 const GAP_WIDTH: f32 = 0.5;
+const GAP_HEIGHT: f32 = 0.43;
 const KEY_AND_GAP_WIDTH: f32 = KEY_WIDTH + GAP_WIDTH;
 const TALL_KEY_AND_GAP_WIDTH: f32 = TALL_KEY_WIDTH + GAP_WIDTH;
 const WIDE_KEY_AND_GAP_WIDTH: f32 = WIDE_KEY_WIDTH + GAP_WIDTH;
@@ -99,7 +109,7 @@ enum KeyShape {
     Square,
     Wide,
     Tall,
-    //Spacebar,
+    Spacebar,
 }
 
 impl KeyShape {
@@ -107,13 +117,13 @@ impl KeyShape {
         match self {
             KeyShape::Square | KeyShape::Tall => 1.0,
             KeyShape::Wide => 1.7,
-            //KeyShape::Spacebar => 8.5,
+            KeyShape::Spacebar => 8.5,
         }
     }
 
     fn height(&self) -> f32 {
         match self {
-            KeyShape::Square | KeyShape::Wide /* | KeyShape::Spacebar */ => 1.0,
+            KeyShape::Square | KeyShape::Wide | KeyShape::Spacebar => 1.0,
             KeyShape::Tall => 1.7,
         }
     }
@@ -933,6 +943,440 @@ fn row3() -> &'static [Key] {
     ]
 }
 
+fn row4() -> &'static [Key] {
+    &[
+        Key /* TAB */ {
+            left: HPOS_TAB,
+            top: VPOS_TAB,
+            shape: KeyShape::Tall,
+            colour: KeyColour::Grey,
+            label: KeyLabel {
+                text: &["T", "A", "B"],
+            }
+        },
+        Key /* RED */ {
+            left: HPOS_TAB + KEY_AND_GAP_WIDTH,
+            top: VPOS_RED,
+            shape: KeyShape::Square,
+            colour: KeyColour::Red,
+            label: KeyLabel {
+                text: &["RED"],
+            }
+        },
+        Key /* 0 */ {
+            left: HPOS_TAB + KEY_AND_GAP_WIDTH * 2.0,
+            top: VPOS_RED,
+            shape: KeyShape::Square,
+            colour: KeyColour::Yellow,
+            label: KeyLabel {
+                text: &["0"],
+            }
+        },
+        Key /* 1 */ {
+            left: HPOS_TAB + KEY_AND_GAP_WIDTH * 3.0,
+            top: VPOS_RED,
+            shape: KeyShape::Square,
+            colour: KeyColour::Yellow,
+            label: KeyLabel {
+                text: &["1"],
+            }
+        },
+        Key /* 2 */ {
+            left: HPOS_TAB + KEY_AND_GAP_WIDTH * 4.0,
+            top: VPOS_RED,
+            shape: KeyShape::Square,
+            colour: KeyColour::Yellow,
+            label: KeyLabel {
+                text: &["2"],
+            }
+        },
+        Key /* 3 */ {
+            left: HPOS_TAB + KEY_AND_GAP_WIDTH * 5.0,
+            top: VPOS_RED,
+            shape: KeyShape::Square,
+            colour: KeyColour::Yellow,
+            label: KeyLabel {
+                text: &["3"],
+            }
+        },
+        Key /* 4 */ {
+            left: HPOS_TAB + KEY_AND_GAP_WIDTH * 6.0,
+            top: VPOS_RED,
+            shape: KeyShape::Square,
+            colour: KeyColour::Yellow,
+            label: KeyLabel {
+                text: &["4"],
+            }
+        },
+        Key /* 5 */ {
+            left: HPOS_TAB + KEY_AND_GAP_WIDTH * 7.0,
+            top: VPOS_RED,
+            shape: KeyShape::Square,
+            colour: KeyColour::Yellow,
+            label: KeyLabel {
+                text: &["5"],
+            }
+        },
+        Key /* 6 */ {
+            left: HPOS_TAB + KEY_AND_GAP_WIDTH * 8.0,
+            top: VPOS_RED,
+            shape: KeyShape::Square,
+            colour: KeyColour::Yellow,
+            label: KeyLabel {
+                text: &["6"],
+            }
+        },
+        Key /* 7 */ {
+            left: HPOS_TAB + KEY_AND_GAP_WIDTH * 9.0,
+            top: VPOS_RED,
+            shape: KeyShape::Square,
+            colour: KeyColour::Yellow,
+            label: KeyLabel {
+                text: &["7"],
+            }
+        },
+        Key /* 8 */ {
+            left: HPOS_TAB + KEY_AND_GAP_WIDTH * 10.0,
+            top: VPOS_RED,
+            shape: KeyShape::Square,
+            colour: KeyColour::Yellow,
+            label: KeyLabel {
+                text: &["8"],
+            }
+        },
+        Key /* 9 */ {
+            left: HPOS_TAB + KEY_AND_GAP_WIDTH * 11.0,
+            top: VPOS_RED,
+            shape: KeyShape::Square,
+            colour: KeyColour::Yellow,
+            label: KeyLabel {
+                text: &["9"],
+            }
+        },
+        Key /* underbar */ {
+            left: HPOS_TAB + KEY_AND_GAP_WIDTH * 12.0,
+            top: VPOS_RED,
+            shape: KeyShape::Square,
+            colour: KeyColour::Red,
+            label: KeyLabel {
+                text: &["\u{0332} "], // combining low line
+            }
+        },
+        Key /* circle */ {
+            left: HPOS_TAB + KEY_AND_GAP_WIDTH * 13.0,
+            top: VPOS_RED,
+            shape: KeyShape::Square,
+            colour: KeyColour::Red,
+            label: KeyLabel {
+                text: &[
+                    "\u{20DD} ", // combining enclosing circle
+                ]
+            }
+        },
+    ]
+}
+
+fn row5() -> &'static [Key] {
+    const HPOS_Q: f32 = HPOS_BLACK + WIDE_KEY_WIDTH + GAP_WIDTH;
+    &[
+        Key /* BLACK */ {
+            left: HPOS_BLACK,
+            top: VPOS_BLACK,
+            shape: KeyShape::Wide,
+            colour: KeyColour::Black,
+            label: KeyLabel {
+                text: &["BLACK"]
+            }
+        },
+        Key {
+            left: HPOS_Q,
+            top: VPOS_BLACK,
+            shape: KeyShape::Square,
+            colour: KeyColour::Green,
+            label: KeyLabel { text: &["Q"] },
+        },
+        Key {
+            left: HPOS_Q + KEY_AND_GAP_WIDTH * 1.0,
+            top: VPOS_BLACK,
+            shape: KeyShape::Square,
+            colour: KeyColour::Green,
+            label: KeyLabel { text: &["W"] },
+        },
+        Key {
+            left: HPOS_Q + KEY_AND_GAP_WIDTH * 2.0,
+            top: VPOS_BLACK,
+            shape: KeyShape::Square,
+            colour: KeyColour::Green,
+            label: KeyLabel { text: &["E"] },
+        },
+        Key {
+            left: HPOS_Q + KEY_AND_GAP_WIDTH * 3.0,
+            top: VPOS_BLACK,
+            shape: KeyShape::Square,
+            colour: KeyColour::Green,
+            label: KeyLabel { text: &["R"] },
+        },
+        Key {
+            left: HPOS_Q + KEY_AND_GAP_WIDTH * 4.0,
+            top: VPOS_BLACK,
+            shape: KeyShape::Square,
+            colour: KeyColour::Green,
+            label: KeyLabel { text: &["T"] },
+        },
+        Key {
+            left: HPOS_Q + KEY_AND_GAP_WIDTH * 5.0,
+            top: VPOS_BLACK,
+            shape: KeyShape::Square,
+            colour: KeyColour::Green,
+            label: KeyLabel { text: &["Y"] },
+        },
+        Key {
+            left: HPOS_Q + KEY_AND_GAP_WIDTH * 6.0,
+            top: VPOS_BLACK,
+            shape: KeyShape::Square,
+            colour: KeyColour::Green,
+            label: KeyLabel { text: &["U"] },
+        },
+        Key {
+            left: HPOS_Q + KEY_AND_GAP_WIDTH * 7.0,
+            top: VPOS_BLACK,
+            shape: KeyShape::Square,
+            colour: KeyColour::Green,
+            label: KeyLabel { text: &["I"] },
+        },
+        Key {
+            left: HPOS_Q + KEY_AND_GAP_WIDTH * 8.0,
+            top: VPOS_BLACK,
+            shape: KeyShape::Square,
+            colour: KeyColour::Green,
+            label: KeyLabel { text: &["O"] },
+        },
+        Key {
+            left: HPOS_Q + KEY_AND_GAP_WIDTH * 9.,
+            top: VPOS_BLACK,
+            shape: KeyShape::Square,
+            colour: KeyColour::Green,
+            label: KeyLabel { text: &["P"] },
+        },
+        Key {
+            left: HPOS_Q + KEY_AND_GAP_WIDTH * 10.0,
+            top: VPOS_BLACK,
+            shape: KeyShape::Square,
+            colour: KeyColour::Yellow,
+            label: KeyLabel { text: &["."] },
+        },
+        Key {
+            left: HPOS_Q + KEY_AND_GAP_WIDTH * 11.0,
+            top: VPOS_BLACK,
+            shape: KeyShape::Wide,
+            colour: KeyColour::Black,
+            label: KeyLabel { text: &["SUPER"] },
+        },
+    ]
+}
+
+fn row6() -> &'static [Key] {
+    const HPOS_A: f32 = HPOS_BACKSPACE + WIDE_KEY_WIDTH + GAP_WIDTH;
+    &[
+        Key /* BACKSPACE */ {
+            left: HPOS_BACKSPACE,
+            top: VPOS_BACKSPACE,
+            shape: KeyShape::Wide,
+            colour: KeyColour::Grey,
+            label: KeyLabel {
+                text: &["BACK", "SPACE"]
+            }
+        },
+        Key {
+            left: HPOS_A,
+            top: VPOS_BACKSPACE,
+            shape: KeyShape::Square,
+            colour: KeyColour::Green,
+            label: KeyLabel { text: &["A"] },
+        },
+        Key {
+            left: HPOS_A + KEY_AND_GAP_WIDTH,
+            top: VPOS_BACKSPACE,
+            shape: KeyShape::Square,
+            colour: KeyColour::Green,
+            label: KeyLabel { text: &["S"] },
+        },
+        Key {
+            left: HPOS_A + KEY_AND_GAP_WIDTH * 2.0,
+            top: VPOS_BACKSPACE,
+            shape: KeyShape::Square,
+            colour: KeyColour::Green,
+            label: KeyLabel { text: &["D"] },
+        },
+        Key {
+            left: HPOS_A + KEY_AND_GAP_WIDTH * 3.0,
+            top: VPOS_BACKSPACE,
+            shape: KeyShape::Square,
+            colour: KeyColour::Green,
+            label: KeyLabel { text: &["F"] },
+        },
+        Key {
+            left: HPOS_A + KEY_AND_GAP_WIDTH * 4.0,
+            top: VPOS_BACKSPACE,
+            shape: KeyShape::Square,
+            colour: KeyColour::Green,
+            label: KeyLabel { text: &["G"] },
+        },
+        Key {
+            left: HPOS_A + KEY_AND_GAP_WIDTH * 5.0,
+            top: VPOS_BACKSPACE,
+            shape: KeyShape::Square,
+            colour: KeyColour::Green,
+            label: KeyLabel { text: &["H"] },
+        },
+        Key {
+            left: HPOS_A + KEY_AND_GAP_WIDTH * 6.0,
+            top: VPOS_BACKSPACE,
+            shape: KeyShape::Square,
+            colour: KeyColour::Green,
+            label: KeyLabel { text: &["J"] },
+        },
+        Key {
+            left: HPOS_A + KEY_AND_GAP_WIDTH * 7.0,
+            top: VPOS_BACKSPACE,
+            shape: KeyShape::Square,
+            colour: KeyColour::Green,
+            label: KeyLabel { text: &["K"] },
+        },
+        Key {
+            left: HPOS_A + KEY_AND_GAP_WIDTH * 8.0,
+            top: VPOS_BACKSPACE,
+            shape: KeyShape::Square,
+            colour: KeyColour::Green,
+            label: KeyLabel { text: &["L"] },
+        },
+        Key {
+            left: HPOS_A + KEY_AND_GAP_WIDTH * 9.0,
+            top: VPOS_BACKSPACE,
+            shape: KeyShape::Square,
+            colour: KeyColour::Yellow,
+            label: KeyLabel { text: &["+"] },
+        },
+        Key {
+            left: HPOS_A + KEY_AND_GAP_WIDTH * 10.0,
+            top: VPOS_BACKSPACE,
+            shape: KeyShape::Square,
+            colour: KeyColour::Yellow,
+            label: KeyLabel { text: &["-"] },
+        },
+        Key {
+            left: HPOS_A + KEY_AND_GAP_WIDTH * 11.0,
+            top: VPOS_BACKSPACE,
+            shape: KeyShape::Wide,
+            colour: KeyColour::Grey,
+            label: KeyLabel { text: &["NORMAL"] },
+        },
+    ]
+}
+
+fn row7() -> &'static [Key] {
+    &[
+        Key /* RETURN */ {
+            left: HPOS_RETURN,
+            top: VPOS_RETURN,
+            shape: KeyShape::Wide,
+            colour: KeyColour::Black,
+            label: KeyLabel {
+                text: &["RETURN"]
+            }
+        },
+        Key {
+            left: HPOS_Z,
+            top: VPOS_RETURN,
+            shape: KeyShape::Square,
+            colour: KeyColour::Green,
+            label: KeyLabel { text: &["Z"] },
+        },
+        Key {
+            left: HPOS_Z + KEY_AND_GAP_WIDTH,
+            top: VPOS_RETURN,
+            shape: KeyShape::Square,
+            colour: KeyColour::Green,
+            label: KeyLabel { text: &["X"] },
+        },
+        Key {
+            left: HPOS_Z + KEY_AND_GAP_WIDTH * 2.0,
+            top: VPOS_RETURN,
+            shape: KeyShape::Square,
+            colour: KeyColour::Green,
+            label: KeyLabel { text: &["C"] },
+        },
+        Key {
+            left: HPOS_Z + KEY_AND_GAP_WIDTH * 3.0,
+            top: VPOS_RETURN,
+            shape: KeyShape::Square,
+            colour: KeyColour::Green,
+            label: KeyLabel { text: &["V"] },
+        },
+        Key {
+            left: HPOS_Z + KEY_AND_GAP_WIDTH * 4.0,
+            top: VPOS_RETURN,
+            shape: KeyShape::Square,
+            colour: KeyColour::Green,
+            label: KeyLabel { text: &["B"] },
+        },
+        Key {
+            left: HPOS_Z + KEY_AND_GAP_WIDTH * 5.0,
+            top: VPOS_RETURN,
+            shape: KeyShape::Square,
+            colour: KeyColour::Green,
+            label: KeyLabel { text: &["N"] },
+        },
+        Key {
+            left: HPOS_Z + KEY_AND_GAP_WIDTH * 6.0,
+            top: VPOS_RETURN,
+            shape: KeyShape::Square,
+            colour: KeyColour::Green,
+            label: KeyLabel { text: &["M"] },
+        },
+        Key {
+            left: HPOS_Z + KEY_AND_GAP_WIDTH * 7.0,
+            top: VPOS_RETURN,
+            shape: KeyShape::Square,
+            colour: KeyColour::Red,
+            label: KeyLabel { text: &["("] },
+        },
+        Key {
+            left: HPOS_Z + KEY_AND_GAP_WIDTH * 8.0,
+            top: VPOS_RETURN,
+            shape: KeyShape::Square,
+            colour: KeyColour::Red,
+            label: KeyLabel { text: &[")"] },
+        },
+        Key {
+            left: HPOS_Z + KEY_AND_GAP_WIDTH * 9.0,
+            top: VPOS_RETURN,
+            shape: KeyShape::Square,
+            colour: KeyColour::Red,
+            label: KeyLabel { text: &[","] },
+        },
+        Key {
+            left: HPOS_Z + KEY_AND_GAP_WIDTH * 10.0,
+            top: VPOS_RETURN,
+            shape: KeyShape::Wide,
+            colour: KeyColour::Black,
+            label: KeyLabel { text: &["SUB"] },
+        },
+    ]
+}
+
+fn row8() -> &'static [Key] {
+    &[Key /* space bar */ {
+            left: HPOS_SPACE_BAR,
+            top: VPOS_SPACE_BAR,
+            shape: KeyShape::Spacebar,
+            colour: KeyColour::Grey,
+            label: KeyLabel {
+                text: &[]
+            }
+        }]
+}
+
 fn draw_kb<P: KeyPainter>(painter: &mut P) -> Result<(), KeyPaintError> {
     let unit_width = painter.width() / 23.8_f32;
     let unit_height = painter.height() / 14.5_f32;
@@ -942,6 +1386,11 @@ fn draw_kb<P: KeyPainter>(painter: &mut P) -> Result<(), KeyPaintError> {
         .chain(row1().iter())
         .chain(row2().iter())
         .chain(row3().iter())
+        .chain(row4().iter())
+        .chain(row5().iter())
+        .chain(row6().iter())
+        .chain(row7().iter())
+        .chain(row8().iter())
     {
         let left = key.left * unit_width;
         let top = key.top * unit_width;
