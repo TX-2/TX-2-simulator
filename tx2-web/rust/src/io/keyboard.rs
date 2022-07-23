@@ -530,7 +530,18 @@ fn row0() -> &'static [Key] {
             shape: KeyShape::Wide,
             colour: KeyColour::Brown,
             label: KeyLabel {
-                text: &["\u{261B}"], // \U261B, black hand pointing right
+                text: &["\u{261E}"],
+                // Symbol choices for the "meta hand" were:
+                //
+                // U+261B, black hand pointing right or
+                // U+261E, white hand pointing right
+                //
+                // The latter is an outlined while the former is a
+                // filled symbol.  The outlined symbol is more
+                // consistent with the appearance of the key as whown
+                // in the illustration in the monthly status report.
+                // Unfortunately neither symbol shows a cuff, which
+                // does appear in the illustration.
             }
         },
     ]
