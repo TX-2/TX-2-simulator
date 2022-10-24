@@ -455,12 +455,13 @@ impl DeviceManager {
         input_event: InputEvent,
     ) {
         self.mark_device_changed(unit_number);
-        match self.devices.get_mut(&unit_number) {
-            Some(attached) => attached.on_input_event(ctx, input_event),
-            None => {
-                // TODO: consider returning an error result for this
-                // case.
-            }
+        if let Some(attached) = self.devices.get_mut(&unit_number) {
+            attached.on_input_event(ctx, input_event)
+        } else {
+            // This is an input event for a unit which is apparently
+            // not attached.
+            //
+            // TODO: consider returning an error result for this case.
         }
     }
 
@@ -553,10 +554,10 @@ impl DeviceManager {
                         Some(attached) => attached,
                         None => {
                             event!(
-				Level::ERROR,
-				"Device {:?} is present in the polling queue but not in the device map; ignoring it",
-				devno
-			    );
+                                Level::ERROR,
+                                "Device {:?} is present in the polling queue but not in the device map; ignoring it",
+                                devno
+                            );
                             continue;
                         }
                     };

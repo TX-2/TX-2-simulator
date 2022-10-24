@@ -172,7 +172,7 @@ fn test_bit_index() {
 /// `☛☛PUNCH` directive includes a start address.  This may in fact be
 /// the case shown in the diagram on page 6-23.
 pub fn reader_leader() -> Vec<Unsigned36Bit> {
-    (&[
+    ([
         // These instructions are taken from the middle column of
         // page 5-26 of the Users Handbook.
         //
@@ -408,9 +408,9 @@ pub fn reader_leader() -> Vec<Unsigned36Bit> {
         // the user program.  The latter is added by the assembler
         // (i.e. M4's PUNCH meta-command).
     ])
-        .iter()
-        .map(|symbolic| -> Unsigned36Bit { Instruction::from(symbolic).bits() })
-        .collect()
+    .iter()
+    .map(|symbolic| -> Unsigned36Bit { Instruction::from(symbolic).bits() })
+    .collect()
 }
 
 #[test]

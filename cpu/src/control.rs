@@ -400,7 +400,7 @@ impl ResetMode {
                         if left != 0 {
                             // issue warning but otherwise ignore
                             event!(Level::WARN, "Ignoring non-zero left subword of reset register {:o}, containing {:o} (left side is {:o})",
-				   loc, word, left);
+                                   loc, word, left);
                         }
                         // We assume that reset operations don't implement deferred addressing.
                         const PHYSICAL_ADDRESS_BITS: u32 = 0o377_777;
@@ -408,7 +408,7 @@ impl ResetMode {
                         if right & defer_bit != 0 {
                             // issue warning but otherwise ignore
                             event!(Level::WARN, "Ignoring non-zero defer bit of reset register {:o}, containing {:o}",
-				   loc, word);
+                                   loc, word);
                         }
 
                         let physical_address = Address::from(right & PHYSICAL_ADDRESS_BITS);
@@ -558,8 +558,8 @@ impl ControlUnit {
         // CODABO.
         //
         let span = span!(Level::ERROR,
-			 "codabo",
-			 reset_mode=?reset_mode);
+                         "codabo",
+                         reset_mode=?reset_mode);
         let _enter = span.enter();
         event!(Level::INFO, "Starting CODABO {:?}", &reset_mode);
         // CODABO's first action is supposed to be "STOP" but the
@@ -1067,9 +1067,9 @@ impl ControlUnit {
         // Fetch the current instruction into the N register.
         {
             let span = span!(Level::INFO,
-			     "fetch",
-			     seq=%seq_desc,
-			     p=?self.regs.p);
+                             "fetch",
+                             seq=%seq_desc,
+                             p=?self.regs.p);
             let _enter = span.enter();
             self.fetch_instruction(ctx, mem)
                 .map_err(|alarm| (alarm, self.regs.p))?;
@@ -1085,10 +1085,10 @@ impl ControlUnit {
             if let Some(sym) = self.regs.n_sym.as_ref() {
                 let inst = sym.to_string();
                 let span = span!(Level::INFO,
-				 "xop",
-				 seq=%seq_desc,
-				 p=?p,
-				 op=%sym.opcode());
+                                 "xop",
+                                 seq=%seq_desc,
+                                 p=?p,
+                                 op=%sym.opcode());
                 let _enter = span.enter();
                 event!(Level::TRACE, "executing instruction {}", &sym);
                 match execute(ctx, p, &sym.opcode(), self, devices, mem) {
@@ -1235,11 +1235,10 @@ impl ControlUnit {
                 ))?;
                 // QSAL is masked to we have to return some value, but
                 // we don't know what the TX-2 did in this case.
-                return Err(self.alarm_unit.always_fire(Alarm::ROUNDTUITAL(
-			format!(
-			    "memory unit indicated address {:o} is not mapped and we don't know what to do when QSAL is masked",
-			    operand_address
-			))));
+                Err(self.alarm_unit.always_fire(Alarm::ROUNDTUITAL(format!(
+                        "memory unit indicated address {:o} is not mapped and we don't know what to do when QSAL is masked",
+                        operand_address
+                    ))))
             }
             Err(MemoryOpFailure::ReadOnly(_, _)) => unreachable!(),
         }
@@ -1416,9 +1415,9 @@ impl ControlUnit {
                     let j6: Unsigned6Bit = Unsigned6Bit::try_from(left.bitand(mask)).unwrap();
                     let next = Address::from(right).index_by(self.regs.get_index_register(j6));
                     event!(Level::TRACE,
-			   "deferred addressing: fetched full word is {:o},,{:o}; j={:o}, using {:o} as the next address",
-			   &left, &right, &j6, &next,
-		    );
+                           "deferred addressing: fetched full word is {:o},,{:o}; j={:o}, using {:o} as the next address",
+                           &left, &right, &j6, &next,
+                    );
                     if !seen_deferred_addresses.insert(next) {
                         // A `false` return indicates that the map
                         // already contained `next`, meaning that we

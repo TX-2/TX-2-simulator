@@ -75,11 +75,8 @@ fn read_splayed_words<R: Read>(
                     let line: Unsigned6Bit = Unsigned6Bit::try_from(byte & 0o77).unwrap();
                     w = cycle_and_splay(w, line);
                 }
-                match maybe_checksum {
-                    Some(ref mut checksum) => {
-                        **checksum = update_sum(**checksum, w);
-                    }
-                    None => (),
+                if let Some(ref mut checksum) = maybe_checksum {
+                    **checksum = update_sum(**checksum, w);
                 }
                 result.push(w);
             }
@@ -182,9 +179,9 @@ fn check_header<R: Read>(input: &mut R) -> Result<(), Fail> {
     for (pos, (want, got)) in expected_leader.iter().zip(header.iter()).enumerate() {
         if want != got {
             return Err(Fail::Generic(
-		format!(
-		    "File does not begin with the expected header; at position {} we expected {:>012o} but got {:>012o}",
-		    pos, want, got)));
+                format!(
+                    "File does not begin with the expected header; at position {} we expected {:>012o} but got {:>012o}",
+                    pos, want, got)));
         }
     }
     println!("** reader leader is valid:");
@@ -251,7 +248,7 @@ fn disassemble() -> Result<(), Fail> {
     {
         Err(e) => {
             return Err(Fail::Generic(
-		format!("failed to initialise tracing filter (perhaps there is a problem with environment variables): {}", e)));
+                format!("failed to initialise tracing filter (perhaps there is a problem with environment variables): {}", e)));
         }
         Ok(layer) => layer,
     };
