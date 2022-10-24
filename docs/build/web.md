@@ -55,4 +55,5 @@ $ npm run dev
 ```
 
 The `npm` command will print the URL from which the pages are served,
-just visit that in your browser.
+just visit that in your browser if `npm` doesn't open a browser window
+for you automatically.
