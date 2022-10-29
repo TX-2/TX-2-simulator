@@ -3,8 +3,70 @@
 //! A diagram of the keyboard layout appears in the Lincoln Lab
 //! Division 6 Quarterly Progress Report, 15 June 1958.  This disgram
 //! is presumably to scale but dimensions are not given on it.
+//! The Lincoln Writer actually has two keyboards.  The keyboard
+//! nearest the typist contains decimal digts, majuscule letters (ABC,
+//! etc.), the space bar and a few others.  The keyboard further from
+//! the typist contains some minuscule latin letters, some Greek
+//! letters (minuscule and majuscule) and some symbols (hand, *, arrow,
+//! #, ?).
 //!
-//! Using the size of a square key cap as 1x1, dimentions of the other
+//! The near keyboard produces the symbols shown in the left-hand
+//! column of the character set shown in table 7-6 of the TX-2 Lincoln
+//! Technical manual, and the far keyboard contains the symbols shown
+//! in the right-hand column.
+//!
+//! Carriage return sets the Lincoln Writer to lower case (and normal
+//! script).  See pages 4-37 to 4-42 of the User Handbook.  Since this
+//! is presumably for convenience in the common case, and since there
+//! is not a full set of minuscule ("abc...") letters on the Lincoln
+//! Writer, I infer this to mean that the keyboard farthest from the
+//! typist, containing the keys "hijk<>wxyz.." for example, is the in
+//! fact the "upper-case" keyboard.  That is, those keys send the
+//! "UPPER CASE" (075) code if pressed at (for example) the beginning
+//! of a line.
+//!
+//! Lincoln Writer codes are not unique without knowing the
+//! upper/lower case state.  For example, code 26 is sent for both "G"
+//! and "w".
+//!
+//! This interpretation may be wrong.  To make the code in this module
+//! slightly less confusing, especially if this interpretation is
+//! wrong, we refer to the two keyboards as "Far" and "Near".
+//! Assuming a case change is needed, "G" would be sent as 074 026
+//! (074 signifying LOWER CASE) and "w" would be sent as 075 026 (075
+//! signifying UPPER CASE).  The documentation describes a hardware
+//! interlock which keeps a key pressed down while a shift code is
+//! sent, so I assume that shift code are only sent when necessary
+//! (e.g. "wGG" would be sent as 075 026 075 026 026).
+//!
+//! The documentation is inconsistent about the codes of some of the
+//! keys.  These keys are:
+//!
+//! CONTINUE: 17 according to the Progress Report ("PR" below) of 15
+//! June 1958, but not listed in Table 7-6 of the Technical Manual
+//! ("TM" below), which assigns code 17 to YES.
+//!
+//! YES: 73 according to the PR, 17 according to the TM.
+//!
+//! NO: 72 according to the PR, 16 according to the TM.
+//!
+//! LINE FEED UP: not listed in the PR, 73 according to the TM.
+//!
+//! LINE FEED DOWN: not listed in the PR, 72 according to the TM.
+//!
+//! The DELETE key in the PR is listed as NULLIFY in the TM.
+//!
+//! HALT: The label on the top-row hey HALT is hard to read in the PR,
+//! but the second digit looks like a 6.  While we might assume code
+//! 76 (which is described as STOP in the Technical Manual) that
+//! cannot be correct, as there is already a separate key labled STOP.
+//! Both are on the top row.  Therefore currently HALT does not
+//! generate a character code when pressed.
+//!
+//! The top-row keys READ IN (14) BEGIN (15), STOP (76), WORD EXAM
+//! (71) are coded consistently between the PR and the TM.
+//!
+//! Using the size of a square key cap as 1x1, dimensions of the other
 //! parts of the keyboard are:
 //!
 //! Total height of keyboard (between top of YES and bottom of space bar): 14.45
@@ -25,6 +87,8 @@
 //!
 
 use core::fmt::Display;
+#[cfg(test)]
+use std::collections::{HashMap, HashSet};
 
 use conv::*;
 use tracing::{event, Level};
@@ -66,6 +130,8 @@ const GAP_HEIGHT: f32 = 0.43;
 const KEY_AND_GAP_WIDTH: f32 = KEY_WIDTH + GAP_WIDTH;
 const TALL_KEY_AND_GAP_WIDTH: f32 = TALL_KEY_WIDTH + GAP_WIDTH;
 const WIDE_KEY_AND_GAP_WIDTH: f32 = WIDE_KEY_WIDTH + GAP_WIDTH;
+
+const HIT_DETECTION_BACKGROUND: &str = "#ffffff";
 
 #[derive(Debug)]
 enum KeyColour {
@@ -126,6 +192,103 @@ impl KeyShape {
             KeyShape::Square | KeyShape::Wide | KeyShape::Spacebar => 1.0,
             KeyShape::Tall => 1.7,
         }
+    }
+}
+
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+enum Code {
+    /// Represents a single key on the Lincoln Writer.  Lincoln Writer
+    /// key codes are actually 6 bits but we convert elsewhere.
+    Far(u8),
+    Near(u8),
+    Unknown,
+}
+
+impl Code {
+    fn hit_detection_colour(&self) -> String {
+        match self {
+            // We paint the background as #ffffff, so it's important
+            // that no key code maps to that.
+            Code::Unknown => "#0000ff".to_string(),
+            Code::Near(n) => format!("#{:02x}0001", n * 4),
+            Code::Far(n) => format!("#{:02x}0080", n * 4),
+        }
+    }
+
+    // This function is temporarily test-only because while it has
+    // tests, it has no caller yet.
+    #[cfg(test)]
+    fn hit_detection_colour_to_code(colour: &str) -> Result<Option<Code>, String> {
+        let mut components: [u8; 3] = [0, 0, 0];
+        for (i, digit) in colour.chars().enumerate() {
+            if i == 0 {
+                if digit == '#' {
+                    continue;
+                }
+                return Err(format!(
+                    "colour should begin with #, but began with {digit}"
+                ));
+            } else if i > 6 {
+                return Err(format!(
+                    "colour should have only 6 digits but it has {}",
+                    colour.len() - 1
+                ));
+            } else {
+                if let Ok(n) = hex_digit_value(digit) {
+                    let pos: usize = ((i - 1) / 2).into();
+                    components[pos] = components[pos] * 16 + n;
+                } else {
+                    return Err(format!("{digit} is not a valid hex digit"));
+                }
+            }
+        }
+        match (components[0], components[1], components[2]) {
+            (0xff, 0xff, 0xff) => Ok(None), // not a key at all (i.e. background)
+            (0, 0, 0xff) => Ok(Some(Code::Unknown)),
+            (n, 0, 0x01) => Ok(Some(Code::Near(n / 4))),
+            (n, 0, 0x80) => Ok(Some(Code::Far(n / 4))),
+            _ => Err(format!(
+                "failed to decode colour {colour} (components={components:?})"
+            )),
+        }
+    }
+}
+
+#[test]
+fn hit_detection_colour_does_not_map_to_a_key_code() {
+    let expected: Result<Option<Code>, String> = Ok(None);
+    let got = Code::hit_detection_colour_to_code(HIT_DETECTION_BACKGROUND);
+    if got == Ok(None) {
+        return;
+    }
+    panic!(
+        "Colour {} should map to 'no key' (that is, {:?}) but it actually mapped to {:?}",
+        HIT_DETECTION_BACKGROUND, expected, got
+    );
+}
+
+// This function is temporarily test-only because its sole caller is
+// not used yet.
+#[cfg(test)]
+fn hex_digit_value(ch: char) -> Result<u8, ()> {
+    match ch {
+        '0' => Ok(0),
+        '1' => Ok(1),
+        '2' => Ok(2),
+        '3' => Ok(3),
+        '4' => Ok(4),
+        '5' => Ok(5),
+        '6' => Ok(6),
+        '7' => Ok(7),
+        '8' => Ok(8),
+        '9' => Ok(9),
+        'a' | 'A' => Ok(0xA),
+        'b' | 'B' => Ok(0xB),
+        'c' | 'C' => Ok(0xC),
+        'd' | 'D' => Ok(0xD),
+        'e' | 'E' => Ok(0xE),
+        'f' | 'F' => Ok(0xF),
+        _ => Err(()),
     }
 }
 
@@ -196,11 +359,13 @@ impl BoundingBox {
 trait KeyPainter {
     fn width(&self) -> f32;
     fn height(&self) -> f32;
+    fn draw_background(&mut self) -> Result<(), KeyPaintError>;
     fn draw_key(
         &mut self,
         keybox: &BoundingBox,
         colour: &KeyColour,
         label: &KeyLabel,
+        keycode: Code,
     ) -> Result<(), KeyPaintError>;
 }
 
@@ -209,6 +374,7 @@ pub struct HtmlCanvas2DPainter {
     height: f32,
     width: f32,
     context: CanvasRenderingContext2d,
+    hits_only: bool,
 }
 
 fn keep_greatest<T: PartialOrd>(acc: Option<T>, item: T) -> Option<T> {
@@ -241,6 +407,7 @@ fn room_for_key_padding(w: f64, h: f64, bbox: &BoundingBox) -> bool {
 impl HtmlCanvas2DPainter {
     pub fn new(
         context: web_sys::CanvasRenderingContext2d,
+        hits_only: bool,
     ) -> Result<HtmlCanvas2DPainter, KeyPaintError> {
         if let Some(canvas) = context.canvas() {
             HtmlCanvas2DPainter::set_up_context_defaults(&context);
@@ -248,6 +415,7 @@ impl HtmlCanvas2DPainter {
                 height: canvas.height() as f32,
                 width: canvas.width() as f32,
                 context,
+                hits_only,
             })
         } else {
             Err(KeyPaintError::Failed(
@@ -348,11 +516,6 @@ impl HtmlCanvas2DPainter {
             if let Err(e) = self.context.fill_text(s, text_x, text_y) {
                 return Err(KeyPaintError::Failed(format!("fill_text failed: {e:?}")));
             }
-            //self.context.set_stroke_style(&("blue".into()));
-            //let eps: f64 = 6.0;
-            //self.context.move_to(f64::from(bbox.left()) - eps, text_y);
-            //self.context.line_to(f64::from(bbox.right()) + eps, text_y);
-            //self.context.stroke();
         }
         Ok(())
     }
@@ -372,11 +535,24 @@ impl KeyPainter for HtmlCanvas2DPainter {
         self.height
     }
 
+    fn draw_background(&mut self) -> Result<(), KeyPaintError> {
+        if self.hits_only {
+            // We fill the background with a colour which never maps back
+            // to a key code.
+            self.context
+                .set_fill_style(&JsValue::from(HIT_DETECTION_BACKGROUND));
+            self.context
+                .fill_rect(0.0_f64, 0.0_f64, self.width().into(), self.height().into());
+        }
+        Ok(())
+    }
+
     fn draw_key(
         &mut self,
         keybox: &BoundingBox,
         colour: &KeyColour,
         label: &KeyLabel,
+        keycode: Code,
     ) -> Result<(), KeyPaintError> {
         event!(
             Level::DEBUG,
@@ -384,8 +560,29 @@ impl KeyPainter for HtmlCanvas2DPainter {
             keybox.nw,
             keybox.se
         );
+
+        let hit_detection_colour: String = keycode.hit_detection_colour();
+
+        if self.hits_only {
+            self.context.set_fill_style(&(&hit_detection_colour).into());
+            self.context.fill_rect(
+                keybox.left().into(),
+                keybox.top().into(),
+                keybox.width().into(),
+                keybox.height().into(),
+            );
+            self.context.stroke();
+            return Ok(());
+        }
+
         self.context.set_fill_style(&colour.key_css_colour().into());
         self.context.set_stroke_style(&("black".into()));
+        let label_css_color = colour.label_css_colour();
+
+        event!(
+            Level::DEBUG,
+            "draw_key: Key label {label:?} will be drawn in colour {label_css_color}",
+        );
         self.draw_filled_stroked_rect(
             keybox.left().into(),
             keybox.top().into(),
@@ -399,7 +596,7 @@ impl KeyPainter for HtmlCanvas2DPainter {
             let font = format!("{font_size}px sans-serif");
             self.context.set_font(&font);
             event!(Level::DEBUG, "Trying font '{font}' for label {label:?}");
-            match self.fill_multiline_text(keybox, label.text, colour.label_css_colour()) {
+            match self.fill_multiline_text(keybox, label.text, label_css_color) {
                 Err(KeyPaintError::TextTooBig) => {
                     continue; // Try a smaller font size.
                 }
@@ -430,9 +627,11 @@ struct Key {
     shape: KeyShape,
     colour: KeyColour,
     label: KeyLabel,
+    code: Code,
 }
 
 fn row0() -> &'static [Key] {
+    // This is the top row of the keyboard furthest from the typist.
     const HPOS_YES: f32 = HPOS_DELETE + WIDE_KEY_AND_GAP_WIDTH * 2.0;
     &[
         Key /* DELETE */ {
@@ -442,7 +641,8 @@ fn row0() -> &'static [Key] {
             colour: KeyColour::Brown,
             label: KeyLabel {
                 text: &["DELETE"],
-            }
+            },
+            code: Code::Far(0o77),
         },
         Key /* STOP */ {
             left: HPOS_DELETE + WIDE_KEY_WIDTH + GAP_WIDTH,
@@ -451,7 +651,8 @@ fn row0() -> &'static [Key] {
             colour: KeyColour::Grey,
             label: KeyLabel {
                 text: &["STOP"],
-            }
+            },
+            code: Code::Far(0o76),
         },
         Key /* YES */ {
             left: HPOS_YES,
@@ -460,7 +661,8 @@ fn row0() -> &'static [Key] {
             colour: KeyColour::Black,
             label: KeyLabel {
                 text: &["YES"],
-            }
+            },
+            code: Code::Far(0o17),
         },
         Key /* NO */ {
             left: HPOS_YES + TALL_KEY_AND_GAP_WIDTH,
@@ -469,7 +671,12 @@ fn row0() -> &'static [Key] {
             colour: KeyColour::Black,
             label: KeyLabel {
                 text: &["NO"],
-            }
+            },
+            // References TM and PR are inconsistent about the coding
+            // of this key, we follow the TM, because it is the later
+            // document (this page labelled October 1961), but still
+            // prior to development of Sketchpad (1963).
+            code: Code::Far(0o16),
         },
         Key /* WORD EXAM */ {
             left: HPOS_YES + TALL_KEY_AND_GAP_WIDTH * 2.0,
@@ -478,7 +685,8 @@ fn row0() -> &'static [Key] {
             colour: KeyColour::Black,
             label: KeyLabel {
                 text: &["WORD", "EXAM"],
-            }
+            },
+            code: Code::Far(0o71),
         },
         Key /* CONTINUE */ {
             left: HPOS_YES + TALL_KEY_AND_GAP_WIDTH * 3.0,
@@ -487,7 +695,13 @@ fn row0() -> &'static [Key] {
             colour: KeyColour::Black,
             label: KeyLabel {
                 text: &["CON", "TIN", "UE"],
-            }
+            },
+            // The diagram I have seems to show code 0o17 for
+            // CONTINUE, but this is not consistent with the LW
+            // character set in table 7-6 of the Technical Manual
+            // (which says 17 is YES) .  See comment at the top of
+            // this file.
+            code: Code::Unknown,
         },
         Key /* HALT */ {
             left: HPOS_YES + TALL_KEY_AND_GAP_WIDTH * 4.0,
@@ -496,7 +710,13 @@ fn row0() -> &'static [Key] {
             colour: KeyColour::Black,
             label: KeyLabel {
                 text: &["HALT"],
-            }
+            },
+            // I can't read the code on the Progress Report diagram
+            // for this key.  The second digit may be 6,but the code
+            // cannot be 76 as that is the code for STOP which is also
+            // shown on the top row in the Progress Report.  So we
+            // currently generate not code for HALT.
+            code: Code::Unknown,
         },
         Key /* BEGIN */ {
             left: HPOS_YES + TALL_KEY_AND_GAP_WIDTH * 5.0,
@@ -505,7 +725,8 @@ fn row0() -> &'static [Key] {
             colour: KeyColour::Black,
             label: KeyLabel {
                 text: &["B", "E", "G", "I", "N"],
-            }
+            },
+            code: Code::Far(0o15),
         },
         Key /* READ IN */ {
             left: HPOS_YES + TALL_KEY_AND_GAP_WIDTH * 6.0,
@@ -514,7 +735,8 @@ fn row0() -> &'static [Key] {
             colour: KeyColour::Black,
             label: KeyLabel {
                 text: &["READ", "IN"],
-            }
+            },
+            code: Code::Far(0o14),
         },
         Key /* apostrophe */ {
             left: HPOS_YES + TALL_KEY_AND_GAP_WIDTH * 6.0 + KEY_AND_GAP_WIDTH,
@@ -523,7 +745,8 @@ fn row0() -> &'static [Key] {
             colour: KeyColour::Red,
             label: KeyLabel {
                 text: &["'"],
-            }
+            },
+            code: Code::Far(0o56),
         },
         Key /* asterisk */ {
             left: HPOS_YES + TALL_KEY_AND_GAP_WIDTH * 6.0 + KEY_AND_GAP_WIDTH * 2.0,
@@ -532,7 +755,8 @@ fn row0() -> &'static [Key] {
             colour: KeyColour::Red,
             label: KeyLabel {
                 text: &["*"],
-            }
+            },
+            code: Code::Far(0o57),
         },
         Key /* meta hand */ {
             left: HPOS_YES + TALL_KEY_AND_GAP_WIDTH * 6.0 + KEY_AND_GAP_WIDTH * 3.0,
@@ -552,7 +776,8 @@ fn row0() -> &'static [Key] {
                 // in the illustration in the monthly status report.
                 // Unfortunately neither symbol shows a cuff, which
                 // does appear in the illustration.
-            }
+            },
+            code: Code::Far(0o00),
         },
     ]
 }
@@ -566,7 +791,8 @@ fn row1() -> &'static [Key] {
             colour: KeyColour::Brown,
             label: KeyLabel {
                 text: &["\u{2192}"], // rightwards arrow
-            }
+            },
+            code: Code::Far(0o07),
         },
         Key /* ∪ */ {
             left: HPOS_ARROW + 1.0 * KEY_AND_GAP_WIDTH,
@@ -575,7 +801,8 @@ fn row1() -> &'static [Key] {
             colour: KeyColour::Brown,
             label: KeyLabel {
                 text: &["\u{222A}"], // Union
-            }
+            },
+            code: Code::Far(0o34),
         },
         Key /* ∩ */ {
             left: HPOS_ARROW + 2.0 * KEY_AND_GAP_WIDTH,
@@ -584,7 +811,8 @@ fn row1() -> &'static [Key] {
             colour: KeyColour::Brown,
             label: KeyLabel {
                 text: &["\u{2229}"], // Intersection
-            }
+            },
+            code: Code::Far(0o35),
         },
         Key /* Σ */ {
             left: HPOS_ARROW + 3.0 * KEY_AND_GAP_WIDTH,
@@ -593,7 +821,8 @@ fn row1() -> &'static [Key] {
             colour: KeyColour::Yellow,
             label: KeyLabel {
                 text: &["\u{03A3}"], // Greek capital letter Sigma
-            }
+            },
+            code: Code::Far(0o01),
         },
         Key /* × (multiply) */ {
             left: HPOS_ARROW + 4.0 * KEY_AND_GAP_WIDTH,
@@ -602,7 +831,8 @@ fn row1() -> &'static [Key] {
             colour: KeyColour::Yellow,
             label: KeyLabel {
                 text: &["\u{00D7}"],
-            }
+            },
+            code: Code::Far(0o05),
         },
         Key /* h */ {
             left: HPOS_ARROW + 5.0 * KEY_AND_GAP_WIDTH,
@@ -612,6 +842,7 @@ fn row1() -> &'static [Key] {
             label: KeyLabel {
                 text: &["h"],
             },
+            code: Code::Far(0o44),
         },
         Key /* i */ {
             left: HPOS_ARROW + 6.0 * KEY_AND_GAP_WIDTH,
@@ -621,6 +852,7 @@ fn row1() -> &'static [Key] {
             label: KeyLabel {
                 text: &["i"],
             },
+            code: Code::Far(0o30),
         },
         Key /* j */ {
             left: HPOS_ARROW + 7.0 * KEY_AND_GAP_WIDTH,
@@ -630,6 +862,7 @@ fn row1() -> &'static [Key] {
             label: KeyLabel {
                 text: &["j"],
             },
+            code: Code::Far(0o36),
         },
         Key /* k */ {
             left: HPOS_ARROW + 8.0 * KEY_AND_GAP_WIDTH,
@@ -639,6 +872,7 @@ fn row1() -> &'static [Key] {
             label: KeyLabel {
                 text: &["k"],
             },
+            code: Code::Far(0o37),
         },
         Key /* ∈ */ {
             left: HPOS_ARROW + 9.0 * KEY_AND_GAP_WIDTH,
@@ -647,7 +881,8 @@ fn row1() -> &'static [Key] {
             colour: KeyColour::Orange,
             label: KeyLabel {
                 text: &["\u{2208}"], // ∈, Element of
-            }
+            },
+            code: Code::Far(0o43),
         },
         Key /* λ */ {
             left: HPOS_ARROW + 10.0 * KEY_AND_GAP_WIDTH,
@@ -656,7 +891,8 @@ fn row1() -> &'static [Key] {
             colour: KeyColour::Orange,
             label: KeyLabel {
                 text: &["\u{03BB}"], // Greek small letter lambda, U+03BB
-            }
+            },
+            code: Code::Far(0o50),
         },
         Key /* # */ {
             left: HPOS_ARROW + 11.0 * KEY_AND_GAP_WIDTH,
@@ -666,6 +902,7 @@ fn row1() -> &'static [Key] {
             label: KeyLabel {
                 text: &["#"],
             },
+            code: Code::Far(0o06),
         },
         Key /* ‖ */ {
             left: HPOS_ARROW + 12.0 * KEY_AND_GAP_WIDTH,
@@ -675,6 +912,7 @@ fn row1() -> &'static [Key] {
             label: KeyLabel {
                 text: &["\u{2016}"], // U+2016, double vertical line
             },
+            code: Code::Far(0o03),
         },
         Key /* ? */ {
             left: HPOS_ARROW + 13.0 * KEY_AND_GAP_WIDTH,
@@ -684,9 +922,12 @@ fn row1() -> &'static [Key] {
             label: KeyLabel {
                 text: &["?"],
             },
+            code: Code::Far(0o33),
         },
     ]
 }
+
+// missing tests: key codes are unique, key labels consistent with base charset definition
 
 fn row2() -> &'static [Key] {
     &[
@@ -697,7 +938,8 @@ fn row2() -> &'static [Key] {
             colour: KeyColour::Brown,
             label: KeyLabel {
                 text: &["~"], // tilde
-            }
+            },
+            code: Code::Far(0o51),
         },
         Key /* ⊃ */ {
             left: HPOS_TILDE + 1.0 * KEY_AND_GAP_WIDTH,
@@ -706,7 +948,8 @@ fn row2() -> &'static [Key] {
             colour: KeyColour::Brown,
             label: KeyLabel {
                 text: &["\u{2283}"], // Superset of
-            }
+            },
+            code: Code::Far(0o45),
         },
         Key /* ⊂ */ {
             left: HPOS_TILDE + 2.0 * KEY_AND_GAP_WIDTH,
@@ -715,7 +958,8 @@ fn row2() -> &'static [Key] {
             colour: KeyColour::Brown,
             label: KeyLabel {
                 text: &["\u{2282}"], // Subset of
-            }
+            },
+            code: Code::Far(0o21),
         },
         Key /* < */ {
             left: HPOS_TILDE + 3.0 * KEY_AND_GAP_WIDTH,
@@ -724,7 +968,8 @@ fn row2() -> &'static [Key] {
             colour: KeyColour::Yellow,
             label: KeyLabel {
                 text: &["<"],
-            }
+            },
+            code: Code::Far(0o10),
         },
         Key /* > */ {
             left: HPOS_TILDE + 4.0 * KEY_AND_GAP_WIDTH,
@@ -733,52 +978,8 @@ fn row2() -> &'static [Key] {
             colour: KeyColour::Yellow,
             label: KeyLabel {
                 text: &[">"],
-            }
-        },
-        Key /* Δ */ {
-            left: HPOS_TILDE + 9.0 * KEY_AND_GAP_WIDTH,
-            top: VPOS_TILDE,
-            shape: KeyShape::Square,
-            colour: KeyColour::Orange,
-            label: KeyLabel {
-                text: &["\u{0394}"], // Greek capital delta, U+0394
-            }
-        },
-        Key /* γ */ {
-            left: HPOS_TILDE + 10.0 * KEY_AND_GAP_WIDTH,
-            top: VPOS_TILDE,
-            shape: KeyShape::Square,
-            colour: KeyColour::Orange,
-            label: KeyLabel {
-                text: &["\u{03B3}"], // Greek small letter gamma (U+03B3)
-            }
-        },
-        Key /* { */ {
-            left: HPOS_TILDE + 11.0 * KEY_AND_GAP_WIDTH,
-            top: VPOS_TILDE,
-            shape: KeyShape::Square,
-            colour: KeyColour::Red,
-            label: KeyLabel {
-                text: &["{"],
-            }
-        },
-        Key /* } */ {
-            left: HPOS_TILDE + 12.0 * KEY_AND_GAP_WIDTH,
-            top: VPOS_TILDE,
-            shape: KeyShape::Square,
-            colour: KeyColour::Red,
-            label: KeyLabel {
-                text: &["}"],
-            }
-        },
-        Key /* |, LW code 02 */ {
-            left: HPOS_TILDE + 13.0 * KEY_AND_GAP_WIDTH,
-            top: VPOS_TILDE,
-            shape: KeyShape::Square,
-            colour: KeyColour::Red,
-            label: KeyLabel {
-                text: &["|"],
-            }
+            },
+            code: Code::Far(0o11),
         },
         Key /* n */ {
             left: HPOS_TILDE + 5.0 * KEY_AND_GAP_WIDTH,
@@ -788,6 +989,7 @@ fn row2() -> &'static [Key] {
             label: KeyLabel {
                 text: &["n"],
             },
+            code: Code::Far(0o20),
         },
         Key /* p */ {
             left: HPOS_TILDE + 6.0 * KEY_AND_GAP_WIDTH,
@@ -797,6 +999,7 @@ fn row2() -> &'static [Key] {
             label: KeyLabel {
                 text: &["p"],
             },
+            code: Code::Far(0o42),
         },
         Key /* q */ {
             left: HPOS_TILDE + 7.0 * KEY_AND_GAP_WIDTH,
@@ -806,6 +1009,7 @@ fn row2() -> &'static [Key] {
             label: KeyLabel {
                 text: &["q"],
             },
+            code: Code::Far(0o23),
         },
         Key /* t */ {
             left: HPOS_TILDE + 8.0 * KEY_AND_GAP_WIDTH,
@@ -815,6 +1019,57 @@ fn row2() -> &'static [Key] {
             label: KeyLabel {
                 text: &["t"],
             },
+            code: Code::Far(0o25),
+        },
+        Key /* Δ */ {
+            left: HPOS_TILDE + 9.0 * KEY_AND_GAP_WIDTH,
+            top: VPOS_TILDE,
+            shape: KeyShape::Square,
+            colour: KeyColour::Orange,
+            label: KeyLabel {
+                text: &["\u{0394}"], // Greek capital delta, U+0394
+            },
+            code: Code::Far(0o41),
+        },
+        Key /* γ */ {
+            left: HPOS_TILDE + 10.0 * KEY_AND_GAP_WIDTH,
+            top: VPOS_TILDE,
+            shape: KeyShape::Square,
+            colour: KeyColour::Orange,
+            label: KeyLabel {
+                text: &["\u{03B3}"], // Greek small letter gamma (U+03B3)
+            },
+            code: Code::Far(0o24),
+        },
+        Key /* { */ {
+            left: HPOS_TILDE + 11.0 * KEY_AND_GAP_WIDTH,
+            top: VPOS_TILDE,
+            shape: KeyShape::Square,
+            colour: KeyColour::Red,
+            label: KeyLabel {
+                text: &["{"],
+            },
+            code: Code::Far(0o52),
+        },
+        Key /* } */ {
+            left: HPOS_TILDE + 12.0 * KEY_AND_GAP_WIDTH,
+            top: VPOS_TILDE,
+            shape: KeyShape::Square,
+            colour: KeyColour::Red,
+            label: KeyLabel {
+                text: &["}"],
+            },
+            code: Code::Far(0o53),
+        },
+        Key /* |, LW code 02 */ {
+            left: HPOS_TILDE + 13.0 * KEY_AND_GAP_WIDTH,
+            top: VPOS_TILDE,
+            shape: KeyShape::Square,
+            colour: KeyColour::Red,
+            label: KeyLabel {
+                text: &["|"],
+            },
+            code: Code::Far(0o02),
         },
     ]
 }
@@ -828,7 +1083,8 @@ fn row3() -> &'static [Key] {
             colour: KeyColour::Brown,
             label: KeyLabel {
                 text: &["\u{2227}"], // U+2227, Logical And
-            }
+            },
+            code: Code::Far(0o47),
         },
         Key /* ∨ */ {
             left: HPOS_LOGICAL_AND + 1.0 * KEY_AND_GAP_WIDTH,
@@ -837,7 +1093,8 @@ fn row3() -> &'static [Key] {
             colour: KeyColour::Brown,
             label: KeyLabel {
                 text: &["\u{2228}"], // U+2228, Logical Or
-            }
+            },
+            code: Code::Far(0o22),
         },
         Key /* ≡ */ {
             left: HPOS_LOGICAL_AND + 2.0 * KEY_AND_GAP_WIDTH,
@@ -846,7 +1103,8 @@ fn row3() -> &'static [Key] {
             colour: KeyColour::Brown,
             label: KeyLabel {
                 text: &["\u{2261}"], // U+2261, Identical to
-            }
+            },
+            code: Code::Far(0o54),
         },
         Key /* / */ {
             left: HPOS_LOGICAL_AND + 3.0 * KEY_AND_GAP_WIDTH,
@@ -855,7 +1113,8 @@ fn row3() -> &'static [Key] {
             colour: KeyColour::Yellow,
             label: KeyLabel {
                 text: &["/"],
-            }
+            },
+            code: Code::Far(0o04),
         },
         Key /* = */ {
             left: HPOS_LOGICAL_AND + 4.0 * KEY_AND_GAP_WIDTH,
@@ -864,7 +1123,8 @@ fn row3() -> &'static [Key] {
             colour: KeyColour::Yellow,
             label: KeyLabel {
                 text: &["="],
-            }
+            },
+            code: Code::Far(0o55),
         },
         Key /* w */ {
             left: HPOS_LOGICAL_AND + 5.0 * KEY_AND_GAP_WIDTH,
@@ -874,6 +1134,7 @@ fn row3() -> &'static [Key] {
             label: KeyLabel {
                 text: &["w"],
             },
+            code: Code::Far(0o26),
         },
         Key /* x */ {
             left: HPOS_LOGICAL_AND + 6.0 * KEY_AND_GAP_WIDTH,
@@ -883,6 +1144,7 @@ fn row3() -> &'static [Key] {
             label: KeyLabel {
                 text: &["x"],
             },
+            code: Code::Far(0o27),
         },
         Key /* y */ {
             left: HPOS_LOGICAL_AND + 7.0 * KEY_AND_GAP_WIDTH,
@@ -892,6 +1154,7 @@ fn row3() -> &'static [Key] {
             label: KeyLabel {
                 text: &["y"],
             },
+            code: Code::Far(0o31),
         },
         Key /* z */ {
             left: HPOS_LOGICAL_AND + 8.0 * KEY_AND_GAP_WIDTH,
@@ -901,6 +1164,7 @@ fn row3() -> &'static [Key] {
             label: KeyLabel {
                 text: &["z"],
             },
+            code: Code::Far(0o32),
         },
         Key /* α */ {
             left: HPOS_LOGICAL_AND + 9.0 * KEY_AND_GAP_WIDTH,
@@ -910,6 +1174,7 @@ fn row3() -> &'static [Key] {
             label: KeyLabel {
                 text: &["\u{03B1}"],
             },
+            code: Code::Far(0o40),
         },
         Key /* β */ {
             left: HPOS_LOGICAL_AND + 10.0 * KEY_AND_GAP_WIDTH,
@@ -919,6 +1184,7 @@ fn row3() -> &'static [Key] {
             label: KeyLabel {
                 text: &["\u{03B2}"], // Greek beta symbol, U+03B2
             },
+            code: Code::Far(0o46),
         },
         Key {
             // overline
@@ -929,6 +1195,7 @@ fn row3() -> &'static [Key] {
             label: KeyLabel {
                 text: &["\u{0305} "], // Combining overline U+0305
             },
+            code: Code::Far(0o12),
         },
         Key {
             // square
@@ -939,11 +1206,13 @@ fn row3() -> &'static [Key] {
             label: KeyLabel {
                 text: &["\u{20DE} "], // combining enclosing square
             },
+            code: Code::Far(0o13),
         },
     ]
 }
 
 fn row4() -> &'static [Key] {
+    // This is the top row of the keyboard nearest the typist.
     &[
         Key /* TAB */ {
             left: HPOS_TAB,
@@ -952,7 +1221,8 @@ fn row4() -> &'static [Key] {
             colour: KeyColour::Grey,
             label: KeyLabel {
                 text: &["T", "A", "B"],
-            }
+            },
+            code: Code::Near(0o61),
         },
         Key /* RED */ {
             left: HPOS_TAB + KEY_AND_GAP_WIDTH,
@@ -961,7 +1231,8 @@ fn row4() -> &'static [Key] {
             colour: KeyColour::Red,
             label: KeyLabel {
                 text: &["RED"],
-            }
+            },
+            code: Code::Near(0o67),
         },
         Key /* 0 */ {
             left: HPOS_TAB + KEY_AND_GAP_WIDTH * 2.0,
@@ -970,7 +1241,8 @@ fn row4() -> &'static [Key] {
             colour: KeyColour::Yellow,
             label: KeyLabel {
                 text: &["0"],
-            }
+            },
+            code: Code::Near(0o00),
         },
         Key /* 1 */ {
             left: HPOS_TAB + KEY_AND_GAP_WIDTH * 3.0,
@@ -979,7 +1251,8 @@ fn row4() -> &'static [Key] {
             colour: KeyColour::Yellow,
             label: KeyLabel {
                 text: &["1"],
-            }
+            },
+            code: Code::Near(0o01),
         },
         Key /* 2 */ {
             left: HPOS_TAB + KEY_AND_GAP_WIDTH * 4.0,
@@ -988,7 +1261,8 @@ fn row4() -> &'static [Key] {
             colour: KeyColour::Yellow,
             label: KeyLabel {
                 text: &["2"],
-            }
+            },
+            code: Code::Near(0o02),
         },
         Key /* 3 */ {
             left: HPOS_TAB + KEY_AND_GAP_WIDTH * 5.0,
@@ -997,7 +1271,8 @@ fn row4() -> &'static [Key] {
             colour: KeyColour::Yellow,
             label: KeyLabel {
                 text: &["3"],
-            }
+            },
+            code: Code::Near(0o03),
         },
         Key /* 4 */ {
             left: HPOS_TAB + KEY_AND_GAP_WIDTH * 6.0,
@@ -1006,7 +1281,8 @@ fn row4() -> &'static [Key] {
             colour: KeyColour::Yellow,
             label: KeyLabel {
                 text: &["4"],
-            }
+            },
+            code: Code::Near(0o04),
         },
         Key /* 5 */ {
             left: HPOS_TAB + KEY_AND_GAP_WIDTH * 7.0,
@@ -1015,7 +1291,8 @@ fn row4() -> &'static [Key] {
             colour: KeyColour::Yellow,
             label: KeyLabel {
                 text: &["5"],
-            }
+            },
+            code: Code::Near(0o05),
         },
         Key /* 6 */ {
             left: HPOS_TAB + KEY_AND_GAP_WIDTH * 8.0,
@@ -1024,7 +1301,8 @@ fn row4() -> &'static [Key] {
             colour: KeyColour::Yellow,
             label: KeyLabel {
                 text: &["6"],
-            }
+            },
+            code: Code::Near(0o06),
         },
         Key /* 7 */ {
             left: HPOS_TAB + KEY_AND_GAP_WIDTH * 9.0,
@@ -1033,7 +1311,8 @@ fn row4() -> &'static [Key] {
             colour: KeyColour::Yellow,
             label: KeyLabel {
                 text: &["7"],
-            }
+            },
+            code: Code::Near(0o07),
         },
         Key /* 8 */ {
             left: HPOS_TAB + KEY_AND_GAP_WIDTH * 10.0,
@@ -1042,7 +1321,8 @@ fn row4() -> &'static [Key] {
             colour: KeyColour::Yellow,
             label: KeyLabel {
                 text: &["8"],
-            }
+            },
+            code: Code::Near(0o10),
         },
         Key /* 9 */ {
             left: HPOS_TAB + KEY_AND_GAP_WIDTH * 11.0,
@@ -1051,7 +1331,8 @@ fn row4() -> &'static [Key] {
             colour: KeyColour::Yellow,
             label: KeyLabel {
                 text: &["9"],
-            }
+            },
+            code: Code::Near(0o11),
         },
         Key /* underbar */ {
             left: HPOS_TAB + KEY_AND_GAP_WIDTH * 12.0,
@@ -1060,7 +1341,8 @@ fn row4() -> &'static [Key] {
             colour: KeyColour::Red,
             label: KeyLabel {
                 text: &["\u{0332} "], // combining low line
-            }
+            },
+            code: Code::Near(0o12),
         },
         Key /* circle */ {
             left: HPOS_TAB + KEY_AND_GAP_WIDTH * 13.0,
@@ -1071,7 +1353,8 @@ fn row4() -> &'static [Key] {
                 text: &[
                     "\u{20DD} ", // combining enclosing circle
                 ]
-            }
+            },
+            code: Code::Near(0o13),
         },
     ]
 }
@@ -1086,7 +1369,8 @@ fn row5() -> &'static [Key] {
             colour: KeyColour::Black,
             label: KeyLabel {
                 text: &["BLACK"]
-            }
+            },
+            code: Code::Near(0o63),
         },
         Key {
             left: HPOS_Q,
@@ -1094,6 +1378,7 @@ fn row5() -> &'static [Key] {
             shape: KeyShape::Square,
             colour: KeyColour::Green,
             label: KeyLabel { text: &["Q"] },
+            code: Code::Near(0o40),
         },
         Key {
             left: HPOS_Q + KEY_AND_GAP_WIDTH * 1.0,
@@ -1101,6 +1386,7 @@ fn row5() -> &'static [Key] {
             shape: KeyShape::Square,
             colour: KeyColour::Green,
             label: KeyLabel { text: &["W"] },
+            code: Code::Near(0o46),
         },
         Key {
             left: HPOS_Q + KEY_AND_GAP_WIDTH * 2.0,
@@ -1108,6 +1394,7 @@ fn row5() -> &'static [Key] {
             shape: KeyShape::Square,
             colour: KeyColour::Green,
             label: KeyLabel { text: &["E"] },
+            code: Code::Near(0o24),
         },
         Key {
             left: HPOS_Q + KEY_AND_GAP_WIDTH * 3.0,
@@ -1115,6 +1402,7 @@ fn row5() -> &'static [Key] {
             shape: KeyShape::Square,
             colour: KeyColour::Green,
             label: KeyLabel { text: &["R"] },
+            code: Code::Near(0o41),
         },
         Key {
             left: HPOS_Q + KEY_AND_GAP_WIDTH * 4.0,
@@ -1122,6 +1410,7 @@ fn row5() -> &'static [Key] {
             shape: KeyShape::Square,
             colour: KeyColour::Green,
             label: KeyLabel { text: &["T"] },
+            code: Code::Near(0o43),
         },
         Key {
             left: HPOS_Q + KEY_AND_GAP_WIDTH * 5.0,
@@ -1129,6 +1418,7 @@ fn row5() -> &'static [Key] {
             shape: KeyShape::Square,
             colour: KeyColour::Green,
             label: KeyLabel { text: &["Y"] },
+            code: Code::Near(0o50),
         },
         Key {
             left: HPOS_Q + KEY_AND_GAP_WIDTH * 6.0,
@@ -1136,6 +1426,7 @@ fn row5() -> &'static [Key] {
             shape: KeyShape::Square,
             colour: KeyColour::Green,
             label: KeyLabel { text: &["U"] },
+            code: Code::Near(0o44),
         },
         Key {
             left: HPOS_Q + KEY_AND_GAP_WIDTH * 7.0,
@@ -1143,6 +1434,7 @@ fn row5() -> &'static [Key] {
             shape: KeyShape::Square,
             colour: KeyColour::Green,
             label: KeyLabel { text: &["I"] },
+            code: Code::Near(0o30),
         },
         Key {
             left: HPOS_Q + KEY_AND_GAP_WIDTH * 8.0,
@@ -1150,6 +1442,7 @@ fn row5() -> &'static [Key] {
             shape: KeyShape::Square,
             colour: KeyColour::Green,
             label: KeyLabel { text: &["O"] },
+            code: Code::Near(0o36),
         },
         Key {
             left: HPOS_Q + KEY_AND_GAP_WIDTH * 9.,
@@ -1157,6 +1450,7 @@ fn row5() -> &'static [Key] {
             shape: KeyShape::Square,
             colour: KeyColour::Green,
             label: KeyLabel { text: &["P"] },
+            code: Code::Near(0o37),
         },
         Key {
             left: HPOS_Q + KEY_AND_GAP_WIDTH * 10.0,
@@ -1164,6 +1458,7 @@ fn row5() -> &'static [Key] {
             shape: KeyShape::Square,
             colour: KeyColour::Yellow,
             label: KeyLabel { text: &["."] },
+            code: Code::Near(0o57),
         },
         Key {
             left: HPOS_Q + KEY_AND_GAP_WIDTH * 11.0,
@@ -1171,6 +1466,7 @@ fn row5() -> &'static [Key] {
             shape: KeyShape::Wide,
             colour: KeyColour::Black,
             label: KeyLabel { text: &["SUPER"] },
+            code: Code::Near(0o64),
         },
     ]
 }
@@ -1185,7 +1481,8 @@ fn row6() -> &'static [Key] {
             colour: KeyColour::Grey,
             label: KeyLabel {
                 text: &["BACK", "SPACE"]
-            }
+            },
+            code: Code::Near(0o62),
         },
         Key {
             left: HPOS_A,
@@ -1193,6 +1490,7 @@ fn row6() -> &'static [Key] {
             shape: KeyShape::Square,
             colour: KeyColour::Green,
             label: KeyLabel { text: &["A"] },
+            code: Code::Near(0o20),
         },
         Key {
             left: HPOS_A + KEY_AND_GAP_WIDTH,
@@ -1200,6 +1498,7 @@ fn row6() -> &'static [Key] {
             shape: KeyShape::Square,
             colour: KeyColour::Green,
             label: KeyLabel { text: &["S"] },
+            code: Code::Near(0o42),
         },
         Key {
             left: HPOS_A + KEY_AND_GAP_WIDTH * 2.0,
@@ -1207,6 +1506,7 @@ fn row6() -> &'static [Key] {
             shape: KeyShape::Square,
             colour: KeyColour::Green,
             label: KeyLabel { text: &["D"] },
+            code: Code::Near(0o23),
         },
         Key {
             left: HPOS_A + KEY_AND_GAP_WIDTH * 3.0,
@@ -1214,6 +1514,7 @@ fn row6() -> &'static [Key] {
             shape: KeyShape::Square,
             colour: KeyColour::Green,
             label: KeyLabel { text: &["F"] },
+            code: Code::Near(0o25),
         },
         Key {
             left: HPOS_A + KEY_AND_GAP_WIDTH * 4.0,
@@ -1221,6 +1522,7 @@ fn row6() -> &'static [Key] {
             shape: KeyShape::Square,
             colour: KeyColour::Green,
             label: KeyLabel { text: &["G"] },
+            code: Code::Near(0o26),
         },
         Key {
             left: HPOS_A + KEY_AND_GAP_WIDTH * 5.0,
@@ -1228,6 +1530,7 @@ fn row6() -> &'static [Key] {
             shape: KeyShape::Square,
             colour: KeyColour::Green,
             label: KeyLabel { text: &["H"] },
+            code: Code::Near(0o27),
         },
         Key {
             left: HPOS_A + KEY_AND_GAP_WIDTH * 6.0,
@@ -1235,6 +1538,7 @@ fn row6() -> &'static [Key] {
             shape: KeyShape::Square,
             colour: KeyColour::Green,
             label: KeyLabel { text: &["J"] },
+            code: Code::Near(0o31),
         },
         Key {
             left: HPOS_A + KEY_AND_GAP_WIDTH * 7.0,
@@ -1242,6 +1546,7 @@ fn row6() -> &'static [Key] {
             shape: KeyShape::Square,
             colour: KeyColour::Green,
             label: KeyLabel { text: &["K"] },
+            code: Code::Near(0o32),
         },
         Key {
             left: HPOS_A + KEY_AND_GAP_WIDTH * 8.0,
@@ -1249,6 +1554,7 @@ fn row6() -> &'static [Key] {
             shape: KeyShape::Square,
             colour: KeyColour::Green,
             label: KeyLabel { text: &["L"] },
+            code: Code::Near(0o33),
         },
         Key {
             left: HPOS_A + KEY_AND_GAP_WIDTH * 9.0,
@@ -1256,6 +1562,7 @@ fn row6() -> &'static [Key] {
             shape: KeyShape::Square,
             colour: KeyColour::Yellow,
             label: KeyLabel { text: &["+"] },
+            code: Code::Near(0o54),
         },
         Key {
             left: HPOS_A + KEY_AND_GAP_WIDTH * 10.0,
@@ -1263,6 +1570,7 @@ fn row6() -> &'static [Key] {
             shape: KeyShape::Square,
             colour: KeyColour::Yellow,
             label: KeyLabel { text: &["-"] },
+            code: Code::Near(0o55),
         },
         Key {
             left: HPOS_A + KEY_AND_GAP_WIDTH * 11.0,
@@ -1270,6 +1578,7 @@ fn row6() -> &'static [Key] {
             shape: KeyShape::Wide,
             colour: KeyColour::Grey,
             label: KeyLabel { text: &["NORMAL"] },
+            code: Code::Near(0o65),
         },
     ]
 }
@@ -1283,7 +1592,8 @@ fn row7() -> &'static [Key] {
             colour: KeyColour::Black,
             label: KeyLabel {
                 text: &["RETURN"]
-            }
+            },
+            code: Code::Near(0o60),
         },
         Key {
             left: HPOS_Z,
@@ -1291,6 +1601,7 @@ fn row7() -> &'static [Key] {
             shape: KeyShape::Square,
             colour: KeyColour::Green,
             label: KeyLabel { text: &["Z"] },
+            code: Code::Near(0o51),
         },
         Key {
             left: HPOS_Z + KEY_AND_GAP_WIDTH,
@@ -1298,6 +1609,7 @@ fn row7() -> &'static [Key] {
             shape: KeyShape::Square,
             colour: KeyColour::Green,
             label: KeyLabel { text: &["X"] },
+            code: Code::Near(0o47),
         },
         Key {
             left: HPOS_Z + KEY_AND_GAP_WIDTH * 2.0,
@@ -1305,6 +1617,7 @@ fn row7() -> &'static [Key] {
             shape: KeyShape::Square,
             colour: KeyColour::Green,
             label: KeyLabel { text: &["C"] },
+            code: Code::Near(0o22),
         },
         Key {
             left: HPOS_Z + KEY_AND_GAP_WIDTH * 3.0,
@@ -1312,6 +1625,7 @@ fn row7() -> &'static [Key] {
             shape: KeyShape::Square,
             colour: KeyColour::Green,
             label: KeyLabel { text: &["V"] },
+            code: Code::Near(0o45),
         },
         Key {
             left: HPOS_Z + KEY_AND_GAP_WIDTH * 4.0,
@@ -1319,6 +1633,7 @@ fn row7() -> &'static [Key] {
             shape: KeyShape::Square,
             colour: KeyColour::Green,
             label: KeyLabel { text: &["B"] },
+            code: Code::Near(0o21),
         },
         Key {
             left: HPOS_Z + KEY_AND_GAP_WIDTH * 5.0,
@@ -1326,6 +1641,7 @@ fn row7() -> &'static [Key] {
             shape: KeyShape::Square,
             colour: KeyColour::Green,
             label: KeyLabel { text: &["N"] },
+            code: Code::Near(0o35),
         },
         Key {
             left: HPOS_Z + KEY_AND_GAP_WIDTH * 6.0,
@@ -1333,6 +1649,7 @@ fn row7() -> &'static [Key] {
             shape: KeyShape::Square,
             colour: KeyColour::Green,
             label: KeyLabel { text: &["M"] },
+            code: Code::Near(0o34),
         },
         Key {
             left: HPOS_Z + KEY_AND_GAP_WIDTH * 7.0,
@@ -1340,6 +1657,7 @@ fn row7() -> &'static [Key] {
             shape: KeyShape::Square,
             colour: KeyColour::Red,
             label: KeyLabel { text: &["("] },
+            code: Code::Near(0o52),
         },
         Key {
             left: HPOS_Z + KEY_AND_GAP_WIDTH * 8.0,
@@ -1347,6 +1665,7 @@ fn row7() -> &'static [Key] {
             shape: KeyShape::Square,
             colour: KeyColour::Red,
             label: KeyLabel { text: &[")"] },
+            code: Code::Near(0o53),
         },
         Key {
             left: HPOS_Z + KEY_AND_GAP_WIDTH * 9.0,
@@ -1354,6 +1673,7 @@ fn row7() -> &'static [Key] {
             shape: KeyShape::Square,
             colour: KeyColour::Red,
             label: KeyLabel { text: &[","] },
+            code: Code::Near(0o56),
         },
         Key {
             left: HPOS_Z + KEY_AND_GAP_WIDTH * 10.0,
@@ -1361,6 +1681,7 @@ fn row7() -> &'static [Key] {
             shape: KeyShape::Wide,
             colour: KeyColour::Black,
             label: KeyLabel { text: &["SUB"] },
+            code: Code::Near(0o66),
         },
     ]
 }
@@ -1373,15 +1694,13 @@ fn row8() -> &'static [Key] {
             colour: KeyColour::Grey,
             label: KeyLabel {
                 text: &[]
-            }
+            },
+            code: Code::Near(0o70),
         }]
 }
 
-fn draw_kb<P: KeyPainter>(painter: &mut P) -> Result<(), KeyPaintError> {
-    let unit_width = painter.width() / 23.8_f32;
-    let unit_height = painter.height() / 14.5_f32;
-
-    for key in row0()
+fn all_keys() -> impl Iterator<Item = &'static Key> {
+    row0()
         .iter()
         .chain(row1().iter())
         .chain(row2().iter())
@@ -1391,7 +1710,125 @@ fn draw_kb<P: KeyPainter>(painter: &mut P) -> Result<(), KeyPaintError> {
         .chain(row6().iter())
         .chain(row7().iter())
         .chain(row8().iter())
-    {
+}
+
+#[test]
+fn known_keys_have_unique_codes() {
+    let mut codes_seen: HashMap<Code, &'static Key> = HashMap::new();
+    for key in all_keys() {
+        if key.code == Code::Unknown {
+            // This is a key for which the code mapping is not known.
+            // Since there is more than one such key, we do not apply
+            // the uniqueness constraint to them.
+            continue;
+        }
+        if let Some(previous) = codes_seen.get(&key.code) {
+            panic!(
+                "duplicate key code {:?} was used for both {:?} and {:?}",
+                key.code, key, *previous
+            );
+        }
+        codes_seen.insert(key.code, key);
+    }
+}
+
+#[cfg(test)]
+fn key_code_frequencies() -> HashMap<u8, usize> {
+    let mut result: HashMap<u8, usize> = HashMap::new();
+    for key in all_keys() {
+        match key.code {
+            Code::Near(n) | Code::Far(n) => {
+                *result.entry(n).or_insert(0) += 1;
+            }
+            Code::Unknown => (),
+        }
+    }
+    result
+}
+
+#[test]
+fn codes_used_in_both_near_and_far_keyboards() {
+    // Verify that the expected codes appear once, and other codes
+    // appear twice (upper and lower case).
+    let once_keys: HashSet<u8> = (
+        // READ IN, BEGIN, NO, YES
+        0o14_u8..=0o17_u8
+    )
+        .chain(
+            // CARRIAGE RETURN, TAB, BACK SPACE, COLOR BLACK, SUPER,
+            // NORMAL, SUB, COLOR RED, SPACE, WORD EXAM, LINE FEED DOWN,
+            // LINE FEED UP, LOWER CASE, UPPER CASE, STOP, NULLIFY
+            0o60..=0o77,
+        )
+        .collect();
+    let key_code_counts = key_code_frequencies();
+    for (code, actual_count) in key_code_counts.iter() {
+        let expected_count: usize = if once_keys.contains(code) { 1 } else { 2 };
+        if *actual_count != expected_count {
+            panic!(
+                "expected to see code code {:o} with frequency of {} but got frequency of {}",
+                code, expected_count, actual_count
+            );
+        }
+    }
+}
+
+#[test]
+fn all_input_codes_used() {
+    let key_code_counts = key_code_frequencies();
+    for code in 0..=0o77 {
+        match code {
+            0o72 | 0o73 => {
+                // LINE FEED DOWN and LINE FEED UP don't appear to be
+                // generated by keys.  I assume these are used only in
+                // Lincoln Writer output, not input.
+            }
+            0o74 | 0o75 => {
+                // LOWER CASE and UPPER CASE are generated by the
+                // keyboard, but the keyboard generates them to
+                // indicate which keyboard the currently-pressed key
+                // belongs to.
+            }
+            n => {
+                if !key_code_counts.contains_key(&n) {
+                    panic!("No key generates code {:o}", n);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn code_round_trips_as_pixel_colour() {
+    for key in all_keys() {
+        let colour = key.code.hit_detection_colour();
+        match Code::hit_detection_colour_to_code(colour.as_str()) {
+            Ok(Some(code)) => {
+                assert!(
+                    code == key.code,
+                    "expected code {:?}, got code {:?}",
+                    key.code,
+                    code
+                );
+            }
+            Ok(None) => {
+                panic!("Key code {:?} round-tripped as if it were the keyboard's background (colour is {})",
+                       key.code, colour);
+            }
+            Err(msg) => {
+                panic!("Key code {:?} mapped to hit detection colour {} but this could not be round-tripped: {}", key.code, colour, msg);
+            }
+        }
+    }
+}
+
+fn draw_kb<P: KeyPainter>(painter: &mut P) -> Result<(), KeyPaintError> {
+    painter.draw_background()?;
+
+    let unit_width = painter.width() / 23.8_f32;
+    let unit_height = painter.height() / 14.5_f32;
+
+    for key in all_keys() {
         let left = key.left * unit_width;
         let top = key.top * unit_width;
         let width = key.shape.width() * unit_width;
@@ -1403,7 +1840,7 @@ fn draw_kb<P: KeyPainter>(painter: &mut P) -> Result<(), KeyPaintError> {
                 y: top + height,
             },
         };
-        painter.draw_key(&bounds, &key.colour, &key.label)?;
+        painter.draw_key(&bounds, &key.colour, &key.label, key.code)?;
     }
     Ok(())
 }

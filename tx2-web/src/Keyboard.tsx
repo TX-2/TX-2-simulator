@@ -41,27 +41,46 @@ const Canvas = ({ className, draw, id, width, height, ...rest }: CanvasProps) =>
 
 
 interface KeyboardProps {
-    className?: string | undefined,
-    id?: string,
+  className?: string | undefined,
+  hdClass?: string | undefined,
+  id?: string,
 }
 
 const Keyboard = (props: KeyboardProps) => {
-    const draw = (ctx: CanvasRenderingContext2D) => {
-        const painter = create_html_canvas_2d_painter(ctx);
+    const draw = (ctx: CanvasRenderingContext2D, hitdetect: boolean) => {
+        const painter = create_html_canvas_2d_painter(ctx, hitdetect);
         console.log("drawing the LW keyboard...");
         ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height)
         ctx.font = "24px sans-serif";
         draw_keyboard(painter)
     }
+    const draw_vis = (ctx: CanvasRenderingContext2D) => {
+        draw(ctx, false)
+    }
+    const draw_hitdetect = (ctx: CanvasRenderingContext2D) => {
+        draw(ctx, true)
+    }
   const w = 800;
   const h = 14.5 / 23.8 * w;
-  return (<Canvas
-    className={props.className}
-    id={props.id}
-    draw={draw}
-    width={w}
-    height={h}
-  />);
+  // We draw two canvases; the first is visible and shows the actual
+  // keyboard keys.  The second is invisible but the same size, and is
+  // used for mouse pointer hit detection.
+  return (<div>
+    <Canvas
+      className={props.className}
+      id={props.id}
+      draw={draw_vis}
+      width={w}
+      height={h}
+    />
+    <Canvas
+      className={props.hdClass}
+      id={props.id}
+      draw={draw_hitdetect}
+      width={w}
+      height={h}
+    />
+  </div>);
 }
 
 export default Keyboard;

@@ -22,7 +22,7 @@ export class LincolnWriter extends React.Component<LincolnWriterProps, LincolnWr
           <span className={styles['lw__cursor']}>&nbsp;</span>
         </div>
       </div>
-      <Keyboard className={styles['lw__input__keyboard']} id={this.keyboardId} />
+      <Keyboard className={styles['lw__input__keyboard']} hdClass={styles['lw__input__keyboard_hits']} id={this.keyboardId} />
     </div>);
   }
 }

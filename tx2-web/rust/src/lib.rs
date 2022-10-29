@@ -134,6 +134,7 @@ pub fn tx2_codabo(tx2: &mut Tx2, simulated_time: f64, elapsed_time_secs: f64) {
 #[wasm_bindgen]
 pub fn create_html_canvas_2d_painter(
     context: web_sys::CanvasRenderingContext2d,
+    hits_only: bool,
 ) -> Result<HtmlCanvas2DPainter, JsValue> {
-    HtmlCanvas2DPainter::new(context).map_err(|e| e.to_string().into())
+    HtmlCanvas2DPainter::new(context, hits_only).map_err(|e| e.to_string().into())
 }
