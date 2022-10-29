@@ -19,7 +19,15 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo check
+      - run: cargo check --workspace --all-features
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build --workspace --all-features
 
   test:
     name: Test Suite (Rust stable)
@@ -27,7 +35,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo test --all-features
+      - run: cargo test --workspace --all-features
 
   fmt:
     name: Rustfmt
@@ -35,7 +43,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo fmt --all --check
+      - run: cargo fmt --workspace --check
 
   clippy:
     name: Clippy
@@ -43,4 +51,4 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo clippy -- -D warnings
+      - run: cargo clippy --workspace -- -D warnings
