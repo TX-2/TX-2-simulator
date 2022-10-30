@@ -54,14 +54,19 @@
 }
 
 .lw__input__keyboard {
+    position: absolute;
     border: 1px solid black;
     width: 800px;
     aspect-ratio: 23.8 / 14.5;
     font: "12px sans-serif";
+    z-index: 0;
 
     &_hits {
         @extend .lw__input__keyboard;
-        visible: hidden;
+        position: absolute;
+        opacity: 0.0;
+        /* Put the hit detector canvas in front of the keyboard picture */
+        z-index: 1;
     }
 }
 
