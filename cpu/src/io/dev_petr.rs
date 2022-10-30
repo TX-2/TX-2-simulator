@@ -295,8 +295,8 @@ impl Petr {
 }
 
 struct Throughput {
-    pub lines_per_second: f64,
-    pub total_seconds: f64,
+    lines_per_second: f64,
+    total_seconds: f64,
 }
 
 fn compute_throughput(
@@ -455,9 +455,9 @@ impl Unit for Petr {
                     ctx.simulated_time,
                 ) {
                     write!(result, "Emulated duration {:.1} seconds, so emulated throughput is {:.1} lines/sec. ",
-			   throughput.total_seconds,
-			   throughput.lines_per_second,
-		    )?;
+                           throughput.total_seconds,
+                           throughput.lines_per_second,
+                    )?;
                 }
                 if let Some(throughput) = compute_throughput(
                     self.tape_pos,
