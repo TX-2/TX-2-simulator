@@ -1,5 +1,7 @@
-//! This module decodes instructions and emulates the arithmetic unit
-//! and the exchange unit.
+//! This module decodes instructions and emulates the arithmetic unit,
+//! the exchange unit, memory and the CPU side of the I/O system.
+//!
+//! All the work is done in non-blocking function calls into this library.
 #![crate_name = "cpu"]
 #![deny(unreachable_pub)]
 #![deny(unsafe_code)]
