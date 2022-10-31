@@ -133,6 +133,12 @@ const WIDE_KEY_AND_GAP_WIDTH: f32 = WIDE_KEY_WIDTH + GAP_WIDTH;
 
 const HIT_DETECTION_BACKGROUND: &str = "#ffffff";
 
+/// When the ascent or descent font metrics for a text string are NaN,
+/// we fall back on the actual metrics (instead of font metrics).  But
+/// the actual metrics don't include the inter-line spacing, so we use
+/// a fudge factor to guess at something appropriate.
+const FONT_METRIC_FUDGE_FACTOR: f64 = 1.5_f64;
+
 #[derive(Debug)]
 enum KeyColour {
     Orange,
@@ -300,14 +306,20 @@ struct KeyLabel {
 #[derive(Debug)]
 pub enum KeyPaintError {
     Failed(String),
-    TextTooBig,
+    TextTooBig {
+        msg: String,
+        lines: &'static [&'static str],
+    },
+    InvalidFontMetrics(String),
 }
 
 impl Display for KeyPaintError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            KeyPaintError::Failed(s) => s.fmt(f),
-            KeyPaintError::TextTooBig => f.write_str("key label text is too big"),
+            KeyPaintError::Failed(s) | KeyPaintError::InvalidFontMetrics(s) => s.fmt(f),
+            KeyPaintError::TextTooBig { msg, lines } => {
+                write!(f, "key label text {lines:?} is too big: {msg}")
+            }
         }
     }
 }
@@ -377,31 +389,153 @@ pub struct HtmlCanvas2DPainter {
     hits_only: bool,
 }
 
-fn keep_greatest<T: PartialOrd>(acc: Option<T>, item: T) -> Option<T> {
-    if let Some(max) = acc {
-        if item > max {
-            Some(item)
-        } else {
-            Some(max)
+fn keep_greatest<T: PartialOrd, E>(
+    accumulator: Option<Result<T, E>>,
+    item: Result<T, E>,
+) -> Option<Result<T, E>> {
+    match (item, accumulator) {
+        (Err(e), _) | (_, Some(Err(e))) => Some(Err(e)), // preserve errors
+        (Ok(curr), None) => Some(Ok(curr)),
+        (Ok(curr), Some(Ok(acc_val))) => {
+            if curr > acc_val {
+                Some(Ok(curr))
+            } else {
+                Some(Ok(acc_val))
+            }
         }
-    } else {
-        Some(item)
     }
 }
 
-fn room_for_key_padding(w: f64, h: f64, bbox: &BoundingBox) -> bool {
+enum Room {
+    Sufficient,
+    Insufficient(Vec<String>),
+}
+
+fn room_for_key_padding(w: f64, h: f64, bbox: &BoundingBox) -> Room {
     const MAX_SIZE_FRACTION: f64 = 0.85;
     let avail_width = f64::from(bbox.width()) * MAX_SIZE_FRACTION;
     let hfit = w <= avail_width;
     let avail_height = f64::from(bbox.height()) * MAX_SIZE_FRACTION;
     let vfit = h <= avail_height;
+    let mut problems = Vec::new();
     if !hfit {
-        event!(Level::INFO, "max text width is {w:.1} but this will not comfortably fit (available width is {avail_width:.1}");
+        problems.push(format!("max text width is {w:.1} but this will not comfortably fit (available width is {avail_width:.1}"));
     }
     if !vfit {
-        event!(Level::INFO, "total text height is {h:.1} but this will not comfortably fit (available height is {avail_height:.1}");
+        problems.push(format!("total text height is {h:.1} but this will not comfortably fit (available height is {avail_height:.1}"));
     }
-    hfit && vfit
+    for prob in problems.iter() {
+        event!(Level::INFO, prob);
+    }
+    if problems.is_empty() {
+        Room::Sufficient
+    } else {
+        Room::Insufficient(problems)
+    }
+}
+
+fn check_font_metric(
+    name: &str,
+    value: Option<Result<f64, KeyPaintError>>,
+) -> Result<f64, KeyPaintError> {
+    match value {
+        Some(Ok(x)) => {
+            if x.is_nan() {
+                Err(KeyPaintError::InvalidFontMetrics(format!(
+                    "font metric {name} is NaN"
+                )))
+            } else {
+                Ok(x)
+            }
+        }
+        Some(Err(e)) => Err(e),
+        None => Ok(0.0),
+    }
+}
+
+fn metrics_as_text(metrics: &TextMetrics) -> String {
+    format!(
+        "font_bounding_box_ascent: {}, font_bounding_box_descent: {}, actual_bounding_box_ascent: {}, actual_bounding_box_descent: {},  actual_bounding_box_left: {}, actual_bounding_box_right: {}",
+        metrics.font_bounding_box_ascent(),
+        metrics.font_bounding_box_descent(),
+        metrics.actual_bounding_box_ascent(),
+        metrics.actual_bounding_box_descent(),
+        metrics.actual_bounding_box_left(),
+        metrics.actual_bounding_box_right(),
+    )
+}
+
+fn measure_text(
+    context: &CanvasRenderingContext2d,
+    s: &str,
+) -> Result<TextMetrics, wasm_bindgen::JsValue> {
+    match context.measure_text(s) {
+        Ok(metrics) => {
+            event!(
+                Level::DEBUG,
+                "Text metrics for {:?} are {:?}",
+                s,
+                metrics_as_text(&metrics)
+            );
+            Ok(metrics)
+        }
+        Err(e) => Err(e),
+    }
+}
+
+/// Return the distance between the baseline of some measured text and
+/// the bottom of whatever would be avove it.  We use font ascent
+/// instead of actual ascent, so that we get an appropriate amount of
+/// space between lines.  This also gives us some consistency of
+/// appearance.  However, if the font ascent metric is not available,
+/// we use the actual ascent with a "fudge factor".
+fn font_or_actual(
+    font_value: f64,
+    font_metric_name: &str,
+    actual_value: f64,
+    actual_metric_name: &str,
+) -> Result<f64, KeyPaintError> {
+    match (font_value.is_nan(), actual_value.is_nan()) {
+        (false, _) => Ok(font_value),
+        (true, false) => Ok(actual_value * FONT_METRIC_FUDGE_FACTOR),
+        (true, true) => {
+            Err(KeyPaintError::InvalidFontMetrics(
+                format!("text metric {font_metric_name} is NaN, but fallback metric {actual_metric_name} is also NaN")))
+        }
+    }
+}
+
+fn ascent(metrics: &TextMetrics) -> Result<f64, KeyPaintError> {
+    font_or_actual(
+        metrics.font_bounding_box_ascent(),
+        "font_bounding_box_ascent",
+        metrics.actual_bounding_box_ascent(),
+        "actual_bounding_box_ascent",
+    )
+}
+
+fn descent(metrics: &TextMetrics) -> Result<f64, KeyPaintError> {
+    font_or_actual(
+        metrics.font_bounding_box_descent(),
+        "font_bounding_box_descent",
+        metrics.actual_bounding_box_descent(),
+        "actual_bounding_box_descent",
+    )
+}
+
+fn bounding_box_width(metrics: &TextMetrics) -> Result<f64, KeyPaintError> {
+    match (
+        metrics.actual_bounding_box_left(),
+        metrics.actual_bounding_box_right(),
+    ) {
+        (left, _) if left.is_nan() => Err(KeyPaintError::InvalidFontMetrics(
+            "actual_bounding_box_left is NaN".to_string(),
+        )),
+        (_, right) if right.is_nan() => Err(KeyPaintError::InvalidFontMetrics(
+            "actual_bounding_box_right is NaN".to_string(),
+        )),
+        (left, right) => Ok((right - left).abs()),
+    }
 }
 
 impl HtmlCanvas2DPainter {
@@ -436,29 +570,37 @@ impl HtmlCanvas2DPainter {
         colour: &str,
     ) -> Result<(), KeyPaintError> {
         self.context.set_text_baseline("middle");
-        let metrics: Vec<TextMetrics> =
-            match lines.iter().map(|s| self.context.measure_text(s)).collect() {
-                Ok(v) => v,
-                Err(e) => {
-                    return Err(KeyPaintError::Failed(format!("measure_text failed: {e:?}")));
-                }
-            };
+        let metrics: Vec<TextMetrics> = match lines
+            .iter()
+            .map(|s| measure_text(&self.context, s))
+            .collect()
+        {
+            Ok(v) => v,
+            Err(e) => {
+                return Err(KeyPaintError::Failed(format!("measure_text failed: {e:?}")));
+            }
+        };
+        let max_ascent = check_font_metric(
+            "max ascent",
+            metrics.iter().map(ascent).fold(None, keep_greatest),
+        )?;
+        let max_descent = check_font_metric(
+            "max descent",
+            metrics.iter().map(descent).fold(None, keep_greatest),
+        )?;
 
-        // We use font ascent/descent instead of actual
-        // ascent/descent, so that we get space between lines.  This
-        // also gives us some consistency of appearance.
-        let max_ascent = metrics
+        let mw: f64 = match metrics
             .iter()
-            .map(|m| m.font_bounding_box_ascent())
-            .fold(None, keep_greatest);
-        let max_descent = metrics
-            .iter()
-            .map(|m| m.font_bounding_box_descent())
-            .fold(None, keep_greatest);
-        let mw: Option<f64> = metrics
-            .iter()
-            .map(|m| (m.actual_bounding_box_right() - m.actual_bounding_box_left()).abs())
-            .fold(None, keep_greatest);
+            .map(bounding_box_width)
+            .fold(None, keep_greatest)
+        {
+            Some(Ok(x)) => x,
+            None => 0.0,
+            Some(Err(e)) => {
+                return Err(e);
+            }
+        };
+
         for (metric, s) in metrics.iter().zip(lines.iter()) {
             if metric.actual_bounding_box_left() != 0.0_f64 {
                 event!(
@@ -469,10 +611,10 @@ impl HtmlCanvas2DPainter {
             }
         }
         let (a, d, max_width) = match (max_ascent, max_descent, mw) {
-            (Some(a), Some(d), Some(m)) => (a, d, m),
-            _ => {
+            (a, d, m) if (a == 0.0 && d == 0.0) || m == 0.0 => {
                 return Ok(()); // There is no text to draw.
             }
+            (a, d, m) => (a, d, m),
         };
         let n = lines.len();
         let line_height: f64 = a + d;
@@ -481,8 +623,13 @@ impl HtmlCanvas2DPainter {
             Level::DEBUG,
             "line height is {line_height:.1}; total text height is {total_text_height:.1}"
         );
-        if !room_for_key_padding(max_width, total_text_height, bbox) {
-            return Err(KeyPaintError::TextTooBig);
+        if let Room::Insufficient(problems) =
+            room_for_key_padding(max_width, total_text_height, bbox)
+        {
+            return Err(KeyPaintError::TextTooBig {
+                msg: format!("no room for key padding: {}", problems.join("\n")),
+                lines,
+            });
         }
         let x_midline = (bbox.left() + bbox.right()) / 2.0;
         let y_midline = (bbox.top() + bbox.bottom()) / 2.0;
@@ -591,31 +738,54 @@ impl KeyPainter for HtmlCanvas2DPainter {
         );
         self.context.stroke();
 
-        let mut successfully_drew_text = false;
-        for font_size in (1..=28).rev() {
-            let font = format!("{font_size}px sans-serif");
-            self.context.set_font(&font);
-            event!(Level::DEBUG, "Trying font '{font}' for label {label:?}");
-            match self.fill_multiline_text(keybox, label.text, label_css_color) {
-                Err(KeyPaintError::TextTooBig) => {
-                    continue; // Try a smaller font size.
+        let mut current_error: Option<KeyPaintError> = None;
+        if !label.text.is_empty() {
+            for font_size in (1..=28).rev() {
+                let font = format!("{font_size}px sans-serif");
+                self.context.set_font(&font);
+                event!(Level::DEBUG, "Trying font '{font}' for label {label:?}");
+                match self.fill_multiline_text(keybox, label.text, label_css_color) {
+                    Ok(()) => {
+                        current_error = None;
+                    }
+                    Err(KeyPaintError::InvalidFontMetrics(msg)) => {
+                        current_error = Some(KeyPaintError::InvalidFontMetrics(format!(
+                            "font metrics for {:?} in font '{}' are invalid: {}",
+                            label.text, font, msg
+                        )));
+                    }
+                    Err(e) => {
+                        current_error = Some(e);
+                    }
                 }
-                Err(KeyPaintError::Failed(why)) => {
-                    return Err(KeyPaintError::Failed(format!(
-                        "failed to draw multiline text in font {font_size}: {why}"
-                    )));
-                }
-                Ok(()) => {
-                    successfully_drew_text = true;
-                    event!(Level::DEBUG, "Chose font '{font}' for label {label:?}");
-                    break;
+                match &current_error {
+                    Some(KeyPaintError::InvalidFontMetrics(msg)) => {
+                        event!(
+                            Level::WARN,
+                            "Invalid font metrics for '{}' ({}); trying a smaller font size",
+                            font,
+                            msg
+                        );
+                        continue; // Try a smaller font size.
+                    }
+                    Some(KeyPaintError::TextTooBig { msg: _, lines: _ }) => {
+                        continue; // Try a smaller font size.
+                    }
+                    Some(KeyPaintError::Failed(why)) => {
+                        return Err(KeyPaintError::Failed(format!(
+                            "failed to draw multiline text in font {font_size}: {why}"
+                        )));
+                    }
+                    None => {
+                        event!(Level::DEBUG, "Chose font '{font}' for label {label:?}");
+                        break;
+                    }
                 }
             }
         }
-        if successfully_drew_text {
-            Ok(())
-        } else {
-            Err(KeyPaintError::TextTooBig)
+        match current_error {
+            None => Ok(()),
+            Some(error) => Err(error),
         }
     }
 }
