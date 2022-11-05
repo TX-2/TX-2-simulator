@@ -12,23 +12,26 @@ From [the Wikipedia entry for the TX-2](https://en.wikipedia.org/wiki/TX-2):
 > chief architect of the TX-2.
 
 The [OVERVIEW](docs/OVERVIEW.md) file explains the high-level design
-of the simulator.
+of the simulator.  More information is available at the [TX-2
+Project's website](https://tx-2.github.io/).
 
 ## Trying It Out
 
 The simulator doesn't emulate all the features of the original TX-2
 yet, but you can still try it out.
 
-### Building and Running The Command-Line Tools
-
-You can [try out the command-line simulator and tools by following
-these instructions](docs/build/cli.md).
-
 ### Building and Running the Web-based simulator
 
 You can either try it on-line [here](https://tx-2.github.io/demo/) or
 build and run it youself, by following [these
 instructions](docs/build/web.md).
+
+### Building and Running The Command-Line Tools
+
+Hardware emulation is less complete in the command-line version.
+
+You can [try out the command-line simulator and tools by following
+these instructions](docs/build/cli.md).
 
 ## Contributing
 
