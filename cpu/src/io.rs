@@ -38,6 +38,7 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::ops::Shl;
+use std::rc::Rc;
 use std::time::Duration;
 
 use serde::Serialize;
@@ -50,6 +51,7 @@ use crate::changelog::ChangeIndex;
 use crate::context::Context;
 use crate::event::*;
 use crate::PETR;
+use base::charset::LincolnState;
 use base::prelude::*;
 
 mod dev_lincoln_writer;
@@ -727,10 +729,22 @@ impl Default for DeviceManager {
 }
 
 pub fn set_up_peripherals(ctx: &Context, devices: &mut DeviceManager) {
-    fn attach_lw_output(ctx: &Context, unit: Unsigned6Bit, devices: &mut DeviceManager) {
-        devices.attach(ctx, unit, false, Box::new(LincolnWriterOutput::new(unit)));
+    fn attach_lw_output(
+        ctx: &Context,
+        unit: Unsigned6Bit,
+        state: Rc<LincolnState>,
+        devices: &mut DeviceManager,
+    ) {
+        devices.attach(
+            ctx,
+            unit,
+            false,
+            Box::new(LincolnWriterOutput::new(unit, state)),
+        );
     }
 
     devices.attach(ctx, PETR, false, Box::new(Petr::new()));
-    attach_lw_output(ctx, u6!(0o66), devices);
+
+    let lw66state = Rc::new(LincolnState::default());
+    attach_lw_output(ctx, u6!(0o66), lw66state, devices);
 }

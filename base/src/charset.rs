@@ -182,6 +182,13 @@ pub struct LincolnState {
     pub colour: Colour,
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub struct LincolnStateTextInfo {
+    pub script: &'static str,
+    pub case: &'static str,
+    pub colour: &'static str,
+}
+
 impl Default for LincolnState {
     fn default() -> Self {
         // Carriage return sets the LW to lower case and normal script
@@ -191,6 +198,46 @@ impl Default for LincolnState {
             script: Script::Normal,
             uppercase: false,
             colour: Colour::Black,
+        }
+    }
+}
+
+impl LincolnState {
+    /// CARRIAGE RETURN also has the side effect of setting the
+    /// "keyboard" to lower case and "normal script".  This statement
+    /// appears in the description if the Lincoln Writer in the Users
+    /// Handbook (page 4-37 and again on 4-41).  The document
+    /// explicitly states that a write of this code (from the TX-2 to
+    /// the Lincoln Writer) also affects the state of the keyboard. On
+    /// page 4-41 the document also states that carriage return
+    /// written by the TX-2 to the Lincoln Writer has the same effect.
+    ///
+    /// XXX: both of the previous two statements describe the TX2->LW
+    /// direction, re-check the documentation for what happens in the
+    /// other direction.
+    fn on_carriage_return(&mut self) {
+        self.script = Script::Normal;
+        self.uppercase = false;
+    }
+}
+
+impl From<&LincolnState> for LincolnStateTextInfo {
+    fn from(state: &LincolnState) -> LincolnStateTextInfo {
+        LincolnStateTextInfo {
+            script: match state.script {
+                Script::Normal => "Normal script",
+                Script::Super => "Superscript",
+                Script::Sub => "Subscript",
+            },
+            case: if state.uppercase {
+                "Uppercase"
+            } else {
+                "Lower case"
+            },
+            colour: match state.colour {
+                Colour::Black => "Black",
+                Colour::Red => "Red",
+            },
         }
     }
 }
@@ -333,17 +380,7 @@ pub fn lincoln_char_to_described_char(
         0o56 => by_case(',', '\u{0027}'), // Single apostrophe, U+0027
         0o57 => by_case('.', '*'),
         0o60 => {
-            // CARRIAGE RETURN also has the side effect of setting the
-            // "keyboard" to lower case and "normal script".  This
-            // statement appears in the description if the Lincoln
-            // Writer in the Users Handbook (page 4-37 and again on
-            // 4-41).  The document explicitly states that a write of
-            // this code (from the TX-2 to the Lincoln Writer) also
-            // affects the state of the keyboard. On page 4-41 the
-            // document also states that carriage return written by
-            // the TX-2 to the Lincoln Writer has the same effect.
-            state.script = Script::Normal;
-            state.uppercase = false;
+            state.on_carriage_return();
             // Despite the state change, on input only the 060 is
             // emitted by the Lincoln Writer.  Carriage Return also
             // advances the paper (i.e. performs a line feed).

@@ -9,14 +9,17 @@
 ///! comparable with that of the IBM Selectric typewriter, which is
 ///! 14.8 characters per second.  This works out at roughly 68
 ///! milliseconds per character.
+use std::borrow::Borrow;
 use std::fmt::Debug;
+use std::rc::Rc;
 use std::time::Duration;
 
 use crate::context::Context;
 use crate::event::OutputEvent;
 use crate::io::{FlagChange, TransferFailed, Unit, UnitStatus};
-use crate::types::*;
-use base::charset::{lincoln_char_to_described_char, Colour, LincolnState, Script};
+use crate::{types::*, Alarm};
+use base::charset::LincolnStateTextInfo;
+use base::charset::{lincoln_char_to_described_char, LincolnState};
 use base::prelude::*;
 use tracing::{event, Level};
 
@@ -29,22 +32,17 @@ pub(crate) struct LincolnWriterOutput {
     mode: Unsigned12Bit,
     connected: bool,
     transmit_will_be_finished_at: Option<Duration>,
-    // When we implement Lincoln Writer input, we will need to
-    // determine a way to share the state information between output
-    // and input channels, since this is the way the LW works.  For
-    // example, carriage return sets the LW to lower case and normal
-    // script, affecting the way input behaves as well as output.
-    state: LincolnState,
+    state: Rc<LincolnState>,
 }
 
 impl LincolnWriterOutput {
-    pub(crate) fn new(unit: Unsigned6Bit) -> LincolnWriterOutput {
+    pub(crate) fn new(unit: Unsigned6Bit, state: Rc<LincolnState>) -> LincolnWriterOutput {
         LincolnWriterOutput {
             unit,
             mode: Unsigned12Bit::ZERO,
             connected: false,
             transmit_will_be_finished_at: None,
-            state: LincolnState::default(),
+            state,
         }
     }
 }
@@ -114,41 +112,54 @@ impl Unit for LincolnWriterOutput {
         ctx: &Context,
         source: base::Unsigned36Bit,
     ) -> Result<Option<OutputEvent>, TransferFailed> {
-        match self.transmit_will_be_finished_at {
-            Some(t) if t > ctx.simulated_time => {
+        match Rc::get_mut(&mut self.state) {
+            Some(state) => {
+                match self.transmit_will_be_finished_at {
+                    Some(t) if t > ctx.simulated_time => {
+                        event!(
+                            Level::DEBUG,
+                            "cannot complete TSD, we are already transmitting"
+                        );
+                        return Err(TransferFailed::BufferNotFree);
+                    }
+                    None => {
+                        event!(Level::TRACE, "this is the unit's first transmit operation");
+                    }
+                    Some(then) => {
+                        let idle_for = ctx.simulated_time - then;
+                        event!(
+                            Level::TRACE,
+                            "ready to transmit more data (and have been for {idle_for:?}"
+                        );
+                    }
+                }
+                let done_at = ctx.simulated_time + CHAR_TRANSMIT_TIME;
                 event!(
                     Level::DEBUG,
-                    "cannot complete TSD, we are already transmitting"
+                    "beginning new transmit operation at {:?}, it will complete at {:?}",
+                    &ctx.simulated_time,
+                    &done_at
                 );
-                return Err(TransferFailed::BufferNotFree);
+                self.transmit_will_be_finished_at = Some(done_at);
+                let char_data = Unsigned6Bit::try_from(u64::from(source) & 0o77)
+                    .expect("item should only have six value bits (this is a bug)");
+                match lincoln_char_to_described_char(char_data, state) {
+                    None => Ok(None),
+                    Some(described_char) => Ok(Some(OutputEvent::LincolnWriterPrint {
+                        unit: self.unit,
+                        ch: described_char,
+                    })),
+                }
             }
             None => {
-                event!(Level::TRACE, "this is the unit's first transmit operation");
+                Err(TransferFailed::Alarm(Alarm::BUGAL {
+                    instr: None,
+                    message: format!(
+                        "attempted to transmit on unit {:o} while the Lincoln Writer state is being mutated by receive path",
+                        self.unit,
+                    )
+                }))
             }
-            Some(then) => {
-                let idle_for = ctx.simulated_time - then;
-                event!(
-                    Level::TRACE,
-                    "ready to transmit more data (and have been for {idle_for:?}"
-                );
-            }
-        }
-        let done_at = ctx.simulated_time + CHAR_TRANSMIT_TIME;
-        event!(
-            Level::DEBUG,
-            "beginning new transmit operation at {:?}, it will complete at {:?}",
-            &ctx.simulated_time,
-            &done_at
-        );
-        self.transmit_will_be_finished_at = Some(done_at);
-        let char_data = Unsigned6Bit::try_from(u64::from(source) & 0o77)
-            .expect("item should only have six value bits (this is a bug)");
-        match lincoln_char_to_described_char(char_data, &mut self.state) {
-            None => Ok(None),
-            Some(described_char) => Ok(Some(OutputEvent::LincolnWriterPrint {
-                unit: self.unit,
-                ch: described_char,
-            })),
         }
     }
 
@@ -169,6 +180,8 @@ impl Unit for LincolnWriterOutput {
     }
 
     fn text_info(&self, _ctx: &Context) -> String {
+        let state: &LincolnState = self.state.borrow();
+        let info: LincolnStateTextInfo = state.into();
         format!(
             "{}. {}. {}. {}. {}.",
             if self.connected {
@@ -181,20 +194,9 @@ impl Unit for LincolnWriterOutput {
             } else {
                 "Idle"
             },
-            match self.state.script {
-                Script::Normal => "Normal script",
-                Script::Super => "Superscript",
-                Script::Sub => "Subscript",
-            },
-            if self.state.uppercase {
-                "Uppercase"
-            } else {
-                "Lower case"
-            },
-            match self.state.colour {
-                Colour::Black => "Black",
-                Colour::Red => "Red",
-            }
+            info.script,
+            info.case,
+            info.colour
         )
     }
 }
