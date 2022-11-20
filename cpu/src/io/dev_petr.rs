@@ -420,12 +420,13 @@ impl Unit for Petr {
         self.activity = Activity::Stopped;
     }
 
-    fn on_input_event(&mut self, _ctx: &Context, event: InputEvent) {
-        match event {
-            InputEvent::PetrMountPaperTape { data } => {
-                event!(Level::DEBUG, "Mounting a tape ({} bytes)", data.len());
-                self.tape_data = data;
-            }
+    fn on_input_event(&mut self, _ctx: &Context, event: InputEvent) -> InputEventResult {
+        if let InputEvent::PetrMountPaperTape { data } = event {
+            event!(Level::DEBUG, "Mounting a tape ({} bytes)", data.len());
+            self.tape_data = data;
+            InputEventResult::Ok
+        } else {
+            InputEventResult::InputEventNotValidForDevice
         }
     }
 

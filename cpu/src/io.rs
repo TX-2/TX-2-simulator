@@ -58,7 +58,7 @@ mod dev_lincoln_writer;
 mod dev_petr;
 mod pollq;
 
-use dev_lincoln_writer::LincolnWriterOutput;
+use dev_lincoln_writer::{LincolnWriterInput, LincolnWriterOutput};
 pub(crate) use dev_petr::Petr;
 use pollq::PollQueue;
 
@@ -202,7 +202,7 @@ pub trait Unit {
         source: Unsigned36Bit,
     ) -> Result<Option<OutputEvent>, TransferFailed>;
     fn name(&self) -> String;
-    fn on_input_event(&mut self, ctx: &Context, event: InputEvent);
+    fn on_input_event(&mut self, ctx: &Context, event: InputEvent) -> InputEventResult;
 }
 
 pub struct AttachedUnit {
@@ -320,7 +320,7 @@ impl AttachedUnit {
         self.inner.borrow_mut().write(ctx, source)
     }
 
-    pub fn on_input_event(&self, ctx: &Context, event: InputEvent) {
+    pub fn on_input_event(&self, ctx: &Context, event: InputEvent) -> InputEventResult {
         self.inner.borrow_mut().on_input_event(ctx, event)
     }
 
@@ -455,15 +455,14 @@ impl DeviceManager {
         ctx: &Context,
         unit_number: Unsigned6Bit,
         input_event: InputEvent,
-    ) {
+    ) -> InputEventResult {
         self.mark_device_changed(unit_number);
         if let Some(attached) = self.devices.get_mut(&unit_number) {
             attached.on_input_event(ctx, input_event)
         } else {
             // This is an input event for a unit which is apparently
             // not attached.
-            //
-            // TODO: consider returning an error result for this case.
+            InputEventResult::UnknownSource
         }
     }
 
@@ -729,22 +728,20 @@ impl Default for DeviceManager {
 }
 
 pub fn set_up_peripherals(ctx: &Context, devices: &mut DeviceManager) {
-    fn attach_lw_output(
+    const NOT_IN_MAINTENANCE: bool = false;
+    fn attach_lw(
         ctx: &Context,
-        unit: Unsigned6Bit,
-        state: Rc<LincolnState>,
+        input_unit: Unsigned6Bit,
+        output_unit: Unsigned6Bit,
         devices: &mut DeviceManager,
     ) {
-        devices.attach(
-            ctx,
-            unit,
-            false,
-            Box::new(LincolnWriterOutput::new(unit, state)),
-        );
+        let state = Rc::new(RefCell::new(LincolnState::default()));
+        let output = Box::new(LincolnWriterOutput::new(output_unit, state.clone()));
+        let input = Box::new(LincolnWriterInput::new(input_unit, state));
+        devices.attach(ctx, output_unit, NOT_IN_MAINTENANCE, output);
+        devices.attach(ctx, input_unit, NOT_IN_MAINTENANCE, input);
     }
 
-    devices.attach(ctx, PETR, false, Box::new(Petr::new()));
-
-    let lw66state = Rc::new(LincolnState::default());
-    attach_lw_output(ctx, u6!(0o66), lw66state, devices);
+    devices.attach(ctx, PETR, NOT_IN_MAINTENANCE, Box::new(Petr::new()));
+    attach_lw(ctx, u6!(0o65), u6!(0o66), devices);
 }

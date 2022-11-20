@@ -285,6 +285,37 @@ fn bycase(lower: char, upper: char, state: &LincolnState) -> Option<char> {
     Some(if state.uppercase { upper } else { lower })
 }
 
+/// Perform any state changes implied by a character code.
+pub fn lincoln_writer_state_update(lin_ch: Unsigned6Bit, state: &mut LincolnState) {
+    match u8::from(lin_ch) {
+        0o60 => {
+            state.on_carriage_return();
+        }
+        0o63 => {
+            state.colour = Colour::Black;
+        }
+        0o64 => {
+            state.script = Script::Super;
+        }
+        0o65 => {
+            state.script = Script::Normal;
+        }
+        0o66 => {
+            state.script = Script::Sub;
+        }
+        0o67 => {
+            state.colour = Colour::Red;
+        }
+        0o74 => {
+            state.uppercase = false;
+        }
+        0o75 => {
+            state.uppercase = true;
+        }
+        _ => (),
+    }
+}
+
 /// Convert a Lincoln Writer character to a description which can
 /// be used to print a Unicode approximation of it.
 ///
@@ -317,6 +348,7 @@ pub fn lincoln_char_to_described_char(
     lin_ch: Unsigned6Bit,
     state: &mut LincolnState,
 ) -> Option<DescribedChar> {
+    lincoln_writer_state_update(lin_ch, state);
     let advance: bool = lin_ch != 0o12 && lin_ch != 0o13;
     let by_case = |lower, upper: char| -> Option<char> { bycase(lower, upper, state) };
     let base_char: Option<char> = match u8::from(lin_ch) {
@@ -380,48 +412,24 @@ pub fn lincoln_char_to_described_char(
         0o56 => by_case(',', '\u{0027}'), // Single apostrophe, U+0027
         0o57 => by_case('.', '*'),
         0o60 => {
-            state.on_carriage_return();
             // Despite the state change, on input only the 060 is
             // emitted by the Lincoln Writer.  Carriage Return also
             // advances the paper (i.e. performs a line feed).
-            Some('\r')
+            Some('\r') // state change was already done.
         }
         0o61 => Some('\t'),
         0o62 => Some('\u{0008}'), // backspace, U+0008
-        0o63 => {
-            // COLOR BLACK
-            state.colour = Colour::Black;
-            None
-        }
-        0o64 => {
-            state.script = Script::Super;
-            None
-        }
-        0o65 => {
-            state.script = Script::Normal;
-            None
-        }
-        0o66 => {
-            state.script = Script::Sub;
-            None
-        }
-        0o67 => {
-            // COLOR RED
-            state.colour = Colour::Red;
-            None
-        }
-        0o70 => Some(' '),                                // space
+        0o63 => None,             // COLOR BLACK; state change already done
+        0o64 => None,             // SUPER; state change already done
+        0o65 => None,             // NORMAL; state change already done
+        0o66 => None,             // SUB; state change already done
+        0o67 => None,             // COLOR RED; state change already done
+        0o70 => Some(' '),        // space
         0o71 => return Some(unprintable(lin_ch, *state)), // WORD EXAM
-        0o72 => Some('\n'),                               // LINE FEED
-        0o73 => Some('\u{008D}'),                         // Reverse line feed
-        0o74 => {
-            state.uppercase = false;
-            None
-        }
-        0o75 => {
-            state.uppercase = true;
-            None
-        }
+        0o72 => Some('\n'),       // LINE FEED
+        0o73 => Some('\u{008D}'), // Reverse line feed
+        0o74 => None,             // LOWER CASE; state change already done
+        0o75 => None,             // UPPER CASE; state change already done
         0o76 => return Some(unprintable(lin_ch, *state)), // STOP
         0o77 => {
             // Supposedly NULLIFY but it's used on tape to delete

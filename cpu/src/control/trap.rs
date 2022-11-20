@@ -166,8 +166,9 @@ impl Unit for TrapCircuit {
         // Does nothing.
     }
 
-    fn on_input_event(&mut self, _ctx: &Context, _event: InputEvent) {
+    fn on_input_event(&mut self, _ctx: &Context, _event: InputEvent) -> InputEventResult {
         // Does nothing.
+        InputEventResult::Ok
     }
 
     fn text_info(&self, _ctx: &Context) -> String {
