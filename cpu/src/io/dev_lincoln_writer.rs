@@ -48,6 +48,14 @@ impl LincolnWriterOutput {
             state,
         }
     }
+
+    fn lw_number(&self) -> u8 {
+        match u8::from(self.unit) {
+            0o66 => 1,
+            0o72 => 2,
+            n => n,
+        }
+    }
 }
 
 impl Unit for LincolnWriterOutput {
@@ -167,7 +175,7 @@ impl Unit for LincolnWriterOutput {
     }
 
     fn name(&self) -> String {
-        format!("Lincoln Writer (output), unit {:2o}", self.unit)
+        format!("Lincoln Writer output {:2o}", self.lw_number())
     }
 
     fn transfer_mode(&self) -> crate::TransferMode {
@@ -367,6 +375,14 @@ impl LincolnWriterInput {
             state,
         }
     }
+
+    fn lw_number(&self) -> u8 {
+        match u8::from(self.unit) {
+            0o65 => 1,
+            0o71 => 2,
+            n => n,
+        }
+    }
 }
 
 impl Unit for LincolnWriterInput {
@@ -431,7 +447,7 @@ impl Unit for LincolnWriterInput {
     }
 
     fn name(&self) -> String {
-        format!("Lincoln Writer (input), unit {:2o}", self.unit)
+        format!("Lincoln Writer input {:2o}", self.lw_number())
     }
 
     // The send and receive processes involve different units but
