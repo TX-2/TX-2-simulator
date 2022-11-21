@@ -188,25 +188,22 @@ impl Unit for LincolnWriterOutput {
     }
 
     fn text_info(&self, _ctx: &Context) -> String {
-        let head = format!(
-            "{}. {}.",
-            if self.connected {
-                "Connected"
-            } else {
-                "Disconnected"
-            },
-            if self.transmit_will_be_finished_at.is_some() {
-                "Transmitting"
-            } else {
-                "Idle"
-            },
-        );
+        // Don't indicate connected/disconnected, because that is
+        // shown separately.
+        let maybe_transmitting = if self.transmit_will_be_finished_at.is_some() {
+            "Transmitting."
+        } else {
+            "Idle."
+        };
         match self.state.try_borrow() {
             Ok(state) => {
                 let info: LincolnStateTextInfo = (&*state).into();
-                format!("{} {}. {}. {}.", head, info.script, info.case, info.colour)
+                format!(
+                    "{} {}. {}. {}.",
+                    maybe_transmitting, info.script, info.case, info.colour
+                )
             }
-            Err(_) => head,
+            Err(_) => maybe_transmitting.to_string(),
         }
     }
 }
@@ -391,19 +388,14 @@ impl Unit for LincolnWriterInput {
     }
 
     fn text_info(&self, _ctx: &Context) -> String {
-        format!(
-            "{}. {}.",
-            if self.connected {
-                "Connected"
-            } else {
-                "Disconnected"
-            },
-            if self.data.is_empty() {
-                "Idle"
-            } else {
-                "Input available"
-            }
-        )
+        // Don't show connected/disconnected state here, as that is
+        // shown separately.
+        if self.data.is_empty() {
+            "Idle."
+        } else {
+            "Input available."
+        }
+        .to_string()
     }
 
     fn connect(&mut self, _ctx: &Context, mode: Unsigned12Bit) {
