@@ -17,7 +17,10 @@ use tracing_subscriber::prelude::*;
 
 use base::prelude::*;
 use clock::{BasicClock, Clock};
-use cpu::{self, Alarm, MemoryConfiguration, OutputEvent, ResetMode, RunMode, Tx2, UnmaskedAlarm};
+use cpu::{
+    self, Alarm, AlarmDetails, MemoryConfiguration, OutputEvent, ResetMode, RunMode, Tx2,
+    UnmaskedAlarm,
+};
 
 // Thanks to Google for allowing this code to be open-sourced.  I
 // generally prefer to correspond about this project using my
@@ -103,7 +106,10 @@ fn run_until_alarm(
                                 // indicate that there has been a failure,
                                 // instead of just terminating the simulation.
                                 break UnmaskedAlarm {
-                                    alarm: Alarm::MISAL { unit },
+                                    alarm: Alarm {
+                                        sequence: Some(unit),
+                                        details: AlarmDetails::MISAL,
+                                    },
                                     address: None,
                                     when: tick_context.simulated_time,
                                 };

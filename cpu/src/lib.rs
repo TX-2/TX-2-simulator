@@ -19,7 +19,7 @@ mod memory;
 mod tx2;
 mod types;
 
-pub use alarm::{Alarm, AlarmKind, UnmaskedAlarm};
+pub use alarm::{Alarm, AlarmDetails, AlarmKind, UnmaskedAlarm};
 pub use alarmunit::AlarmStatus;
 pub use context::Context;
 pub use control::{ControlRegisters, ControlUnit, PanicOnUnmaskedAlarm, ResetMode, RunMode};

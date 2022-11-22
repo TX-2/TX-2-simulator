@@ -5,8 +5,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::Serialize;
 use tracing::{event, Level};
 
-use crate::alarm::{Alarm, AlarmKind, AlarmMaskability, Alarmer};
+use crate::alarm::{Alarm, AlarmDetails, AlarmKind, AlarmMaskability, Alarmer};
 use crate::changelog::ChangeIndex;
+
+#[cfg(test)]
+use base::Unsigned6Bit;
 
 #[derive(Debug, Serialize)]
 pub struct AlarmStatus {
@@ -80,9 +83,12 @@ impl AlarmUnit {
     pub fn mask(&mut self, kind: AlarmKind) -> Result<(), Alarm> {
         match kind.maskable() {
             AlarmMaskability::Unmaskable => {
-                let bug = Alarm::BUGAL {
-                    instr: None,
-                    message: format!("attempt to mask unmaskable alarm {kind}"),
+                let bug = Alarm {
+                    sequence: None,
+                    details: AlarmDetails::BUGAL {
+                        instr: None,
+                        message: format!("attempt to mask unmaskable alarm {kind}"),
+                    },
                 };
                 Err(self.always_fire(bug))
             }
@@ -179,14 +185,18 @@ impl Alarmer for AlarmUnit {
     fn always_fire(&mut self, alarm_instance: Alarm) -> Alarm {
         let kind = alarm_instance.kind();
         self.changes.add(kind);
+        let sequence = alarm_instance.sequence;
         match self.set_active(alarm_instance) {
             Err(a) => a,
             Ok(()) => {
-                let bug = Alarm::BUGAL {
-                    instr: None,
-                    message: format!(
-                        "alarm {kind} is masked, but the caller assumed it could not be"
-                    ),
+                let bug = Alarm {
+                    sequence,
+                    details: AlarmDetails::BUGAL {
+                        instr: None,
+                        message: format!(
+                            "alarm {kind} is masked, but the caller assumed it could not be"
+                        ),
+                    },
                 };
                 match self.set_active(bug) {
                     Err(a) => a,
@@ -205,8 +215,14 @@ fn unmaskable_alarms_are_not_maskable() {
     assert!(alarm_unit.mask(AlarmKind::ROUNDTUITAL).is_err());
     // Now we raise some non-maskable alarm.
     assert!(matches!(
-        alarm_unit.fire_if_not_masked(Alarm::ROUNDTUITAL("I am not maskable!".to_string())),
-        Err(Alarm::ROUNDTUITAL(_))
+        alarm_unit.fire_if_not_masked(Alarm {
+            sequence: Some(Unsigned6Bit::ZERO),
+            details: AlarmDetails::ROUNDTUITAL("I am not maskable!".to_string()),
+        }),
+        Err(Alarm {
+            sequence: Some(_),
+            details: AlarmDetails::ROUNDTUITAL(_),
+        })
     ));
     // Verify that the alarm manager considers that an unmasked (in
     // this case because unmaskable) alarm is active.
@@ -218,11 +234,17 @@ fn maskable_alarms_are_not_masked_by_default() {
     let mut alarm_unit = AlarmUnit::new_with_panic(false);
     assert!(!alarm_unit.unmasked_alarm_active());
     // Now we raise some maskable, but not masked, alarm.
-    let the_alarm = Alarm::PSAL(22, "some PPSAL alarm".to_string());
+    let the_alarm = Alarm {
+        sequence: Some(Unsigned6Bit::ZERO),
+        details: AlarmDetails::PSAL(22, "some PPSAL alarm".to_string()),
+    };
     // raise the alarm, verify that it really fires.
     assert!(matches!(
         alarm_unit.fire_if_not_masked(the_alarm),
-        Err(Alarm::PSAL(22, _))
+        Err(Alarm {
+            sequence: _,
+            details: AlarmDetails::PSAL(22, _),
+        })
     ));
     // Verify that the alarm manager considers that an unmasked (in
     // this case because maskable but not actually masked) alarm is active.
@@ -236,10 +258,10 @@ fn maskable_alarms_are_not_masked_by_default() {
 
 // Alarm enumerators we don't expect to use:
 //
-// MPAL,		     // data parity error (in STUV)
-// NPAL,		     // instruction parity error (in STUV)
-// XPAL,		     // parity error in X-memory
-// FPAL,		     // parity error in F-memory
-// TSAL,		     // voltage issue; can't happen in an emulator.
+// MPAL,                     // data parity error (in STUV)
+// NPAL,                     // instruction parity error (in STUV)
+// XPAL,                     // parity error in X-memory
+// FPAL,                     // parity error in F-memory
+// TSAL,                     // voltage issue; can't happen in an emulator.
 // USAL,                     // voltage issue; can't happen in an emulator.
 // Mouse-trap

@@ -1,7 +1,7 @@
 use base::prelude::*;
 use base::subword;
 
-use crate::alarm::{Alarm, Alarmer, BadMemOp};
+use crate::alarm::{Alarm, AlarmDetails, Alarmer, BadMemOp};
 use crate::context::Context;
 use crate::control::{ControlUnit, OpcodeResult, ProgramCounterChange};
 use crate::exchanger::exchanged_value_for_load_without_sign_extension;
@@ -49,18 +49,24 @@ impl ControlUnit {
                 // not, but if we disallow this for now, we can
                 // use any resulting error to identify cases where
                 // this is in fact used.
-                self.alarm_unit.fire_if_not_masked(Alarm::PSAL(
-                    u32::from(self.regs.n.operand_address_and_defer_bit()),
-                    format!(
-                        "JMP target has deferred address {:#o}",
-                        self.regs.n.operand_address()
+                self.alarm_unit.fire_if_not_masked(Alarm {
+                    sequence: self.regs.k,
+                    details: AlarmDetails::PSAL(
+                        u32::from(self.regs.n.operand_address_and_defer_bit()),
+                        format!(
+                            "JMP target has deferred address {:#o}",
+                            self.regs.n.operand_address()
+                        ),
                     ),
-                ))?;
+                })?;
                 // If deferred addressing is allowed for JMP, we will
                 // need to implement it.  It's not yet implemented.
-                return Err(self.alarm_unit.always_fire(Alarm::ROUNDTUITAL(
-                    "deferred JMP is not yet implemented".to_string(),
-                )));
+                return Err(self.alarm_unit.always_fire(Alarm {
+                    sequence: self.regs.k,
+                    details: AlarmDetails::ROUNDTUITAL(
+                        "deferred JMP is not yet implemented".to_string(),
+                    ),
+                }));
             }
             OperandAddress::Direct(phys) => phys,
         };
@@ -122,28 +128,34 @@ impl ControlUnit {
         let prev_bit_value: Option<bool> = match mem.change_bit(ctx, &target, &change) {
             Ok(prev) => prev,
             Err(MemoryOpFailure::NotMapped(addr)) => {
-                self.alarm_unit.fire_if_not_masked(Alarm::QSAL(
-                    self.regs.n,
-                    BadMemOp::Write(target.into()),
-                    format!(
-                        "SKM instruction attempted to access address {:o} but it is not mapped",
-                        addr,
+                self.alarm_unit.fire_if_not_masked(Alarm {
+                    sequence: self.regs.k,
+                    details: AlarmDetails::QSAL(
+                        self.regs.n,
+                        BadMemOp::Write(target.into()),
+                        format!(
+                            "SKM instruction attempted to access address {:o} but it is not mapped",
+                            addr,
+                        ),
                     ),
-                ))?;
+                })?;
                 // The alarm is masked.  We turn the memory mutation into a no-op.
                 return Ok(OpcodeResult::default());
             }
             Err(MemoryOpFailure::ReadOnly(_, _)) => {
                 self.alarm_unit.fire_if_not_masked(
-                    Alarm::QSAL(
-                        self.regs.n,
-                        BadMemOp::Write(target.into()),
-                        format!(
-                            "SKM instruction attempted to modify (instruction configuration={:o}) a read-only location {:o}",
-                            cf,
-                            target,
-                    ),
-                    ))?;
+                    Alarm {
+                        sequence: self.regs.k,
+                        details: AlarmDetails::QSAL(
+                            self.regs.n,
+                            BadMemOp::Write(target.into()),
+                            format!(
+                                "SKM instruction attempted to modify (instruction configuration={:o}) a read-only location {:o}",
+                                cf,
+                                target,
+                            ),
+                        )
+                    })?;
                 // The alarm is masked.  We turn the memory mutation into a no-op.
                 return Ok(OpcodeResult::default());
             }
@@ -192,9 +204,13 @@ impl ControlUnit {
             self.fetch_operand_from_address_without_exchange(ctx, mem, &target, &UpdateE::No)?;
         dbg!(&word);
         if self.regs.e != existing_e_value {
-            return Err(self.always_fire(Alarm::BUGAL {
-                instr: Some(self.regs.n),
-                message: "memory fetch during execution of SED changed the E register".to_string(),
+            return Err(self.always_fire(Alarm {
+                sequence: self.regs.k,
+                details: AlarmDetails::BUGAL {
+                    instr: Some(self.regs.n),
+                    message: "memory fetch during execution of SED changed the E register"
+                        .to_string(),
+                },
             }));
         }
 

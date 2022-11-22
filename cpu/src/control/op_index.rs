@@ -13,7 +13,7 @@ use tracing::{event, Level};
 use base::prelude::*;
 use base::subword;
 
-use crate::alarm::{Alarm, Alarmer, BadMemOp};
+use crate::alarm::{Alarm, AlarmDetails, Alarmer, BadMemOp};
 use crate::context::Context;
 use crate::control::{
     sign_extend_index_value, ControlUnit, OpcodeResult, ProgramCounterChange, UpdateE,
@@ -56,15 +56,17 @@ impl ControlUnit {
                     &MetaBitChange::None,
                 )
                 .map(|()| OpcodeResult::default()),
-            Err(Alarm::QSAL(inst, BadMemOp::Read(addr), msg)) => {
+            Err(Alarm {
+                sequence: _,
+                details: AlarmDetails::QSAL(inst, BadMemOp::Read(addr), msg),
+            }) => {
                 // That read operation just failed.  So we handle this
                 // as a _write_ failure, meaning that we change
                 // BadMemOp::Read to BadMemOp::Write.
-                self.alarm_unit.fire_if_not_masked(Alarm::QSAL(
-                    inst,
-                    BadMemOp::Write(addr),
-                    msg,
-                ))?;
+                self.alarm_unit.fire_if_not_masked(Alarm {
+                    sequence: self.regs.k,
+                    details: AlarmDetails::QSAL(inst, BadMemOp::Write(addr), msg),
+                })?;
                 Ok(OpcodeResult::default()) // QSAL is masked, we just carry on (the DPX instruction has no effect).
             }
             Err(other) => Err(other),
@@ -172,10 +174,13 @@ impl ControlUnit {
                 }
                 Ok(OpcodeResult::default())
             }
-            _ => Err(self.alarm_unit.always_fire(Alarm::ROUNDTUITAL(format!(
-                "SKX configuration {:#o} is not implemented yet",
-                inst.configuration()
-            )))),
+            _ => Err(self.alarm_unit.always_fire(Alarm {
+                sequence: self.regs.k,
+                details: AlarmDetails::ROUNDTUITAL(format!(
+                    "SKX configuration {:#o} is not implemented yet",
+                    inst.configuration()
+                )),
+            })),
         }
     }
 

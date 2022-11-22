@@ -1,6 +1,6 @@
 use core::time::Duration;
 
-use crate::alarm::Alarm;
+use crate::alarm::{Alarm, AlarmDetails};
 use crate::context::Context;
 use crate::control::ConfigurationMemorySetup;
 use crate::memory::MetaBitChange;
@@ -69,7 +69,13 @@ fn test_roundtuital_not_maskable() {
         Ok(_) => {
             panic!("execution of SCA is not expected to succeed, it is not implemented yet: {result:?}");
         }
-        Err((Alarm::ROUNDTUITAL(_), _)) => (),
+        Err((
+            Alarm {
+                sequence: _,
+                details: AlarmDetails::ROUNDTUITAL(_),
+            },
+            _,
+        )) => (),
         Err(_) => {
             panic!("expected execution of SCA to raise ROUNDTUITAL, but got {result:?}");
         }

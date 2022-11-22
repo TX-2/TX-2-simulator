@@ -45,7 +45,7 @@ use serde::Serialize;
 use tracing::{event, span, Level};
 
 use super::types::*;
-use crate::alarm::{Alarm, Alarmer};
+use crate::alarm::{Alarm, AlarmDetails, Alarmer};
 use crate::alarmunit::AlarmUnit;
 use crate::changelog::ChangeIndex;
 use crate::context::Context;
@@ -233,12 +233,15 @@ impl AttachedUnit {
             let output = f(self.inner.borrow().as_ref());
             Ok(output)
         } else {
-            Err(alarmer.always_fire(Alarm::BUGAL {
-                instr: None,
-                message: format!(
-                    "attempt read-only use (for {}) of disconnected unit {:o}",
-                    what, self.unit
-                ),
+            Err(alarmer.always_fire(Alarm {
+                sequence: Some(self.unit),
+                details: AlarmDetails::BUGAL {
+                    instr: None,
+                    message: format!(
+                        "attempt read-only use (for {}) of disconnected unit {:o}",
+                        what, self.unit
+                    ),
+                },
             }))
         }
     }
@@ -252,12 +255,15 @@ impl AttachedUnit {
             let output = f(self.inner.borrow_mut().as_mut());
             Ok(output)
         } else {
-            Err(alarmer.always_fire(Alarm::BUGAL {
-                instr: None,
-                message: format!(
-                    "attempt read-write use (for {}) of disconnected unit {:o}",
-                    what, self.unit
-                ),
+            Err(alarmer.always_fire(Alarm {
+                sequence: Some(self.unit),
+                details: AlarmDetails::BUGAL {
+                    instr: None,
+                    message: format!(
+                        "attempt read-write use (for {}) of disconnected unit {:o}",
+                        what, self.unit
+                    ),
+                },
             }))
         }
     }
@@ -490,10 +496,13 @@ impl DeviceManager {
                 ))
             }
             None => {
-                alarm_unit.fire_if_not_masked(Alarm::IOSAL {
-                    unit,
-                    operand: None,
-                    message: format!("unit {} is not known", unit),
+                alarm_unit.fire_if_not_masked(Alarm {
+                    sequence: Some(unit),
+                    details: AlarmDetails::IOSAL {
+                        unit,
+                        operand: None,
+                        message: format!("unit {} is not known", unit),
+                    },
                 })?;
                 // IOSAL is masked.
                 Ok(make_report_word_for_invalid_unit(unit, current_flag))
@@ -584,13 +593,19 @@ impl DeviceManager {
                         // software masking are both available; either should
                         // be able to mask it).
                         if unit_status.inability {
-                            alarm = Some(Alarm::IOSAL {
-                                unit: devno,
-                                operand: None,
-                                message: format!("unit {} reports inability (EIA)", devno),
+                            alarm = Some(Alarm {
+                                sequence: Some(devno),
+                                details: AlarmDetails::IOSAL {
+                                    unit: devno,
+                                    operand: None,
+                                    message: format!("unit {} reports inability (EIA)", devno),
+                                },
                             });
                         } else if unit_status.missed_data {
-                            alarm = Some(Alarm::MISAL { unit: devno });
+                            alarm = Some(Alarm {
+                                sequence: Some(devno),
+                                details: AlarmDetails::MISAL,
+                            });
                         }
                     }
                 }
@@ -642,10 +657,13 @@ impl DeviceManager {
                 attached.disconnect(ctx, alarm_unit)
             }
             None => {
-                alarm_unit.fire_if_not_masked(Alarm::IOSAL {
-                    unit: *device,
-                    operand: None,
-                    message: format!("Attempt to disconnect missing unit {}", device),
+                alarm_unit.fire_if_not_masked(Alarm {
+                    sequence: Some(*device),
+                    details: AlarmDetails::IOSAL {
+                        unit: *device,
+                        operand: None,
+                        message: format!("Attempt to disconnect missing unit {}", device),
+                    },
                 })?;
                 Ok(()) // IOSAL is masked, carry on.
             }
@@ -659,6 +677,7 @@ impl DeviceManager {
     pub fn connect(
         &mut self,
         ctx: &Context,
+        calling_sequence: Option<SequenceNumber>,
         device: &Unsigned6Bit,
         mode: Unsigned12Bit,
         alarm_unit: &mut AlarmUnit,
@@ -667,10 +686,13 @@ impl DeviceManager {
         match self.devices.get_mut(device) {
             Some(attached) => {
                 if attached.in_maintenance {
-                    Err(Alarm::IOSAL {
-                        unit: *device,
-                        operand: None,
-                        message: format!("Attempt to connect in-maint unit {}", device),
+                    Err(Alarm {
+                        sequence: Some(*device),
+                        details: AlarmDetails::IOSAL {
+                            unit: *device,
+                            operand: None,
+                            message: format!("Attempt to connect in-maint unit {}", device),
+                        },
                     })
                 } else {
                     let flag_change = if attached.is_disconnected_output_unit() {
@@ -684,10 +706,13 @@ impl DeviceManager {
                 }
             }
             None => {
-                alarm_unit.fire_if_not_masked(Alarm::IOSAL {
-                    unit: *device,
-                    operand: None,
-                    message: format!("Attempt to connect missing unit {}", device),
+                alarm_unit.fire_if_not_masked(Alarm {
+                    sequence: calling_sequence, // NOTE: not the same as *device.
+                    details: AlarmDetails::IOSAL {
+                        unit: *device,
+                        operand: None,
+                        message: format!("Attempt to connect missing unit {}", device),
+                    },
                 })?;
                 Ok(None) // IOSAL is masked, carry on
             }

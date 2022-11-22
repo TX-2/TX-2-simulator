@@ -18,7 +18,7 @@ use crate::context::Context;
 use crate::event::{InputEvent, InputEventError, OutputEvent};
 use crate::io::{FlagChange, TransferFailed, Unit, UnitStatus};
 use crate::types::*;
-use crate::Alarm;
+use crate::{Alarm, AlarmDetails};
 use base::charset::LincolnStateTextInfo;
 use base::charset::{lincoln_char_to_described_char, lincoln_writer_state_update, LincolnState};
 use base::prelude::*;
@@ -55,6 +55,13 @@ impl LincolnWriterOutput {
             0o66 => 1,
             0o72 => 2,
             n => n,
+        }
+    }
+
+    fn make_alarm(&self, details: AlarmDetails) -> Alarm {
+        Alarm {
+            sequence: Some(self.unit),
+            details,
         }
     }
 }
@@ -163,15 +170,13 @@ impl Unit for LincolnWriterOutput {
                     })),
                 }
             }
-            Err(e) => {
-                Err(TransferFailed::Alarm(Alarm::BUGAL {
+            Err(e) => Err(TransferFailed::Alarm(self.make_alarm(AlarmDetails::BUGAL {
                     instr: None,
                     message: format!(
                         "attempted to transmit on unit {:o} while the Lincoln Writer state is being mutated by receive path: {e}",
                         self.unit,
                     )
-                }))
-            }
+            })))
         }
     }
 

@@ -32,7 +32,7 @@ use base::prelude::*;
 use base::subword;
 
 use super::*;
-use crate::alarm::{Alarm, AlarmKind, Alarmer, BadMemOp};
+use crate::alarm::{Alarm, AlarmDetails, AlarmKind, Alarmer, BadMemOp};
 use crate::alarmunit::AlarmUnit;
 use crate::context::Context;
 use crate::exchanger::{
@@ -509,6 +509,18 @@ impl ControlUnit {
         }
     }
 
+    fn make_alarm(&self, details: AlarmDetails) -> Alarm {
+        Alarm {
+            sequence: self.regs.k,
+            details,
+        }
+    }
+
+    fn fire_details_if_not_masked(&mut self, alarm_details: AlarmDetails) -> Result<(), Alarm> {
+        self.alarm_unit
+            .fire_if_not_masked(self.make_alarm(alarm_details))
+    }
+
     pub fn set_alarm_masked(&mut self, kind: AlarmKind, masked: bool) -> Result<(), Alarm> {
         if masked {
             self.alarm_unit.mask(kind)
@@ -912,10 +924,13 @@ impl ControlUnit {
             }
             Err(e) => match e {
                 MemoryOpFailure::NotMapped(addr) => {
-                    self.alarm_unit.fire_if_not_masked(Alarm::PSAL(
-                        u32::from(addr),
-                        "memory unit indicated physical address is not mapped".to_string(),
-                    ))?;
+                    self.alarm_unit.fire_if_not_masked(Alarm {
+                        sequence: self.regs.k,
+                        details: AlarmDetails::PSAL(
+                            u32::from(addr),
+                            "memory unit indicated physical address is not mapped".to_string(),
+                        ),
+                    })?;
                     // PSAL is masked, but we don't know what
                     // instruction to execute, since we couldn't fetch
                     // one.  The program counter will not be updated
@@ -1009,10 +1024,13 @@ impl ControlUnit {
     }
 
     fn invalid_opcode_alarm(&self) -> Alarm {
-        Alarm::OCSAL(
-            self.regs.n,
-            format!("invalid opcode {:#o}", self.regs.n.opcode_number()),
-        )
+        Alarm {
+            sequence: self.regs.k,
+            details: AlarmDetails::OCSAL(
+                self.regs.n,
+                format!("invalid opcode {:#o}", self.regs.n.opcode_number()),
+            ),
+        }
     }
 
     fn estimate_execute_time_ns(&self, orig_inst: &Instruction) -> u64 {
@@ -1071,10 +1089,13 @@ impl ControlUnit {
                 Opcode::Ios => control.op_ios(ctx, devices),
                 Opcode::Tsd => control.op_tsd(ctx, devices, prev_program_counter, mem),
                 Opcode::Sed => control.op_sed(ctx, mem),
-                _ => Err(Alarm::ROUNDTUITAL(format!(
-                    "The emulator does not yet implement opcode {}",
-                    opcode,
-                ))),
+                _ => Err(Alarm {
+                    sequence: control.regs.k,
+                    details: AlarmDetails::ROUNDTUITAL(format!(
+                        "The emulator does not yet implement opcode {}",
+                        opcode,
+                    )),
+                }),
             }
         }
 
@@ -1244,20 +1265,26 @@ impl ControlUnit {
                 Ok((word, extra_bits))
             }
             Err(MemoryOpFailure::NotMapped(addr)) => {
-                self.alarm_unit.fire_if_not_masked(Alarm::QSAL(
-                    self.regs.n,
-                    BadMemOp::Read(Unsigned36Bit::from(addr)),
-                    format!(
-                        "memory unit indicated address {:o} is not mapped",
-                        operand_address
+                self.alarm_unit.fire_if_not_masked(Alarm {
+                    sequence: self.regs.k,
+                    details: AlarmDetails::QSAL(
+                        self.regs.n,
+                        BadMemOp::Read(Unsigned36Bit::from(addr)),
+                        format!(
+                            "memory unit indicated address {:o} is not mapped",
+                            operand_address
+                        ),
                     ),
-                ))?;
+                })?;
                 // QSAL is masked to we have to return some value, but
                 // we don't know what the TX-2 did in this case.
-                Err(self.alarm_unit.always_fire(Alarm::ROUNDTUITAL(format!(
+                Err(self.alarm_unit.always_fire(Alarm {
+                    sequence: self.regs.k,
+                    details: AlarmDetails::ROUNDTUITAL(format!(
                         "memory unit indicated address {:o} is not mapped and we don't know what to do when QSAL is masked",
                         operand_address
-                    ))))
+                    ))
+                }))
             }
             Err(MemoryOpFailure::ReadOnly(_, _)) => unreachable!(),
         }
@@ -1285,11 +1312,14 @@ impl ControlUnit {
             self.regs.e = *value;
         }
         if let Err(e) = mem.store(ctx, target, value, meta_op) {
-            self.alarm_unit.fire_if_not_masked(Alarm::QSAL(
-                self.regs.n,
-                BadMemOp::Write(Unsigned36Bit::from(*target)),
-                format!("memory store to address {:#o} failed: {}", target, e,),
-            ))?;
+            self.alarm_unit.fire_if_not_masked(Alarm {
+                sequence: self.regs.k,
+                details: AlarmDetails::QSAL(
+                    self.regs.n,
+                    BadMemOp::Write(Unsigned36Bit::from(*target)),
+                    format!("memory store to address {:#o} failed: {}", target, e,),
+                ),
+            })?;
             Ok(()) // QSAL is masked, so just carry on.
         } else {
             Ok(())
@@ -1399,16 +1429,22 @@ impl ControlUnit {
                         )
                     };
 
-                    self.alarm_unit.fire_if_not_masked(Alarm::QSAL(
-                        self.regs.n,
-                        BadMemOp::Read(Unsigned36Bit::from(physical)),
-                        msg(),
-                    ))?;
+                    self.alarm_unit.fire_if_not_masked(Alarm {
+                        sequence: self.regs.k,
+                        details: AlarmDetails::QSAL(
+                            self.regs.n,
+                            BadMemOp::Read(Unsigned36Bit::from(physical)),
+                            msg(),
+                        ),
+                    })?;
                     // QSAL is masked.  I don't know what the TX-2 did in this situation.
-                    return Err(self.alarm_unit.always_fire(Alarm::ROUNDTUITAL(format!(
-                        "we don't know how to handle {} when QSAL is masked",
-                        msg()
-                    ))));
+                    return Err(self.alarm_unit.always_fire(Alarm {
+                        sequence: self.regs.k,
+                        details: AlarmDetails::ROUNDTUITAL(format!(
+                            "we don't know how to handle {} when QSAL is masked",
+                            msg()
+                        )),
+                    }));
                 }
                 Ok((word, extra)) => {
                     if extra.meta && self.trap.trap_on_deferred_address() {
@@ -1448,9 +1484,10 @@ impl ControlUnit {
                         // states, "In fact, you can inadvertantly
                         // [sic] defer back to where you started and
                         // get a loop less than one instruction long".
-                        return Err(self
-                            .alarm_unit
-                            .always_fire(Alarm::DEFERLOOPAL { address: right }));
+                        return Err(self.alarm_unit.always_fire(Alarm {
+                            sequence: self.regs.k,
+                            details: AlarmDetails::DEFERLOOPAL { address: right },
+                        }));
                     }
                     next
                 }
@@ -1531,16 +1568,22 @@ impl ControlUnit {
                     &MetaBitChange::None,
                 )
             }
-            Err(Alarm::QSAL(inst, BadMemOp::Read(addr), msg)) => {
+            Err(Alarm {
+                sequence: _,
+                details: AlarmDetails::QSAL(inst, BadMemOp::Read(addr), msg),
+            }) => {
                 // That read operation just failed.  So we handle this
                 // as a _write_ failure, meaning that we change
                 // BadMemOp::Read to BadMemOp::Write.
-                self.alarm_unit.fire_if_not_masked(Alarm::QSAL(
+                //
+                // If fire_details_if_not_masked() returns (), QSAL is
+                // masked, we just carry on (the DPX instruction has
+                // no effect).
+                self.fire_details_if_not_masked(AlarmDetails::QSAL(
                     inst,
                     BadMemOp::Write(addr),
                     msg,
-                ))?;
-                Ok(()) // QSAL is masked, we just carry on (the DPX instruction has no effect).
+                ))
             }
             Err(other) => Err(other),
         }

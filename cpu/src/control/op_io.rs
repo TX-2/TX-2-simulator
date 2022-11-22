@@ -5,7 +5,7 @@ use base::prelude::*;
 use tracing::{event, Level};
 
 use super::super::*;
-use crate::alarm::{Alarm, Alarmer, BadMemOp};
+use crate::alarm::{Alarm, AlarmDetails, Alarmer, BadMemOp};
 use crate::alarmunit::AlarmUnit;
 use crate::context::Context;
 use crate::control::{
@@ -100,20 +100,26 @@ impl ControlUnit {
             }
             0o60_000..=0o60777 => {
                 // Select unit XXX
-                Err(self.alarm_unit.always_fire(Alarm::ROUNDTUITAL(format!(
-                    "IOS operand {:o}: Select Unit command is not yet implemented.",
-                    operand
-                ))))
+                Err(self.alarm_unit.always_fire(Alarm {
+                    sequence: self.regs.k,
+                    details: AlarmDetails::ROUNDTUITAL(format!(
+                        "IOS operand {:o}: Select Unit command is not yet implemented.",
+                        operand
+                    )),
+                }))
             }
             _ => {
                 let command: u8 = (u32::from(operand) >> 12) as u8;
-                self.alarm_unit.fire_if_not_masked(Alarm::IOSAL {
-                    unit: j,
-                    operand: Some(operand),
-                    message: format!(
-                        "IOS operand {:o} has unrecognised leading command digit {:o}",
-                        operand, command,
-                    ),
+                self.alarm_unit.fire_if_not_masked(Alarm {
+                    sequence: self.regs.k,
+                    details: AlarmDetails::IOSAL {
+                        unit: j,
+                        operand: Some(operand),
+                        message: format!(
+                            "IOS operand {:o} has unrecognised leading command digit {:o}",
+                            operand, command,
+                        ),
+                    },
                 })?;
                 // IOSAL is masked.  Just do nothing.
                 Ok(())
@@ -145,7 +151,7 @@ impl ControlUnit {
                 trap.connect(ctx, mode);
                 None
             }
-            _ => devices.connect(ctx, &unit, mode, alarm_unit)?,
+            _ => devices.connect(ctx, regs.k, &unit, mode, alarm_unit)?,
         };
         if let Some(FlagChange::Raise) = maybe_flag_change {
             regs.flags.raise(&unit);
@@ -160,15 +166,18 @@ impl ControlUnit {
         execution_address: Address,
         mem: &mut MemoryUnit,
     ) -> Result<OpcodeResult, Alarm> {
-        fn make_tsd_qsal(inst: Instruction, op: BadMemOp) -> Alarm {
-            Alarm::QSAL(inst, op, "TSD address is not mapped".to_string())
+        fn make_tsd_qsal(seq: Option<SequenceNumber>, inst: Instruction, op: BadMemOp) -> Alarm {
+            Alarm {
+                sequence: seq,
+                details: AlarmDetails::QSAL(inst, op, "TSD address is not mapped".to_string()),
+            }
         }
 
         let result: Result<TransferOutcome, Alarm> = if let Some(unit) = self.regs.k {
             let target: Address = self.operand_address_with_optional_defer_and_index(ctx, mem)?;
             let not_mapped = |op_conv: OpConversion| -> Alarm {
                 let op: BadMemOp = op_conv(target);
-                make_tsd_qsal(self.regs.n, op)
+                make_tsd_qsal(self.regs.k, self.regs.n, op)
             };
 
             let meta_op: MetaBitChange = if self.trap.set_metabits_of_operands() {
@@ -312,12 +321,15 @@ impl ControlUnit {
                                             }),
                                         }
                                     }
-                                    TransferMode::Assembly => {
-                                        Err(self.alarm_unit.always_fire(Alarm::ROUNDTUITAL(
+                                    TransferMode::Assembly => Err(self
+                                        .alarm_unit
+                                        .always_fire(Alarm {
+                                        sequence: self.regs.k,
+                                        details: AlarmDetails::ROUNDTUITAL(
                                             "TSD output in assembly mode is not yet implemented."
                                                 .to_string(),
-                                        )))
-                                    }
+                                        ),
+                                    })),
                                 }
                             }
                         }
@@ -325,10 +337,12 @@ impl ControlUnit {
                 }
             }
         } else {
-            Err(self.alarm_unit.always_fire(Alarm::BUGAL {
-		instr: Some(self.regs.n),
-		message: "Executed TSD instruction while the K register is None (i.e. there is no current sequence)".to_string(),
-	    }))
+            Err(self.alarm_unit.always_fire(Alarm {
+                sequence: self.regs.k,
+                details: AlarmDetails::BUGAL {
+                instr: Some(self.regs.n),
+                message: "Executed TSD instruction while the K register is None (i.e. there is no current sequence)".to_string(),
+                }}))
         };
         match result {
             Ok(TransferOutcome::Success {

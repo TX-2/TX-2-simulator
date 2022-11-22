@@ -130,7 +130,7 @@ fn test_alarm_kind_round_trip() {
 // These acrronyms are upper case to follow the names in the TX-2 documentation.
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Debug, Clone)]
-pub enum Alarm {
+pub enum AlarmDetails {
     /// P Memory Cycle Selecttion Alarm.  This fires when we attempt
     /// to fetch an instruction from an invalid address.
     PSAL(u32, String),
@@ -158,7 +158,7 @@ pub enum Alarm {
     /// missed a data item.  This generally indicates that the program
     /// is too slow for an I/O device.  For example because it uses
     /// too many hold bits.
-    MISAL { unit: Unsigned6Bit },
+    MISAL,
 
     // Alarms we probably should implement but have not:
     //
@@ -199,21 +199,34 @@ pub enum Alarm {
     },
 }
 
+#[allow(clippy::upper_case_acronyms)]
+#[derive(Debug, Clone)]
+pub struct Alarm {
+    pub sequence: Option<SequenceNumber>,
+    pub details: AlarmDetails,
+}
+
 impl Alarm {
     pub fn kind(&self) -> AlarmKind {
+        self.details.kind()
+    }
+}
+
+impl AlarmDetails {
+    pub fn kind(&self) -> AlarmKind {
         match self {
-            Alarm::PSAL(_, _) => AlarmKind::PSAL,
-            Alarm::OCSAL(_, _) => AlarmKind::OCSAL,
-            Alarm::QSAL(_, _, _) => AlarmKind::QSAL,
-            Alarm::IOSAL {
+            AlarmDetails::PSAL(_, _) => AlarmKind::PSAL,
+            AlarmDetails::OCSAL(_, _) => AlarmKind::OCSAL,
+            AlarmDetails::QSAL(_, _, _) => AlarmKind::QSAL,
+            AlarmDetails::IOSAL {
                 unit: _,
                 operand: _,
                 message: _,
             } => AlarmKind::IOSAL,
-            Alarm::MISAL { unit: _ } => AlarmKind::MISAL,
-            Alarm::ROUNDTUITAL(_) => AlarmKind::ROUNDTUITAL,
-            Alarm::DEFERLOOPAL { address: _ } => AlarmKind::DEFERLOOPAL,
-            Alarm::BUGAL {
+            AlarmDetails::MISAL => AlarmKind::MISAL,
+            AlarmDetails::ROUNDTUITAL(_) => AlarmKind::ROUNDTUITAL,
+            AlarmDetails::DEFERLOOPAL { address: _ } => AlarmKind::DEFERLOOPAL,
+            AlarmDetails::BUGAL {
                 instr: _,
                 message: _,
             } => AlarmKind::BUGAL,
@@ -223,7 +236,17 @@ impl Alarm {
 
 impl Display for Alarm {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        use Alarm::*;
+        if let Some(seq) = self.sequence {
+            write!(f, "in sequence {seq:o}, {}", self.details)
+        } else {
+            write!(f, "{}", self.details)
+        }
+    }
+}
+
+impl Display for AlarmDetails {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        use AlarmDetails::*;
         match self {
             QSAL(instruction, op, msg) => {
                 write!(
@@ -267,23 +290,21 @@ impl Display for Alarm {
                 write!(f, ": {}", message)
             }
 
-            MISAL { unit } => {
-                write!(f, "MISAL: program too slow; missed data on unit {}", unit,)
-            }
+            MISAL => f.write_str("MISAL: program too slow; missed data"),
 
             BUGAL { instr, message } => {
                 if let Some(instruction) = instr.as_ref() {
                     if let Ok(symbolic) = SymbolicInstruction::try_from(instruction) {
                         write!(
-			    f,
-			    "BUGAL: encountered simulator bug during execution of instruction {symbolic}: {message}"
-			)
+                            f,
+                            "BUGAL: encountered simulator bug during execution of instruction {symbolic}: {message}"
+                        )
                     } else {
                         write!(
-			    f,
-			    "BUGAL: encountered simulator bug during execution of instruction {:o}: {}",
-			    instruction.bits(), message,
-			)
+                            f,
+                            "BUGAL: encountered simulator bug during execution of instruction {:o}: {}",
+                            instruction.bits(), message,
+                        )
                     }
                 } else {
                     write!(f, "BUGAL: encountered simulator bug: {message}")
