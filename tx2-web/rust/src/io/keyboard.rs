@@ -258,13 +258,12 @@ impl Code {
                     "colour should have only 6 digits but it has {}",
                     colour.len() - 1
                 ));
+            }
+            if let Ok(n) = hex_digit_value(digit) {
+                let pos: usize = (i - 1) / 2;
+                components[pos] = components[pos] * 16 + n;
             } else {
-                if let Ok(n) = hex_digit_value(digit) {
-                    let pos: usize = ((i - 1) / 2).into();
-                    components[pos] = components[pos] * 16 + n;
-                } else {
-                    return Err(format!("{digit} is not a valid hex digit"));
-                }
+                return Err(format!("{digit} is not a valid hex digit"));
             }
         }
         Code::hit_detection_rgb_to_code(components[0], components[1], components[2])
@@ -436,7 +435,7 @@ fn room_for_key_padding(w: f64, h: f64, bbox: &BoundingBox) -> Room {
         problems.push(format!("total text height is {h:.1} but this will not comfortably fit (available height is {avail_height:.1}"));
     }
     for prob in problems.iter() {
-        event!(Level::INFO, prob);
+        event!(Level::TRACE, prob);
     }
     if problems.is_empty() {
         Room::Sufficient
@@ -461,36 +460,6 @@ fn check_font_metric(
         }
         Some(Err(e)) => Err(e),
         None => Ok(0.0),
-    }
-}
-
-fn metrics_as_text(metrics: &TextMetrics) -> String {
-    format!(
-        "font_bounding_box_ascent: {}, font_bounding_box_descent: {}, actual_bounding_box_ascent: {}, actual_bounding_box_descent: {},  actual_bounding_box_left: {}, actual_bounding_box_right: {}",
-        metrics.font_bounding_box_ascent(),
-        metrics.font_bounding_box_descent(),
-        metrics.actual_bounding_box_ascent(),
-        metrics.actual_bounding_box_descent(),
-        metrics.actual_bounding_box_left(),
-        metrics.actual_bounding_box_right(),
-    )
-}
-
-fn measure_text(
-    context: &CanvasRenderingContext2d,
-    s: &str,
-) -> Result<TextMetrics, wasm_bindgen::JsValue> {
-    match context.measure_text(s) {
-        Ok(metrics) => {
-            event!(
-                Level::DEBUG,
-                "Text metrics for {:?} are {:?}",
-                s,
-                metrics_as_text(&metrics)
-            );
-            Ok(metrics)
-        }
-        Err(e) => Err(e),
     }
 }
 
@@ -581,16 +550,13 @@ impl HtmlCanvas2DPainter {
         colour: &str,
     ) -> Result<(), KeyPaintError> {
         self.context.set_text_baseline("middle");
-        let metrics: Vec<TextMetrics> = match lines
-            .iter()
-            .map(|s| measure_text(&self.context, s))
-            .collect()
-        {
-            Ok(v) => v,
-            Err(e) => {
-                return Err(KeyPaintError::Failed(format!("measure_text failed: {e:?}")));
-            }
-        };
+        let metrics: Vec<TextMetrics> =
+            match lines.iter().map(|s| self.context.measure_text(s)).collect() {
+                Ok(v) => v,
+                Err(e) => {
+                    return Err(KeyPaintError::Failed(format!("measure_text failed: {e:?}")));
+                }
+            };
         let max_ascent = check_font_metric(
             "max ascent",
             metrics.iter().map(ascent).fold(None, keep_greatest),
@@ -615,7 +581,7 @@ impl HtmlCanvas2DPainter {
         for (metric, s) in metrics.iter().zip(lines.iter()) {
             if metric.actual_bounding_box_left() != 0.0_f64 {
                 event!(
-                    Level::DEBUG,
+                    Level::TRACE,
                     "left bounding box for {s} is {}",
                     metric.actual_bounding_box_left()
                 );
@@ -630,10 +596,6 @@ impl HtmlCanvas2DPainter {
         let n = lines.len();
         let line_height: f64 = a + d;
         let total_text_height = line_height * (n as f64);
-        event!(
-            Level::DEBUG,
-            "line height is {line_height:.1}; total text height is {total_text_height:.1}"
-        );
         if let Room::Insufficient(problems) =
             room_for_key_padding(max_width, total_text_height, bbox)
         {
@@ -644,7 +606,6 @@ impl HtmlCanvas2DPainter {
         }
         let x_midline = (bbox.left() + bbox.right()) / 2.0;
         let y_midline = (bbox.top() + bbox.bottom()) / 2.0;
-        event!(Level::DEBUG, "y_midline is {y_midline:.1}");
         fn even(n: usize) -> bool {
             n % 2 == 0
         }
@@ -654,20 +615,12 @@ impl HtmlCanvas2DPainter {
                 f64::value_from(x).unwrap_or(f64::MAX)
             }
             let i_minus_floor_half_n = f(i) - f(n / 2).floor();
-            let result = y_midline + ashift + i_minus_floor_half_n * (a + d);
-            event!(
-                Level::DEBUG,
-                "yi: i={i}, n={n}, ashift={ashift:.0} y_midline={y_midline:.0}, result={result}"
-            );
-            result
+            y_midline + ashift + i_minus_floor_half_n * (a + d)
         }
 
         for (i, (s, metrics)) in lines.iter().zip(metrics.iter()).enumerate() {
             let text_y = yi(i, n, y_midline.into(), a, d);
-            event!(
-                Level::DEBUG,
-                "fill_multiline_text: drawing {s:?} at y={text_y:.1}"
-            );
+
             // This calculation for x assumes Left-to-Right text.
             let text_x: f64 = f64::from(x_midline) - metrics.actual_bounding_box_right() / 2.0;
             self.context.set_fill_style(&JsValue::from(colour));
@@ -712,13 +665,6 @@ impl KeyPainter for HtmlCanvas2DPainter {
         label: &KeyLabel,
         keycode: Code,
     ) -> Result<(), KeyPaintError> {
-        event!(
-            Level::DEBUG,
-            "draw_key {label:?} at {} ->  {}",
-            keybox.nw,
-            keybox.se
-        );
-
         let hit_detection_colour: String = keycode.hit_detection_colour();
 
         if self.hits_only {
@@ -737,10 +683,6 @@ impl KeyPainter for HtmlCanvas2DPainter {
         self.context.set_stroke_style(&("black".into()));
         let label_css_color = colour.label_css_colour();
 
-        event!(
-            Level::DEBUG,
-            "draw_key: Key label {label:?} will be drawn in colour {label_css_color}",
-        );
         self.draw_filled_stroked_rect(
             keybox.left().into(),
             keybox.top().into(),
@@ -754,7 +696,6 @@ impl KeyPainter for HtmlCanvas2DPainter {
             for font_size in (1..=28).rev() {
                 let font = format!("{font_size}px sans-serif");
                 self.context.set_font(&font);
-                event!(Level::DEBUG, "Trying font '{font}' for label {label:?}");
                 match self.fill_multiline_text(keybox, label.text, label_css_color) {
                     Ok(()) => {
                         current_error = None;
@@ -788,7 +729,6 @@ impl KeyPainter for HtmlCanvas2DPainter {
                         )));
                     }
                     None => {
-                        event!(Level::DEBUG, "Chose font '{font}' for label {label:?}");
                         break;
                     }
                 }
