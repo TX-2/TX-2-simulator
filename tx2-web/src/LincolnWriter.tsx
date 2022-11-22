@@ -1,14 +1,17 @@
 import Keyboard from './Keyboard'
 import React from 'react';
 import styles from './styles.scss'
+import { Tx2Controller } from 'controller/tx2';
 
 type LincolnWriterProps = {
-  unit: string,
+  outputUnit: number,
+  inputUnit: number,
+  tx2Controller: Tx2Controller,
 };
 type LincolnWriterState = Record<string, never>;
 
 export class LincolnWriter extends React.Component<LincolnWriterProps, LincolnWriterState> {
-  prefix: string = "lw" + this.props.unit;
+  prefix: string = "lw" + this.props.inputUnit.toString(8);
   historyId = this.prefix + "-history";
   currentId = this.prefix + "-current-line";
   keyboardId = this.prefix + "-keyboard"
@@ -22,7 +25,12 @@ export class LincolnWriter extends React.Component<LincolnWriterProps, LincolnWr
           <span className={styles['lw__cursor']}>&nbsp;</span>
         </div>
       </div>
-      <Keyboard className={styles['lw__input__keyboard']} hdClass={styles['lw__input__keyboard_hits']} />
+      <Keyboard
+        tx2Controller={this.props.tx2Controller}
+        className={styles['lw__input__keyboard']}
+        hdClass={styles['lw__input__keyboard_hits']}
+        unit={this.props.inputUnit}
+      />
     </div>);
   }
 }

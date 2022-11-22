@@ -15,9 +15,10 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use crate::context::Context;
-use crate::event::{InputEvent, InputEventResult, OutputEvent};
+use crate::event::{InputEvent, InputEventError, OutputEvent};
 use crate::io::{FlagChange, TransferFailed, Unit, UnitStatus};
-use crate::{types::*, Alarm};
+use crate::types::*;
+use crate::Alarm;
 use base::charset::LincolnStateTextInfo;
 use base::charset::{lincoln_char_to_described_char, lincoln_writer_state_update, LincolnState};
 use base::prelude::*;
@@ -190,9 +191,9 @@ impl Unit for LincolnWriterOutput {
         &mut self,
         _ctx: &Context,
         _event: crate::event::InputEvent,
-    ) -> InputEventResult {
+    ) -> Result<(), InputEventError> {
         // Does nothing
-        InputEventResult::Ok
+        Ok(())
     }
 
     fn text_info(&self, _ctx: &Context) -> String {
@@ -476,11 +477,15 @@ impl Unit for LincolnWriterInput {
     //
     // This would output "AB" and input "Cq", perhaps not what was expected.
     //
-    fn on_input_event(&mut self, _ctx: &Context, event: crate::InputEvent) -> InputEventResult {
+    fn on_input_event(
+        &mut self,
+        _ctx: &Context,
+        event: crate::InputEvent,
+    ) -> Result<(), InputEventError> {
         if let InputEvent::LwKeyboardInput { data } = event {
             match (self.data.is_empty(), data.as_slice()) {
-                (_, []) => InputEventResult::Ok,
-                (false, _) => InputEventResult::Busy,
+                (_, []) => Ok(()),
+                (false, _) => Err(InputEventError::BufferUnavailable),
                 (true, [items @ ..]) => {
                     match self.state.try_borrow_mut() {
                         Ok(mut state) => {
@@ -494,14 +499,14 @@ impl Unit for LincolnWriterInput {
                                 lincoln_writer_state_update(*item, &mut state);
                                 self.data.push(*item);
                             }
-                            InputEventResult::Ok
+                            Ok(())
                         }
-                        Err(_) => InputEventResult::InvalidReentrantCall,
+                        Err(_) => Err(InputEventError::InvalidReentrantCall),
                     }
                 }
             }
         } else {
-            InputEventResult::InputEventNotValidForDevice
+            Err(InputEventError::InputEventNotValidForDevice)
         }
     }
 }

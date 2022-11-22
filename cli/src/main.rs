@@ -24,10 +24,14 @@ use cpu::{self, Alarm, MemoryConfiguration, OutputEvent, ResetMode, RunMode, Tx2
 // personal email address rather than my work one, though.
 const AUTHOR: &str = "James Youngman <james@youngman.org>";
 
-fn run(tx2: &mut Tx2, clk: &mut BasicClock, sleep_multiplier: Option<f64>) -> i32 {
+fn run(
+    tx2: &mut Tx2,
+    clk: &mut BasicClock,
+    sleep_multiplier: Option<f64>,
+) -> Result<(), Box<dyn std::error::Error>> {
     if let Err(e) = tx2.codabo(&clk.make_fresh_context(), &ResetMode::ResetTSP) {
         event!(Level::ERROR, "CODABO failed: {}", e);
-        return 1;
+        return Err(Box::new(e));
     }
 
     // TODO: setting next_execution_due is basically the 'start'
@@ -63,8 +67,9 @@ fn run(tx2: &mut Tx2, clk: &mut BasicClock, sleep_multiplier: Option<f64>) -> i3
     };
     if let Err(e) = tx2.disconnect_all_devices(&clk.make_fresh_context()) {
         event!(Level::ERROR, "Failed in device shutdown: {}", e);
+        return Err(Box::new(e));
     }
-    1
+    Ok(())
 }
 
 fn run_until_alarm(
@@ -304,9 +309,11 @@ fn run_simulator() -> Result<(), Box<dyn std::error::Error>> {
     let initial_context = clk.make_fresh_context();
     let mut tx2 = Tx2::new(&initial_context, panic_on_unmasked_alarm, &mem_config);
     if let Some(tape) = tape_data {
-        tx2.mount_tape(&initial_context, tape);
+        if let Err(e) = tx2.mount_tape(&initial_context, tape) {
+            return Err(Box::new(e));
+        }
     }
-    std::process::exit(run(&mut tx2, &mut clk, sleep_multiplier));
+    run(&mut tx2, &mut clk, sleep_multiplier)
 }
 
 fn main() {

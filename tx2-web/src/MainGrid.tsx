@@ -105,7 +105,10 @@ export const MainGrid = (props: MainGridProps) => (
         />
       </Box>
       <Box column="2" row="3" style={{padding: "20px", overflowY: "scroll"}}>
-        <LincolnWriter unit={"66"} />
+        <LincolnWriter
+          inputUnit={0o65}
+          outputUnit={0o66}
+          tx2Controller={props.tx2Controller} />
       </Box>
     </Grid>
   </div>

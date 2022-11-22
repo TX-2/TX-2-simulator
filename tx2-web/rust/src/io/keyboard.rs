@@ -202,7 +202,7 @@ impl KeyShape {
 }
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
-enum Code {
+pub(crate) enum Code {
     /// Represents a single key on the Lincoln Writer.  Lincoln Writer
     /// key codes are actually 6 bits but we convert elsewhere.
     Far(u8),
@@ -210,14 +210,33 @@ enum Code {
     Unknown,
 }
 
+pub const SWITCH_TO_FAR: u8 = 0o74; // LOWER CASE
+pub const SWITCH_TO_NEAR: u8 = 0o75; // UPPER CASE
+
 impl Code {
-    fn hit_detection_colour(&self) -> String {
+    fn hit_detection_rgb(&self) -> [u8; 3] {
         match self {
-            // We paint the background as #ffffff, so it's important
-            // that no key code maps to that.
-            Code::Unknown => "#0000ff".to_string(),
-            Code::Near(n) => format!("#{:02x}0001", n * 4),
-            Code::Far(n) => format!("#{:02x}0080", n * 4),
+            Code::Unknown => [0, 0, 0xFF],
+            Code::Near(n) => [n * 4, 0, 1],
+            Code::Far(n) => [n * 4, 0, 0x80],
+        }
+    }
+
+    fn hit_detection_colour(&self) -> String {
+        let rgb = self.hit_detection_rgb();
+        format!("#{:02x}{:02x}{:02x}", rgb[0], rgb[1], rgb[2])
+    }
+
+    pub(crate) fn hit_detection_rgb_to_code(r: u8, g: u8, b: u8) -> Result<Option<Code>, String> {
+        match (r, g, b) {
+            (0xff, 0xff, 0xff) => Ok(None), // not a key at all (i.e. background)
+            (0, 0, 0xff) => Ok(Some(Code::Unknown)),
+            (n, 0, 0x01) => Ok(Some(Code::Near(n / 4))),
+            (n, 0, 0x80) => Ok(Some(Code::Far(n / 4))),
+            _ => Err(format!(
+                "failed to decode colour (components={:?})",
+                (r, g, b)
+            )),
         }
     }
 
@@ -248,15 +267,7 @@ impl Code {
                 }
             }
         }
-        match (components[0], components[1], components[2]) {
-            (0xff, 0xff, 0xff) => Ok(None), // not a key at all (i.e. background)
-            (0, 0, 0xff) => Ok(Some(Code::Unknown)),
-            (n, 0, 0x01) => Ok(Some(Code::Near(n / 4))),
-            (n, 0, 0x80) => Ok(Some(Code::Far(n / 4))),
-            _ => Err(format!(
-                "failed to decode colour {colour} (components={components:?})"
-            )),
-        }
+        Code::hit_detection_rgb_to_code(components[0], components[1], components[2])
     }
 }
 
