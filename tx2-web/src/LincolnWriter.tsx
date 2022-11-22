@@ -11,7 +11,7 @@ type LincolnWriterProps = {
 type LincolnWriterState = Record<string, never>;
 
 export class LincolnWriter extends React.Component<LincolnWriterProps, LincolnWriterState> {
-  prefix: string = "lw" + this.props.inputUnit.toString(8);
+  prefix: string = "lw" + this.props.outputUnit.toString(8);
   historyId = this.prefix + "-history";
   currentId = this.prefix + "-current-line";
   keyboardId = this.prefix + "-keyboard"
