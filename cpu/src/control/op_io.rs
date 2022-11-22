@@ -55,10 +55,14 @@ impl ControlUnit {
         if cf & 1 != 0 {
             // Setting the report bit in the configuration value
             // causes the device's status word from before any mode
-            // change to be copied into the E register.  (as stated in
+            // change to be copied into the E register (as stated in
             // section 4-3.6 of the User Handbook).
+            //
+            // Note that this means that the current sequence and the
+            // sequence for which we are generating a report word are
+            // different (in general).
             let flag_raised: bool = self.regs.flags.current_flag_state(&j);
-            self.regs.e = devices.report(ctx, j, flag_raised, &mut self.alarm_unit)?;
+            self.regs.e = devices.report(ctx, self.regs.k, j, flag_raised, &mut self.alarm_unit)?;
         }
         let mut dismiss_reason: Option<&str> = if cf & 0o20 != 0 {
             Some("dismiss bit set in config")

@@ -149,6 +149,7 @@ pub enum AlarmDetails {
     /// In-Out Selection Alarm. I/O Alarm in IOS instruction; device
     /// broken/maintenance/nonexistent.
     IOSAL {
+        /// The affected unit (as opposed to the sequence number currently executing).
         unit: Unsigned6Bit,
         operand: Option<Unsigned18Bit>,
         message: String,

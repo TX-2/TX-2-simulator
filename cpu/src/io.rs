@@ -472,9 +472,13 @@ impl DeviceManager {
         }
     }
 
+    /// Generate a report word for a unit.
     pub fn report(
         &mut self,
         ctx: &Context,
+        // The sequence which is currently executing.
+        current_sequence: Option<SequenceNumber>,
+        // The sequence for which we are generating a report word.
         unit: Unsigned6Bit,
         current_flag: bool,
         alarm_unit: &mut AlarmUnit,
@@ -497,11 +501,11 @@ impl DeviceManager {
             }
             None => {
                 alarm_unit.fire_if_not_masked(Alarm {
-                    sequence: Some(unit),
+                    sequence: current_sequence,
                     details: AlarmDetails::IOSAL {
                         unit,
                         operand: None,
-                        message: format!("unit {} is not known", unit),
+                        message: format!("unit {:o} is not known", unit),
                     },
                 })?;
                 // IOSAL is masked.
