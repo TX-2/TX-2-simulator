@@ -15,8 +15,8 @@ use crate::control::{ControlUnit, ResetMode, RunMode};
 use crate::event::{InputEvent, OutputEvent};
 use crate::io::{set_up_peripherals, DeviceManager, ExtendedUnitState};
 use crate::memory::{MemoryConfiguration, MemoryUnit};
-use crate::PanicOnUnmaskedAlarm;
 use crate::PETR;
+use crate::{InputEventError, PanicOnUnmaskedAlarm};
 
 #[wasm_bindgen]
 pub struct Tx2 {
@@ -99,9 +99,25 @@ impl Tx2 {
             .codabo(ctx, reset_mode, &mut self.devices, &mut self.mem)
     }
 
-    pub fn mount_tape(&mut self, ctx: &Context, data: Vec<u8>) {
+    pub fn mount_tape(&mut self, ctx: &Context, data: Vec<u8>) -> Result<(), InputEventError> {
         self.devices
-            .on_input_event(ctx, PETR, InputEvent::PetrMountPaperTape { data });
+            .on_input_event(ctx, PETR, InputEvent::PetrMountPaperTape { data })
+    }
+
+    pub fn lw_input(
+        &mut self,
+        ctx: &Context,
+        unit: Unsigned6Bit,
+        codes: &[Unsigned6Bit],
+    ) -> Result<bool, String> {
+        let event = InputEvent::LwKeyboardInput {
+            data: codes.to_vec(),
+        };
+        match self.devices.on_input_event(ctx, unit, event) {
+            Ok(()) => Ok(true),
+            Err(InputEventError::BufferUnavailable) => Ok(false),
+            Err(e) => Err(e.to_string()),
+        }
     }
 
     pub fn next_tick(&self) -> Duration {
@@ -246,7 +262,7 @@ impl Tx2 {
                 Ok(()) => {
                     if self.next_hw_poll_due == prev_poll_due {
                         event!(Level::WARN, "polled hardware successfully at system time {:?}, but poll_hw returned with next_hw_poll_due={:?}",
-			       system_time, self.next_hw_poll_due);
+                               system_time, self.next_hw_poll_due);
                     }
                 }
                 Err(unmasked_alarm) => {

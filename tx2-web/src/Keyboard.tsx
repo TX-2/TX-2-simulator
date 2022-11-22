@@ -1,5 +1,6 @@
 import { create_html_canvas_2d_painter, draw_keyboard } from '../build/tx2_web'
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import { Tx2Controller } from 'controller/tx2';
 
 type Coordinates = {
     x: number;
@@ -14,13 +15,14 @@ interface CanvasProps {
     canvas: HTMLCanvasElement) => void,
   width: number,
   height: number,
+  willReadFrequently: boolean,
 }
 
 const getCoordinates = (ev: React.MouseEvent<HTMLCanvasElement, MouseEvent>, canvas: HTMLCanvasElement): Coordinates | undefined => {
   return {x: ev.pageX - canvas.offsetLeft, y: ev.pageY - canvas.offsetTop};
 };
 
-const Canvas = ({ className, draw, click, width, height, ...rest }: CanvasProps) => {
+const Canvas = ({ className, draw, click, width, height, willReadFrequently, ...rest }: CanvasProps) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
 
     useEffect(() => {
@@ -29,7 +31,7 @@ const Canvas = ({ className, draw, click, width, height, ...rest }: CanvasProps)
             console.log("in Canvas useEffect callback, canvas ref is null.");
             return;
         }
-        const context = canvas.getContext('2d');
+        const context = canvas.getContext('2d', { willReadFrequently: willReadFrequently});
         if (context == null) {
             console.log("in Canvas useEffect callback, rendering context is null.");
             return;
@@ -60,11 +62,14 @@ const Canvas = ({ className, draw, click, width, height, ...rest }: CanvasProps)
 }
 
 interface KeyboardProps {
+  tx2Controller: Tx2Controller,
   className?: string | undefined,
   hdClass?: string | undefined,
+  unit: number,
 }
 
 const Keyboard = (props: KeyboardProps) => {
+    const [farActive, setFarActive] = useState(false);
     const draw = (ctx: CanvasRenderingContext2D, hitdetect: boolean) => {
         const painter = create_html_canvas_2d_painter(ctx, hitdetect);
         console.log("drawing the LW keyboard...");
@@ -92,7 +97,15 @@ const Keyboard = (props: KeyboardProps) => {
       }
       const data = context.getImageData(clickPos.x, clickPos.y, 1, 1).data;
       console.log("RGB(A) value (on hit detector canvas) at click position is", data)
-      //var rgb = [ data[0], data[1], data[2] ];
+      if (data) {
+        const result = props.tx2Controller.lwKeyPress(props.unit, farActive, data);
+        setFarActive(result.far_keyboard_is_active)
+        if (!result.consumed) {
+          console.log("in Canvas click callback for hit detector canvas, input can't be accepted, perhaps the LW input unit is not connected.");
+        }
+      } else {
+        console.log("in Canvas click callback for hit detector canvas, failed to get image data for hit position.");
+      }
     }
     const click_keyboard = (_event: React.MouseEvent, _canvas: HTMLCanvasElement) => {
       // We don't need to do anything, the work is done in click_hitdetect.
@@ -109,6 +122,7 @@ const Keyboard = (props: KeyboardProps) => {
       click={click_keyboard}
       width={w}
       height={h}
+      willReadFrequently={false}
     />
     <Canvas
       className={props.hdClass}
@@ -116,6 +130,7 @@ const Keyboard = (props: KeyboardProps) => {
       click={click_hitdetect}
       width={w}
       height={h}
+      willReadFrequently={true}
     />
   </div>);
 }

@@ -1,9 +1,14 @@
-import { create_tx2, get_builtin_sample_tape, Tx2, tx2_codabo, tx2_device_statuses, tx2_do_tick, tx2_drain_device_changes, tx2_load_tape, tx2_next_simulated_tick, tx2_unmasked_alarm_active } from '../../build/tx2_web';
+import { create_tx2, get_builtin_sample_tape, Tx2, tx2_codabo, tx2_device_statuses, tx2_do_tick, tx2_drain_device_changes, tx2_load_tape, tx2_lw_keyboard_click, tx2_next_simulated_tick, tx2_unmasked_alarm_active } from '../../build/tx2_web';
 import { AlarmController } from './alarms'
 import { IoController } from './io'
 import { WasmUnitState } from './types'
 
 type RunChangeCallback = (run: boolean) => void;
+
+type KeystrokeOutcome = {
+    consumed: boolean;
+    far_keyboard_is_active: boolean;
+}
 
 // TODO: use a consistent naming scheme for methods.
 export class Tx2Controller {
@@ -50,6 +55,10 @@ export class Tx2Controller {
         const data = get_builtin_sample_tape(name);
         tx2_load_tape(this.tx2, this.systemTime, this.clamped_elapsed_seconds(), data);
         this.ioController.update_status();
+    }
+
+    lwKeyPress(unit: number, far_currently_active: boolean, rgb: Uint8ClampedArray): KeystrokeOutcome {
+        return tx2_lw_keyboard_click(this.tx2, this.systemTime, this.clamped_elapsed_seconds(), unit, far_currently_active, rgb);
     }
 
     tick_after(interval: number, system_time_then: number): void {

@@ -202,7 +202,7 @@ pub trait Unit {
         source: Unsigned36Bit,
     ) -> Result<Option<OutputEvent>, TransferFailed>;
     fn name(&self) -> String;
-    fn on_input_event(&mut self, ctx: &Context, event: InputEvent) -> InputEventResult;
+    fn on_input_event(&mut self, ctx: &Context, event: InputEvent) -> Result<(), InputEventError>;
 }
 
 pub struct AttachedUnit {
@@ -320,7 +320,7 @@ impl AttachedUnit {
         self.inner.borrow_mut().write(ctx, source)
     }
 
-    pub fn on_input_event(&self, ctx: &Context, event: InputEvent) -> InputEventResult {
+    pub fn on_input_event(&self, ctx: &Context, event: InputEvent) -> Result<(), InputEventError> {
         self.inner.borrow_mut().on_input_event(ctx, event)
     }
 
@@ -455,14 +455,14 @@ impl DeviceManager {
         ctx: &Context,
         unit_number: Unsigned6Bit,
         input_event: InputEvent,
-    ) -> InputEventResult {
+    ) -> Result<(), InputEventError> {
         self.mark_device_changed(unit_number);
         if let Some(attached) = self.devices.get_mut(&unit_number) {
             attached.on_input_event(ctx, input_event)
         } else {
-            // This is an input event for a unit which is apparently
-            // not attached.
-            InputEventResult::UnknownSource
+            // The simulator doesn't believe this unit exists in the
+            // system at all.
+            Err(InputEventError::InputOnUnattachedUnit)
         }
     }
 
