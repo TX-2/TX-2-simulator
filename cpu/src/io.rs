@@ -607,8 +607,10 @@ impl DeviceManager {
                             });
                         } else if unit_status.missed_data {
                             alarm = Some(Alarm {
-                                sequence: Some(devno),
-                                details: AlarmDetails::MISAL,
+                                sequence: None,
+                                details: AlarmDetails::MISAL {
+                                    affected_unit: devno,
+                                },
                             });
                         }
                     }

@@ -159,7 +159,7 @@ pub enum AlarmDetails {
     /// missed a data item.  This generally indicates that the program
     /// is too slow for an I/O device.  For example because it uses
     /// too many hold bits.
-    MISAL,
+    MISAL { affected_unit: Unsigned6Bit },
 
     // Alarms we probably should implement but have not:
     //
@@ -224,7 +224,7 @@ impl AlarmDetails {
                 operand: _,
                 message: _,
             } => AlarmKind::IOSAL,
-            AlarmDetails::MISAL => AlarmKind::MISAL,
+            AlarmDetails::MISAL { affected_unit: _ } => AlarmKind::MISAL,
             AlarmDetails::ROUNDTUITAL(_) => AlarmKind::ROUNDTUITAL,
             AlarmDetails::DEFERLOOPAL { address: _ } => AlarmKind::DEFERLOOPAL,
             AlarmDetails::BUGAL {
@@ -291,7 +291,10 @@ impl Display for AlarmDetails {
                 write!(f, ": {}", message)
             }
 
-            MISAL => f.write_str("MISAL: program too slow; missed data"),
+            MISAL { affected_unit } => write!(
+                f,
+                "MISAL: program too slow; missed data for unit {affected_unit:o}"
+            ),
 
             BUGAL { instr, message } => {
                 if let Some(instruction) = instr.as_ref() {

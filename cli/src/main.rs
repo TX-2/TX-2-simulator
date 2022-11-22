@@ -107,8 +107,10 @@ fn run_until_alarm(
                                 // instead of just terminating the simulation.
                                 break UnmaskedAlarm {
                                     alarm: Alarm {
-                                        sequence: Some(unit),
-                                        details: AlarmDetails::MISAL,
+                                        sequence: None,
+                                        details: AlarmDetails::MISAL {
+                                            affected_unit: u6!(0o66),
+                                        },
                                     },
                                     address: None,
                                     when: tick_context.simulated_time,
