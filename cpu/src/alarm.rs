@@ -284,7 +284,7 @@ impl Display for AlarmDetails {
                 operand,
                 message,
             } => {
-                write!(f, "IOSAL: I/O alarm during operation on unit {}", unit,)?;
+                write!(f, "IOSAL: I/O alarm during operation on unit {:o}", unit,)?;
                 if let Some(oper) = operand {
                     write!(f, " with operand {}", oper)?;
                 }
@@ -314,7 +314,7 @@ impl Display for AlarmDetails {
             DEFERLOOPAL { address } => {
                 write!(
                     f,
-                    "DEFERLOOPAL: infinite loop in deferred address at {}",
+                    "DEFERLOOPAL: infinite loop in deferred address at {:>012o}",
                     address,
                 )
             }
