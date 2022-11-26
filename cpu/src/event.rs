@@ -4,6 +4,8 @@ use std::fmt::{self, Display, Formatter};
 use base::charset::DescribedChar;
 use base::Unsigned6Bit;
 
+use crate::alarm::UnmaskedAlarm;
+
 #[derive(Debug)]
 pub enum InputEvent {
     PetrMountPaperTape { data: Vec<u8> },
@@ -31,18 +33,23 @@ pub enum InputEventError {
 
     InputEventNotValidForDevice,
     InvalidReentrantCall,
+
+    UnmaskedAlarm(UnmaskedAlarm),
 }
 
 impl Display for InputEventError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        f.write_str(match self {
-            InputEventError::BufferUnavailable => "buffer unavailable",
-            InputEventError::InputOnUnattachedUnit => "input on a unit which is not attached",
-            InputEventError::InputEventNotValidForDevice => {
-                "input event is not valid for this device"
+        match self {
+            InputEventError::BufferUnavailable => f.write_str("buffer unavailable"),
+            InputEventError::InputOnUnattachedUnit => {
+                f.write_str("input on a unit which is not attached")
             }
-            InputEventError::InvalidReentrantCall => "inalid re-entrant call",
-        })
+            InputEventError::InputEventNotValidForDevice => {
+                f.write_str("input event is not valid for this device")
+            }
+            InputEventError::InvalidReentrantCall => f.write_str("inalid re-entrant call"),
+            InputEventError::UnmaskedAlarm(alarm) => alarm.fmt(f),
+        }
     }
 }
 

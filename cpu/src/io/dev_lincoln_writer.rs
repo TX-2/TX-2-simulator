@@ -393,18 +393,45 @@ impl LincolnWriterInput {
 
 impl Unit for LincolnWriterInput {
     fn poll(&mut self, ctx: &Context) -> UnitStatus {
+        let data_available = !self.data.is_empty();
+        let change_flag: Option<FlagChange> = if self.connected {
+            if data_available {
+                event!(
+                    Level::DEBUG,
+                    "LW input {:o}: connected and data is ready; raising flag",
+                    self.unit
+                );
+                Some(FlagChange::Raise) // data is ready, raise flag
+            } else {
+                event!(
+                    Level::TRACE,
+                    "LW input {:o}: connected but no data ready, will not raise flag",
+                    self.unit
+                );
+                None // no data ready, so don't raise flag
+            }
+        } else {
+            event!(
+                Level::TRACE,
+                "LW input {:o}: not connected, will not raise flag",
+                self.unit
+            );
+            None // no flag raise since not connected
+        };
+
         UnitStatus {
             special: Unsigned12Bit::ZERO,
-            change_flag: if !self.connected || self.data.is_empty() {
-                None
-            } else {
-                Some(FlagChange::Raise)
-            },
-            buffer_available_to_cpu: !self.data.is_empty(),
+            change_flag,
+            buffer_available_to_cpu: self.connected && data_available,
             inability: false,
             missed_data: false,
             mode: self.mode,
-            poll_after: ctx.simulated_time + Duration::from_millis(30),
+            // Our input processing is driven by calls to
+            // DeviceManager::on_input_event() which will result in
+            // flag raises when necessary.  So there is no need to
+            // call poll() in order to detect input becoming evailable
+            // and so we provide long poll_after values.
+            poll_after: ctx.simulated_time + LATER,
             is_input_unit: true,
         }
     }
@@ -487,7 +514,13 @@ impl Unit for LincolnWriterInput {
         _ctx: &Context,
         event: crate::InputEvent,
     ) -> Result<(), InputEventError> {
-        if let InputEvent::LwKeyboardInput { data } = event {
+        event!(
+            Level::DEBUG,
+            "LW input {:o} processing input event: {:?}",
+            self.unit,
+            &event
+        );
+        let result = if let InputEvent::LwKeyboardInput { data } = event {
             match (self.data.is_empty(), data.as_slice()) {
                 (_, []) => Ok(()),
                 (false, _) => Err(InputEventError::BufferUnavailable),
@@ -512,6 +545,14 @@ impl Unit for LincolnWriterInput {
             }
         } else {
             Err(InputEventError::InputEventNotValidForDevice)
-        }
+        };
+        event!(
+            Level::DEBUG,
+            "LW input {:o} completing input event, data is {:?}, result is {:?}",
+            self.unit,
+            self.data,
+            &result
+        );
+        result
     }
 }

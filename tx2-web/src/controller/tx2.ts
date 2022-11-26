@@ -7,6 +7,7 @@ type RunChangeCallback = (run: boolean) => void;
 
 type KeystrokeOutcome = {
     consumed: boolean;
+    flag_raised: boolean;
     far_keyboard_is_active: boolean;
 }
 
@@ -58,7 +59,12 @@ export class Tx2Controller {
     }
 
     lwKeyPress(unit: number, far_currently_active: boolean, rgb: Uint8ClampedArray): KeystrokeOutcome {
-        return tx2_lw_keyboard_click(this.tx2, this.systemTime, this.clamped_elapsed_seconds(), unit, far_currently_active, rgb);
+        const result = tx2_lw_keyboard_click(this.tx2, this.systemTime, this.clamped_elapsed_seconds(), unit, far_currently_active, rgb);
+        if (result.flag_raised && this.running) {
+            console.log("LW key press may have resulted in a flag raise, scheduling a tick soon");
+            this.tickSoon();
+        }
+        return result;
     }
 
     tick_after(interval: number, system_time_then: number): void {
@@ -104,12 +110,16 @@ export class Tx2Controller {
         this.alarmController.update_status();
     }
 
+    tickSoon() {
+        this.tick_after(0.0, this.systemTime + 1e-6);
+    }
+
     changeRun(run: boolean): void {
         const wasRunning = this.running;
         this.running = run;
         if (this.running &&  !wasRunning) {
             this.reset_start_time();
-            this.tick_after(0.0, this.systemTime + 1e-6);
+            this.tickSoon();
         }
         if (this.running != wasRunning) {
             // Update the UI.

@@ -28,6 +28,12 @@ pub struct Tx2 {
     run_mode: RunMode,
 }
 
+#[derive(Debug)]
+pub enum InputFlagRaised {
+    No,
+    Maybe,
+}
+
 impl Tx2 {
     pub fn new(
         ctx: &Context,
@@ -102,9 +108,42 @@ impl Tx2 {
             .codabo(ctx, reset_mode, &mut self.devices, &mut self.mem)
     }
 
-    pub fn mount_tape(&mut self, ctx: &Context, data: Vec<u8>) -> Result<(), InputEventError> {
+    fn on_input_event(
+        &mut self,
+        ctx: &Context,
+        unit: Unsigned6Bit,
+        event: InputEvent,
+    ) -> Result<InputFlagRaised, InputEventError> {
         self.devices
-            .on_input_event(ctx, PETR, InputEvent::PetrMountPaperTape { data })
+            .on_input_event(ctx, unit, event)
+            .and_then(|()| {
+                // update the poll time for this unit to force it to
+                // be polled
+                self.devices.update_poll_time(ctx, unit);
+                // Now perform the poll so that we notice any flag
+                // raise it wants to make.
+                self.poll_hw(ctx).map_err(InputEventError::UnmaskedAlarm)
+            })
+            .map(|()| {
+                event!(
+                    Level::DEBUG,
+                    "after input event, run mode is {:?}",
+                    self.run_mode
+                );
+                if self.run_mode == RunMode::Running {
+                    InputFlagRaised::Maybe
+                } else {
+                    InputFlagRaised::No
+                }
+            })
+    }
+
+    pub fn mount_tape(
+        &mut self,
+        ctx: &Context,
+        data: Vec<u8>,
+    ) -> Result<InputFlagRaised, InputEventError> {
+        self.on_input_event(ctx, PETR, InputEvent::PetrMountPaperTape { data })
     }
 
     pub fn lw_input(
@@ -112,13 +151,13 @@ impl Tx2 {
         ctx: &Context,
         unit: Unsigned6Bit,
         codes: &[Unsigned6Bit],
-    ) -> Result<bool, String> {
+    ) -> Result<(bool, InputFlagRaised), String> {
         let event = InputEvent::LwKeyboardInput {
             data: codes.to_vec(),
         };
-        match self.devices.on_input_event(ctx, unit, event) {
-            Ok(()) => Ok(true),
-            Err(InputEventError::BufferUnavailable) => Ok(false),
+        match self.on_input_event(ctx, unit, event) {
+            Ok(flag_raise) => Ok((true, flag_raise)),
+            Err(InputEventError::BufferUnavailable) => Ok((false, InputFlagRaised::No)),
             Err(e) => Err(e.to_string()),
         }
     }
@@ -177,6 +216,15 @@ impl Tx2 {
         ctx: &Context,
     ) -> Result<(u64, Option<OutputEvent>), UnmaskedAlarm> {
         let now = &ctx.simulated_time;
+        if self.run_mode == RunMode::InLimbo {
+            event!(
+                Level::WARN,
+                "execute_one_instruction was called while machine is in LIMBO"
+            );
+            self.set_next_execution_due(*now, None);
+            return Ok((0, None));
+        }
+
         let mut hardware_state_changed: Option<SequenceNumber> = None;
         match self.control.execute_instruction(
             ctx,
@@ -279,6 +327,7 @@ impl Tx2 {
                 self.next_hw_poll_due - system_time,
             );
         }
+
         if self.run_mode == RunMode::InLimbo {
             // No sequence is active, so there is no CPU instruction
             // to execute.  Therefore we can only leave the limbo

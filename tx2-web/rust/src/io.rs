@@ -12,19 +12,26 @@ use cpu::*;
 
 use crate::context::make_context;
 use crate::io::keyboard::Code;
-use crate::samples::sample_binary_hello;
+use crate::samples::{sample_binary_echo, sample_binary_hello};
 
 pub use keyboard::{
     draw_keyboard, HtmlCanvas2DPainter, KeyPaintError, SWITCH_TO_FAR, SWITCH_TO_NEAR,
 };
 
 #[wasm_bindgen]
-pub fn tx2_load_tape(tx2: &mut Tx2, simulated_time: f64, elapsed_time_secs: f64, data: &[u8]) {
+pub fn tx2_load_tape(
+    tx2: &mut Tx2,
+    simulated_time: f64,
+    elapsed_time_secs: f64,
+    data: &[u8],
+) -> bool {
     let context = make_context(simulated_time, elapsed_time_secs);
     match tx2.mount_tape(&context, data.to_vec()) {
-        Ok(()) => (),
+        Ok(InputFlagRaised::Maybe) => true,
+        Ok(InputFlagRaised::No) => false,
         Err(e) => {
             event!(Level::ERROR, "failed to load paper tape: {e}");
+            false
         }
     }
 }
@@ -102,6 +109,7 @@ pub(crate) fn hit_detection_rgb_to_code(
 #[wasm_bindgen]
 pub struct KeystrokeOutcome {
     consumed: bool,
+    flag_raised: bool,
     far_keyboard_is_active: bool,
 }
 
@@ -110,6 +118,11 @@ impl KeystrokeOutcome {
     #[wasm_bindgen(getter)]
     pub fn consumed(&self) -> bool {
         self.consumed
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn flag_raised(&self) -> bool {
+        self.flag_raised
     }
 
     #[wasm_bindgen(getter)]
@@ -143,12 +156,17 @@ pub fn tx2_lw_keyboard_click(
                     );
                     KeystrokeOutcome {
                         consumed: false,
+                        flag_raised: false,
                         far_keyboard_is_active: codes.far_now_active,
                     }
                 }
                 Ok(data) => match tx2.lw_input(&context, unit, &data) {
-                    Ok(consumed) => KeystrokeOutcome {
+                    Ok((consumed, flag_raise)) => KeystrokeOutcome {
                         consumed,
+                        flag_raised: match flag_raise {
+                            InputFlagRaised::Maybe => true,
+                            InputFlagRaised::No => false,
+                        },
                         far_keyboard_is_active: codes.far_now_active,
                     },
                     Err(e) => {
@@ -158,6 +176,7 @@ pub fn tx2_lw_keyboard_click(
                         );
                         KeystrokeOutcome {
                             consumed: false,
+                            flag_raised: false,
                             far_keyboard_is_active: codes.far_now_active,
                         }
                     }
@@ -170,6 +189,7 @@ pub fn tx2_lw_keyboard_click(
                 );
                 KeystrokeOutcome {
                     consumed: false,
+                    flag_raised: false,
                     far_keyboard_is_active: codes.far_now_active,
                 }
             }
@@ -178,11 +198,13 @@ pub fn tx2_lw_keyboard_click(
             // Click on something that wasn't a key.
             KeystrokeOutcome {
                 consumed: true,
+                flag_raised: false,
                 far_keyboard_is_active: far_currently_active,
             }
         }
         Err(_) => KeystrokeOutcome {
             consumed: true,
+            flag_raised: false,
             far_keyboard_is_active: far_currently_active,
         },
     }
@@ -191,6 +213,7 @@ pub fn tx2_lw_keyboard_click(
 #[wasm_bindgen]
 pub fn get_builtin_sample_tape(sample_name: &str) -> Result<Vec<u8>, String> {
     match sample_name {
+        "echo" => Ok(sample_binary_echo()),
         "hello" => Ok(sample_binary_hello()),
         _ => Err(format!("unknown sample file '{}'", sample_name)),
     }

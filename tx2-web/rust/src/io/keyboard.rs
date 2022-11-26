@@ -427,19 +427,16 @@ fn room_for_key_padding(w: f64, h: f64, bbox: &BoundingBox) -> Room {
     let hfit = w <= avail_width;
     let avail_height = f64::from(bbox.height()) * MAX_SIZE_FRACTION;
     let vfit = h <= avail_height;
-    let mut problems = Vec::new();
-    if !hfit {
-        problems.push(format!("max text width is {w:.1} but this will not comfortably fit (available width is {avail_width:.1}"));
-    }
-    if !vfit {
-        problems.push(format!("total text height is {h:.1} but this will not comfortably fit (available height is {avail_height:.1}"));
-    }
-    for prob in problems.iter() {
-        event!(Level::TRACE, prob);
-    }
-    if problems.is_empty() {
+    if vfit && hfit {
         Room::Sufficient
     } else {
+        let mut problems = Vec::with_capacity(2);
+        if !hfit {
+            problems.push(format!("max text width is {w:.1} but this will not comfortably fit (available width is {avail_width:.1}"));
+        }
+        if !vfit {
+            problems.push(format!("total text height is {h:.1} but this will not comfortably fit (available height is {avail_height:.1}"));
+        }
         Room::Insufficient(problems)
     }
 }
@@ -578,15 +575,15 @@ impl HtmlCanvas2DPainter {
             }
         };
 
-        for (metric, s) in metrics.iter().zip(lines.iter()) {
-            if metric.actual_bounding_box_left() != 0.0_f64 {
-                event!(
-                    Level::TRACE,
-                    "left bounding box for {s} is {}",
-                    metric.actual_bounding_box_left()
-                );
-            }
-        }
+        //for (metric, s) in metrics.iter().zip(lines.iter()) {
+        //    if metric.actual_bounding_box_left() != 0.0_f64 {
+        //        event!(
+        //            Level::TRACE,
+        //            "left bounding box for {s} is {}",
+        //            metric.actual_bounding_box_left()
+        //        );
+        //    }
+        //}
         let (a, d, max_width) = match (max_ascent, max_descent, mw) {
             (a, d, m) if (a == 0.0 && d == 0.0) || m == 0.0 => {
                 return Ok(()); // There is no text to draw.

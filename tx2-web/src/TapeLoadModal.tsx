@@ -22,6 +22,11 @@ const customStyles = {
 };
 
 const TapeLoadModal: FunctionComponent<TapeLoadModalProps> = ({ modalIsOpen, closeModal, loadTape, loadSample }) => {
+  const handleLoadEcho = (e: React.MouseEvent<HTMLInputElement>) => {
+    console.log({ e });
+    loadSample("echo");
+    closeModal();
+  }
   const handleLoadHello = (e: React.MouseEvent<HTMLInputElement>) => {
     console.log({ e });
     loadSample("hello");
@@ -34,9 +39,9 @@ const TapeLoadModal: FunctionComponent<TapeLoadModalProps> = ({ modalIsOpen, clo
       console.log("Attempting to load a tape " + file.name + " which has length " + file.size.toString());
       const reader = new FileReader();
       reader.onloadend = function() {
-	const bytes = new Uint8Array(reader.result as ArrayBuffer)
-	loadTape(bytes);
-	closeModal();
+        const bytes = new Uint8Array(reader.result as ArrayBuffer)
+        loadTape(bytes);
+        closeModal();
       };
       reader.readAsArrayBuffer(file);
     } else {
@@ -53,8 +58,9 @@ const TapeLoadModal: FunctionComponent<TapeLoadModalProps> = ({ modalIsOpen, clo
     <div>Please select a paper tape image file to load.</div>
     <form>
       <div className={styles['tape-load-modal__buttons']}>
-	<input className={styles['tape-load-modal__buttons']} type="button" onClick={handleLoadHello} value="Load sample &lsquo;hello&rsquo;" />
-	<input className={styles['tape-load-modal__buttons']} type="file" id="tape_load_file" accept=".tape,application/binary" onChange={handleChange} />
+        <input className={styles['tape-load-modal__buttons']} type="button" onClick={handleLoadHello} value="Load sample &lsquo;hello&rsquo;" />
+        <input className={styles['tape-load-modal__buttons']} type="button" onClick={handleLoadEcho} value="Load sample &lsquo;echo&rsquo;" />
+        <input className={styles['tape-load-modal__buttons']} type="file" id="tape_load_file" accept=".tape,application/binary" onChange={handleChange} />
       </div>
     </form>
   </Modal>;

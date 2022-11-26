@@ -84,9 +84,6 @@ const Keyboard = (props: KeyboardProps) => {
         draw(ctx, true)
     }
     const click_hitdetect = (event: React.MouseEvent<HTMLCanvasElement, MouseEvent>, canvas: HTMLCanvasElement) => {
-      // Not yet implemented.
-      console.log("in Canvas click callback for hit detector canvas, it's not implemented.");
-      console.log({event});
       const context = canvas.getContext('2d');
       if (!context) {
         return;

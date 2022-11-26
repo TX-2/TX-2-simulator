@@ -334,6 +334,17 @@ pub struct UnmaskedAlarm {
     pub when: Duration,
 }
 
+impl Display for UnmaskedAlarm {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(f, "unmasked alarm {}", self.alarm)?;
+        if let Some(address) = self.address {
+            write!(f, "at address {}", address)
+        } else {
+            Ok(())
+        }
+    }
+}
+
 pub trait Alarmer {
     fn fire_if_not_masked(&mut self, alarm_instance: Alarm) -> Result<(), Alarm>;
     fn always_fire(&mut self, alarm_instance: Alarm) -> Alarm;

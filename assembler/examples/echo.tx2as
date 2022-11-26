@@ -1,0 +1,42 @@
+** This TX-2 program accepts keyboard input.  We will eventually make
+** it echo the input back to the Lincoln Writer, but for now the
+** functionality is much more limited.
+**
+** Assemble this program like this:
+**
+** cargo run  --bin tx2m4as --  --output ../examples/echo.tape examples/echo.tx2as
+**
+**
+** The first Lincoln Writer's input is unit 65.  We will put the code
+** for its sequence at 200, so the program counter for sequence 65
+** (which is X₆₅) should start at 200.
+100|      REX₆₅   200     ** Set X₆₅ to 200.
+        ²¹IOS₆₅ 30000     ** Connect Lincoln Writer input 1 (unit 65).
+
+** The IOS instruction connecting unit 65 has the side effect of
+** making sequence 65 runnable. Because bit 020 of the configuration
+** syllable of the IOS instruction is set, the flag of the current
+** sequence is also dropped, meaning that the current sequence (which
+** happens to be 52, the paper tape reader, because of the way the
+** standard leader works) is dropped.  Therefore sequence 52 will no
+** longer run.
+
+** Next we read from the LW input to Q1 of the E register (which lives
+** at 377610).  As a side effect of the TSD instruction, the same
+** value would in any case be left in the E register. See figure 15-18
+** in Volume 2 of the TX-2 Techical Manual.  In our current case,
+** there is no need to write this data to any other location than E.
+
+200| ³TSD 377610 ** read code into E register
+      SED    500 ** compare with STOP, skip if different.
+      0          ** STOP entered, so execute an invalid instruction.
+      JMP    200 ** code is not STOP, so loop to 200.
+
+** We keep data at 500 and following
+500| 70   ** the LW code for STOP
+
+
+** Indicate to the assembler that it should generate a punched tape
+** output (with the standard header) and that the header should begin
+** the program by juming to location 100.
+☛☛PUNCH 100
