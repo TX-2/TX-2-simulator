@@ -146,10 +146,17 @@ impl SequenceFlags {
         // with `u16`".
         #![allow(clippy::cmp_owned)]
         assert!(u16::from(*flag) < 0o100_u16);
-        event!(Level::DEBUG, "Raising flag {}", flag,);
         let mask = SequenceFlags::flagbit(flag);
         self.flag_values |= mask;
         self.flag_changes |= mask;
+        let seqs: String = ones_of_value_as_vec(self.flag_values)
+            .into_iter()
+            .map(|v| format!("{:>02o} ", u64::from(v)))
+            .collect();
+        event!(
+            Level::DEBUG,
+            "Raised flag {flag:o}; runnable sequences now {seqs}"
+        );
     }
 
     fn current_flag_state(&self, flag: &SequenceNumber) -> bool {
@@ -449,13 +456,6 @@ fn sign_extend_index_value(index_val: &Signed18Bit) -> Unsigned36Bit {
         Unsigned18Bit::ZERO
     };
     subword::join_halves(left, index_val.reinterpret_as_unsigned())
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SequenceSelection {
-    Continue,
-    Change(SequenceNumber),
-    InLimbo,
 }
 
 #[derive(Debug, PartialEq, Eq, Default)]
@@ -836,10 +836,9 @@ impl ControlUnit {
         }
     }
 
-    /// Consider whether a change of sequence is needed.  Return true
-    /// if some sequence is runnable, or false if we are in the LIMBO
-    /// state.
-    fn select_sequence(&mut self) -> SequenceSelection {
+    /// Consider whether a change of sequence is needed.  If yes,
+    /// perform the change.
+    fn select_sequence(&mut self) -> RunMode {
         if self.regs.previous_instruction_hold() {
             event!(
                 Level::DEBUG,
@@ -848,7 +847,7 @@ impl ControlUnit {
                     "so we will not consider a sequence change"
                 )
             );
-            SequenceSelection::Continue
+            RunMode::Running
         } else {
             // Handle any possible change of sequence.
             match self.regs.flags.highest_priority_raised_flag() {
@@ -865,13 +864,13 @@ impl ControlUnit {
                             Level::DEBUG,
                             "No flags raised and current sequence is not runnable: in LIMBO"
                         );
-                        SequenceSelection::InLimbo
+                        RunMode::InLimbo
                     } else {
                         event!(
                             Level::DEBUG,
                             "No flag is raised, but the current sequence is still runnable"
                         );
-                        SequenceSelection::Continue
+                        RunMode::Running
                     }
                 }
                 Some(seq) => {
@@ -879,10 +878,11 @@ impl ControlUnit {
                     if Some(seq) > self.regs.k
                         || (!self.regs.current_sequence_is_runnable && Some(seq) < self.regs.k)
                     {
-                        SequenceSelection::Change(seq)
+                        self.change_sequence(self.regs.k, seq);
+                        RunMode::Running
                     } else {
                         // No sequence change, just carry on.
-                        SequenceSelection::Continue
+                        RunMode::Running
                     }
                 }
             }
@@ -894,7 +894,7 @@ impl ControlUnit {
         // operation by considering a possible change of sequence.
         // The TX-2 itself considers a sequence change as the PK cycle
         // is completed, in the resting state PK⁰⁰.  So it might make
-        // more sense to move the sequence-change logig to the end of
+        // more sense to move the sequence-change logic to the end of
         // the instructino-execution implementation. That will likely
         // make it simpler to implement the "hold" bit and
         // dismiss-and-wait (i.e. cases where we don't increment the
@@ -909,6 +909,10 @@ impl ControlUnit {
         // Calculate the address from which we will fetch the
         // instruction, and the increment the program counter.
         let p_physical_address = Address::from(self.regs.p.split().0);
+        event!(
+            Level::TRACE,
+            "Fetching instruction from physical address {p_physical_address:>012o}"
+        );
         // Actually fetch the instruction.
         let meta_op = if self.trap.set_metabits_of_instructions() {
             MetaBitChange::Set
@@ -943,12 +947,22 @@ impl ControlUnit {
                 MemoryOpFailure::ReadOnly(_, _) => unreachable!(),
             },
         };
-        event!(
-            Level::TRACE,
-            "Fetched instruction {:?} from physical address {:?}",
-            instruction_word,
-            p_physical_address
-        );
+        if let Some(k) = self.regs.k {
+            event!(
+                Level::TRACE,
+                "Seq {:o} fetched instruction {:>012o} from physical address {:>012o}",
+                k,
+                instruction_word,
+                p_physical_address
+            );
+        } else {
+            event!(
+                Level::DEBUG,
+                "Unspecified sequence fetched instruction {:>012o} from physical address {:>012o}",
+                instruction_word,
+                p_physical_address
+            );
+        }
         self.update_n_register(instruction_word)?;
         Ok(())
     }
@@ -1062,6 +1076,10 @@ impl ControlUnit {
         mem: &mut MemoryUnit,
         poll_order_change: &mut Option<SequenceNumber>,
     ) -> Result<(u64, RunMode, Option<OutputEvent>), (Alarm, Address)> {
+        if self.select_sequence() == RunMode::InLimbo {
+            return Ok((0, RunMode::InLimbo, None));
+        }
+
         fn execute(
             ctx: &Context,
             prev_program_counter: Address,
@@ -1206,17 +1224,10 @@ impl ControlUnit {
         // prev_hold unconditionally. Determine whether this
         // instruction should be followed by a change of sequence.
         match result {
-            Ok(maybe_output) => match self.select_sequence() {
-                SequenceSelection::Continue => Ok((elapsed_time, RunMode::Running, maybe_output)),
-                SequenceSelection::InLimbo => Ok((elapsed_time, RunMode::InLimbo, maybe_output)),
-                SequenceSelection::Change(seq) => {
-                    // The (previously) current sequence dropped
-                    // out, or seq is a higher priority than the
-                    // current sequence
-                    self.change_sequence(self.regs.k, seq);
-                    Ok((elapsed_time, RunMode::Running, maybe_output))
-                }
-            },
+            Ok(maybe_output) => {
+                let new_mode: RunMode = self.select_sequence();
+                Ok((elapsed_time, new_mode, maybe_output))
+            }
             Err((alarm, address)) => Err((alarm, address)),
         }
         // self.regs.k now identifies the sequence we should be
