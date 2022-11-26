@@ -586,10 +586,10 @@ impl DeviceManager {
                         system_time
                     );
                     let unit_status = attached.poll(ctx, alarm_unit)?;
-                    event!(Level::TRACE, "unit status is {:?}", unit_status);
+                    event!(Level::TRACE, "unit {devno:02o} status is {unit_status:?}");
                     self.poll_queue.push(devno, unit_status.poll_after);
                     if let Some(FlagChange::Raise) = unit_status.change_flag {
-                        event!(Level::TRACE, "unit has raised its flag");
+                        event!(Level::TRACE, "unit {devno:02o} has raised its flag");
                         raised_flags |= 1 << u8::from(devno);
                     }
                     if alarm.is_none() {
