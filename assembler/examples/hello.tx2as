@@ -9,7 +9,7 @@
 ** for its sequence at 200, so the program counter for sequence 66
 ** (which is X₆₆) should start at 200.
 100|      REX₆₆   200     ** Set X₆₆ to 200.
-	²¹IOS₆₆ 30000     ** Connect the Lincoln Writer (unit 66).
+        ²¹IOS₆₆ 30000     ** Connect Lincoln Writer output 1 (unit 66).
 
 ** The IOS instruction connecting unit 66 has the side effect of
 ** making sequence 66 runnable. Because bit 020 of the configuration
@@ -42,18 +42,18 @@
          ⁵TSD 300  ** Print Q3 of the word at 300
          ⁴TSD 300  ** Print Q2 of the word at 300
          ³TSD 300  ** Print Q1 of the word at 300
-	 ⁶TSD 301  ** Print Q4 of the word at 301
-	 ⁵TSD 301  ** Print Q3 of the word at 301
+         ⁶TSD 301  ** Print Q4 of the word at 301
+         ⁵TSD 301  ** Print Q3 of the word at 301
          ⁴TSD 301  ** Print Q2 of the word at 301
          ³TSD 301  ** Print Q1 of the word at 301
-	 ⁶TSD 302  ** Print Q4 of the word at 302
-	 ⁵TSD 302  ** Print Q3 of the word at 302
+         ⁶TSD 302  ** Print Q4 of the word at 302
+         ⁵TSD 302  ** Print Q3 of the word at 302
          ⁴TSD 302  ** Print Q2 of the word at 302
          ³TSD 302  ** Print Q1 of the word at 302
          ⁶TSD 303  ** Print Q4 of the word at 303
          ¹JNX₁ 201 ** Loop to 201 if X₁<0, increment X₁
-	  IOS₆₆ 20000 ** Disconnect the Lincoln Writer (unit 66).
-	  000000      ** An invalid instruction; terminates simulation
+          IOS₆₆ 20000 ** Disconnect the Lincoln Writer (unit 66).
+          000000      ** An invalid instruction; terminates simulation
 
 ** The text we want to print follows.  The Lincoln Writer doesn't use
 ** ASCII (it predates the invention of ASCII).  Lincoln Writer
