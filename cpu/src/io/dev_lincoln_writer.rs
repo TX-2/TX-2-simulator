@@ -461,6 +461,10 @@ impl Unit for LincolnWriterInput {
     }
 
     fn read(&mut self, _ctx: &Context) -> Result<MaskedWord, TransferFailed> {
+        event!(
+            Level::DEBUG,
+            "read from LW input device having state {self:?}"
+        );
         if self.data.is_empty() {
             Err(TransferFailed::BufferNotFree)
         } else {
@@ -548,7 +552,7 @@ impl Unit for LincolnWriterInput {
         };
         event!(
             Level::DEBUG,
-            "LW input {:o} completing input event, data is {:?}, result is {:?}",
+            "LW input {:o} completing input event, data is now {:?}, result is {:?}",
             self.unit,
             self.data,
             &result

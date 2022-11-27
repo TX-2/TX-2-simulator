@@ -33,7 +33,7 @@
       JMP    200 ** code is not STOP, so loop to 200.
 
 ** We keep data at 500 and following
-500| 70   ** the LW code for STOP
+500| 76   ** the LW code for STOP
 
 
 ** Indicate to the assembler that it should generate a punched tape
