@@ -2,6 +2,7 @@ use core::time::Duration;
 
 use crate::alarm::Alarm;
 use crate::context::Context;
+use crate::control::ConfigurationMemorySetup;
 use crate::memory::MetaBitChange;
 use crate::DeviceManager;
 use crate::{ControlUnit, MemoryConfiguration, MemoryUnit, PanicOnUnmaskedAlarm, UpdateE};
@@ -15,7 +16,10 @@ fn make_ctx() -> Context {
 }
 
 fn setup(ctx: &Context, p: Address) -> (ControlUnit, MemoryUnit) {
-    let mut control = ControlUnit::new(PanicOnUnmaskedAlarm::No);
+    let mut control = ControlUnit::new(
+        PanicOnUnmaskedAlarm::No,
+        ConfigurationMemorySetup::StandardForTestingOnly,
+    );
     let mem = MemoryUnit::new(
         ctx,
         &MemoryConfiguration {

@@ -135,6 +135,7 @@ impl ControlUnit {
 mod tests {
     use super::super::{ControlUnit, PanicOnUnmaskedAlarm, UpdateE};
     use crate::context::Context;
+    use crate::control::ConfigurationMemorySetup;
     use crate::exchanger::SystemConfiguration;
     use crate::memory::{MemoryMapped, MetaBitChange};
     use crate::{MemoryConfiguration, MemoryUnit};
@@ -184,7 +185,10 @@ mod tests {
         d: Unsigned36Bit,
         e: Unsigned36Bit,
     ) -> (ControlUnit, MemoryUnit) {
-        let mut control = ControlUnit::new(PanicOnUnmaskedAlarm::Yes);
+        let mut control = ControlUnit::new(
+            PanicOnUnmaskedAlarm::Yes,
+            ConfigurationMemorySetup::StandardForTestingOnly,
+        );
         let mut mem = MemoryUnit::new(
             ctx,
             &MemoryConfiguration {
@@ -314,7 +318,10 @@ mod tests {
         F: FnMut(&mut ControlUnit),
     {
         const COMPLAIN: &str = "failed to set up load/store test data";
-        let mut control = ControlUnit::new(PanicOnUnmaskedAlarm::Yes);
+        let mut control = ControlUnit::new(
+            PanicOnUnmaskedAlarm::Yes,
+            ConfigurationMemorySetup::StandardForTestingOnly,
+        );
         let mut mem = MemoryUnit::new(
             ctx,
             &MemoryConfiguration {

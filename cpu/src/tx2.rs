@@ -11,7 +11,7 @@ use base::prelude::*;
 use crate::alarm::{Alarm, AlarmKind, UnmaskedAlarm};
 use crate::alarmunit::AlarmStatus;
 use crate::context::Context;
-use crate::control::{ControlUnit, ResetMode, RunMode};
+use crate::control::{ConfigurationMemorySetup, ControlUnit, ResetMode, RunMode};
 use crate::event::{InputEvent, OutputEvent};
 use crate::io::{set_up_peripherals, DeviceManager, ExtendedUnitState};
 use crate::memory::{MemoryConfiguration, MemoryUnit};
@@ -34,7 +34,10 @@ impl Tx2 {
         panic_on_unmasked_alarm: PanicOnUnmaskedAlarm,
         mem_config: &MemoryConfiguration,
     ) -> Tx2 {
-        let control = ControlUnit::new(panic_on_unmasked_alarm);
+        let control = ControlUnit::new(
+            panic_on_unmasked_alarm,
+            ConfigurationMemorySetup::Uninitialised,
+        );
         event!(
             Level::DEBUG,
             "Initial control unit state iis {:?}",

@@ -16,6 +16,8 @@ use tracing::{event, Level};
 
 use base::prelude::*;
 
+use crate::memory::get_standard_plugboard;
+
 /// The Exchange Element behaves differently in the M->E (i.e. load)
 /// direction and the E->M (i.e. store) direction.  This enumeration
 /// specifies the direction of the current transfer.
@@ -127,9 +129,22 @@ impl From<u8> for SystemConfiguration {
     }
 }
 
+impl TryFrom<u16> for SystemConfiguration {
+    type Error = ConversionFailed;
+    fn try_from(n: u16) -> Result<SystemConfiguration, ConversionFailed> {
+        Unsigned9Bit::try_from(n).map(SystemConfiguration::from)
+    }
+}
+
 impl From<Unsigned9Bit> for SystemConfiguration {
     fn from(n: Unsigned9Bit) -> SystemConfiguration {
         SystemConfiguration(n)
+    }
+}
+
+impl From<SystemConfiguration> for Unsigned9Bit {
+    fn from(cfg: SystemConfiguration) -> Unsigned9Bit {
+        cfg.0
     }
 }
 
@@ -869,22 +884,31 @@ fn test_permute_p0() {
     }
 }
 
+/// Perform an exchange operation in the M->E direction, but without
+/// sign extension of the inactive quarters of the target.
+pub(crate) fn exchanged_value_for_load_without_sign_extension(
+    cfg: &SystemConfiguration,
+    source: &Unsigned36Bit,
+    dest: &Unsigned36Bit,
+) -> Unsigned36Bit {
+    permute(
+        &cfg.permutation(),
+        &ExchangeDirection::ME,
+        &cfg.active_quarters(),
+        source,
+        dest,
+    )
+}
+
 /// Perform an exchange operation suitable for a load operation; that
-/// is, emulate the operation of the exchange unit diring e.g. LDA.
+/// is, emulate the operation of the exchange unit during e.g. LDA.
 pub(crate) fn exchanged_value_for_load(
     cfg: &SystemConfiguration,
     source: &Unsigned36Bit,
     dest: &Unsigned36Bit,
 ) -> Unsigned36Bit {
-    let active_quarters = cfg.active_quarters();
-    let permuted_target = permute(
-        &cfg.permutation(),
-        &ExchangeDirection::ME,
-        &active_quarters,
-        source,
-        dest,
-    );
-    sign_extend(&cfg.subword_form(), permuted_target, active_quarters)
+    let permuted_target = exchanged_value_for_load_without_sign_extension(cfg, source, dest);
+    sign_extend(&cfg.subword_form(), permuted_target, cfg.active_quarters())
 }
 
 /// Perform an exchange operation suitable for a store operation; that
@@ -912,31 +936,38 @@ pub(crate) fn exchanged_value_for_store(
     // rationale.
 }
 
+pub(crate) fn standard_plugboard_f_memory_settings() -> [SystemConfiguration; 0o40] {
+    let mut result: [SystemConfiguration; 0o40] = {
+        let default_val = SystemConfiguration::try_from(0_u8).unwrap();
+        [default_val; 32]
+    };
+    let plugboard = get_standard_plugboard();
+    for (i, spg_word) in plugboard.iter().take(0o10).enumerate() {
+        for quarter in 0..4 {
+            let index = (i * 4) + quarter;
+            let value: u64 = u64::from(*spg_word) >> (quarter * 9);
+            match SystemConfiguration::try_from((value & 0o777) as u16) {
+                Ok(v) => {
+                    event!(
+                        Level::TRACE,
+                        "F-memory index {:>03o} = {:>03o}",
+                        index,
+                        value
+                    );
+                    result[index] = v;
+                }
+                Err(_) => {
+                    panic!("conversion input value should be <= 0o777");
+                }
+            }
+        }
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::memory::get_standard_plugboard;
-
-    fn standard_plugboard_f_memory_settings() -> Vec<u16> {
-        let mut result = Vec::with_capacity(0o040);
-        let plugboard = get_standard_plugboard();
-        dbg!(&plugboard);
-        for (i, spg_word) in plugboard.iter().enumerate() {
-            for quarter in 0..4 {
-                let index = (i * 4) + quarter;
-                let value: u64 = u64::from(*spg_word) >> (quarter * 9);
-                let value: u16 = (value & 0o777) as u16;
-                event!(
-                    Level::TRACE,
-                    "F-memory index {:>03o} = {:>03o}",
-                    index,
-                    value
-                );
-                result.push(value);
-            }
-        }
-        result
-    }
 
     #[test]
     fn test_system_configuration_standard_config() {
@@ -950,13 +981,13 @@ mod tests {
 
         #[derive(Debug)]
         struct Expectation {
-            config: Unsigned9Bit,
+            config: SystemConfiguration,
             perm: Permutation,
             form: SubwordForm,
             active: u8,
         }
-        fn configval(n: u16) -> Unsigned9Bit {
-            Unsigned9Bit::try_from(n).expect("valid test data")
+        fn configval(n: u16) -> SystemConfiguration {
+            SystemConfiguration(Unsigned9Bit::try_from(n).expect("valid test data"))
         }
         use Permutation::*;
         use SubwordForm::*;
@@ -1202,43 +1233,42 @@ mod tests {
         for (index, case) in cases.iter().enumerate() {
             let cfg = Unsigned9Bit::try_from(STANDARD_CONFIG[index]).expect("valid test data");
             assert_eq!(
-                cfg, case.config,
+                cfg,
+                Unsigned9Bit::from(case.config),
                 "config in test case does not match standard config"
             );
         }
 
         let f_memory = standard_plugboard_f_memory_settings();
-        for (index, case) in cases.iter().enumerate() {
-            let expected = case.config;
+        for (index, expectation) in cases.iter().enumerate() {
             let got = f_memory[index];
             assert_eq!(
-                expected, got,
+                expectation.config, got,
                 "config at index {} in test case does not match standard config: {:o} != {:o}",
-                index, expected, got,
+                index, expectation.config, got,
             );
         }
 
         for case in cases.iter() {
-            let sysconfig = SystemConfiguration(case.config);
             assert_eq!(
-                sysconfig.permutation(),
+                case.config.permutation(),
                 case.perm,
                 "non-matching permutation"
             );
             assert_eq!(
-                sysconfig.subword_form(),
+                case.config.subword_form(),
                 case.form,
                 "non-matching subword form"
             );
             for q in 0u8..4u8 {
                 let expect_active = case.active & (1 << q) != 0;
-                let got_active = sysconfig.active_quarters().is_active(&q);
+                let got_active = case.config.active_quarters().is_active(&q);
                 assert_eq!(
                     got_active,
                     expect_active,
                     "expected quarter activity {:?}, got quarter activity {:?}",
                     case.active,
-                    sysconfig.active_quarters()
+                    case.config.active_quarters()
                 );
             }
         }

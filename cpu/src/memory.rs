@@ -81,7 +81,7 @@ pub(crate) enum MetaBitChange {
 }
 
 // Clear,
-// Flip,			// not used for fetch/store
+// Flip,                        // not used for fetch/store
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) enum BitChange {
@@ -740,7 +740,6 @@ const fn standard_plugboard_internal() -> [MemoryWord; 32] {
     ]
 }
 
-#[cfg(test)]
 pub(crate) fn get_standard_plugboard() -> Vec<Unsigned36Bit> {
     standard_plugboard_internal()
         .iter()

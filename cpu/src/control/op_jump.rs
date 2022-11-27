@@ -4,7 +4,9 @@ use base::subword;
 use crate::alarm::{Alarm, Alarmer, BadMemOp};
 use crate::context::Context;
 use crate::control::{ControlUnit, OpcodeResult, ProgramCounterChange};
+use crate::exchanger::exchanged_value_for_load_without_sign_extension;
 use crate::memory::{BitChange, MemoryMapped, MemoryOpFailure, MemoryUnit, WordChange};
+use crate::UpdateE;
 
 /// ## "Jump Skip Class" opcodes
 ///
@@ -13,7 +15,7 @@ use crate::memory::{BitChange, MemoryMapped, MemoryOpFailure, MemoryUnit, WordCh
 /// - JNA (unimplemented)
 /// - JOV (unimplemented)
 /// - SKM: [`ControlUnit::op_skm`]
-/// - SED (unimplemented)
+/// - SED: [`ControlUnit::op_sed`]
 impl ControlUnit {
     /// Implements the JMP opcode and its variations (all of which are unconditional jumps).
     pub(crate) fn op_jmp(&mut self, _ctx: &Context) -> Result<OpcodeResult, Alarm> {
@@ -134,12 +136,12 @@ impl ControlUnit {
             Err(MemoryOpFailure::ReadOnly(_, _)) => {
                 self.alarm_unit.fire_if_not_masked(
                     Alarm::QSAL(
-			self.regs.n,
-			BadMemOp::Write(target.into()),
-			format!(
-			    "SKM instruction attempted to modify (instruction configuration={:o}) a read-only location {:o}",
-			    cf,
-			    target,
+                        self.regs.n,
+                        BadMemOp::Write(target.into()),
+                        format!(
+                            "SKM instruction attempted to modify (instruction configuration={:o}) a read-only location {:o}",
+                            cf,
+                            target,
                     ),
                     ))?;
                 // The alarm is masked.  We turn the memory mutation into a no-op.
@@ -173,12 +175,62 @@ impl ControlUnit {
             output: None,
         })
     }
+
+    /// Implement the SED instruction. This is described on page 3-36
+    /// of the Users Handbook.
+    pub(crate) fn op_sed(
+        &mut self,
+        ctx: &Context,
+        mem: &mut MemoryUnit,
+    ) -> Result<OpcodeResult, Alarm> {
+        let existing_e_value = self.regs.e;
+        let target: Address = self.operand_address_with_optional_defer_and_index(ctx, mem)?;
+        // `fetch_operand_from_address_with_exchange` would perform
+        // sign extension even though this is supposed to have no
+        // effect in the SED instruction.
+        let (mut word, _extra) =
+            self.fetch_operand_from_address_without_exchange(ctx, mem, &target, &UpdateE::No)?;
+        dbg!(&word);
+        if self.regs.e != existing_e_value {
+            return Err(self.always_fire(Alarm::BUGAL {
+                instr: Some(self.regs.n),
+                message: "memory fetch during execution of SED changed the E register".to_string(),
+            }));
+        }
+
+        // Perform active-quarter masking and permutation, but not sign
+        // extension.  Inactive quarters of the result are taken from
+        // the existing value of self.regs.e.
+        word = exchanged_value_for_load_without_sign_extension(
+            &self.get_config(),
+            dbg!(&word),
+            &self.regs.e,
+        );
+
+        Ok(OpcodeResult {
+            program_counter_change: if dbg!(word) != dbg!(self.regs.e) {
+                // The location of the currently executing instruction
+                // is referred to by M4 as '#'.  The next instruction
+                // would be '#+1' and that's where the P register
+                // currently points.  But "skip" means to set P=#+2.
+                Some(ProgramCounterChange::CounterUpdate)
+            } else {
+                None
+            },
+            poll_order_change: None,
+            output: None,
+        })
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::alarm::Alarm;
     use crate::context::Context;
-    use crate::control::{OpcodeResult, PanicOnUnmaskedAlarm, ProgramCounterChange};
+    use crate::control::{
+        ConfigurationMemorySetup, OpcodeResult, PanicOnUnmaskedAlarm, ProgramCounterChange, UpdateE,
+    };
+    use crate::memory::MetaBitChange;
     use crate::{ControlUnit, MemoryConfiguration, MemoryUnit};
     use base::instruction::{Opcode, SymbolicInstruction};
     use base::prelude::*;
@@ -199,7 +251,10 @@ mod tests {
         p: Address,
         q: Address,
     ) -> (ControlUnit, MemoryUnit) {
-        let mut control = ControlUnit::new(PanicOnUnmaskedAlarm::Yes);
+        let mut control = ControlUnit::new(
+            PanicOnUnmaskedAlarm::Yes,
+            ConfigurationMemorySetup::StandardForTestingOnly,
+        );
         let mem = MemoryUnit::new(
             ctx,
             &MemoryConfiguration {
@@ -758,5 +813,210 @@ mod tests {
         assert_eq!(xj, orig_p.reinterpret_as_signed()); // P is saved in Xⱼ.
         assert_eq!(e, orig_e); // unaffected
         assert!(dismissed); // dismiss current sequence
+    }
+
+    /// Simulate a SED instruction.
+    fn simulate_sed(
+        ctx: &Context,
+        e: Unsigned36Bit, // initial content of E register
+        j: Unsigned6Bit,
+        xj: Signed18Bit,           // initial value of Xj
+        initial_tj: Unsigned36Bit, // initial content of Tj
+        p: Address,
+        inst: &SymbolicInstruction,
+    ) -> Result<(Option<Alarm>, bool), String> {
+        const COMPLAIN: &str = "failed to set up SED test data";
+        let data_address = if let OperandAddress::Direct(a) = inst.operand_address {
+            a.index_by(xj)
+        } else {
+            panic!("simulate_sed doesn't support deferred addressing yet");
+        };
+        let (mut control, mut mem) = setup(ctx, j, xj, e, p, Address::ZERO);
+        if let Err(e) = control.memory_store_without_exchange(
+            ctx,
+            &mut mem,
+            &data_address,
+            &initial_tj,
+            &UpdateE::No,
+            &MetaBitChange::None,
+        ) {
+            return Err(format!("failed to set up memory contents: {}", e));
+        }
+        control
+            .update_n_register(Instruction::from(inst).bits())
+            .expect(COMPLAIN);
+        dbg!(control.regs.n);
+        dbg!(control.get_config());
+        let result = match control.op_sed(ctx, &mut mem) {
+            Err(e) => {
+                return Err(format!("Execution of SED instruction failed: {}", e));
+            }
+            Ok(result) => result,
+        };
+        dbg!(&result);
+        if result.output.is_some() {
+            return Err("SED instruction should not generate output".to_string());
+        }
+        if result.poll_order_change.is_some() {
+            return Err("SED instruction should not change sequence flags".to_string());
+        }
+
+        // Check that the E register was not changed.
+        if control.regs.e != e {
+            return Err(format!(
+                "SED instruction incorrectly changed register E from {:o} to {:o}",
+                e, control.regs.e
+            ));
+        }
+        match result.program_counter_change {
+            Some(ProgramCounterChange::CounterUpdate) => Ok((None, true)), // skip
+            None => Ok((None, false)),                                     // no skip
+            Some(ProgramCounterChange::Jump(_)) => Err(format!(
+                "SED instruction performed an unexpected jump {:?}",
+                &result.program_counter_change
+            )),
+            Some(ProgramCounterChange::SequenceChange(_)) => {
+                Err("SED instruction should not change sequence flags".to_string())
+            }
+            Some(ProgramCounterChange::DismissAndWait(_)) => Err(
+                "SED instruction should not cause the current sequence's flag to drop".to_string(),
+            ),
+            Some(ProgramCounterChange::Stop(addr)) => Err(format!(
+                "SED instruction execution stopped at address {:?}",
+                addr
+            )),
+        }
+    }
+
+    fn simulate_sed_no_alarm(
+        ctx: &Context,
+        e: Unsigned36Bit, // initial content of E register
+        j: Unsigned6Bit,
+        xj: Signed18Bit,           // initial value of Xj
+        initial_tj: Unsigned36Bit, // initial content of Tj
+        p: Address,
+        inst: &SymbolicInstruction,
+    ) -> bool {
+        match simulate_sed(ctx, e, j, xj, initial_tj, p, inst) {
+            Err(err) => {
+                panic!("{}", err);
+            }
+            Ok((Some(alarm), _)) => {
+                panic!("SED instruction unexpectedly raised an alarm {}", alarm);
+            }
+            Ok((None, skip)) => skip,
+        }
+    }
+
+    /// This test is based on example 1 for SED on page 3-36 of the
+    /// Users Handbook.   It's the skip-occurs case.
+    #[test]
+    fn test_sed_example_1_direct_skip() {
+        let context = make_ctx();
+        let j = u6!(0);
+        const INITIAL_E_REG_VALUE: Unsigned36Bit = u36!(0o444_444_444_444); // contents of E register
+        let skipped = simulate_sed_no_alarm(
+            &context,
+            INITIAL_E_REG_VALUE,
+            j,
+            Signed18Bit::ZERO,       // j=0, meaning use X₀.  X₀ must always be 0.
+            u36!(0o555_555_555_555), // content of Tj (which differs from E)
+            Address::from(u18!(0o100)), // P
+            &SymbolicInstruction {
+                held: false,
+                configuration: Unsigned5Bit::ZERO,
+                opcode: Opcode::Sed,
+                index: j,
+                operand_address: OperandAddress::Direct(Address::from(u18!(0o100))),
+            },
+        );
+        assert!(
+            skipped,
+            "SED instruction failed to skip when it should have"
+        );
+    }
+
+    /// This test is based on example 1 for SED on page 3-36 of the
+    /// Users Handbook.   It's the no-skip-occurs case.
+    #[test]
+    fn test_sed_example_1_direct_noskip() {
+        let context = make_ctx();
+        let j = u6!(0);
+        const INITIAL_E_REG_VALUE: Unsigned36Bit = u36!(0o444_444_444_444); // contents of E register
+        let skipped = simulate_sed_no_alarm(
+            &context,
+            INITIAL_E_REG_VALUE,
+            j,
+            Signed18Bit::ZERO,   // j=0, meaning use X₀.  X₀ must always be 0.
+            INITIAL_E_REG_VALUE, // content of Tj (which is the same as E)
+            Address::from(u18!(0o100)), // P
+            &SymbolicInstruction {
+                held: false,
+                configuration: Unsigned5Bit::ZERO,
+                opcode: Opcode::Sed,
+                index: j,
+                operand_address: OperandAddress::Direct(Address::from(u18!(0o100))),
+            },
+        );
+        assert!(!skipped, "SED instruction skipped when it should not have");
+    }
+
+    /// This test is based on example 2 for SED on page 3-36 of the
+    /// Users Handbook.   It's the skip-occurs case.
+    #[test]
+    fn test_sed_example_2_direct_skip() {
+        let context = make_ctx();
+        let j = u6!(0);
+        const INITIAL_E_REG_VALUE: Unsigned36Bit = u36!(0o555_555_444_444); // contents of E register
+        let skipped = simulate_sed_no_alarm(
+            &context,
+            // In configuration 2, SED compares the R(E)( with L(Tj).
+            // So these don't match (even though the value of Tj and
+            // the value of E are the same).
+            INITIAL_E_REG_VALUE,
+            j,
+            Signed18Bit::ZERO,   // j=0, meaning use X₀.  X₀ must always be 0.
+            INITIAL_E_REG_VALUE, // content of Tj (which is the same as E)
+            Address::from(u18!(0o100)), // P
+            &SymbolicInstruction {
+                held: false,
+                configuration: u5!(2),
+                opcode: Opcode::Sed,
+                index: j,
+                operand_address: OperandAddress::Direct(Address::from(u18!(0o100))),
+            },
+        );
+        // L(0o555_555_444_444) != R(0o555_555_444_444), so a skip should occur.
+        assert!(skipped, "SED instruction should have skipped");
+    }
+
+    /// This test is based on example 2 for SED on page 3-36 of the
+    /// Users Handbook.  It's the no-skip-occurs case (because the
+    /// values being compared are equal).
+    #[test]
+    fn test_sed_example_2_direct_noskip() {
+        let context = make_ctx();
+        let j = u6!(0);
+        const INITIAL_E_REG_VALUE: Unsigned36Bit = u36!(0o070_070_333_333); // contents of E register
+        let skipped = simulate_sed_no_alarm(
+            &context,
+            // In configuration 2, SED compares the R(E)( with L(Tj).
+            // These match.
+            INITIAL_E_REG_VALUE,
+            j,
+            Signed18Bit::ZERO,       // j=0, meaning use X₀.  X₀ must always be 0.
+            u36!(0o333_333_020_020), // content of Tj (of which R is the same as L(E))
+            Address::from(u18!(0o100)), // P
+            &SymbolicInstruction {
+                held: false,
+                configuration: u5!(2),
+                opcode: Opcode::Sed,
+                index: j,
+                operand_address: OperandAddress::Direct(Address::from(u18!(0o100))),
+            },
+        );
+        // L(Tj) == R(E), so there should be a skip.
+        // L(0o333_333_020_020) == R(0o070_070_333_333), so a skip should occur.
+        assert!(!skipped, "SED instruction should not have skipped");
     }
 }

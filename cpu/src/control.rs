@@ -35,7 +35,10 @@ use super::*;
 use crate::alarm::{Alarm, AlarmKind, Alarmer, BadMemOp};
 use crate::alarmunit::AlarmUnit;
 use crate::context::Context;
-use crate::exchanger::{exchanged_value_for_load, exchanged_value_for_store, SystemConfiguration};
+use crate::exchanger::{
+    exchanged_value_for_load, exchanged_value_for_store, standard_plugboard_f_memory_settings,
+    SystemConfiguration,
+};
 use crate::io::DeviceManager;
 use crate::memory::{self, ExtraBits, MemoryMapped, MemoryOpFailure, MemoryUnit, MetaBitChange};
 
@@ -296,11 +299,17 @@ pub struct ControlRegisters {
 }
 
 impl ControlRegisters {
-    fn new() -> ControlRegisters {
-        let fmem = {
-            let default_val = SystemConfiguration::try_from(0).unwrap();
-            [default_val; 32]
+    fn new(configuration_memory_config: ConfigurationMemorySetup) -> ControlRegisters {
+        let fmem = match configuration_memory_config {
+            ConfigurationMemorySetup::Uninitialised => {
+                let default_val = SystemConfiguration::try_from(0_u8).unwrap();
+                [default_val; 32]
+            }
+            ConfigurationMemorySetup::StandardForTestingOnly => {
+                standard_plugboard_f_memory_settings()
+            }
         };
+
         let mut result = ControlRegisters {
             e: Unsigned36Bit::ZERO,
             n: Instruction::invalid(), // not a valid instruction
@@ -469,6 +478,12 @@ pub enum PanicOnUnmaskedAlarm {
     Yes,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConfigurationMemorySetup {
+    Uninitialised,
+    StandardForTestingOnly,
+}
+
 fn please_poll_soon(ctx: &Context, devices: &mut DeviceManager, seq: SequenceNumber) {
     event!(
         Level::TRACE,
@@ -480,9 +495,12 @@ fn please_poll_soon(ctx: &Context, devices: &mut DeviceManager, seq: SequenceNum
 }
 
 impl ControlUnit {
-    pub fn new(panic_on_unmasked_alarm: PanicOnUnmaskedAlarm) -> ControlUnit {
+    pub fn new(
+        panic_on_unmasked_alarm: PanicOnUnmaskedAlarm,
+        configuration_memory_config: ConfigurationMemorySetup,
+    ) -> ControlUnit {
         ControlUnit {
-            regs: ControlRegisters::new(),
+            regs: ControlRegisters::new(configuration_memory_config),
             trap: TrapCircuit::new(),
             alarm_unit: AlarmUnit::new_with_panic(match panic_on_unmasked_alarm {
                 PanicOnUnmaskedAlarm::No => false,
@@ -1052,6 +1070,7 @@ impl ControlUnit {
                 Opcode::Spg => control.op_spg(ctx, mem),
                 Opcode::Ios => control.op_ios(ctx, devices),
                 Opcode::Tsd => control.op_tsd(ctx, devices, prev_program_counter, mem),
+                Opcode::Sed => control.op_sed(ctx, mem),
                 _ => Err(Alarm::ROUNDTUITAL(format!(
                     "The emulator does not yet implement opcode {}",
                     opcode,
@@ -1563,7 +1582,10 @@ impl ControlUnit {
 
 impl Default for ControlUnit {
     fn default() -> Self {
-        Self::new(PanicOnUnmaskedAlarm::No)
+        Self::new(
+            PanicOnUnmaskedAlarm::No,
+            ConfigurationMemorySetup::Uninitialised,
+        )
     }
 }
 
