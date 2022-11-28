@@ -391,6 +391,9 @@ impl MemoryUnit {
         self.v_memory.set_e_register(value);
     }
 
+    /// Perform a memory access.  Return a mutable reference to the
+    /// memory word being accessed or, if this is an attempt to write
+    /// to a read-only location, return None.
     fn access(
         &mut self,
         ctx: &Context,
@@ -853,47 +856,48 @@ impl VMemory {
         self.e_register.set_value(&value)
     }
 
+    /// Perform a memory read.
     fn read_access(
         &mut self,
         ctx: &Context,
         addr: &Address,
-    ) -> Result<Option<&mut MemoryWord>, MemoryOpFailure> {
+    ) -> Result<&mut MemoryWord, MemoryOpFailure> {
         match u32::from(addr) {
-            0o0377604 => Ok(Some(&mut self.a_register)),
-            0o0377605 => Ok(Some(&mut self.b_register)),
-            0o0377606 => Ok(Some(&mut self.c_register)),
-            0o0377607 => Ok(Some(&mut self.d_register)),
-            0o0377610 => Ok(Some(&mut self.e_register)),
+            0o0377604 => Ok(&mut self.a_register),
+            0o0377605 => Ok(&mut self.b_register),
+            0o0377606 => Ok(&mut self.c_register),
+            0o0377607 => Ok(&mut self.d_register),
+            0o0377610 => Ok(&mut self.e_register),
             0o0377620 => {
                 event!(
                     Level::WARN,
                     "Reading the shaft encoder is not yet implemented"
                 );
-                Ok(Some(&mut self.unimplemented_shaft_encoder))
+                Ok(&mut self.unimplemented_shaft_encoder)
             }
             0o0377621 => {
                 event!(
                     Level::WARN,
                     "Reading the external input register is not yet implemented"
                 );
-                Ok(Some(&mut self.unimplemented_external_input_register))
+                Ok(&mut self.unimplemented_external_input_register)
             }
             0o0377630 => {
                 self.update_rtc(ctx);
-                Ok(Some(&mut self.rtc))
+                Ok(&mut self.rtc)
             }
-            0o0377710 => Ok(Some(&mut self.codabo_start_point[0])), // CODABO Reset0
-            0o0377711 => Ok(Some(&mut self.codabo_start_point[1])), // CODABO Reset1
-            0o0377712 => Ok(Some(&mut self.codabo_start_point[2])), // CODABO Reset2
-            0o0377713 => Ok(Some(&mut self.codabo_start_point[3])), // CODABO Reset3
-            0o0377714 => Ok(Some(&mut self.codabo_start_point[4])), // CODABO Reset4
-            0o0377715 => Ok(Some(&mut self.codabo_start_point[5])), // CODABO Reset5
-            0o0377716 => Ok(Some(&mut self.codabo_start_point[6])), // CODABO Reset6
-            0o0377717 => Ok(Some(&mut self.codabo_start_point[7])), // CODABO Reset7
+            0o0377710 => Ok(&mut self.codabo_start_point[0]), // CODABO Reset0
+            0o0377711 => Ok(&mut self.codabo_start_point[1]), // CODABO Reset1
+            0o0377712 => Ok(&mut self.codabo_start_point[2]), // CODABO Reset2
+            0o0377713 => Ok(&mut self.codabo_start_point[3]), // CODABO Reset3
+            0o0377714 => Ok(&mut self.codabo_start_point[4]), // CODABO Reset4
+            0o0377715 => Ok(&mut self.codabo_start_point[5]), // CODABO Reset5
+            0o0377716 => Ok(&mut self.codabo_start_point[6]), // CODABO Reset6
+            0o0377717 => Ok(&mut self.codabo_start_point[7]), // CODABO Reset7
 
             addr @ 0o0377740..=0o0377777 => {
                 if let Ok(offset) = TryInto::<usize>::try_into(addr - 0o0377740) {
-                    Ok(Some(&mut self.plugboard[offset]))
+                    Ok(&mut self.plugboard[offset])
                 } else {
                     // Unreachable because the matched range is
                     // not large enough to exceed the capacity of
@@ -904,7 +908,7 @@ impl VMemory {
             _ => {
                 if self.permit_unknown_reads {
                     self.sacrificial_word_for_unknown_reads = RESULT_OF_VMEMORY_UNKNOWN_READ;
-                    Ok(Some(&mut self.sacrificial_word_for_unknown_reads))
+                    Ok(&mut self.sacrificial_word_for_unknown_reads)
                 } else {
                     event!(
                         Level::ERROR,
@@ -917,6 +921,9 @@ impl VMemory {
         }
     }
 
+    /// Perform a memory write.  Return a mutable reference to the
+    /// memory word being accessed or, if this is an attempt to write
+    /// to a read-only location, return None.
     fn write_access(
         &mut self,
         _ctx: &Context,
@@ -938,6 +945,9 @@ impl VMemory {
         }
     }
 
+    /// Perform a memory access.  Return a mutable reference to the
+    /// memory word being accessed or, if this is an attempt to write
+    /// to a read-only location, return None.
     fn access(
         &mut self,
         ctx: &Context,
@@ -946,7 +956,11 @@ impl VMemory {
     ) -> Result<Option<&mut MemoryWord>, MemoryOpFailure> {
         match access_type {
             MemoryAccess::Write => self.write_access(ctx, addr),
-            MemoryAccess::Read => self.read_access(ctx, addr),
+            // Memory reads cannot return None because that represents
+            // a failure to write.  But the access() operation returns
+            // Option<&mut MemoryWord>, so the read path here
+            // unconditionally returns a non-empty Option.
+            MemoryAccess::Read => self.read_access(ctx, addr).map(Some),
         }
     }
 
