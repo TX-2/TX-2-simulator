@@ -206,7 +206,6 @@ impl ControlUnit {
         // effect in the SED instruction.
         let (mut word, _extra) =
             self.fetch_operand_from_address_without_exchange(ctx, mem, &target, &UpdateE::No)?;
-        dbg!(&word);
         if mem.get_e_register() != existing_e_value {
             return Err(self.always_fire(Alarm {
                 sequence: self.regs.k,
@@ -223,7 +222,7 @@ impl ControlUnit {
         // the existing value of self.regs.e.
         word = exchanged_value_for_load_without_sign_extension(
             &self.get_config(),
-            dbg!(&word),
+            &word,
             &mem.get_e_register(),
         );
 
@@ -321,8 +320,7 @@ mod tests {
                 output: None,
             }) => {
                 let xj = control.regs.get_index_register(j);
-                let dismissed =
-                    !dbg!(dbg!(control.regs.flags).current_flag_state(&SequenceNumber::ZERO));
+                let dismissed = !control.regs.flags.current_flag_state(&SequenceNumber::ZERO);
                 (to, xj, mem.get_e_register(), dismissed)
             }
             other => {
@@ -865,15 +863,12 @@ mod tests {
         control
             .update_n_register(Instruction::from(inst).bits())
             .expect(COMPLAIN);
-        dbg!(control.regs.n);
-        dbg!(control.get_config());
         let result = match control.op_sed(ctx, &mut mem) {
             Err(e) => {
                 return Err(format!("Execution of SED instruction failed: {}", e));
             }
             Ok(result) => result,
         };
-        dbg!(&result);
         if result.output.is_some() {
             return Err("SED instruction should not generate output".to_string());
         }
