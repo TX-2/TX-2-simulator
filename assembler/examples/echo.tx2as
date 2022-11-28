@@ -28,7 +28,8 @@
 ** there is no need to write this data to any other location than E.
 
 200| ³TSD 377610 ** read code into E register
-      SED    500 ** compare with STOP, skip if different.
+     ³SED    500 ** compare with STOP, skip if different.
+                 ** use configuration 3 to compare only Q1.
       0          ** STOP entered, so execute an invalid instruction.
       JMP    200 ** code is not STOP, so loop to 200.
 
