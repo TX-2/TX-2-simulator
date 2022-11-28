@@ -1094,6 +1094,10 @@ impl ControlUnit {
                 Opcode::Ldc => control.op_ldc(ctx, mem),
                 Opcode::Ldd => control.op_ldd(ctx, mem),
                 Opcode::Lde => control.op_lde(ctx, mem),
+                Opcode::Sta => control.op_sta(ctx, mem),
+                Opcode::Stb => control.op_stb(ctx, mem),
+                Opcode::Stc => control.op_stc(ctx, mem),
+                Opcode::Std => control.op_std(ctx, mem),
                 Opcode::Ste => control.op_ste(ctx, mem),
                 Opcode::Rsx => control.op_rsx(ctx, mem),
                 Opcode::Skx => control.op_skx(ctx),
@@ -1545,6 +1549,14 @@ impl ControlUnit {
         Ok(self.regs.q)
     }
 
+    fn write_operand_metaop(&self) -> MetaBitChange {
+        if self.trap.set_metabits_of_operands() {
+            MetaBitChange::Set
+        } else {
+            MetaBitChange::None
+        }
+    }
+
     fn memory_read_and_update_with_exchange<F>(
         &mut self,
         ctx: &Context,
@@ -1567,7 +1579,6 @@ impl ControlUnit {
         match self.fetch_operand_from_address_without_exchange(ctx, mem, target, &UpdateE::No) {
             Ok((existing, _meta)) => {
                 let newval = transform(existing);
-                // TODO: handle "memory" stores to AE registers.
                 self.memory_store_with_exchange(
                     ctx,
                     mem,
@@ -1575,7 +1586,7 @@ impl ControlUnit {
                     &newval,
                     &existing,
                     update_e,
-                    &MetaBitChange::None,
+                    &self.write_operand_metaop(),
                 )
             }
             Err(Alarm {

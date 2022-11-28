@@ -4,10 +4,10 @@
 //! - LDC: [`ControlUnit::op_ldc`]
 //! - LDD: [`ControlUnit::op_ldd`]
 //! - LDE: [`ControlUnit::op_lde`]
-//! - STA: (unimplemented)
-//! - STB: (unimplemented)
-//! - STC: (unimplemented)
-//! - STD: (unimplemented)
+//! - STA: [`ControlUnit::op_sta`]
+//! - STB: [`ControlUnit::op_stb`]
+//! - STC: [`ControlUnit::op_stc`]
+//! - STD: [`ControlUnit::op_std`]
 //! - STE: [`ControlUnit::op_ste`]
 //! - EXA: (unimplemented)
 
@@ -83,6 +83,46 @@ impl ControlUnit {
         let new_value = self.op_load_value(ctx, &old_value, mem, &UpdateE::No)?;
         mem.set_e_register(new_value);
         Ok(OpcodeResult::default())
+    }
+
+    /// Implements the STA instruction (Opcode 034, User Handbook,
+    /// page 3-8).
+    pub(crate) fn op_sta(
+        &mut self,
+        ctx: &Context,
+        mem: &mut MemoryUnit,
+    ) -> Result<OpcodeResult, Alarm> {
+        self.op_store_ae_register(ctx, mem.get_a_register(), mem, &UpdateE::Yes)
+    }
+
+    /// Implements the STB instruction (Opcode 035, User Handbook,
+    /// page 3-8).
+    pub(crate) fn op_stb(
+        &mut self,
+        ctx: &Context,
+        mem: &mut MemoryUnit,
+    ) -> Result<OpcodeResult, Alarm> {
+        self.op_store_ae_register(ctx, mem.get_b_register(), mem, &UpdateE::Yes)
+    }
+
+    /// Implements the STC instruction (Opcode 036, User Handbook,
+    /// page 3-8).
+    pub(crate) fn op_stc(
+        &mut self,
+        ctx: &Context,
+        mem: &mut MemoryUnit,
+    ) -> Result<OpcodeResult, Alarm> {
+        self.op_store_ae_register(ctx, mem.get_c_register(), mem, &UpdateE::Yes)
+    }
+
+    /// Implements the STD instruction (Opcode 036, User Handbook,
+    /// page 3-8).
+    pub(crate) fn op_std(
+        &mut self,
+        ctx: &Context,
+        mem: &mut MemoryUnit,
+    ) -> Result<OpcodeResult, Alarm> {
+        self.op_store_ae_register(ctx, mem.get_d_register(), mem, &UpdateE::Yes)
     }
 
     /// Implements the STE instruction (Opcode 030, User Handbook,
