@@ -50,12 +50,8 @@ The simulator itself, implemented as a library.  This implements the
 CPU instructions, the system's memory and its I/O devices.
 
 The simulator library is reactive; you call it repeatedly to make it
-do things like execute instructions or simulate I/O operations.
-
-In principle the simulator library should be non-blocking but right
-now it does perform blocking I/O for reads of the simulated paper
-tape.  [We should fix
-this](https://github.com/TX-2/TX-2-simulator/issues/46).
+do things like execute instructions or simulate I/O operations.  This
+part of the simulator is non-blocking.
 
 ### cli
 
@@ -66,16 +62,10 @@ on the command line, see the `--help` output).
 
 This part of the design likely won't last very long, because it won't
 support devices like the light pen or CRT without significant change.
-But it should allow us to test and debug the loading of programs.
+But it has allowed us to test and debug the loading of programs.
 
-### wasm
-
-This directory contains a version of the simulator which can run in
-your web browser.  Essentially this is based on the implementation in
-`cpu` compiled to Web Assembly.
-
-We were inspired to create this by the example of Matt Godbolt's
-[jsbeeb](https://bbc.godbolt.org/).
+If you want to see the full features of the simulator as it exists
+now, use the browser-based interface.
 
 ### assembler
 
@@ -94,6 +84,16 @@ as far as possible, look like the normal representation of M4 source
 code.  At some point we may also define a pure-ASCII equivalent so
 that something like `\\doublehand` would be understood to be a synonym
 for `☛☛`.  But nothing like this is implemented right now.
+
+### Browser-based User Interface
+
+The [tx2-web](tx2-web) folder contains the code for running the
+simulator in a web browser.  The simulator is compiled into WASM and
+the user interface is implemented in Typescript using React.  The
+simulator runs entirely locally in your browser.
+
+We were inspired to create this by the example of Matt Godbolt's
+[jsbeeb](https://bbc.godbolt.org/).
 
 ## Future Directions
 
