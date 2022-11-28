@@ -18,7 +18,11 @@ use crate::UpdateE;
 /// - SED: [`ControlUnit::op_sed`]
 impl ControlUnit {
     /// Implements the JMP opcode and its variations (all of which are unconditional jumps).
-    pub(crate) fn op_jmp(&mut self, _ctx: &Context) -> Result<OpcodeResult, Alarm> {
+    pub(crate) fn op_jmp(
+        &mut self,
+        _ctx: &Context,
+        mem: &mut MemoryUnit,
+    ) -> Result<OpcodeResult, Alarm> {
         // For JMP the configuration field in the instruction controls
         // the behaviour of the instruction, without involving
         // a load from F-memory.
@@ -34,14 +38,14 @@ impl ControlUnit {
         let left: Unsigned18Bit = if save_q {
             Unsigned18Bit::from(self.regs.q)
         } else {
-            subword::left_half(self.regs.e)
+            subword::left_half(mem.get_e_register())
         };
         let right: Unsigned18Bit = if savep_e {
             Unsigned18Bit::from(self.regs.p)
         } else {
-            subword::right_half(self.regs.e)
+            subword::right_half(mem.get_e_register())
         };
-        self.regs.e = subword::join_halves(left, right);
+        mem.set_e_register(subword::join_halves(left, right));
 
         let physical: Address = match self.regs.n.operand_address() {
             OperandAddress::Deferred(_) => {
@@ -195,7 +199,7 @@ impl ControlUnit {
         ctx: &Context,
         mem: &mut MemoryUnit,
     ) -> Result<OpcodeResult, Alarm> {
-        let existing_e_value = self.regs.e;
+        let existing_e_value = mem.get_e_register();
         let target: Address = self.operand_address_with_optional_defer_and_index(ctx, mem)?;
         // `fetch_operand_from_address_with_exchange` would perform
         // sign extension even though this is supposed to have no
@@ -203,7 +207,7 @@ impl ControlUnit {
         let (mut word, _extra) =
             self.fetch_operand_from_address_without_exchange(ctx, mem, &target, &UpdateE::No)?;
         dbg!(&word);
-        if self.regs.e != existing_e_value {
+        if mem.get_e_register() != existing_e_value {
             return Err(self.always_fire(Alarm {
                 sequence: self.regs.k,
                 details: AlarmDetails::BUGAL {
@@ -220,11 +224,11 @@ impl ControlUnit {
         word = exchanged_value_for_load_without_sign_extension(
             &self.get_config(),
             dbg!(&word),
-            &self.regs.e,
+            &mem.get_e_register(),
         );
 
         Ok(OpcodeResult {
-            program_counter_change: if dbg!(word) != dbg!(self.regs.e) {
+            program_counter_change: if word != mem.get_e_register() {
                 // The location of the currently executing instruction
                 // is referred to by M4 as '#'.  The next instruction
                 // would be '#+1' and that's where the P register
@@ -271,7 +275,7 @@ mod tests {
             PanicOnUnmaskedAlarm::Yes,
             ConfigurationMemorySetup::StandardForTestingOnly,
         );
-        let mem = MemoryUnit::new(
+        let mut mem = MemoryUnit::new(
             ctx,
             &MemoryConfiguration {
                 with_u_memory: false,
@@ -282,7 +286,7 @@ mod tests {
         } else {
             control.regs.set_index_register(j, &initial);
         }
-        control.regs.e = e;
+        mem.set_e_register(e);
         control.regs.p = p;
         control.regs.q = q;
         control.regs.k = Some(Unsigned6Bit::ZERO);
@@ -302,11 +306,11 @@ mod tests {
         inst: &SymbolicInstruction,
     ) -> (Address, Signed18Bit, Unsigned36Bit, bool) {
         const COMPLAIN: &str = "failed to set up JMP test data";
-        let (mut control, _mem) = setup(ctx, j, initial, e, p, q);
+        let (mut control, mut mem) = setup(ctx, j, initial, e, p, q);
         control
             .update_n_register(Instruction::from(inst).bits())
             .expect(COMPLAIN);
-        let result = control.op_jmp(ctx);
+        let result = control.op_jmp(ctx, &mut mem);
         match result {
             Err(e) => {
                 panic!("JMP instruction failed: {}", e);
@@ -319,7 +323,7 @@ mod tests {
                 let xj = control.regs.get_index_register(j);
                 let dismissed =
                     !dbg!(dbg!(control.regs.flags).current_flag_state(&SequenceNumber::ZERO));
-                (to, xj, control.regs.e, dismissed)
+                (to, xj, mem.get_e_register(), dismissed)
             }
             other => {
                 panic!("JMP didn't jump in the expected way: {other:?}");
@@ -878,10 +882,11 @@ mod tests {
         }
 
         // Check that the E register was not changed.
-        if control.regs.e != e {
+        if mem.get_e_register() != e {
             return Err(format!(
                 "SED instruction incorrectly changed register E from {:o} to {:o}",
-                e, control.regs.e
+                e,
+                mem.get_e_register()
             ));
         }
         match result.program_counter_change {

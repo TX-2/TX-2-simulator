@@ -134,7 +134,7 @@ mod tests {
                 control.regs.get_f_mem(cfg_loc(cfg + 2)),
                 control.regs.get_f_mem(cfg_loc(cfg + 3)),
             ],
-            control.regs.e,
+            mem.get_e_register(),
         )
     }
 

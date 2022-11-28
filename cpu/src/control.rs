@@ -244,12 +244,7 @@ fn test_sequence_flags_current_flag_state() {
 
 #[derive(Debug)]
 pub struct ControlRegisters {
-    // TODO: the E register actually shares the meta bit with the
-    // other AE registers, but our implementaiton of the E register
-    // lacks this feature.  See
-    // https://github.com/TX-2/TX-2-simulator/issues/53.
-    pub e: Unsigned36Bit,
-
+    // Arithmetic Element registers (A-E) are actually in V-memory.
     pub n: Instruction,
     pub n_sym: Option<SymbolicInstruction>,
     pub p: Address,
@@ -318,7 +313,6 @@ impl ControlRegisters {
         };
 
         let mut result = ControlRegisters {
-            e: Unsigned36Bit::ZERO,
             n: Instruction::invalid(), // not a valid instruction
             n_sym: None,
             p: Address::default(),
@@ -667,7 +661,7 @@ impl ControlUnit {
         self.reset(ctx, reset_mode, mem);
         self.regs.current_sequence_is_runnable = false;
         self.regs.flags.raise(&SequenceNumber::ZERO);
-        self.change_sequence(None, SequenceNumber::ZERO);
+        self.change_sequence(mem, None, SequenceNumber::ZERO);
     }
 
     /// Return the value in the Toggle Start Register.  It is possible
@@ -700,7 +694,12 @@ impl ControlUnit {
         self.regs.flags.raise(&Self::trap_seq());
     }
 
-    fn change_sequence(&mut self, prev_seq: Option<SequenceNumber>, mut next_seq: SequenceNumber) {
+    fn change_sequence(
+        &mut self,
+        mem: &mut MemoryUnit,
+        prev_seq: Option<SequenceNumber>,
+        mut next_seq: SequenceNumber,
+    ) {
         // If the "Trap on Change Sequence" is enabled and the new
         // sequence is marked (bit 2.9 of its index register is set).
         // Activate unit 0o42, unless that's the unit which is giving
@@ -738,13 +737,13 @@ impl ControlUnit {
             None => Unsigned6Bit::ZERO,
             Some(n) => n,
         };
-        self.regs.e = join_halves(
+        mem.set_e_register(join_halves(
             join_quarters(
                 Unsigned9Bit::from(previous_sequence),
                 Unsigned9Bit::from(next_seq),
             ),
             Unsigned18Bit::from(self.regs.p),
-        );
+        ));
 
         if sequence_change_trap {
             self.regs.flags.raise(&trap_seq);
@@ -838,7 +837,7 @@ impl ControlUnit {
 
     /// Consider whether a change of sequence is needed.  If yes,
     /// perform the change.
-    fn select_sequence(&mut self) -> RunMode {
+    fn select_sequence(&mut self, mem: &mut MemoryUnit) -> RunMode {
         if self.regs.previous_instruction_hold() {
             event!(
                 Level::DEBUG,
@@ -878,7 +877,7 @@ impl ControlUnit {
                     if Some(seq) > self.regs.k
                         || (!self.regs.current_sequence_is_runnable && Some(seq) < self.regs.k)
                     {
-                        self.change_sequence(self.regs.k, seq);
+                        self.change_sequence(mem, self.regs.k, seq);
                         RunMode::Running
                     } else {
                         // No sequence change, just carry on.
@@ -1076,7 +1075,7 @@ impl ControlUnit {
         mem: &mut MemoryUnit,
         poll_order_change: &mut Option<SequenceNumber>,
     ) -> Result<(u64, RunMode, Option<OutputEvent>), (Alarm, Address)> {
-        if self.select_sequence() == RunMode::InLimbo {
+        if self.select_sequence(mem) == RunMode::InLimbo {
             return Ok((0, RunMode::InLimbo, None));
         }
 
@@ -1099,12 +1098,12 @@ impl ControlUnit {
                 Opcode::Rsx => control.op_rsx(ctx, mem),
                 Opcode::Skx => control.op_skx(ctx),
                 Opcode::Dpx => control.op_dpx(ctx, mem),
-                Opcode::Jmp => control.op_jmp(ctx),
+                Opcode::Jmp => control.op_jmp(ctx, mem),
                 Opcode::Jpx => control.op_jpx(ctx, mem),
                 Opcode::Jnx => control.op_jnx(ctx, mem),
                 Opcode::Skm => control.op_skm(ctx, mem),
                 Opcode::Spg => control.op_spg(ctx, mem),
-                Opcode::Ios => control.op_ios(ctx, devices),
+                Opcode::Ios => control.op_ios(ctx, mem, devices),
                 Opcode::Tsd => control.op_tsd(ctx, devices, prev_program_counter, mem),
                 Opcode::Sed => control.op_sed(ctx, mem),
                 _ => Err(Alarm {
@@ -1225,7 +1224,7 @@ impl ControlUnit {
         // instruction should be followed by a change of sequence.
         match result {
             Ok(maybe_output) => {
-                let new_mode: RunMode = self.select_sequence();
+                let new_mode: RunMode = self.select_sequence(mem);
                 Ok((elapsed_time, new_mode, maybe_output))
             }
             Err((alarm, address)) => Err((alarm, address)),
@@ -1271,7 +1270,7 @@ impl ControlUnit {
                     self.raise_trap();
                 }
                 if let UpdateE::Yes = update_e {
-                    self.regs.e = word;
+                    mem.set_e_register(word);
                 }
                 Ok((word, extra_bits))
             }
@@ -1320,7 +1319,7 @@ impl ControlUnit {
             // The E register gets updated to the value we want to
             // write, even if we cannot actually write it (see example
             // 10 on page 3-17 of the Users Handbook).
-            self.regs.e = *value;
+            mem.set_e_register(*value);
         }
         if let Err(e) = mem.store(ctx, target, value, meta_op) {
             self.alarm_unit.fire_if_not_masked(Alarm {

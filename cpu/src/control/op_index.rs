@@ -259,10 +259,10 @@ impl ControlUnit {
                     self.regs.current_sequence_is_runnable = false;
                 }
             }
-            self.regs.e = subword::join_halves(
-                subword::left_half(self.regs.e),
+            mem.set_e_register(subword::join_halves(
+                subword::left_half(mem.get_e_register()),
                 Unsigned18Bit::from(self.regs.p),
-            );
+            ));
             Ok(OpcodeResult {
                 program_counter_change: Some(ProgramCounterChange::Jump(target)),
                 poll_order_change: None,
@@ -414,7 +414,7 @@ mod tests {
                 panic!("AUX instruction failed: {}", e);
             }
         }
-        (control.regs.get_index_register(j), control.regs.e)
+        (control.regs.get_index_register(j), mem.get_e_register())
     }
 
     /// Check that AUX thinks that 0 + 1 = 1.
@@ -668,7 +668,7 @@ mod tests {
         if let Err(e) = control.op_rsx(ctx, &mut mem) {
             panic!("RSX instruction failed: {}", e);
         }
-        (control.regs.get_index_register(j), control.regs.e)
+        (control.regs.get_index_register(j), mem.get_e_register())
     }
 
     /// Test case taken from example 1 on page 3-14 of the Users Handbook.

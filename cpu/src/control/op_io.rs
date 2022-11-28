@@ -47,6 +47,7 @@ impl ControlUnit {
     pub(crate) fn op_ios(
         &mut self,
         ctx: &Context,
+        mem: &mut MemoryUnit,
         devices: &mut DeviceManager,
     ) -> Result<OpcodeResult, Alarm> {
         let j = self.regs.n.index_address();
@@ -62,7 +63,13 @@ impl ControlUnit {
             // sequence for which we are generating a report word are
             // different (in general).
             let flag_raised: bool = self.regs.flags.current_flag_state(&j);
-            self.regs.e = devices.report(ctx, self.regs.k, j, flag_raised, &mut self.alarm_unit)?;
+            mem.set_e_register(devices.report(
+                ctx,
+                self.regs.k,
+                j,
+                flag_raised,
+                &mut self.alarm_unit,
+            )?);
         }
         let mut dismiss_reason: Option<&str> = if cf & 0o20 != 0 {
             Some("dismiss bit set in config")
@@ -307,14 +314,14 @@ impl ControlUnit {
                                 // the I/O device over the E bus.  See
                                 // figure 15-17 in Volume 2 of the
                                 // TX-2 Techical Manual.
-                                self.regs.e = exchanged_value_for_load(
+                                mem.set_e_register(exchanged_value_for_load(
                                     &self.get_config(),
                                     &m_register,
-                                    &self.regs.e,
-                                );
+                                    &mem.get_e_register(),
+                                ));
                                 match transfer_mode {
                                     TransferMode::Exchange => {
-                                        match device.write(ctx, self.regs.e) {
+                                        match device.write(ctx, mem.get_e_register()) {
                                             Err(TransferFailed::BufferNotFree) => {
                                                 Ok(TransferOutcome::DismissAndWait)
                                             }

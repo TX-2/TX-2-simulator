@@ -367,6 +367,10 @@ impl MemoryUnit {
         self.v_memory.get_d_register()
     }
 
+    pub fn get_e_register(&self) -> Unsigned36Bit {
+        self.v_memory.get_e_register()
+    }
+
     pub fn set_a_register(&mut self, value: Unsigned36Bit) {
         self.v_memory.set_a_register(value);
     }
@@ -381,6 +385,10 @@ impl MemoryUnit {
 
     pub fn set_d_register(&mut self, value: Unsigned36Bit) {
         self.v_memory.set_d_register(value);
+    }
+
+    pub fn set_e_register(&mut self, value: Unsigned36Bit) {
+        self.v_memory.set_e_register(value);
     }
 
     fn access(
@@ -800,6 +808,11 @@ impl VMemory {
         w
     }
 
+    fn get_e_register(&self) -> Unsigned36Bit {
+        let (w, _extra) = self.e_register.into();
+        w
+    }
+
     fn set_a_register(&mut self, value: Unsigned36Bit) {
         // This register actually shares the meta bit with the
         // other AE registers, so this is currently wrong.
@@ -832,23 +845,19 @@ impl VMemory {
         self.d_register.set_value(&value)
     }
 
-    fn access(
+    fn set_e_register(&mut self, value: Unsigned36Bit) {
+        // This register actually shares the meta bit with the
+        // other AE registers, so this is currently wrong.
+        // See
+        // https://github.com/TX-2/TX-2-simulator/issues/53.
+        self.e_register.set_value(&value)
+    }
+
+    fn read_access(
         &mut self,
         ctx: &Context,
-        access_type: &MemoryAccess,
         addr: &Address,
     ) -> Result<Option<&mut MemoryWord>, MemoryOpFailure> {
-        if access_type == &MemoryAccess::Write {
-            // For now, we handle writes to Vₜ and Vff memory the same
-            // way, which is to ignore them.
-            //
-            // That's a bug, based on the comment in example 10 on
-            // page 3-17 of the Users Handbook, which says "V memory,
-            // except the A, B, C, D and E registers cannot be changed
-            // by any instruction".  See also
-            // https://github.com/TX-2/TX-2-simulator/issues/53.
-            return Ok(None);
-        }
         match u32::from(addr) {
             0o0377604 => Ok(Some(&mut self.a_register)),
             0o0377605 => Ok(Some(&mut self.b_register)),
@@ -905,6 +914,39 @@ impl VMemory {
                     Err(MemoryOpFailure::NotMapped(*addr))
                 }
             }
+        }
+    }
+
+    fn write_access(
+        &mut self,
+        _ctx: &Context,
+        addr: &Address,
+    ) -> Result<Option<&mut MemoryWord>, MemoryOpFailure> {
+        // The AE registers are supposed to share a single metabit.
+        // That's not yet implemented, see
+        // https://github.com/TX-2/TX-2-simulator/issues/53
+        match u32::from(addr) {
+            0o0377604 => Ok(Some(&mut self.a_register)),
+            0o0377605 => Ok(Some(&mut self.b_register)),
+            0o0377606 => Ok(Some(&mut self.c_register)),
+            0o0377607 => Ok(Some(&mut self.d_register)),
+            0o0377610 => Ok(Some(&mut self.e_register)),
+            // Example 10 on page 3-17 of the Users Handbook says "V
+            // memory, except the A, B, C, D, and E registers cannot
+            // be changed by any instruction".
+            _ => Ok(None),
+        }
+    }
+
+    fn access(
+        &mut self,
+        ctx: &Context,
+        access_type: &MemoryAccess,
+        addr: &Address,
+    ) -> Result<Option<&mut MemoryWord>, MemoryOpFailure> {
+        match access_type {
+            MemoryAccess::Write => self.write_access(ctx, addr),
+            MemoryAccess::Read => self.read_access(ctx, addr),
         }
     }
 

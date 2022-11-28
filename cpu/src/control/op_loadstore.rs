@@ -79,9 +79,9 @@ impl ControlUnit {
         // jam the loaded memory word into E (see example 2 for LDA)
         // but LDE doesn't do this (you get the exchanged result in E
         // instead).  This is why we use UpdateE::No.
-        let old_value = self.regs.e;
+        let old_value = mem.get_e_register();
         let new_value = self.op_load_value(ctx, &old_value, mem, &UpdateE::No)?;
-        self.regs.e = new_value;
+        mem.set_e_register(new_value);
         Ok(OpcodeResult::default())
     }
 
@@ -95,7 +95,7 @@ impl ControlUnit {
         // STE is a special case in that it does not itself modify the
         // E register.  See paragraph 1 on page 3-8 of the Users
         // Handbook.
-        self.op_store_ae_register(ctx, self.regs.e, mem, &UpdateE::No)
+        self.op_store_ae_register(ctx, mem.get_e_register(), mem, &UpdateE::No)
     }
 
     /// Implement opcodes ST{A,B,C,D,E}.
@@ -162,18 +162,14 @@ mod tests {
         }
     }
 
-    fn get_register_value(
-        control: &ControlUnit,
-        mem: &MemoryUnit,
-        which: ArithmeticUnitRegister,
-    ) -> Unsigned36Bit {
+    fn get_register_value(mem: &MemoryUnit, which: ArithmeticUnitRegister) -> Unsigned36Bit {
         use ArithmeticUnitRegister::*;
         match which {
             A => mem.get_a_register(),
             B => mem.get_b_register(),
             C => mem.get_c_register(),
             D => mem.get_d_register(),
-            E => control.regs.e,
+            E => mem.get_e_register(),
         }
     }
 
@@ -185,7 +181,7 @@ mod tests {
         d: Unsigned36Bit,
         e: Unsigned36Bit,
     ) -> (ControlUnit, MemoryUnit) {
-        let mut control = ControlUnit::new(
+        let control = ControlUnit::new(
             PanicOnUnmaskedAlarm::Yes,
             ConfigurationMemorySetup::StandardForTestingOnly,
         );
@@ -199,7 +195,7 @@ mod tests {
         mem.set_b_register(b);
         mem.set_c_register(c);
         mem.set_d_register(d);
-        control.regs.e = e;
+        mem.set_e_register(e);
         (control, mem)
     }
 
@@ -298,13 +294,12 @@ mod tests {
             ArithmeticUnitRegister::D => control.op_ldd(ctx, &mut mem),
             ArithmeticUnitRegister::E => control.op_lde(ctx, &mut mem),
         };
-        dbg!(&result);
         if let Err(e) = result {
             panic!("{:?} instruction failed: {}", opcode, e);
         }
         (
-            get_register_value(&control, &mem, target_register),
-            control.regs.e,
+            get_register_value(&mem, target_register),
+            mem.get_e_register(),
         )
     }
 
@@ -312,10 +307,10 @@ mod tests {
         ctx: &Context,
         mem_word: Unsigned36Bit,
         working_address: &Address,
-        mut reg_init: F,
+        mut mem_init: F,
     ) -> (ControlUnit, MemoryUnit)
     where
-        F: FnMut(&mut ControlUnit),
+        F: FnMut(&mut MemoryUnit),
     {
         const COMPLAIN: &str = "failed to set up load/store test data";
         let mut control = ControlUnit::new(
@@ -338,7 +333,7 @@ mod tests {
                 &MetaBitChange::None,
             )
             .expect(COMPLAIN);
-        reg_init(&mut control);
+        mem_init(&mut mem);
         (control, mem)
     }
 
@@ -378,7 +373,7 @@ mod tests {
             panic!("{:?} instruction failed: {}", opcode, e);
         }
         match mem.fetch(ctx, working_address, &MetaBitChange::None) {
-            Ok((stored, _)) => (stored, control.regs.e),
+            Ok((stored, _)) => (stored, mem.get_e_register()),
             Err(e) => {
                 panic!("unable to retrieve the stored word: {}", e);
             }
@@ -588,14 +583,10 @@ mod tests {
         let context = make_ctx();
         let input = u36!(0o004_003_002_001);
         let working_address: Address = Address::from(u18!(0o100));
-        let (mut control, mut mem) = set_up_store(
-            &context,
-            u36!(0o444_333_222_111),
-            &working_address,
-            |control| {
-                control.regs.e = input;
-            },
-        );
+        let (mut control, mut mem) =
+            set_up_store(&context, u36!(0o444_333_222_111), &working_address, |mem| {
+                mem.set_e_register(input);
+            });
         // The instruction actually uses System Configuration number
         // 1, but we put Unsigned9Bit::ZERO in register F₁.
         let (result, _e) = simulate_store(
@@ -619,15 +610,10 @@ mod tests {
         let initial_value_at_100 = u36!(0o004_003_002_001);
         let initial_e = u36!(0o444_333_222_111);
         let working_address: Address = Address::from(u18!(0o100));
-        let (mut control, mut mem) = set_up_store(
-            &context,
-            initial_value_at_100,
-            &working_address,
-            |control| {
-                control.regs.e = initial_e;
-            },
-        );
-        dbg!(&control.regs.e);
+        let (mut control, mut mem) =
+            set_up_store(&context, initial_value_at_100, &working_address, |mem| {
+                mem.set_e_register(initial_e);
+            });
 
         // The instruction actually uses System Configuration number
         // 1, but we put 0342 (which is the value normally in F₂) in
@@ -645,7 +631,7 @@ mod tests {
             // This is configuration 2.
             SystemConfiguration::from(u9!(0o342)),
         );
-        dbg!(&control.regs.e);
+
         // The E register should still hold the original value
         // (0o004_003_002_001).
         assert_eq!(e, initial_e, "E register should be unchanged");
