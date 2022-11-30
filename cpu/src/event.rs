@@ -4,7 +4,7 @@ use std::fmt::{self, Display, Formatter};
 use base::charset::DescribedChar;
 use base::Unsigned6Bit;
 
-use super::alarm::UnmaskedAlarm;
+use super::alarm::Alarm;
 
 #[derive(Debug)]
 pub enum InputEvent {
@@ -34,7 +34,7 @@ pub enum InputEventError {
     InputEventNotValidForDevice,
     InvalidReentrantCall,
 
-    UnmaskedAlarm(UnmaskedAlarm),
+    Alarm(Alarm),
 }
 
 impl Display for InputEventError {
@@ -48,7 +48,7 @@ impl Display for InputEventError {
                 f.write_str("input event is not valid for this device")
             }
             InputEventError::InvalidReentrantCall => f.write_str("inalid re-entrant call"),
-            InputEventError::UnmaskedAlarm(alarm) => alarm.fmt(f),
+            InputEventError::Alarm(alarm) => alarm.fmt(f),
         }
     }
 }

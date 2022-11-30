@@ -8,12 +8,12 @@ use wasm_bindgen::prelude::*;
 
 use base::prelude::*;
 
-use super::alarm::{Alarm, AlarmKind, UnmaskedAlarm};
+use super::alarm::{Alarm, AlarmKind, Alarmer, UnmaskedAlarm};
 use super::alarmunit::AlarmStatus;
 use super::context::Context;
 use super::control::{ConfigurationMemorySetup, ControlUnit, ResetMode, RunMode};
 use super::event::{InputEvent, OutputEvent};
-use super::io::{set_up_peripherals, DeviceManager, ExtendedUnitState};
+use super::io::{set_up_peripherals, DeviceManager, ExtendedUnitState, InputFlagRaised};
 use super::memory::{MemoryConfiguration, MemoryUnit};
 use super::PETR;
 use super::{InputEventError, PanicOnUnmaskedAlarm};
@@ -26,12 +26,6 @@ pub struct Tx2 {
     next_execution_due: Option<Duration>,
     next_hw_poll_due: Duration,
     run_mode: RunMode,
-}
-
-#[derive(Debug)]
-pub enum InputFlagRaised {
-    No,
-    Maybe,
 }
 
 impl Tx2 {
@@ -114,28 +108,16 @@ impl Tx2 {
         unit: Unsigned6Bit,
         event: InputEvent,
     ) -> Result<InputFlagRaised, InputEventError> {
-        self.devices
-            .on_input_event(ctx, unit, event)
-            .and_then(|()| {
+        match self.devices.on_input_event(ctx, unit, event) {
+            Ok(InputFlagRaised::Yes) => {
                 // update the poll time for this unit to force it to
                 // be polled
                 self.devices.update_poll_time(ctx, unit);
-                // Now perform the poll so that we notice any flag
-                // raise it wants to make.
-                self.poll_hw(ctx).map_err(InputEventError::UnmaskedAlarm)
-            })
-            .map(|()| {
-                event!(
-                    Level::DEBUG,
-                    "after input event, run mode is {:?}",
-                    self.run_mode
-                );
-                if self.run_mode == RunMode::Running {
-                    InputFlagRaised::Maybe
-                } else {
-                    InputFlagRaised::No
-                }
-            })
+                Ok(InputFlagRaised::Yes)
+            }
+            Ok(InputFlagRaised::No) => Ok(InputFlagRaised::No),
+            Err(e) => Err(e),
+        }
     }
 
     pub fn mount_tape(
@@ -173,7 +155,7 @@ impl Tx2 {
         }
     }
 
-    fn poll_hw(&mut self, ctx: &Context) -> Result<(), UnmaskedAlarm> {
+    fn poll_hw(&mut self, ctx: &Context) -> Result<(), Alarm> {
         // check for I/O alarms, flag changes.
         let now = &ctx.simulated_time;
         event!(Level::TRACE, "polling hardware for updates (now={:?})", now);
@@ -202,11 +184,7 @@ impl Tx2 {
                     "Alarm raised during hardware polling at system time {:?}",
                     now
                 );
-                Err(UnmaskedAlarm {
-                    alarm,
-                    address: None,
-                    when: *now,
-                })
+                self.control.fire_if_not_masked(alarm)
             }
         }
     }
@@ -316,8 +294,12 @@ impl Tx2 {
                                system_time, self.next_hw_poll_due);
                     }
                 }
-                Err(unmasked_alarm) => {
-                    return Err(unmasked_alarm);
+                Err(alarm) => {
+                    return Err(UnmaskedAlarm {
+                        alarm,
+                        address: None, // not executing an instruction
+                        when: ctx.simulated_time,
+                    });
                 }
             }
         } else {

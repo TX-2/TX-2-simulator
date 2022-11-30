@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use super::super::context::Context;
 use super::super::event::InputEvent;
-use super::super::io::{TransferFailed, Unit, UnitStatus};
+use super::super::io::{InputFlagRaised, TransferFailed, Unit, UnitStatus};
 use super::super::*;
 
 #[derive(Debug)]
@@ -170,9 +170,9 @@ impl Unit for TrapCircuit {
         &mut self,
         _ctx: &Context,
         _event: InputEvent,
-    ) -> Result<(), InputEventError> {
+    ) -> Result<InputFlagRaised, InputEventError> {
         // Does nothing.
-        Ok(())
+        Ok(InputFlagRaised::No)
     }
 
     fn text_info(&self, _ctx: &Context) -> String {

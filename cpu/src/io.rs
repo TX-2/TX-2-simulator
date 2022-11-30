@@ -202,7 +202,11 @@ pub trait Unit {
         source: Unsigned36Bit,
     ) -> Result<Option<OutputEvent>, TransferFailed>;
     fn name(&self) -> String;
-    fn on_input_event(&mut self, ctx: &Context, event: InputEvent) -> Result<(), InputEventError>;
+    fn on_input_event(
+        &mut self,
+        ctx: &Context,
+        event: InputEvent,
+    ) -> Result<InputFlagRaised, InputEventError>;
 }
 
 pub struct AttachedUnit {
@@ -326,7 +330,11 @@ impl AttachedUnit {
         self.inner.borrow_mut().write(ctx, source)
     }
 
-    pub fn on_input_event(&self, ctx: &Context, event: InputEvent) -> Result<(), InputEventError> {
+    pub fn on_input_event(
+        &self,
+        ctx: &Context,
+        event: InputEvent,
+    ) -> Result<InputFlagRaised, InputEventError> {
         self.inner.borrow_mut().on_input_event(ctx, event)
     }
 
@@ -362,6 +370,21 @@ pub struct DeviceManager {
     devices: BTreeMap<Unsigned6Bit, AttachedUnit>,
     poll_queue: PollQueue,
     changes: ChangeIndex<Unsigned6Bit>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum InputFlagRaised {
+    No,
+    Yes,
+}
+
+impl From<InputFlagRaised> for bool {
+    fn from(f: InputFlagRaised) -> bool {
+        match f {
+            InputFlagRaised::Yes => true,
+            InputFlagRaised::No => false,
+        }
+    }
 }
 
 impl DeviceManager {
@@ -461,7 +484,7 @@ impl DeviceManager {
         ctx: &Context,
         unit_number: Unsigned6Bit,
         input_event: InputEvent,
-    ) -> Result<(), InputEventError> {
+    ) -> Result<InputFlagRaised, InputEventError> {
         self.mark_device_changed(unit_number);
         if let Some(attached) = self.devices.get_mut(&unit_number) {
             attached.on_input_event(ctx, input_event)

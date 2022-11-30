@@ -420,11 +420,18 @@ impl Unit for Petr {
         self.activity = Activity::Stopped;
     }
 
-    fn on_input_event(&mut self, _ctx: &Context, event: InputEvent) -> Result<(), InputEventError> {
+    fn on_input_event(
+        &mut self,
+        _ctx: &Context,
+        event: InputEvent,
+    ) -> Result<InputFlagRaised, InputEventError> {
         if let InputEvent::PetrMountPaperTape { data } = event {
             event!(Level::DEBUG, "Mounting a tape ({} bytes)", data.len());
             self.tape_data = data;
-            Ok(())
+            // The input flag is raised only when input is actually
+            // available.  That is, when a line passes under the
+            // detector.
+            Ok(InputFlagRaised::No)
         } else {
             Err(InputEventError::InputEventNotValidForDevice)
         }

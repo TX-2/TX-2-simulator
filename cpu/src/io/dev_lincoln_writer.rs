@@ -16,7 +16,7 @@ use std::time::Duration;
 
 use super::super::context::Context;
 use super::super::event::{InputEvent, InputEventError, OutputEvent};
-use super::super::io::{FlagChange, TransferFailed, Unit, UnitStatus};
+use super::super::io::{FlagChange, InputFlagRaised, TransferFailed, Unit, UnitStatus};
 use super::super::types::*;
 use super::super::{Alarm, AlarmDetails};
 use base::charset::LincolnStateTextInfo;
@@ -196,9 +196,9 @@ impl Unit for LincolnWriterOutput {
         &mut self,
         _ctx: &Context,
         _event: crate::event::InputEvent,
-    ) -> Result<(), InputEventError> {
+    ) -> Result<InputFlagRaised, InputEventError> {
         // Does nothing
-        Ok(())
+        Ok(InputFlagRaised::No)
     }
 
     fn text_info(&self, _ctx: &Context) -> String {
@@ -520,39 +520,47 @@ impl Unit for LincolnWriterInput {
         &mut self,
         _ctx: &Context,
         event: crate::InputEvent,
-    ) -> Result<(), InputEventError> {
+    ) -> Result<InputFlagRaised, InputEventError> {
         event!(
             Level::DEBUG,
             "LW input {:o} processing input event: {:?}",
             self.unit,
             &event
         );
-        let result = if let InputEvent::LwKeyboardInput { data } = event {
-            match (self.data.is_empty(), data.as_slice()) {
-                (_, []) => Ok(()),
-                (false, _) => Err(InputEventError::BufferUnavailable),
-                (true, [items @ ..]) => {
-                    match self.state.try_borrow_mut() {
-                        Ok(mut state) => {
-                            self.data.clear();
-                            for item in items.iter() {
-                                // Deal with any state changes.
-                                // Because all state changes occur in
-                                // one go, we may get the unexpected
-                                // behaviour described in the comment
-                                // above.
-                                lincoln_writer_state_update(*item, &mut state);
-                                self.data.push(*item);
+        let result: Result<InputFlagRaised, InputEventError> =
+            if let InputEvent::LwKeyboardInput { data } = event {
+                match (self.data.is_empty(), data.as_slice()) {
+                    (_, []) => Ok(InputFlagRaised::No), // no incoming data
+                    (false, _) => Err(InputEventError::BufferUnavailable),
+                    (true, [items @ ..]) => {
+                        match self.state.try_borrow_mut() {
+                            Ok(mut state) => {
+                                if !self.data.is_empty() {
+                                    return Err(InputEventError::Alarm(Alarm {
+                                        sequence: None,
+                                        details: AlarmDetails::MISAL {
+                                            affected_unit: self.unit,
+                                        },
+                                    }));
+                                }
+                                for item in items.iter() {
+                                    // Deal with any state changes.
+                                    // Because all state changes occur in
+                                    // one go, we may get the unexpected
+                                    // behaviour described in the comment
+                                    // above.
+                                    lincoln_writer_state_update(*item, &mut state);
+                                    self.data.push(*item);
+                                }
+                                Ok(InputFlagRaised::Yes)
                             }
-                            Ok(())
+                            Err(_) => Err(InputEventError::InvalidReentrantCall),
                         }
-                        Err(_) => Err(InputEventError::InvalidReentrantCall),
                     }
                 }
-            }
-        } else {
-            Err(InputEventError::InputEventNotValidForDevice)
-        };
+            } else {
+                Err(InputEventError::InputEventNotValidForDevice)
+            };
         event!(
             Level::DEBUG,
             "LW input {:o} completing input event, data is now {:?}, result is {:?}",

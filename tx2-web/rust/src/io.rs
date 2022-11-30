@@ -26,14 +26,13 @@ pub fn tx2_load_tape(
     data: &[u8],
 ) -> bool {
     let context = make_context(simulated_time, elapsed_time_secs);
-    match tx2.mount_tape(&context, data.to_vec()) {
-        Ok(InputFlagRaised::Maybe) => true,
-        Ok(InputFlagRaised::No) => false,
-        Err(e) => {
+    tx2.mount_tape(&context, data.to_vec()).map_or_else(
+        |e: InputEventError| {
             event!(Level::ERROR, "failed to load paper tape: {e}");
             false
-        }
-    }
+        },
+        |f: InputFlagRaised| f.into(),
+    )
 }
 
 pub(crate) struct EmittedCodes {
@@ -163,10 +162,7 @@ pub fn tx2_lw_keyboard_click(
                 Ok(data) => match tx2.lw_input(&context, unit, &data) {
                     Ok((consumed, flag_raise)) => KeystrokeOutcome {
                         consumed,
-                        flag_raised: match flag_raise {
-                            InputFlagRaised::Maybe => true,
-                            InputFlagRaised::No => false,
-                        },
+                        flag_raised: flag_raise.into(),
                         far_keyboard_is_active: codes.far_now_active,
                     },
                     Err(e) => {
