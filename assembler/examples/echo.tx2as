@@ -10,8 +10,13 @@
 ** The first Lincoln Writer's input is unit 65.  We will put the code
 ** for its sequence at 200, so the program counter for sequence 65
 ** (which is X₆₅) should start at 200.
-100|      REX₆₅ ECHOLOOP     ** Set X₆₅ to 200.
+100|      REX₆₅ ECHOLOOP     ** Set X₆₅ to ECHOLOOP.
         ²¹IOS₆₅ 30000        ** Connect Lincoln Writer input 1 (unit 65).
+          1  ** Something has gone wrong; execute an invalid instruction.
+
+******************************************************************************
+** Sequence 65: Input
+******************************************************************************
 
 ** The IOS instruction connecting unit 65 has the side effect of
 ** making sequence 65 runnable. Because bit 020 of the configuration
@@ -33,9 +38,19 @@ ECHOLOOP|  ³TSD 377610       ** read code into E register
            0                 ** STOP entered, so execute an invalid instruction.
            JMP    ECHOLOOP   ** code is not STOP, so loop to 200.
 
-** We keep data at 500 and following
-STOPCODE-> 76           ** the LW code for STOP
+******************************************************************************
+** Sequence 66: Output
+******************************************************************************
 
+300|    REX₆₅   200     ** Set X₆₅ to 200.
+      ²¹IOS₆₅ 30000     ** Connect input, dismiss 66.
+       ³TSD  377607     ** Print code in D register.
+        JMP     300     ** loop.
+
+******************************************************************************
+** Data
+******************************************************************************
+STOPCODE-> 76           ** the LW code for STOP
 
 ** Indicate to the assembler that it should generate a punched tape
 ** output (with the standard header) and that the header should begin
