@@ -57,3 +57,20 @@ $ npm run dev
 The `npm` command will print the URL from which the pages are served,
 just visit that in your browser if `npm` doesn't open a browser window
 for you automatically.
+
+
+### Problems with wasm-opt
+
+Some versions of `wasm-pack` [have a bug in how they locate the
+`wasm-opt` binary](https://github.com/rustwasm/wasm-pack/issues/1062);
+they can't correctly find a pre-installed binary.  On my system this
+gives rise to this error:
+
+```
+[INFO]: found wasm-opt at "/usr/bin/wasm-opt"
+Error: /usr/bin/bin/wasm-opt binary does not exist
+```
+
+One low-tech workaround for this problem is to move any
+locally-installed `wasm-opt` binary out of the way, so that
+`wasm-pack` uses a downloaded verson.

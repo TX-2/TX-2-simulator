@@ -10,15 +10,15 @@ fi
 
 rust_checks() {
     cargo fmt --check &&
-	cargo test &&
-	cargo clippy
+        cargo test &&
+        cargo clippy
 }
 
 npm_checks() {
     (
-	cd tx2-web &&
-	    npm run lint &&
-	    npm run build
+        cd tx2-web &&
+            npm run lint &&
+            npm run build
     )
 }
 
@@ -30,5 +30,6 @@ else
     exec >&2
     echo
     echo 'Please fix the problems above before committing your change.'
+    echo '(if the problem is that wasm-opt was not found, please see docs/build/web.md)'
     exit $rv
 fi
