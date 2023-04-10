@@ -9,6 +9,9 @@ pub enum NumeralMode {
     Decimal,
 }
 
+// defeat derivable_impls here because if we simply derive Default
+// it's unclear which value we get as the default.
+#[allow(clippy::derivable_impls)]
 impl Default for NumeralMode {
     fn default() -> NumeralMode {
         NumeralMode::Octal
