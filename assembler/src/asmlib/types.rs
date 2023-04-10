@@ -29,7 +29,7 @@ pub enum AssemblerFailure {
     },
     SyntaxError {
         line: LineNumber,
-        columns: Option<(usize, usize)>,
+        column: Option<usize>,
         msg: String,
     },
 }
@@ -74,11 +74,11 @@ impl Display for AssemblerFailure {
                 write_os_string(f, filename)?;
                 write!(f, ": {}", error)
             }
-            AssemblerFailure::SyntaxError { line, columns, msg } => match columns {
-                Some((column_from, _)) => {
+            AssemblerFailure::SyntaxError { line, column, msg } => match column {
+                Some(col) => {
                     // We count columns from 0 in the implementation, but 1 in error
                     // messages.
-                    write!(f, "line {}, column {}: {}", line, column_from + 1, msg)
+                    write!(f, "line {}, column {}: {}", line, col + 1, msg)
                 }
                 None => {
                     write!(f, "line {}: {}", line, msg)

@@ -1,6 +1,6 @@
 use std::fmt::{self, Display, Formatter, Octal, Write};
 use std::num::IntErrorKind;
-use std::ops::{Range, Shl};
+use std::ops::Shl;
 
 use nom::branch::alt;
 use nom::bytes::complete::{tag, take, take_until, take_while1};
@@ -9,7 +9,7 @@ use nom::combinator::{map, map_res, opt, recognize, verify};
 use nom::multi::{many0, many1};
 use nom::sequence::{pair, preceded, separated_pair, terminated, tuple};
 
-use crate::ek::{self, ToRange};
+use crate::ek;
 use crate::state::{Error, NumeralMode, State, StateExtra};
 use crate::types::*;
 use base::prelude::*;
@@ -21,15 +21,14 @@ pub(crate) struct ErrorLocation {
     /// line is usually derived from LocatedSpan::location_line() which returns
     /// a u32.
     pub(crate) line: LineNumber,
-    pub(crate) columns: Option<Range<usize>>,
+    pub(crate) column: Option<usize>,
 }
 
 impl<'a, 'b> From<&ek::LocatedSpan<'a, 'b>> for ErrorLocation {
     fn from(span: &ek::LocatedSpan<'a, 'b>) -> ErrorLocation {
-        let r: Range<usize> = (*span).to_range();
         ErrorLocation {
             line: span.location_line(),
-            columns: Some(r),
+            column: Some(span.get_utf8_column()),
         }
     }
 }
@@ -464,10 +463,10 @@ fn is_nonblank_simple_symex_char(c: char) -> bool {
         || matches!(
             c,
             'i' | 'j' | 'k' | 'n' | 'p' | 'q' | 't' | 'w' | 'x' | 'y' | 'z' |
-	    '.' | '\'' | '_' |
-	    '\u{203E}' | // Unicode non-combining overline
-	    '\u{25A1}' | // Unicode white square
-	    '\u{25CB}' // Unicode white circle
+            '.' | '\'' | '_' |
+            '\u{203E}' | // Unicode non-combining overline
+            '\u{25A1}' | // Unicode white square
+            '\u{25CB}' // Unicode white circle
         )
 }
 

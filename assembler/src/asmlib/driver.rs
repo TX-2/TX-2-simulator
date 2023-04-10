@@ -383,13 +383,9 @@ pub fn assemble_file(
                         }
                         let location: &ErrorLocation = &first.0;
                         let msg = first.1.as_str();
-                        let columns = location
-                            .columns
-                            .as_ref()
-                            .map(|range| (range.start, range.end));
                         return Err(AssemblerFailure::SyntaxError {
                             line: location.line,
-                            columns,
+                            column: location.column,
                             msg: msg.to_string(),
                         });
                     }

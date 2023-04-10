@@ -20,9 +20,9 @@ pub(crate) struct Error(pub(crate) ErrorLocation, pub(crate) String);
 
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        match self.0.columns.as_ref() {
+        match self.0.column.as_ref() {
             None => write!(f, "{}: {}", self.0.line, self.1,),
-            Some(cols) => write!(f, "{}:{}: {}", self.0.line, cols.start, self.1,),
+            Some(col) => write!(f, "{}:{}: {}", self.0.line, col, self.1,),
         }
     }
 }
