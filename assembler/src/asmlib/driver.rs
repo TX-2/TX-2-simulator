@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::ffi::OsStr;
 use std::fs::OpenOptions;
 use std::io::{BufReader, BufWriter, Read, Write};
@@ -30,6 +29,7 @@ pub enum DirectiveMetaCommand {
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Block {
+    origin: Origin,
     items: Vec<ProgramInstruction>,
 }
 
@@ -45,7 +45,11 @@ impl Block {
 
 #[derive(Debug)]
 pub struct Directive {
-    items: BTreeMap<Origin, Block>,
+    // items must be in manuscript order, because RC block addresses
+    // are assigned in the order they appear in the code, and
+    // similarly for undefined origins (e.g. "FOO| JMP ..." where FOO
+    // has no definition).
+    blocks: Vec<Block>,
     entry_point: Option<Address>,
     symbols: SymbolTable,
 }
@@ -53,24 +57,20 @@ pub struct Directive {
 impl Directive {
     fn new(symbols: SymbolTable) -> Directive {
         Directive {
-            items: BTreeMap::new(),
+            blocks: Vec::new(),
             entry_point: None,
             symbols,
         }
     }
 
     fn instruction_count(&self) -> usize {
-        self.items
-            .values()
-            .map(|block| block.instruction_count())
-            .sum()
+        self.blocks.iter().map(Block::instruction_count).sum()
     }
 }
 
 impl Directive {
-    fn push(&mut self, origin: Origin, item: ProgramInstruction) {
-        // TODO: detect collisions (including part-way through blocks).
-        self.items.entry(origin).or_default().push(item)
+    fn push(&mut self, block: Block) {
+        self.blocks.push(block)
     }
 }
 
@@ -110,7 +110,7 @@ fn create_tape_block(
 ) -> Result<Vec<Unsigned36Bit>, AssemblerFailure> {
     if code.is_empty() {
         return Err(AssemblerFailure::BadTapeBlock(
-            "tape blocks are not allowed to be empty (the format does not support it)".to_string(),
+            format!("tape block at {origin:o} is empty but tape blocks are not allowed to be empty (the format does not support it)")
         ));
     }
     let len: Unsigned18Bit = match Unsigned18Bit::try_from(code.len()) {
@@ -262,10 +262,14 @@ fn assemble_pass1(
                 address
             }
         };
+        let mut block = Block {
+            origin: effective_origin,
+            items: Vec::new(),
+        };
         for manuscript_item in mblock.items {
             match manuscript_item {
                 ManuscriptItem::Instruction(inst) => {
-                    directive.push(effective_origin, inst);
+                    block.push(inst);
                 }
                 ManuscriptItem::MetaCommand(ManuscriptMetaCommand::Punch(address)) => {
                     saw_punch = true;
@@ -295,6 +299,7 @@ fn assemble_pass1(
                 ManuscriptItem::MetaCommand(_) => (),
             }
         }
+        directive.push(block);
     }
     if !saw_punch {
         event!(
@@ -302,7 +307,6 @@ fn assemble_pass1(
             "No PUNCH directive was given, program has no start address"
         );
     }
-    // TODO: implement the PUNCH metacommand.
     // TODO: implement the SAVE metacommand.
     // TODO: implement the READ metacommand.
     // TODO: implement the TAPE metacommand.
@@ -315,8 +319,14 @@ fn assemble_pass1(
 fn test_assemble_pass1() {
     let input = concat!("14\n", "☛☛PUNCH 26\n");
     let mut errors: Vec<Error> = Vec::new();
-    let expected_directive_entry_point = Some(Address::new(Unsigned18Bit::from(0o26_u8)));
+    // There is no origin specified in the input code, so we get the
+    // default origin, octal 200000 (see section 6-2.5 of the Users
+    // Handbook).  The origin of the code is not the same as the code
+    // entry point (which is what is specified in the PUNCH
+    // metacommand).
+    let expected_directive_entry_point = Address::new(u18!(0o26));
     let expected_block = Block {
+        origin: Origin::default(),
         items: vec![ProgramInstruction {
             tag: None,
             holdbit: HoldBit::Unspecified,
@@ -327,15 +337,21 @@ fn test_assemble_pass1() {
         }],
     };
     let (directive, _options) = assemble_pass1(input, &mut errors).expect("pass 1 should succeed");
-    assert_eq!(expected_directive_entry_point, directive.entry_point);
-    if let Some(block) = directive.items.get(&Origin::default()) {
-        assert_eq!(block, &expected_block);
-    } else {
-        panic!(
-            "expected a single block at {:o}, got {:?}",
-            Origin::default(),
-            directive
-        );
+    assert_eq!(Some(expected_directive_entry_point), directive.entry_point);
+    match directive.blocks.as_slice() {
+        [block] => {
+            assert_eq!(block, &expected_block);
+        }
+        [] => {
+            panic!("expected a single block, got none");
+        }
+        _ => {
+            panic!(
+                "expected a single block at {:o}, got {:?}",
+                Origin::default(),
+                directive
+            );
+        }
     }
 }
 
@@ -343,9 +359,9 @@ fn assemble_pass2(directive: &Directive) -> Vec<(Origin, Vec<Unsigned36Bit>)> {
     let span = span!(Level::ERROR, "assembly pass 2");
     let _enter = span.enter();
     let mut result: Vec<(Origin, Vec<Unsigned36Bit>)> = Vec::new();
-    for (origin, block) in directive.items.iter() {
+    for block in directive.blocks.iter() {
         let words: Vec<Unsigned36Bit> = block.items.iter().map(|inst| inst.value()).collect();
-        result.push((*origin, words));
+        result.push((block.origin, words));
     }
     result
 }
@@ -428,6 +444,10 @@ pub fn assemble_file(
     // write it.
     write_data(&mut writer, output_file_name, &reader_leader())?;
     for (origin, code) in &user_program {
+        if code.is_empty() {
+            event!(Level::ERROR, "Will not write empty block at {origin:o}; the assembler should not have generated one; this is a bug.");
+            continue;
+        }
         let block = create_tape_block(*origin, code, false)?;
         write_data(&mut writer, output_file_name, &block)?;
     }
