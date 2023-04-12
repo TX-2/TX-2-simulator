@@ -1,11 +1,12 @@
 use std::error::Error;
 use std::ffi::{OsStr, OsString};
-use std::fmt::{self, Display, Formatter};
+use std::fmt::{self, Display, Formatter, Octal};
 use std::io::Error as IoError;
 
 use base::prelude::*;
 
 use crate::ek;
+use crate::state::NumeralMode;
 
 /// LineNumber values are usually derived from
 /// LocatedSpan::line_location() which returns a u32.
@@ -243,5 +244,100 @@ impl SymbolTable {
 
     pub(crate) fn list(&self) -> Result<(), std::io::Error> {
         Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Hash)]
+pub struct Origin(pub Address);
+
+impl From<Origin> for Address {
+    fn from(orig: Origin) -> Address {
+        orig.0
+    }
+}
+
+impl From<Origin> for Unsigned18Bit {
+    fn from(orig: Origin) -> Unsigned18Bit {
+        Unsigned18Bit::from(Address::from(orig))
+    }
+}
+
+impl Default for Origin {
+    fn default() -> Origin {
+        // Section 6-2.5 of the User Manual states that if the
+        // manuscript contains no origin specification (no vertical
+        // bar) the whole program is located (correctly) at 200_000
+        // octal.
+        Origin(Address::new(u18!(0o200_000)))
+    }
+}
+
+impl Display for Origin {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        fmt::Display::fmt(&self.0, f)
+    }
+}
+
+impl Octal for Origin {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{:o}", self.0)
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub(crate) enum HoldBit {
+    Unspecified,
+    Hold,
+    NotHold,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ProgramInstruction {
+    pub(crate) tag: Option<SymbolName>,
+    pub(crate) holdbit: HoldBit,
+    pub(crate) parts: Vec<InstructionFragment>,
+}
+
+const HELD_MASK: Unsigned36Bit = u36!(1 << 35);
+
+impl ProgramInstruction {
+    pub(crate) fn value(&self) -> Unsigned36Bit {
+        let word = self
+            .parts
+            .iter()
+            .fold(Unsigned36Bit::ZERO, |acc, frag| acc | frag.value());
+        match self.holdbit {
+            HoldBit::Hold => word | HELD_MASK,
+            HoldBit::NotHold => word & !HELD_MASK,
+            HoldBit::Unspecified => word,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ManuscriptMetaCommand {
+    Invalid, // e.g."☛☛BOGUS"
+    // TODO: implement the T= metacommand.
+    // TODO: implement the RC metacommand.
+    // TODO: implement the XXX metacommand.
+    BaseChange(NumeralMode),
+    Punch(Option<Address>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ManuscriptItem {
+    MetaCommand(ManuscriptMetaCommand),
+    Instruction(ProgramInstruction),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ManuscriptBlock {
+    pub(crate) origin: Option<Origin>,
+    pub(crate) items: Vec<ManuscriptItem>,
+}
+
+impl ManuscriptBlock {
+    pub(crate) fn new(origin: Option<Origin>, items: Vec<ManuscriptItem>) -> ManuscriptBlock {
+        ManuscriptBlock { origin, items }
     }
 }

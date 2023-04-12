@@ -1,4 +1,4 @@
-use std::fmt::{self, Display, Formatter, Octal, Write};
+use std::fmt::Write;
 use std::num::IntErrorKind;
 use std::ops::Shl;
 
@@ -13,8 +13,6 @@ use crate::ek;
 use crate::state::{Error, NumeralMode, State, StateExtra};
 use crate::types::*;
 use base::prelude::*;
-
-const HELD_MASK: Unsigned36Bit = u36!(1 << 35);
 
 #[derive(Debug, Clone)]
 pub(crate) struct ErrorLocation {
@@ -31,40 +29,6 @@ impl<'a, 'b> From<&ek::LocatedSpan<'a, 'b>> for ErrorLocation {
             column: Some(span.get_utf8_column()),
         }
     }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub(crate) enum HoldBit {
-    Unspecified,
-    Hold,
-    NotHold,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ProgramInstruction {
-    pub(crate) tag: Option<SymbolName>,
-    pub(crate) holdbit: HoldBit,
-    pub(crate) parts: Vec<InstructionFragment>,
-}
-
-impl ProgramInstruction {
-    pub(crate) fn value(&self) -> Unsigned36Bit {
-        let word = self
-            .parts
-            .iter()
-            .fold(Unsigned36Bit::ZERO, |acc, frag| acc | frag.value());
-        match self.holdbit {
-            HoldBit::Hold => word | HELD_MASK,
-            HoldBit::NotHold => word & !HELD_MASK,
-            HoldBit::Unspecified => word,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ManuscriptItem {
-    MetaCommand(ManuscriptMetaCommand),
-    Instruction(ProgramInstruction),
 }
 
 pub(crate) fn maybe_superscript_sign<'a, 'b>(
@@ -810,16 +774,6 @@ pub(crate) fn double_hand<'a, 'b>(
     )(input)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ManuscriptMetaCommand {
-    Invalid, // e.g."☛☛BOGUS"
-    // TODO: implement the T= metacommand.
-    // TODO: implement the RC metacommand.
-    // TODO: implement the XXX metacommand.
-    BaseChange(NumeralMode),
-    Punch(Option<Address>),
-}
-
 fn base_change<'a, 'b>(
     input: ek::LocatedSpan<'a, 'b>,
 ) -> ek::IResult<'a, 'b, ManuscriptMetaCommand> {
@@ -909,43 +863,6 @@ pub(crate) fn metacommand<'a, 'b>(
             _ => ManuscriptMetaCommand::Invalid,
         },
     )(input)
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Hash)]
-pub struct Origin(pub Address);
-
-impl From<Origin> for Address {
-    fn from(orig: Origin) -> Address {
-        orig.0
-    }
-}
-
-impl From<Origin> for Unsigned18Bit {
-    fn from(orig: Origin) -> Unsigned18Bit {
-        Unsigned18Bit::from(Address::from(orig))
-    }
-}
-
-impl Default for Origin {
-    fn default() -> Origin {
-        // Section 6-2.5 of the User Manual states that if the
-        // manuscript contains no origin specification (no vertical
-        // bar) the whole program is located (correctly) at 200_000
-        // octal.
-        Origin(Address::new(u18!(0o200_000)))
-    }
-}
-
-impl Display for Origin {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        fmt::Display::fmt(&self.0, f)
-    }
-}
-
-impl Octal for Origin {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{:o}", self.0)
-    }
 }
 
 fn tag_definition_or_origin<'a, 'b>(
@@ -1075,18 +992,6 @@ pub(crate) fn parse_manuscript<'a, 'b>(
             ek::expect(end_of_line, "expected newline after a program instruction"),
         )),
     )(input)
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ManuscriptBlock {
-    pub(crate) origin: Option<Origin>,
-    pub(crate) items: Vec<ManuscriptItem>,
-}
-
-impl ManuscriptBlock {
-    fn new(origin: Option<Origin>, items: Vec<ManuscriptItem>) -> ManuscriptBlock {
-        ManuscriptBlock { origin, items }
-    }
 }
 
 pub(crate) fn source_file(

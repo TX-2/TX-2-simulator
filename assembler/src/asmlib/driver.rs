@@ -4,12 +4,7 @@ use std::io::{BufReader, BufWriter, Read, Write};
 
 use tracing::{event, span, Level};
 
-#[cfg(test)]
-use crate::parser::HoldBit;
-use crate::parser::{
-    source_file, ErrorLocation, ManuscriptBlock, ManuscriptItem, ManuscriptMetaCommand, Origin,
-    ProgramInstruction,
-};
+use crate::parser::{source_file, ErrorLocation};
 use crate::state::{Error, NumeralMode};
 use crate::types::*;
 use base::prelude::{
