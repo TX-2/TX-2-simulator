@@ -4,6 +4,7 @@ use std::io::{BufReader, BufWriter, Read, Write};
 
 use tracing::{event, span, Level};
 
+use crate::ast::*;
 use crate::parser::{source_file, ErrorLocation};
 use crate::state::{Error, NumeralMode};
 use crate::types::*;

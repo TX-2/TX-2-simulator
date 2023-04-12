@@ -1,6 +1,7 @@
 #![deny(unreachable_pub)]
 #![deny(unsafe_code)]
 
+mod ast;
 mod driver;
 mod ek;
 mod parser;

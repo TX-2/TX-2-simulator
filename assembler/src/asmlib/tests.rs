@@ -6,15 +6,14 @@ use std::cell::RefCell;
 
 use nom::combinator::map;
 
-use crate::types::LiteralValue;
-
+use super::ast::{
+    Elevation, HoldBit, InstructionFragment, LiteralValue, ManuscriptBlock, ManuscriptItem,
+    ManuscriptMetaCommand, Origin, ProgramInstruction, SymbolName, SymbolTable,
+};
 use super::ek::{self, parse_partially_with};
 use super::parser::*;
 use super::state::{Error, NumeralMode, State, StateExtra};
-use super::types::{
-    AssemblerFailure, Elevation, HoldBit, InstructionFragment, ManuscriptBlock, ManuscriptItem,
-    ManuscriptMetaCommand, Origin, ProgramInstruction, SymbolName, SymbolTable,
-};
+use super::types::AssemblerFailure;
 
 #[test]
 fn test_assemble_blank_line() {
