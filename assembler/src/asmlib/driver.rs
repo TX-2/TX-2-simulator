@@ -1,4 +1,9 @@
+mod output;
+#[cfg(test)]
+mod tests;
+
 use std::cmp::max;
+use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::fs::OpenOptions;
 use std::io::{BufReader, BufWriter, Read};
@@ -10,13 +15,25 @@ use tracing::{event, span, Level};
 use super::ast::*;
 use super::parser::parse_source_file;
 use super::state::NumeralMode;
+use super::symbol::SymbolName;
 use super::symtab::*;
 use super::types::*;
-use base::prelude::{Address, Unsigned36Bit};
+use base::prelude::{Address, Unsigned36Bit, Unsigned6Bit};
 
-mod output;
 #[cfg(test)]
-mod tests;
+use base::charset::Script;
+#[cfg(test)]
+use base::prelude::Unsigned18Bit;
+#[cfg(test)]
+use base::u36;
+
+/// Represents the meta commands which are still relevant in the
+/// directive.  Excludes things like the PUNCH meta command.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DirectiveMetaCommand {
+    Invalid, // e.g."☛☛BOGUS"
+    BaseChange(NumeralMode),
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 struct OutputOptions {
@@ -26,8 +43,13 @@ struct OutputOptions {
 }
 
 fn convert_source_file_to_directive(source_file: &SourceFile) -> Directive {
-    let mut directive: Directive = Directive::new();
+    let mut directive: Directive = Directive::default();
     for mblock in source_file.blocks.iter() {
+        if mblock.instruction_count() == 0 {
+            // This block contains only things that don't generate
+            // code (e.g. assignments), so don't emit it.
+            continue;
+        }
         let effective_origin = match mblock.origin {
             None => {
                 let address = Origin::default();
@@ -126,7 +148,7 @@ fn assemble_pass1<'a>(
 /// This test helper is defined here so that we don't have to expose
 /// assemble_pass1, assemble_pass2.
 #[cfg(test)]
-pub(crate) fn assemble_nonempty_valid_input<'a>(input: &'a str) -> (Directive, SymbolTable) {
+pub(crate) fn assemble_nonempty_valid_input<'a>(input: &'a str) -> (Directive, FinalSymbolTable) {
     let mut symtab = SymbolTable::default();
     let mut errors: Vec<Rich<'_, char>> = Vec::new();
     let result: Result<(Option<SourceFile>, OutputOptions), AssemblerFailure> =
@@ -137,9 +159,9 @@ pub(crate) fn assemble_nonempty_valid_input<'a>(input: &'a str) -> (Directive, S
     match result {
         Ok((None, _)) => unreachable!("parser should generate output if there are no errors"),
         Ok((Some(source_file), _options)) => {
-            let directive = assemble_pass2(&source_file, &mut symtab)
+            let (directive, final_symbols) = assemble_pass2(&source_file, symtab)
                 .expect("test program should not extend beyong physical memory");
-            (directive, symtab)
+            (directive, final_symbols)
         }
         Err(e) => {
             panic!("input should be valid: {}", e);
@@ -222,12 +244,27 @@ fn calculate_block_origins(
     Ok(result)
 }
 
+fn unique_symbols_in_order<'a, I>(items: I) -> Vec<SymbolName>
+where
+    I: IntoIterator<Item = SymbolName>,
+{
+    let mut seen = HashSet::new();
+    let mut result = Vec::new();
+    for sym in items {
+        if !seen.contains(&sym) {
+            seen.insert(sym.clone());
+            result.push(sym);
+        }
+    }
+    result
+}
+
 /// Pass 2 converts the abstract syntax representation into a
 /// `Directive`, which is closer to binary code.
 fn assemble_pass2(
     source_file: &SourceFile,
-    symtab: &mut SymbolTable,
-) -> Result<Directive, AddressOverflow> {
+    mut symtab: SymbolTable,
+) -> Result<(Directive, FinalSymbolTable), AssemblerFailure> {
     let span = span!(Level::ERROR, "assembly pass 2");
     let _enter = span.enter();
 
@@ -237,27 +274,72 @@ fn assemble_pass2(
     for (symbol, definition) in source_file.global_symbol_definitions() {
         symtab.define(symbol.clone(), definition.clone())
     }
-    let origins: Vec<(Option<SymbolName>, Address)> = calculate_block_origins(source_file, symtab)?;
+
+    let mut next_free_address: Option<Address> = None;
+    let origins: Vec<(Option<SymbolName>, Address)> =
+        match calculate_block_origins(source_file, &symtab) {
+            Ok(origins) => origins,
+            Err(e) => {
+                return Err(e.into());
+            }
+        };
     for (block_number, (maybe_sym, address)) in origins.iter().enumerate() {
         if let Some(sym) = maybe_sym {
             symtab.define(sym.clone(), SymbolDefinition::Origin(*address));
         }
         symtab.record_block_origin(block_number, *address);
+        let size = source_file.blocks[block_number].instruction_count();
+        let after_end = offset_from_origin(address, size)?;
+        next_free_address = next_free_address
+            .map(|current| max(current, after_end))
+            .or(Some(after_end));
     }
+
+    let final_symbols = match next_free_address {
+        Some(next_free) => {
+            let mut rc_block: Vec<Unsigned36Bit> = Vec::new();
+            let mut index_registers_used: Unsigned6Bit = Unsigned6Bit::ZERO;
+            let symbol_refs_in_program_order: Vec<SymbolName> = unique_symbols_in_order(
+                source_file
+                    .global_symbol_references()
+                    .map(|(symbol, _)| symbol),
+            );
+            match finalise_symbol_table(
+                symtab,
+                symbol_refs_in_program_order.iter(),
+                next_free.into(),
+                &mut rc_block,
+                &mut index_registers_used,
+            ) {
+                Ok(fs) => fs,
+                Err(e) => {
+                    return Err(e.into());
+                }
+            }
+        }
+        None => {
+            event!(
+                Level::WARN,
+                "the program appears to be empty; generating 0 instructions"
+            );
+            return Ok((Directive::default(), FinalSymbolTable::default()));
+        }
+    };
+
     let directive = convert_source_file_to_directive(source_file);
     event!(
         Level::INFO,
         "assembly generated {} instructions",
         directive.instruction_count()
     );
-    Ok(directive)
+    Ok((directive, final_symbols))
 }
 
 /// Pass 3 generates binary code.
-fn assemble_pass3(
+fn assemble_pass3<S: SymbolLookup>(
     directive: Directive,
-    symtab: &SymbolTable,
-) -> Result<Binary, SymbolLookupFailure> {
+    symtab: &mut S,
+) -> Result<Binary, S::Error> {
     let span = span!(Level::ERROR, "assembly pass 3");
     let _enter = span.enter();
 
@@ -271,9 +353,9 @@ fn assemble_pass3(
             .items
             .iter()
             .map(|inst| inst.value(symtab))
-            .collect::<Result<Vec<_>, SymbolLookupFailure>>()?;
+            .collect::<Result<Vec<_>, S::Error>>()?;
         binary.add_chunk(BinaryChunk {
-            address: block.origin.0,
+            address: block.origin.into(),
             words,
         });
     }
@@ -302,7 +384,7 @@ fn pos_line_column(s: &str, pos: usize) -> Result<(usize, usize), ()> {
 
 pub(crate) fn assemble_source(
     source_file_body: &str,
-    symbols: &mut SymbolTable,
+    symbols: SymbolTable,
 ) -> Result<Binary, AssemblerFailure> {
     let mut errors = Vec::new();
     let (source_file, options) = assemble_pass1(source_file_body, &mut errors)?;
@@ -324,14 +406,9 @@ pub(crate) fn assemble_source(
     let source_file =
         source_file.expect("assembly pass1 generated no errors, an AST should have been returned");
 
-    // Now we do pass 2.
+    // Now we do passes 2 and 3.
     let binary = {
-        let directive = match assemble_pass2(&source_file, symbols) {
-            Ok(d) => d,
-            Err(AddressOverflow(base, size)) => {
-                return Err(AssemblerFailure::ProgramTooBig(base, size));
-            }
-        };
+        let (directive, mut final_symbols) = assemble_pass2(&source_file, symbols)?;
         event!(
             Level::INFO,
             "assembly pass 2 generated {} instructions",
@@ -340,13 +417,19 @@ pub(crate) fn assemble_source(
 
         if options.list {
             // List the symbols.
-            for (name, definition) in symbols.list() {
+            for (name, definition) in final_symbols.list() {
                 println!("{name} = {definition}");
             }
         }
 
         // Pass 3 generates the binary output
-        assemble_pass3(directive, symbols).expect("all symbols should already have final values")
+        let result: Result<Binary, Infallible> = assemble_pass3(directive, &mut final_symbols);
+        match result {
+            Ok(binary) => binary,
+            Err(_) => {
+                unreachable!("instances of Infallible cannot be created");
+            }
+        }
     };
 
     // The count here also doesn't include the size of the RC-block as
@@ -357,6 +440,35 @@ pub(crate) fn assemble_source(
         binary.count_words()
     );
     Ok(binary)
+}
+
+#[test]
+fn test_assemble_pass1() {
+    let input = concat!("14\n", "☛☛PUNCH 26\n");
+    let expected_directive_entry_point = Some(Address::new(Unsigned18Bit::from(0o26_u8)));
+    let expected_block = ManuscriptBlock {
+        origin: None,
+        statements: vec![Statement::Instruction(ProgramInstruction {
+            tag: None,
+            holdbit: HoldBit::Unspecified,
+            parts: vec![InstructionFragment {
+                value: Expression::Literal(LiteralValue::from((Script::Normal, u36!(0o14)))),
+            }],
+        })],
+    };
+
+    let mut errors = Vec::new();
+    assert_eq!(
+        assemble_pass1(input, &mut errors).expect("assembly should succeed"),
+        (
+            Some(SourceFile {
+                punch: Some(PunchCommand(expected_directive_entry_point)),
+                blocks: vec![expected_block],
+            }),
+            OutputOptions { list: true }
+        )
+    );
+    assert!(errors.is_empty());
 }
 
 pub fn assemble_file(
@@ -372,7 +484,7 @@ pub fn assemble_file(
             line_number: None,
         })?;
 
-    let mut symbols = SymbolTable::default();
+    let symbols = SymbolTable::default();
     let source_file_body = {
         let mut body = String::new();
         match BufReader::new(input_file).read_to_string(&mut body) {
@@ -387,7 +499,7 @@ pub fn assemble_file(
         }
     };
 
-    let user_program: Binary = assemble_source(&source_file_body, &mut symbols)?;
+    let user_program: Binary = assemble_source(&source_file_body, symbols)?;
 
     // The Users Guide explains on page 6-23 how the punched binary
     // is created (and read back in).

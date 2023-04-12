@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+
+use base::prelude::*;
 use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::fmt::{self, Display, Formatter};
@@ -9,8 +12,96 @@ use base::{
     prelude::{Address, Unsigned36Bit},
 };
 
-use super::ast::{Expression, SymbolName};
+use super::ast::Expression;
+use super::symbol::SymbolName;
 use super::types::offset_from_origin;
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum SymbolLookupFailure {
+    Undefined(SymbolName),
+    Inconsistent {
+        symbol: SymbolName,
+        msg: String,
+    },
+    Loop {
+        target: SymbolName,
+        deps_in_order: Vec<SymbolName>,
+    },
+    RanOutOfIndexRegisters(SymbolName),
+    RcBlockTooLarge,
+    BlockTooLarge {
+        block_number: usize,
+        block_origin: Address,
+        offset: usize,
+    },
+}
+
+impl std::error::Error for SymbolLookupFailure {}
+
+/// Instances of Infallible cannot be created as it has no variants.
+/// When the never type (`!`) is stabilised, we should use that
+/// instead.
+pub(crate) enum Infallible {}
+
+pub(crate) trait SymbolLookup {
+    type Error;
+    fn lookup(
+        &mut self,
+        name: &SymbolName,
+        context: &SymbolContext,
+    ) -> Result<Unsigned36Bit, Self::Error>;
+}
+
+//#[derive(Debug, PartialEq, Eq, Hash)]
+//pub(crate) enum SymexContext {
+//    Configuration = 1,
+//    Index = 2,
+//    Address = 4,
+//    Origin = 8,
+//    Tag = 16,
+//}
+//
+//impl From<Script> for SymexContext {
+//    fn from(script: Script) -> SymexContext {
+//        match script {
+//            Script::Super => SymexContext::Configuration,
+//            Script::Sub => SymexContext::Index,
+//            Script::Normal => SymexContext::Address,
+//        }
+//    }
+//}
+//
+//#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+//struct SymexContexts(u8);
+//
+//impl SymexContexts {
+//    fn bitmask(c: SymexContext) -> u8 {
+//        c as u8
+//    }
+//
+//    fn add(&mut self, c: SymexContext) {
+//        self.0 |= SymexContexts::bitmask(c)
+//    }
+//
+//    fn contains(&self, c: SymexContext) -> bool {
+//        if self.0 & SymexContexts::bitmask(c) == 0 {
+//            false
+//        } else {
+//            true
+//        }
+//    }
+//
+//    fn contains_only(&self, c: SymexContext) -> bool {
+//        let mask = SymexContexts::bitmask(c);
+//        (self.0 & mask) == mask
+//    }
+//}
+//
+//impl From<SymexContext> for SymexContexts {
+//    fn from(c: SymexContext) -> SymexContexts {
+//        SymexContexts(c as u8)
+//    }
+//}
 
 #[derive(Debug, Default, PartialEq, Eq, Copy, Clone)]
 pub(crate) struct SymbolContext {
@@ -25,6 +116,10 @@ pub(crate) struct SymbolContext {
 impl SymbolContext {
     fn bits(&self) -> [bool; 4] {
         [self.configuration, self.index, self.address, self.origin]
+    }
+
+    fn is_origin_only(&self) -> bool {
+        self.origin && !(self.configuration || self.index || self.address)
     }
 
     fn includes(&self, other: &SymbolContext) -> bool {
@@ -43,28 +138,64 @@ impl SymbolContext {
             origin: self.origin || other.origin,
         }
     }
+}
 
-    /// Assign a default value for a symbol, using the rules from
-    /// section 6-2.2 of the Users Handbook ("SYMEX DEFINITON - TAGS -
-    /// EQUALITIES - AUTOMATIC ASSIGNMENT").
-    fn default_value(&self) -> Unsigned36Bit {
-        if self.origin {
-            unreachable!("block origins should already have been assigned")
+/// Assign a default value for a symbol, using the rules from
+/// section 6-2.2 of the Users Handbook ("SYMEX DEFINITON - TAGS -
+/// EQUALITIES - AUTOMATIC ASSIGNMENT").
+fn get_default_symbol_value(
+    name: &SymbolName,
+    contexts_used: SymbolContext,
+    program_words: Unsigned18Bit,
+    rc_block: &mut Vec<Unsigned36Bit>,
+    index_registers_used: &mut Unsigned6Bit,
+) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+    if contexts_used.origin {
+        if contexts_used.is_origin_only() {
+            Ok(program_words.into())
+        } else {
+            Err(SymbolLookupFailure::Inconsistent {
+                symbol: name.clone(),
+                msg: format!(
+                    "symbol '{}' was used in both origin and also other contexts",
+                    name
+                ),
+            })
         }
-        match (self.configuration, self.index, self.address) {
-            (true, _, _) => Unsigned36Bit::ZERO,
+    } else {
+        match (
+            contexts_used.configuration,
+            contexts_used.index,
+            contexts_used.address,
+        ) {
+            (false, false, false) => unreachable!(),
+            (true, _, _) => Ok(Unsigned36Bit::ZERO), // configuration (perhaps in combo with others)
             (false, true, _) => {
-                // Should allocate the lowest unused X-register, but this is not yet implemented.
-                unimplemented!("should assign an index register here (https://github.com/TX-2/TX-2-simulator/issues/109)")
+                // Index but not also configuration. Assign the next
+                // index register.  This count start at 0, but we
+                // Can't assign X0, so we increment first (as X0 is
+                // always 0 and we can't assign it).
+                match index_registers_used.checked_add(u6!(1)) {
+                    Some(n) => {
+                        *index_registers_used = n;
+                        return Ok(n.into());
+                    }
+                    None => {
+                        return Err(SymbolLookupFailure::RanOutOfIndexRegisters(name.clone()));
+                    }
+                }
             }
             (false, false, true) => {
-                // Should assign an RC-word.
-                unimplemented!("should assign an RC-word here (https://github.com/TX-2/TX-2-simulator/issues/110)")
-            }
-            (false, false, false) => {
-                unreachable!(
-                    "request for default value of symbol for which we have seen no references"
-                )
+                // address only, assign the next RC word.
+                Unsigned18Bit::try_from(rc_block.len())
+                    .ok()
+                    .map(|len| program_words.checked_add(len))
+                    .flatten()
+                    .map(|rc_word_addr| {
+                        rc_block.push(Unsigned36Bit::ZERO);
+                        Ok(rc_word_addr.into())
+                    })
+                    .unwrap_or(Err(SymbolLookupFailure::RcBlockTooLarge))
             }
         }
     }
@@ -97,6 +228,7 @@ pub(crate) enum SymbolDefinition {
     Tag { block: usize, offset: usize },
     Origin(Address),
     Equality(Expression),
+    DefaultAssigned(Unsigned36Bit),
     Undefined(SymbolContext),
 }
 
@@ -108,6 +240,129 @@ impl SymbolDefinition {
     }
 }
 
+/// FinalSymbolTable has final values for all identifiers.
+#[derive(Debug, Default)]
+pub(crate) struct FinalSymbolTable {
+    entries: HashMap<SymbolName, Unsigned36Bit>,
+}
+
+impl FinalSymbolTable {
+    pub(crate) fn list(&self) -> Vec<(SymbolName, Unsigned36Bit)> {
+        let mut result: Vec<(SymbolName, Unsigned36Bit)> = self
+            .entries
+            .iter()
+            .map(|(name, val)| (name.clone(), *val))
+            .collect();
+        result.sort();
+        result
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+}
+
+impl SymbolLookup for FinalSymbolTable {
+    type Error = Infallible;
+
+    fn lookup(
+        &mut self,
+        name: &SymbolName,
+        _: &SymbolContext,
+    ) -> Result<Unsigned36Bit, Self::Error> {
+        Ok(self.entries[name])
+    }
+}
+
+pub(crate) fn finalise_symbol_table<'a, I>(
+    t: SymbolTable,
+    symbols_in_program_order: I,
+    program_words: Unsigned18Bit,
+    rc_block: &mut Vec<Unsigned36Bit>,
+    index_registers_used: &mut Unsigned6Bit,
+) -> Result<FinalSymbolTable, SymbolLookupFailure>
+where
+    I: Iterator<Item = &'a SymbolName>,
+{
+    let mut finalized_entries: HashMap<SymbolName, Unsigned36Bit> = HashMap::new();
+    for symbol_name in symbols_in_program_order {
+        if finalized_entries.contains_key(symbol_name) {
+            panic!("symbol {symbol_name} occurs twice in symbols_in_program_order");
+        }
+        match t.get(symbol_name) {
+            Some(SymbolDefinition::DefaultAssigned(value)) => {
+                finalized_entries.insert(symbol_name.clone(), value.clone());
+            }
+            Some(SymbolDefinition::Origin(address)) => {
+                let (physical, _) = address.split();
+                finalized_entries.insert(symbol_name.clone(), physical.into());
+            }
+            Some(SymbolDefinition::Equality(Expression::Literal(value))) => {
+                finalized_entries.insert(symbol_name.clone(), value.value());
+            }
+            Some(SymbolDefinition::Equality(expression)) => {
+                unimplemented!("need to evaluate expression {expression:?}")
+            }
+            Some(SymbolDefinition::Tag {
+                block,
+                offset: block_offset,
+            }) => match t.block_origins.get(&*block) {
+                Some(block_address) => {
+                    // TODO: factor this out.
+                    let (physical_block_start, _) = block_address.split();
+                    match Unsigned18Bit::try_from(*block_offset) {
+                        Ok(offset) => match physical_block_start.checked_add(offset) {
+                            Some(physical) => {
+                                finalized_entries.insert(symbol_name.clone(), physical.into());
+                            }
+                            None => {
+                                return Err(SymbolLookupFailure::BlockTooLarge {
+                                    block_number: *block,
+                                    block_origin: *block_address,
+                                    offset: *block_offset,
+                                });
+                            }
+                        },
+                        Err(_) => {
+                            return Err(SymbolLookupFailure::BlockTooLarge {
+                                block_number: *block,
+                                block_origin: *block_address,
+                                offset: *block_offset,
+                            });
+                        }
+                    }
+                }
+                None => {
+                    panic!("symbol name {symbol_name:?} refers to offset {block_offset} in block {block} but there is no block {block}.");
+                }
+            },
+            Some(SymbolDefinition::Undefined(use_contexts)) => {
+                // Not already defined, so we need to assign a default.
+                match get_default_symbol_value(
+                    symbol_name,
+                    *use_contexts,
+                    program_words,
+                    rc_block,
+                    index_registers_used,
+                ) {
+                    Ok(assigned) => {
+                        finalized_entries.insert(symbol_name.clone(), assigned);
+                    }
+                    Err(e) => {
+                        return Err(e);
+                    }
+                }
+            }
+            None => {
+                unreachable!()
+            }
+        }
+    }
+    Ok(FinalSymbolTable {
+        entries: finalized_entries,
+    })
+}
+
 /// A symbol which has a reference but no definition is known, will
 /// ben represented it by having it map to None.  The rules for how
 /// such symbols are assigned values are indicated in "Unassigned
@@ -115,7 +370,7 @@ impl SymbolDefinition {
 #[derive(Debug, Default)]
 pub(crate) struct SymbolTable {
     definitions: BTreeMap<SymbolName, SymbolDefinition>,
-    block_oirigins: BTreeMap<usize, Address>,
+    block_origins: BTreeMap<usize, Address>,
 }
 
 #[derive(Debug)]
@@ -137,19 +392,20 @@ impl FinalLookupOperation {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) enum SymbolLookupFailure {
-    Loop {
-        target: SymbolName,
-        deps_in_order: Vec<SymbolName>,
-    },
-}
-
-impl std::error::Error for SymbolLookupFailure {}
-
 impl Display for SymbolLookupFailure {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         match self {
+            SymbolLookupFailure::Undefined(name) => {
+                write!(f, "symbol {name} is not defined")
+            }
+            SymbolLookupFailure::RanOutOfIndexRegisters(name) => {
+                write!(f, "there are not enough index registers to assign one as the default for the symbol {name}")
+            }
+            SymbolLookupFailure::RcBlockTooLarge => f.write_str("RC block is too large"),
+            SymbolLookupFailure::BlockTooLarge { block_number, block_origin, offset } => {
+                f.write_str("program block {block_number} is too large; offset {offset} from block start {block_origin} does not fit in physical memory")
+            },
+            SymbolLookupFailure::Inconsistent { symbol: _, msg } => f.write_str(msg.as_str()),
             SymbolLookupFailure::Loop {
                 target,
                 deps_in_order,
@@ -169,7 +425,15 @@ impl Display for SymbolLookupFailure {
 impl SymbolTable {
     #[cfg(test)]
     pub(crate) fn is_empty(&self) -> bool {
-        true
+        self.definitions.is_empty()
+    }
+
+    fn get_mut(&mut self, name: &SymbolName) -> Option<&mut SymbolDefinition> {
+        self.definitions.get_mut(name)
+    }
+
+    fn get(&self, name: &SymbolName) -> Option<&SymbolDefinition> {
+        self.definitions.get(name)
     }
 
     pub(crate) fn define(&mut self, name: SymbolName, definition: SymbolDefinition) {
@@ -177,7 +441,7 @@ impl SymbolTable {
     }
 
     pub(crate) fn record_block_origin(&mut self, block_number: usize, address: Address) {
-        self.block_oirigins.insert(block_number, address);
+        self.block_origins.insert(block_number, address);
     }
 
     pub(crate) fn record_usage_context(&mut self, name: SymbolName, context: SymbolContext) {
@@ -208,7 +472,8 @@ impl SymbolTable {
         };
         match self.definitions.get(name) {
             Some(def) => match def {
-                SymbolDefinition::Tag { block, offset } => match self.block_oirigins.get(block) {
+                SymbolDefinition::DefaultAssigned(value) => Ok(*value),
+                SymbolDefinition::Tag { block, offset } => match self.block_origins.get(block) {
                     Some(address) => Ok(offset_from_origin(address, *offset)
                         .expect("program is too long")
                         .into()),
@@ -261,7 +526,7 @@ impl SymbolTable {
                 },
                 SymbolDefinition::Undefined(context_union) => {
                     if context_union.includes(&op.context) {
-                        Ok(context_union.default_value())
+                        panic!("SymbolTable::final_lookup_helper: final value for symbol {name} should have been assigned");
                     } else {
                         should_have_seen(&op.target)
                     }
@@ -290,5 +555,18 @@ impl SymbolTable {
                 _ => None, // only equalities are listed.
             })
             .collect()
+    }
+}
+
+impl SymbolLookup for SymbolTable {
+    type Error = SymbolLookupFailure;
+
+    fn lookup(
+        &mut self,
+        name: &SymbolName,
+        context: &SymbolContext,
+    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+        let mut op = FinalLookupOperation::new(name.clone(), *context);
+        self.final_lookup_helper(name, &mut op)
     }
 }

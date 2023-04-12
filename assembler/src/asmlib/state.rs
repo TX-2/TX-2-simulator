@@ -1,5 +1,5 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum NumeralMode {
+pub enum NumeralMode {
     Octal,
     Decimal,
 }

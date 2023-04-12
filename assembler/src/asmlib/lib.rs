@@ -5,6 +5,7 @@ mod ast;
 mod driver;
 mod parser;
 mod state;
+mod symbol;
 mod symtab;
 mod types;
 

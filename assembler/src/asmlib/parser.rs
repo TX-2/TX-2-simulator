@@ -1,4 +1,5 @@
 mod helpers;
+mod symex;
 mod terminal;
 #[cfg(test)]
 mod tests;
@@ -11,6 +12,7 @@ use chumsky::Parser;
 
 use super::ast::*;
 use super::state::NumeralMode;
+use super::symbol::SymbolName;
 use base::charset::Script;
 use base::prelude::*;
 use helpers::Sign;
@@ -41,120 +43,6 @@ where
         .labelled("numeric literal")
 }
 
-fn program_instruction_fragment<'srcbody, I>(
-) -> impl Parser<'srcbody, I, InstructionFragment, Extra<'srcbody, char>>
-where
-    I: Input<'srcbody, Token = char, Span = SimpleSpan> + StrInput<'srcbody, char>,
-{
-    expression()
-        .padded_by(opt_horizontal_whitespace())
-        .map(InstructionFragment::from)
-}
-
-mod symex {
-    use base::charset::Script;
-    use chumsky::input::ValueInput;
-    use chumsky::prelude::*;
-    use chumsky::Parser;
-
-    use super::helpers::{self, DecodedOpcode};
-    use super::terminal;
-    use super::{opt_horizontal_whitespace, Extra, SymbolName};
-
-    fn canonical_symbol_name(s: &str) -> SymbolName {
-        // TODO: avoid copy where possible.
-        SymbolName {
-            canonical: s
-                .chars()
-                .filter(|ch: &char| -> bool { *ch != ' ' })
-                .collect(),
-        }
-    }
-
-    fn is_reserved_identifier(ident: &str) -> bool {
-        helpers::is_register_name(ident)
-            || matches!(helpers::opcode_to_num(ident), DecodedOpcode::Valid(_))
-    }
-
-    fn concat_strings(mut s: String, next: String) -> String {
-        s.push_str(&next);
-        s
-    }
-
-    // Compound chars are not supported at the moment, see docs/assembler/index.md.
-    fn symex_syllable<'a, I>(script_required: Script) -> impl Parser<'a, I, String, Extra<'a, char>>
-    where
-        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
-    {
-        terminal::nonblank_simple_symex_chars(script_required).labelled("symex syllable")
-    }
-
-    pub(super) fn parse_symex_reserved_syllable<'a, I>(
-        script_required: Script,
-    ) -> impl Parser<'a, I, String, Extra<'a, char>>
-    where
-        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
-    {
-        symex_syllable(script_required)
-            .try_map(|syllable, span| {
-                if is_reserved_identifier(&syllable) {
-                    Ok(syllable)
-                } else {
-                    Err(Rich::custom(span, "expected reserved syllable".to_string()))
-                }
-            })
-            .labelled("reserved symex")
-    }
-
-    fn parse_symex_non_reserved_syllable<'a, I>(
-        script_required: Script,
-    ) -> impl Parser<'a, I, String, Extra<'a, char>>
-    where
-        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
-    {
-        symex_syllable(script_required).try_map(|syllable, span| {
-            if is_reserved_identifier(&syllable) {
-                Err(Rich::custom(
-                    span,
-                    format!("'{syllable}' is a reserved identifier"),
-                ))
-            } else {
-                Ok(syllable)
-            }
-        })
-    }
-
-    pub(super) fn parse_multi_syllable_symex<'a, I>(
-        script_required: Script,
-    ) -> impl Parser<'a, I, String, Extra<'a, char>>
-    where
-        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
-    {
-        parse_symex_non_reserved_syllable(script_required)
-            .foldl(
-                symex_syllable(script_required)
-                    .padded_by(opt_horizontal_whitespace())
-                    .repeated(),
-                concat_strings,
-            )
-            .labelled("multi-syllable symex")
-    }
-
-    pub(super) fn parse_symex<'a, I>(
-        script_required: Script,
-    ) -> impl Parser<'a, I, SymbolName, Extra<'a, char>>
-    where
-        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
-    {
-        choice((
-            parse_multi_syllable_symex(script_required),
-            parse_symex_reserved_syllable(script_required),
-        ))
-        .map(|s| canonical_symbol_name(&s))
-        .labelled("symbol name")
-    }
-}
-
 /// Parse an expression; these can currently only take the form of a literal.
 /// TX-2's M4 assembler allows arithmetic expressions also, but these are not
 /// currently implemented.
@@ -177,7 +65,7 @@ mod symex {
 /// "expression" or "instruction fragment".
 fn expression<'a, I>() -> impl Parser<'a, I, Expression, Extra<'a, char>>
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
 {
     choice((
         choice((
@@ -212,7 +100,7 @@ where
 
 fn symbol<'a, I>(script_required: Script) -> impl Parser<'a, I, SymbolName, Extra<'a, char>>
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
 {
     symex::parse_symex(script_required)
         .map(SymbolName::from)
@@ -221,12 +109,23 @@ where
 
 fn tag_definition<'a, I>() -> impl Parser<'a, I, SymbolName, Extra<'a, char>>
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
 {
-    let arrow = terminal::arrow().padded_by(opt_horizontal_whitespace());
+    let arrow = terminal::arrow().padded_by(terminal::opt_horizontal_whitespace());
     symbol(Script::Normal)
         .then_ignore(arrow)
+        .then_ignore(terminal::opt_horizontal_whitespace())
         .labelled("tag definition")
+}
+
+fn program_instruction_fragment<'srcbody, I>(
+) -> impl Parser<'srcbody, I, InstructionFragment, Extra<'srcbody, char>>
+where
+    I: Input<'srcbody, Token = char, Span = SimpleSpan> + StrInput<'srcbody, char>,
+{
+    expression()
+        .padded_by(terminal::opt_horizontal_whitespace())
+        .map(InstructionFragment::from)
 }
 
 fn metacommand<'a, I>() -> impl Parser<'a, I, ManuscriptMetaCommand, Extra<'a, char>>
@@ -296,7 +195,7 @@ where
 
     let maybe_hold = terminal::hold()
         .or_not()
-        .padded_by(opt_horizontal_whitespace())
+        .padded_by(terminal::opt_horizontal_whitespace())
         .labelled("instruction hold bit");
 
     let program_instruction_fragments = program_instruction_fragment()
@@ -323,10 +222,10 @@ where
     where
         I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
     {
-        symex::parse_symex(Script::Normal)
-            .then_ignore(terminal::equals().padded_by(opt_horizontal_whitespace()))
+        terminal::opt_horizontal_whitespace()
+            .ignore_then(symex::parse_symex(Script::Normal))
+            .then_ignore(terminal::equals().padded_by(terminal::opt_horizontal_whitespace()))
             .then(expression())
-            .padded_by(opt_horizontal_whitespace())
     }
 
     choice((
@@ -336,17 +235,6 @@ where
         assignment().map(|(sym, val)| Statement::Assignment(sym, val)),
         program_instruction().map(Statement::Instruction),
     ))
-}
-
-/// Matches and ignores zero or more horizontal-whitespace characters.
-/// That is, spaces or tabs but not newlines or carriage returns.  We
-/// also don't match backspaces, because eventually those need to be
-/// supported as part of a compound character.
-fn opt_horizontal_whitespace<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
-where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
-{
-    terminal::horizontal_whitespace().repeated().ignored()
 }
 
 fn manuscript_line<'a, I>() -> impl Parser<'a, I, ManuscriptLine, Extra<'a, char>>
@@ -390,7 +278,7 @@ where
             I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
         {
             address_expression()
-                .padded_by(opt_horizontal_whitespace())
+                .padded_by(terminal::opt_horizontal_whitespace())
                 .then_ignore(terminal::pipe())
         }
 
@@ -445,7 +333,7 @@ where
     manuscript_line().or_not().then_ignore(end_of_line())
 }
 
-fn source_file<'a, I>() -> impl Parser<'a, I, SourceFile, Extra<'a, char>>
+pub(crate) fn source_file<'a, I>() -> impl Parser<'a, I, SourceFile, Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
 {

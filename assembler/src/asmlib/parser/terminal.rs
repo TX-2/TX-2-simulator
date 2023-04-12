@@ -622,11 +622,19 @@ where
     just("=").ignored()
 }
 
+pub(super) fn opt_horizontal_whitespace<'srcbody, I>(
+) -> impl Parser<'srcbody, I, (), Extra<'srcbody, char>>
+where
+    I: Input<'srcbody, Token = char, Span = SimpleSpan> + StrInput<'srcbody, char>,
+{
+    horizontal_whitespace().or_not().ignored()
+}
+
 pub(super) fn horizontal_whitespace<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
 {
-    one_of("\t ").ignored()
+    one_of("\t ").repeated().at_least(1).ignored()
 }
 
 pub(super) fn pipe<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>

@@ -4,6 +4,7 @@ use std::fmt::{self, Display, Formatter};
 use std::io::Error as IoError;
 use std::path::PathBuf;
 
+use super::symtab::SymbolLookupFailure;
 use base::prelude::{Address, Unsigned18Bit};
 
 /// LineNumber values are usually derived from
@@ -31,6 +32,19 @@ pub enum AssemblerFailure {
         msg: String,
     },
     ProgramTooBig(Address, usize),
+    SymbolError(SymbolLookupFailure),
+}
+
+impl From<SymbolLookupFailure> for AssemblerFailure {
+    fn from(f: SymbolLookupFailure) -> AssemblerFailure {
+        AssemblerFailure::SymbolError(f)
+    }
+}
+
+impl From<AddressOverflow> for AssemblerFailure {
+    fn from(e: AddressOverflow) -> AssemblerFailure {
+        AssemblerFailure::ProgramTooBig(e.0, e.1)
+    }
 }
 
 fn write_os_string(f: &mut Formatter<'_>, s: &OsStr) -> Result<(), fmt::Error> {
@@ -47,6 +61,9 @@ fn write_os_string(f: &mut Formatter<'_>, s: &OsStr) -> Result<(), fmt::Error> {
 impl Display for AssemblerFailure {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         match self {
+            AssemblerFailure::SymbolError(e) => {
+                write!(f, "symbol lookup failure: {e}")
+            }
             AssemblerFailure::BadTapeBlock(explanation) => {
                 write!(f, "bad tape block: {}", explanation)
             }

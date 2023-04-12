@@ -8,9 +8,10 @@ use chumsky::prelude::*;
 
 use super::super::ast::{
     Expression, HoldBit, InstructionFragment, LiteralValue, ManuscriptBlock, ManuscriptMetaCommand,
-    Origin, ProgramInstruction, SourceFile, Statement, SymbolName,
+    Origin, ProgramInstruction, SourceFile, Statement,
 };
 use super::super::state::NumeralMode;
+use super::super::symbol::SymbolName;
 use super::super::symtab::SymbolTable;
 use super::symex::{parse_multi_syllable_symex, parse_symex};
 use super::*;
@@ -831,10 +832,10 @@ fn test_multi_syllable_symex() {
 
 #[test]
 fn program_instruction_with_opcode() {
-    let nosyms = SymbolTable::default();
+    let mut nosyms = SymbolTable::default();
     assert_eq!(
         parse_successfully_with("²¹IOS₅₂ 30106", program_instruction(), no_state_setup)
-            .value(&nosyms),
+            .value(&mut nosyms),
         Ok(u36!(0o210452_030106))
     );
 }
