@@ -936,7 +936,11 @@ impl From<Origin> for Unsigned18Bit {
 
 impl Default for Origin {
     fn default() -> Origin {
-        Origin(Address::new(Unsigned18Bit::from(0o20000_u16)))
+        // Section 6-2.5 of the User Manual states that if the
+        // manuscript contains no origin specification (no vertical
+        // bar) the whole program is located (correctly) at 200_000
+        // octal.
+        Origin(Address::new(u18!(0o200_000)))
     }
 }
 
@@ -1132,8 +1136,10 @@ pub(crate) fn source_file(
     let mut current_origin: Option<Origin> = None;
     for (maybe_origin, item) in prog_instr {
         if let Some(origin) = maybe_origin {
-            result.push(ManuscriptBlock::new(current_origin, current_items.clone()));
-            current_items.clear();
+            if !current_items.is_empty() {
+                result.push(ManuscriptBlock::new(current_origin, current_items.clone()));
+                current_items.clear();
+            }
             current_origin = Some(origin);
         }
         current_items.push(item);
