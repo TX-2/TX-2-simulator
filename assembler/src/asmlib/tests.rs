@@ -6,6 +6,8 @@ use std::cell::RefCell;
 
 use nom::combinator::map;
 
+use crate::types::LiteralValue;
+
 use super::ek::{self, parse_partially_with};
 use super::parser::*;
 use super::state::{Error, NumeralMode, State, StateExtra};
@@ -99,152 +101,107 @@ fn test_maybe_subscript_sign() {
 }
 
 #[test]
-fn test_normal_literal_instruction_fragment_oct_defaultmode() {
+fn test_normal_literal_oct_defaultmode() {
     // No trailing dot on a number indicates octal base (unless there
     // was a previous ☛☛DECIMAL).
     assert_eq!(
-        parse_successfully_with("402", normal_literal_instruction_fragment, no_state_setup),
-        InstructionFragment {
-            elevation: Elevation::Normal,
-            value: u36!(0o402),
-        }
+        parse_successfully_with("402", normal_literal, no_state_setup),
+        LiteralValue::from((Elevation::Normal, u36!(0o402),))
     );
 }
 
 #[test]
-fn test_normal_literal_instruction_fragment_oct_decmode() {
+fn test_normal_literal_oct_decmode() {
     // Simulate a previous ☛☛DECIMAL, so that the trailing dot selects octal.
     assert_eq!(
-        parse_successfully_with(
-            "402·",
-            normal_literal_instruction_fragment,
-            set_decimal_mode
-        ),
-        InstructionFragment {
-            elevation: Elevation::Normal,
-            value: Unsigned36Bit::from(0o402_u32), // note: octal
-        }
+        parse_successfully_with("402·", normal_literal, set_decimal_mode),
+        LiteralValue::from((
+            Elevation::Normal,
+            Unsigned36Bit::from(0o402_u32), // note: octal
+        ))
     );
 }
 
 #[test]
-fn test_normal_literal_instruction_fragment_dec_defaultmode() {
+fn test_normal_literal_dec_defaultmode() {
     // A trailing dot on a number indicates decimal base (unless there
     // was a previous ☛☛DECIMAL).
     assert_eq!(
-        parse_successfully_with("402·", normal_literal_instruction_fragment, no_state_setup),
-        InstructionFragment {
-            elevation: Elevation::Normal,
-            value: Unsigned36Bit::from(402_u32),
-        }
+        parse_successfully_with("402·", normal_literal, no_state_setup),
+        LiteralValue::from((Elevation::Normal, Unsigned36Bit::from(402_u32),))
     );
 }
 
 #[test]
-fn test_normal_literal_instruction_fragment_dec_decmode() {
+fn test_normal_literald_ec_decmode() {
     assert_eq!(
         // Decimal is the default if there was a previous ☛☛DECIMAL
-        parse_successfully_with("402", normal_literal_instruction_fragment, set_decimal_mode),
-        InstructionFragment {
-            elevation: Elevation::Normal,
-            value: Unsigned36Bit::from(402_u32),
-        }
+        parse_successfully_with("402", normal_literal, set_decimal_mode),
+        LiteralValue::from((Elevation::Normal, Unsigned36Bit::from(402_u32),))
     );
 }
 
 #[test]
-fn test_superscript_literal_instruction_fragment_oct() {
+fn test_superscript_literal_oct() {
     // No trailing dot on a number indicates octal base (unless there
     // was a previous ☛☛DECIMAL).
     assert_eq!(
-        parse_successfully_with(
-            "³⁶",
-            superscript_literal_instruction_fragment,
-            no_state_setup
-        ),
-        InstructionFragment {
-            elevation: Elevation::Superscript,
-            value: Unsigned36Bit::from(0o36_u32),
-        }
+        parse_successfully_with("³⁶", superscript_literal, no_state_setup),
+        LiteralValue::from((Elevation::Superscript, Unsigned36Bit::from(0o36_u32),))
     );
 }
 
 #[test]
-fn test_superscript_literal_instruction_fragment_dec_defaultmode() {
+fn test_superscript_literal_dec_defaultmode() {
     // A trailing dot on a number indicates decimal base (unless there
     // was a previous ☛☛DECIMAL).
     assert_eq!(
-        parse_successfully_with(
-            "³⁶̇ ",
-            superscript_literal_instruction_fragment,
-            no_state_setup
-        ),
-        InstructionFragment {
-            elevation: Elevation::Superscript,
-            value: Unsigned36Bit::from(36_u32), // decimal
-        }
+        parse_successfully_with("³⁶̇ ", superscript_literal, no_state_setup),
+        LiteralValue::from((
+            Elevation::Superscript,
+            Unsigned36Bit::from(36_u32), // decimal
+        ))
     );
 }
 
 #[test]
-fn test_superscript_literal_instruction_fragment_dec_decmode() {
+fn test_superscript_literal_dec_decmode() {
     // Simulate a previous ☛☛DECIMAL.
     assert_eq!(
-        parse_successfully_with(
-            "³⁶",
-            superscript_literal_instruction_fragment,
-            set_decimal_mode
-        ),
-        InstructionFragment {
-            elevation: Elevation::Superscript,
-            value: Unsigned36Bit::from(36_u32), // decimal
-        }
+        parse_successfully_with("³⁶", superscript_literal, set_decimal_mode),
+        LiteralValue::from((
+            Elevation::Superscript,
+            Unsigned36Bit::from(36_u32), // decimal
+        ))
     );
 }
 
 #[test]
-fn test_subscript_literal_instruction_fragment_oct_defaultmode() {
+fn test_subscript_literal_oct_defaultmode() {
     // No trailing dot on a number indicates octal base (unless there
     // was a previous ☛☛DECIMAL).
     assert_eq!(
-        parse_successfully_with("₃₁", subscript_literal_instruction_fragment, no_state_setup),
-        InstructionFragment {
-            elevation: Elevation::Subscript,
-            value: Unsigned36Bit::from(0o31_u32),
-        }
+        parse_successfully_with("₃₁", subscript_literal, no_state_setup),
+        LiteralValue::from((Elevation::Subscript, Unsigned36Bit::from(0o31_u32),))
     );
 }
 
 #[test]
-fn test_subscript_literal_instruction_fragment_oct_decmode() {
+fn test_subscript_literal_oct_decmode() {
     // Simulate a previous ☛☛DECIMAL, so that the trailing dot selects octal.
     assert_eq!(
-        parse_successfully_with(
-            "₃₁.",
-            subscript_literal_instruction_fragment,
-            set_decimal_mode
-        ),
-        InstructionFragment {
-            elevation: Elevation::Subscript,
-            value: Unsigned36Bit::from(0o31_u32),
-        }
+        parse_successfully_with("₃₁.", subscript_literal, set_decimal_mode),
+        LiteralValue::from((Elevation::Subscript, Unsigned36Bit::from(0o31_u32),))
     );
 }
 
 #[test]
-fn test_subscript_literal_instruction_fragment_dec() {
+fn test_subscript_literal_dec() {
     // A trailing dot on a number indicates decimal base (unless there
     // was a previous ☛☛DECIMAL).
     assert_eq!(
-        parse_successfully_with(
-            "₃₁.",
-            subscript_literal_instruction_fragment,
-            no_state_setup
-        ),
-        InstructionFragment {
-            elevation: Elevation::Subscript,
-            value: Unsigned36Bit::from(31_u32),
-        }
+        parse_successfully_with("₃₁.", subscript_literal, no_state_setup),
+        LiteralValue::from((Elevation::Subscript, Unsigned36Bit::from(31_u32),))
     );
 }
 
@@ -252,24 +209,15 @@ fn test_subscript_literal_instruction_fragment_dec() {
 fn test_program_instruction_fragment() {
     assert_eq!(
         parse_successfully_with("₃₁", program_instruction_fragment, no_state_setup),
-        InstructionFragment {
-            elevation: Elevation::Subscript,
-            value: Unsigned36Bit::from(0o31_u32),
-        }
+        InstructionFragment::from((Elevation::Subscript, Unsigned36Bit::from(0o31_u32),))
     );
     assert_eq!(
         parse_successfully_with("⁶³", program_instruction_fragment, no_state_setup),
-        InstructionFragment {
-            elevation: Elevation::Superscript,
-            value: Unsigned36Bit::from(0o63_u32),
-        }
+        InstructionFragment::from((Elevation::Superscript, Unsigned36Bit::from(0o63_u32),))
     );
     assert_eq!(
         parse_successfully_with("6510", program_instruction_fragment, no_state_setup),
-        InstructionFragment {
-            elevation: Elevation::Normal,
-            value: Unsigned36Bit::from(0o6510_u32),
-        }
+        InstructionFragment::from((Elevation::Normal, Unsigned36Bit::from(0o6510_u32),))
     );
 }
 
@@ -283,18 +231,15 @@ fn test_program_instruction() {
                 tag: None,
                 holdbit: HoldBit::Unspecified,
                 parts: vec![
-                    InstructionFragment {
-                        elevation: Elevation::Superscript,
-                        value: Unsigned36Bit::from(0o6_u32),
-                    },
-                    InstructionFragment {
-                        elevation: Elevation::Normal,
-                        value: Unsigned36Bit::from(0o673_u32),
-                    },
-                    InstructionFragment {
-                        elevation: Elevation::Subscript,
-                        value: Unsigned36Bit::from(0o31_u32),
-                    },
+                    InstructionFragment::from((
+                        Elevation::Superscript,
+                        Unsigned36Bit::from(0o6_u32),
+                    )),
+                    InstructionFragment::from((Elevation::Normal, Unsigned36Bit::from(0o673_u32),)),
+                    InstructionFragment::from((
+                        Elevation::Subscript,
+                        Unsigned36Bit::from(0o31_u32),
+                    )),
                 ]
             })
         )
@@ -378,10 +323,10 @@ fn test_manuscript_without_tag() {
                 ManuscriptItem::Instruction(ProgramInstruction {
                     tag: None,
                     holdbit: HoldBit::Unspecified,
-                    parts: vec![InstructionFragment {
-                        elevation: Elevation::Normal,
-                        value: Unsigned36Bit::from(0o673_u32),
-                    },]
+                    parts: vec![InstructionFragment::from((
+                        Elevation::Normal,
+                        Unsigned36Bit::from(0o673_u32),
+                    )),]
                 })
             ),
             (
@@ -389,10 +334,10 @@ fn test_manuscript_without_tag() {
                 ManuscriptItem::Instruction(ProgramInstruction {
                     tag: None,
                     holdbit: HoldBit::Unspecified,
-                    parts: vec![InstructionFragment {
-                        elevation: Elevation::Normal,
-                        value: Unsigned36Bit::from(0o71_u32),
-                    },]
+                    parts: vec![InstructionFragment::from((
+                        Elevation::Normal,
+                        Unsigned36Bit::from(0o71_u32),
+                    )),]
                 })
             ),
         ]
@@ -437,10 +382,10 @@ fn test_manuscript_with_single_syllable_tag() {
                     //as_used: "START4".to_string(),
                 }),
                 holdbit: HoldBit::Unspecified,
-                parts: vec![InstructionFragment {
-                    elevation: Elevation::Normal,
-                    value: Unsigned36Bit::from(0o205_u32),
-                },]
+                parts: vec![InstructionFragment::from((
+                    Elevation::Normal,
+                    Unsigned36Bit::from(0o205_u32),
+                )),]
             })
         ),]
     );
@@ -459,10 +404,10 @@ fn test_manuscript_with_origin() {
             ManuscriptItem::Instruction(ProgramInstruction {
                 tag: None,
                 holdbit: HoldBit::Unspecified,
-                parts: vec![InstructionFragment {
-                    elevation: Elevation::Normal,
-                    value: Unsigned36Bit::from(0o202_u32),
-                },]
+                parts: vec![InstructionFragment::from((
+                    Elevation::Normal,
+                    Unsigned36Bit::from(0o202_u32),
+                )),]
             })
         ),]
     );
@@ -516,10 +461,10 @@ fn test_manuscript_with_multi_syllable_tag() {
                     //as_used: "CODE HERE".to_string(),
                 }),
                 holdbit: HoldBit::Unspecified,
-                parts: vec![InstructionFragment {
-                    elevation: Elevation::Normal,
-                    value: Unsigned36Bit::from(0o205_u32),
-                },]
+                parts: vec![InstructionFragment::from((
+                    Elevation::Normal,
+                    Unsigned36Bit::from(0o205_u32),
+                )),]
             })
         ),]
     );
@@ -538,10 +483,10 @@ fn test_manuscript_with_real_arrow_tag() {
                     //as_used: "HERE".to_string(),
                 }),
                 holdbit: HoldBit::Unspecified,
-                parts: vec![InstructionFragment {
-                    elevation: Elevation::Normal,
-                    value: Unsigned36Bit::from(0o207_u32),
-                },]
+                parts: vec![InstructionFragment::from((
+                    Elevation::Normal,
+                    Unsigned36Bit::from(0o207_u32),
+                )),]
             })
         ),]
     );
@@ -606,10 +551,7 @@ fn assemble_literal(input: &str, expected: &InstructionFragment) {
 fn test_assemble_octal_literal() {
     assemble_literal(
         "177777\n",
-        &InstructionFragment {
-            elevation: Elevation::Normal,
-            value: Unsigned36Bit::from(0o177777_u32),
-        },
+        &InstructionFragment::from((Elevation::Normal, Unsigned36Bit::from(0o177777_u32))),
     );
 }
 
@@ -617,10 +559,7 @@ fn test_assemble_octal_literal() {
 fn test_assemble_octal_superscript_literal() {
     assemble_literal(
         "⁺³⁶\n", // 36, superscript
-        &InstructionFragment {
-            elevation: Elevation::Superscript,
-            value: Unsigned36Bit::from(0o36_u32),
-        },
+        &InstructionFragment::from((Elevation::Superscript, Unsigned36Bit::from(0o36_u32))),
     );
 }
 
@@ -628,17 +567,11 @@ fn test_assemble_octal_superscript_literal() {
 fn test_assemble_octal_subscript_literal() {
     assemble_literal(
         "₁₃\n", // without sign
-        &InstructionFragment {
-            elevation: Elevation::Subscript,
-            value: Unsigned36Bit::from(0o13_u32),
-        },
+        &InstructionFragment::from((Elevation::Subscript, Unsigned36Bit::from(0o13_u32))),
     );
     assemble_literal(
         "₊₁₃\n", // with optional + sign
-        &InstructionFragment {
-            elevation: Elevation::Subscript,
-            value: Unsigned36Bit::from(0o13_u32),
-        },
+        &InstructionFragment::from((Elevation::Subscript, Unsigned36Bit::from(0o13_u32))),
     );
 }
 
@@ -697,17 +630,17 @@ fn test_metacommand_dec_changes_default_base() {
         {
             assert_eq!(
                 &first_parts.as_slice(),
-                &[InstructionFragment {
-                    elevation: Elevation::Normal,
-                    value: Unsigned36Bit::from(0o10_u32),
-                }],
+                &[InstructionFragment::from((
+                    Elevation::Normal,
+                    Unsigned36Bit::from(0o10_u32),
+                ))],
             );
             assert_eq!(
                 &second_parts.as_slice(),
-                &[InstructionFragment {
-                    elevation: Elevation::Normal,
-                    value: Unsigned36Bit::from(0o12_u32),
-                }],
+                &[InstructionFragment::from((
+                    Elevation::Normal,
+                    Unsigned36Bit::from(0o12_u32),
+                ))],
             );
             return;
         }
@@ -719,7 +652,7 @@ fn test_metacommand_dec_changes_default_base() {
 }
 
 #[test]
-fn test_opcode_instruction_fragment() {
+fn test_opcode() {
     let expected_instruction = Instruction::from(&SymbolicInstruction {
         held: false,
         configuration: Unsigned5Bit::ZERO,
@@ -728,11 +661,8 @@ fn test_opcode_instruction_fragment() {
         operand_address: OperandAddress::Direct(Address::ZERO),
     });
     assert_eq!(
-        parse_successfully_with("AUX", opcode_instruction_fragment, no_state_setup),
-        InstructionFragment {
-            elevation: Elevation::Normal,
-            value: expected_instruction.bits(),
-        }
+        parse_successfully_with("AUX", opcode, no_state_setup),
+        LiteralValue::from((Elevation::Normal, expected_instruction.bits(),))
     );
 }
 

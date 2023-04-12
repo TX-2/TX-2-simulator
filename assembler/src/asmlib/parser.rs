@@ -235,9 +235,9 @@ fn maybe_subscript_dot<'a, 'b>(
     opt(char('.'))(input)
 }
 
-pub(crate) fn normal_literal_instruction_fragment<'a, 'b>(
+pub(crate) fn normal_literal<'a, 'b>(
     input: ek::LocatedSpan<'a, 'b>,
-) -> ek::IResult<'a, 'b, InstructionFragment> {
+) -> ek::IResult<'a, 'b, LiteralValue> {
     fn maybe_sign<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, Option<char>> {
         opt(alt((char('-'), char('+'))))(input)
     }
@@ -248,16 +248,13 @@ pub(crate) fn normal_literal_instruction_fragment<'a, 'b>(
         )(input)
     }
 
-    map(normal_number, |n| InstructionFragment {
-        elevation: Elevation::Normal,
-        value: n,
+    map(normal_number, |n| {
+        LiteralValue::from((Elevation::Normal, n))
     })(input)
 }
 
-pub(crate) fn opcode_instruction_fragment<'a, 'b>(
-    input: ek::LocatedSpan<'a, 'b>,
-) -> ek::IResult<'a, 'b, InstructionFragment> {
-    fn valid_opcode(s: ek::LocatedSpan) -> Result<InstructionFragment, ()> {
+pub(crate) fn opcode<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, LiteralValue> {
+    fn valid_opcode(s: ek::LocatedSpan) -> Result<LiteralValue, ()> {
         match opcode_to_num(s.fragment()) {
             DecodedOpcode::Valid(opcode) => {
                 // Some instructions are assembled with the hold bit automatically set.
@@ -267,13 +264,13 @@ pub(crate) fn opcode_instruction_fragment<'a, 'b>(
                 } else {
                     0
                 };
-                Ok(InstructionFragment {
-                    elevation: Elevation::Normal,
+                Ok(LiteralValue::from((
+                    Elevation::Normal,
                     // Bits 24-29 (dec) inclusive in the instruction word
                     // represent the opcode, so shift the opcode's value
                     // left by 24 decimal.
-                    value: Unsigned36Bit::from(opcode).shl(24).bitor(maybe_hold),
-                })
+                    Unsigned36Bit::from(opcode).shl(24).bitor(maybe_hold),
+                )))
             }
             DecodedOpcode::Invalid => Err(()),
         }
@@ -281,9 +278,9 @@ pub(crate) fn opcode_instruction_fragment<'a, 'b>(
     map_res(take(3usize), valid_opcode)(input)
 }
 
-pub(crate) fn superscript_literal_instruction_fragment<'a, 'b>(
+pub(crate) fn superscript_literal<'a, 'b>(
     input: ek::LocatedSpan<'a, 'b>,
-) -> ek::IResult<'a, 'b, InstructionFragment> {
+) -> ek::IResult<'a, 'b, LiteralValue> {
     fn superscript_octal_number<'a, 'b>(
         input: ek::LocatedSpan<'a, 'b>,
     ) -> ek::IResult<'a, 'b, Unsigned36Bit> {
@@ -307,15 +304,14 @@ pub(crate) fn superscript_literal_instruction_fragment<'a, 'b>(
         )(input)
     }
 
-    map(superscript_octal_number, |n| InstructionFragment {
-        elevation: Elevation::Superscript,
-        value: n,
+    map(superscript_octal_number, |n| {
+        LiteralValue::from((Elevation::Superscript, n))
     })(input)
 }
 
-pub(crate) fn subscript_literal_instruction_fragment<'a, 'b>(
+pub(crate) fn subscript_literal<'a, 'b>(
     input: ek::LocatedSpan<'a, 'b>,
-) -> ek::IResult<'a, 'b, InstructionFragment> {
+) -> ek::IResult<'a, 'b, LiteralValue> {
     fn subscript_octal_number<'a, 'b>(
         input: ek::LocatedSpan<'a, 'b>,
     ) -> ek::IResult<'a, 'b, Unsigned36Bit> {
@@ -338,24 +334,15 @@ pub(crate) fn subscript_literal_instruction_fragment<'a, 'b>(
         )(input)
     }
 
-    map(subscript_octal_number, |n| InstructionFragment {
-        elevation: Elevation::Subscript,
-        value: n,
+    map(subscript_octal_number, |n| {
+        LiteralValue::from((Elevation::Subscript, n))
     })(input)
 }
 
 pub(crate) fn program_instruction_fragment<'a, 'b>(
     input: ek::LocatedSpan<'a, 'b>,
 ) -> ek::IResult<'a, 'b, InstructionFragment> {
-    preceded(
-        space0,
-        alt((
-            normal_literal_instruction_fragment,
-            superscript_literal_instruction_fragment,
-            subscript_literal_instruction_fragment,
-            opcode_instruction_fragment,
-        )),
-    )(input)
+    preceded(space0, map(expression, InstructionFragment::from))(input)
 }
 
 pub(crate) fn program_instruction_fragments<'a, 'b>(
@@ -773,27 +760,25 @@ pub(crate) fn arrow<'a, 'b>(
     recognize(tuple((space0, just_arrow, space0)))(input)
 }
 
-pub(crate) fn expression<'a, 'b>(
-    input: ek::LocatedSpan<'a, 'b>,
-) -> ek::IResult<'a, 'b, Unsigned36Bit> {
-    // Expressions can contain literals, symexes and arithmetic operations,
-    // but right now we only support literals.
-    fn frag_to_value(f: InstructionFragment) -> Unsigned36Bit {
-        match f {
-            InstructionFragment {
-                elevation: Elevation::Normal,
-                value,
-            } => value,
-            _ => {
-                todo!("super/subscript values in expressions are not implemented")
-            }
-        }
-    }
-    map(normal_literal_instruction_fragment, frag_to_value)(input)
+pub(crate) fn literal<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, LiteralValue> {
+    alt((normal_literal, superscript_literal, subscript_literal))(input)
 }
 
+pub(crate) fn expression<'a, 'b>(
+    input: ek::LocatedSpan<'a, 'b>,
+) -> ek::IResult<'a, 'b, Expression> {
+    map(alt((literal, opcode)), |literal: LiteralValue| {
+        Expression::from(literal)
+    })(input)
+}
+
+/// An address expression is a literal value or a symex.  That is I
+/// think it's not required that an arithmetic expression
+/// (e.g. "5+BAR") be accepted in an origin notation (such as
+/// "<something>|").
 fn address_expression<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, Address> {
-    map_res(expression, Address::try_from)(input)
+    // We should eventually support symexes here.
+    map_res(literal, |literal| Address::try_from(literal.value()))(input)
 }
 
 pub(crate) fn symbol_name<'a, 'b>(
@@ -855,30 +840,37 @@ fn base_change<'a, 'b>(
 }
 
 fn punch<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, ManuscriptMetaCommand> {
-    fn punch_address(a: Option<Unsigned36Bit>) -> Result<ManuscriptMetaCommand, String> {
+    fn punch_address(a: Option<LiteralValue>) -> Result<ManuscriptMetaCommand, String> {
         match a {
             None => Ok(ManuscriptMetaCommand::Punch(None)),
-            Some(value) => match Unsigned18Bit::try_from(value) {
-                Err(e) => Err(format!(
-                    "PUNCH address value {:o} is not a valid address: {}",
-                    value, e
-                )),
-                Ok(halfword) => {
-                    let addr: Address = Address::from(halfword);
-                    if addr.mark_bit() != Unsigned18Bit::ZERO {
-                        Err(format!(
-                            "PUNCH address value {:o} must not be a deferred address",
-                            addr
-                        ))
-                    } else {
-                        Ok(ManuscriptMetaCommand::Punch(Some(addr)))
+            Some(literal) => {
+                let value = literal.value();
+                match Unsigned18Bit::try_from(value) {
+                    Err(e) => Err(format!(
+                        "PUNCH address value {:o} is not a valid address: {}",
+                        value, e
+                    )),
+                    Ok(halfword) => {
+                        let addr: Address = Address::from(halfword);
+                        if addr.mark_bit() != Unsigned18Bit::ZERO {
+                            Err(format!(
+                                "PUNCH address value {:o} must not be a deferred address",
+                                addr
+                            ))
+                        } else {
+                            Ok(ManuscriptMetaCommand::Punch(Some(addr)))
+                        }
                     }
                 }
-            },
+            }
         }
     }
     match map_res(
-        preceded(preceded(tag("PUNCH"), spaces1), opt(expression)),
+        // We interpret "AA" in the descripion of the PUNCH
+        // metacommand as accepting only literal numeric (and not
+        // symbolic) values.  That may not be a correct
+        // interpretation, though.
+        preceded(preceded(tag("PUNCH"), spaces1), opt(literal)),
         punch_address,
     )(input)
     {

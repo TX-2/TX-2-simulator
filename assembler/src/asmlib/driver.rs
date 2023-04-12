@@ -331,8 +331,7 @@ fn test_assemble_pass1() {
             tag: None,
             holdbit: HoldBit::Unspecified,
             parts: vec![InstructionFragment {
-                elevation: Elevation::Normal,
-                value: u36!(0o14),
+                value: Expression::Literal(LiteralValue::from((Elevation::Normal, u36!(0o14)))),
             }],
         }],
     };

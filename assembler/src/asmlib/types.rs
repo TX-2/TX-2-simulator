@@ -107,6 +107,51 @@ impl Display for Fail {
 
 impl Error for Fail {}
 
+/// Eventually we will support symbolic expressions.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct LiteralValue {
+    elevation: Elevation,
+    value: Unsigned36Bit,
+}
+
+impl LiteralValue {
+    pub(crate) fn value(&self) -> Unsigned36Bit {
+        self.value << self.elevation.shift()
+    }
+}
+
+impl From<(Elevation, Unsigned36Bit)> for LiteralValue {
+    fn from((elevation, value): (Elevation, Unsigned36Bit)) -> LiteralValue {
+        LiteralValue { elevation, value }
+    }
+}
+
+/// Eventually we will support symbolic expressions.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Expression {
+    Literal(LiteralValue),
+}
+
+impl Expression {
+    fn value(&self) -> Unsigned36Bit {
+        match self {
+            Expression::Literal(literal) => literal.value(),
+        }
+    }
+}
+
+impl From<LiteralValue> for Expression {
+    fn from(literal: LiteralValue) -> Expression {
+        Expression::Literal(literal)
+    }
+}
+
+impl From<(Elevation, Unsigned36Bit)> for Expression {
+    fn from((e, v): (Elevation, Unsigned36Bit)) -> Expression {
+        Expression::from(LiteralValue::from((e, v)))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Elevation {
     Superscript, // e.g. config values
@@ -114,25 +159,38 @@ pub(crate) enum Elevation {
     Subscript,   // e.g. the index bits
 }
 
+impl Elevation {
+    fn shift(&self) -> u32 {
+        match self {
+            Elevation::Superscript => 30, // This is a config value.
+            Elevation::Subscript => 18,   // This is an index value
+            Elevation::Normal => 0,       // e.g. an address value
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct InstructionFragment {
-    pub(crate) elevation: Elevation,
-    pub(crate) value: Unsigned36Bit,
+    pub(crate) value: Expression,
 }
 
 impl InstructionFragment {
     pub(crate) fn value(&self) -> Unsigned36Bit {
-        match self.elevation {
-            Elevation::Superscript => {
-                // This is a config value.
-                self.value << 30
-            }
-            Elevation::Subscript => {
-                // This is an index value
-                self.value << 18
-            }
-            Elevation::Normal => self.value,
+        self.value.value()
+    }
+}
+
+impl From<(Elevation, Unsigned36Bit)> for InstructionFragment {
+    fn from((e, v): (Elevation, Unsigned36Bit)) -> InstructionFragment {
+        InstructionFragment {
+            value: Expression::from((e, v)),
         }
+    }
+}
+
+impl From<Expression> for InstructionFragment {
+    fn from(e: Expression) -> Self {
+        Self { value: e }
     }
 }
 
