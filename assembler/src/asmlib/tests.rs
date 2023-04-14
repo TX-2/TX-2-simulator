@@ -8,18 +8,19 @@ use nom::combinator::map;
 
 use super::ast::{
     Elevation, HoldBit, InstructionFragment, LiteralValue, ManuscriptBlock, ManuscriptItem,
-    ManuscriptMetaCommand, Origin, ProgramInstruction, SymbolName, SymbolTable,
+    ManuscriptMetaCommand, Origin, ProgramInstruction, SymbolName,
 };
 use super::ek::{self, parse_partially_with};
 use super::parser::*;
 use super::state::{Error, NumeralMode, State, StateExtra};
+use super::symtab::SymbolTable;
 use super::types::AssemblerFailure;
 
 #[test]
 fn test_assemble_blank_line() {
-    let mut symtab = SymbolTable::new();
+    let mut symbols = SymbolTable::new();
     let mut errors: Vec<Error> = Vec::new();
-    match source_file("", &mut symtab, &mut errors) {
+    match source_file("", &mut symbols, &mut errors) {
         Err(e) => {
             panic!(
                 "expected blank line not to generate an assembly error, got error {}",
@@ -32,7 +33,7 @@ fn test_assemble_blank_line() {
         }
     }
     assert!(errors.is_empty());
-    assert!(symtab.is_empty());
+    assert!(symbols.is_empty());
 }
 
 #[cfg(test)]

@@ -6,7 +6,8 @@ use tracing::{event, span, Level};
 
 use crate::ast::*;
 use crate::parser::{source_file, ErrorLocation};
-use crate::state::{Error, NumeralMode};
+use crate::state::Error;
+use crate::symtab::*;
 use crate::types::*;
 use base::prelude::{
     join_halves, reader_leader, split_halves, u18, u5, u6, unsplay, Address, Instruction, Opcode,
@@ -14,61 +15,6 @@ use base::prelude::{
 };
 #[cfg(test)]
 use base::u36;
-
-/// Represents the meta commands which are still relevant in the
-/// directive.  Excludes things like the PUNCH meta command.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum DirectiveMetaCommand {
-    Invalid, // e.g."☛☛BOGUS"
-    BaseChange(NumeralMode),
-}
-
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub struct Block {
-    origin: Origin,
-    items: Vec<ProgramInstruction>,
-}
-
-impl Block {
-    fn push(&mut self, inst: ProgramInstruction) {
-        self.items.push(inst);
-    }
-
-    fn instruction_count(&self) -> usize {
-        self.items.len()
-    }
-}
-
-#[derive(Debug)]
-pub struct Directive {
-    // items must be in manuscript order, because RC block addresses
-    // are assigned in the order they appear in the code, and
-    // similarly for undefined origins (e.g. "FOO| JMP ..." where FOO
-    // has no definition).
-    blocks: Vec<Block>,
-    entry_point: Option<Address>,
-    symbols: SymbolTable,
-}
-
-impl Directive {
-    fn new(symbols: SymbolTable) -> Directive {
-        Directive {
-            blocks: Vec::new(),
-            entry_point: None,
-            symbols,
-        }
-    }
-
-    fn instruction_count(&self) -> usize {
-        self.blocks.iter().map(Block::instruction_count).sum()
-    }
-}
-
-impl Directive {
-    fn push(&mut self, block: Block) {
-        self.blocks.push(block)
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 struct OutputOptions {
@@ -224,6 +170,7 @@ fn write_data<W: Write>(
 
 fn assemble_pass1(
     source_file_body: &str,
+    symbols: &mut SymbolTable,
     errors: &mut Vec<Error>,
 ) -> Result<(Directive, OutputOptions), AssemblerFailure> {
     let span = span!(Level::ERROR, "assembly pass 1");
@@ -234,9 +181,8 @@ fn assemble_pass1(
         // unused.
         list: true,
     };
-    let mut symbols = SymbolTable::new();
-    let manuscript: Vec<ManuscriptBlock> = source_file(source_file_body, &mut symbols, errors)?;
-    let mut directive: Directive = Directive::new(symbols);
+    let manuscript: Vec<ManuscriptBlock> = source_file(source_file_body, symbols, errors)?;
+    let mut directive: Directive = Directive::new();
     let mut saw_punch: bool = false;
     for mblock in manuscript {
         let effective_origin = match mblock.origin {
@@ -272,12 +218,12 @@ fn assemble_pass1(
                     match address {
                         Some(a) => {
                             event!(Level::INFO, "program entry point was specified as {:o}", a);
+                            directive.set_entry_point(a);
                         }
                         None => {
                             event!(Level::INFO, "program entry point was not specified");
                         }
                     }
-                    directive.entry_point = address;
                     // Because the PUNCH instruction causes the assembler
                     // output to be punched to tape, this effectively
                     // marks the end of the input.  On the real M4
@@ -331,8 +277,14 @@ fn test_assemble_pass1() {
             }],
         }],
     };
-    let (directive, _options) = assemble_pass1(input, &mut errors).expect("pass 1 should succeed");
-    assert_eq!(Some(expected_directive_entry_point), directive.entry_point);
+
+    let mut symbols = SymbolTable::new();
+    let (directive, _options) =
+        assemble_pass1(input, &mut symbols, &mut errors).expect("pass 1 should succeed");
+    assert_eq!(
+        Some(expected_directive_entry_point),
+        directive.entry_point()
+    );
     match directive.blocks.as_slice() {
         [block] => {
             assert_eq!(block, &expected_block);
@@ -374,6 +326,7 @@ pub fn assemble_file(
             line_number: None,
         })?;
 
+    let mut symbols = SymbolTable::new();
     let mut source_file_body: String = String::new();
     let (directive, options) =
         match BufReader::new(input_file).read_to_string(&mut source_file_body) {
@@ -386,7 +339,7 @@ pub fn assemble_file(
             }
             Ok(_) => {
                 let mut errors = Vec::new();
-                let directive = assemble_pass1(&source_file_body, &mut errors)?;
+                let directive = assemble_pass1(&source_file_body, &mut symbols, &mut errors)?;
                 match errors.as_slice() {
                     [first, ..] => {
                         for e in errors.iter() {
@@ -412,8 +365,7 @@ pub fn assemble_file(
 
     // Now we do pass 2.
     if options.list {
-        directive
-            .symbols
+        symbols
             .list()
             .map_err(|e| AssemblerFailure::IoErrorOnStdout { error: e })?;
     }
@@ -456,7 +408,7 @@ pub fn assemble_file(
     write_data(
         &mut writer,
         output_file_name,
-        &create_begin_block(directive.entry_point, user_program.is_empty())?,
+        &create_begin_block(directive.entry_point(), user_program.is_empty())?,
     )?;
 
     writer

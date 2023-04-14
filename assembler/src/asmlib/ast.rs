@@ -124,27 +124,6 @@ impl<'a, 'b> From<&ek::LocatedSpan<'a, 'b>> for SymbolName {
     }
 }
 
-/// A symbol which has a reference but no definition is known, will
-/// ben represented it by having it map to None.  The rules for how
-/// such symbols are assigned values are indicated in "Unassigned
-/// Symexes" in section 6-2.2 of the User Handbook.
-#[derive(Debug)]
-pub(crate) struct SymbolTable {}
-impl SymbolTable {
-    pub(crate) fn new() -> SymbolTable {
-        SymbolTable {}
-    }
-
-    #[cfg(test)]
-    pub(crate) fn is_empty(&self) -> bool {
-        true
-    }
-
-    pub(crate) fn list(&self) -> Result<(), std::io::Error> {
-        Ok(())
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Hash)]
 pub struct Origin(pub Address);
 
@@ -237,5 +216,56 @@ pub(crate) struct ManuscriptBlock {
 impl ManuscriptBlock {
     pub(crate) fn new(origin: Option<Origin>, items: Vec<ManuscriptItem>) -> ManuscriptBlock {
         ManuscriptBlock { origin, items }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct Directive {
+    // items must be in manuscript order, because RC block addresses
+    // are assigned in the order they appear in the code, and
+    // similarly for undefined origins (e.g. "FOO| JMP ..." where FOO
+    // has no definition).
+    pub(crate) blocks: Vec<Block>,
+    entry_point: Option<Address>,
+}
+
+impl Directive {
+    pub(crate) fn new() -> Directive {
+        Directive {
+            blocks: Vec::new(),
+            entry_point: None,
+        }
+    }
+
+    pub(crate) fn instruction_count(&self) -> usize {
+        self.blocks.iter().map(Block::instruction_count).sum()
+    }
+
+    pub(crate) fn set_entry_point(&mut self, a: Address) {
+        self.entry_point = Some(a)
+    }
+
+    pub(crate) fn entry_point(&self) -> Option<Address> {
+        self.entry_point
+    }
+
+    pub(crate) fn push(&mut self, block: Block) {
+        self.blocks.push(block)
+    }
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub(crate) struct Block {
+    pub(crate) origin: Origin,
+    pub(crate) items: Vec<ProgramInstruction>,
+}
+
+impl Block {
+    pub(crate) fn push(&mut self, inst: ProgramInstruction) {
+        self.items.push(inst);
+    }
+
+    pub(crate) fn instruction_count(&self) -> usize {
+        self.items.len()
     }
 }

@@ -12,6 +12,7 @@ use nom::sequence::{pair, preceded, separated_pair, terminated, tuple};
 use crate::ast::*;
 use crate::ek;
 use crate::state::{Error, NumeralMode, State, StateExtra};
+use crate::symtab::SymbolTable;
 use crate::types::*;
 use base::prelude::*;
 

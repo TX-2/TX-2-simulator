@@ -6,6 +6,7 @@ mod driver;
 mod ek;
 mod parser;
 mod state;
+mod symtab;
 mod types;
 
 #[cfg(test)]
