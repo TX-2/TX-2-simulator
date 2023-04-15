@@ -354,11 +354,27 @@ impl BinaryChunk {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct Binary {
-    pub(crate) entry_point: Option<Address>,
-    pub(crate) chunks: Vec<BinaryChunk>,
+    entry_point: Option<Address>,
+    chunks: Vec<BinaryChunk>,
 }
 
 impl Binary {
+    fn entry_point(&self) -> Option<Address> {
+        self.entry_point
+    }
+
+    fn set_entry_point(&mut self, address: Address) {
+        self.entry_point = Some(address)
+    }
+
+    fn add_chunk(&mut self, chunk: BinaryChunk) {
+        self.chunks.push(chunk)
+    }
+
+    fn chunks(&self) -> &[BinaryChunk] {
+        &self.chunks
+    }
+
     fn is_empty(&self) -> bool {
         self.chunks.is_empty()
     }
@@ -375,7 +391,7 @@ impl Binary {
         // with the beginnng of the tape file) so we don't need to
         // write it.
         write_data(writer, output_file_name, &reader_leader())?;
-        for chunk in self.chunks.iter() {
+        for chunk in self.chunks().iter() {
             if chunk.is_empty() {
                 event!(Level::ERROR, "Will not write empty block at {:o}; the assembler should not have generated one; this is a bug.",
                        chunk.address,
@@ -395,7 +411,7 @@ impl Binary {
         write_data(
             writer,
             output_file_name,
-            &create_begin_block(self.entry_point, self.is_empty())?,
+            &create_begin_block(self.entry_point(), self.is_empty())?,
         )?;
 
         writer
@@ -410,18 +426,18 @@ impl Binary {
 fn assemble_pass2(directive: &Directive) -> Binary {
     let span = span!(Level::ERROR, "assembly pass 2");
     let _enter = span.enter();
-    let mut chunks: Vec<BinaryChunk> = Vec::new();
+    let mut binary = Binary::default();
+    if let Some(address) = directive.entry_point() {
+        binary.set_entry_point(address);
+    }
     for block in directive.blocks.iter() {
         let words: Vec<Unsigned36Bit> = block.items.iter().map(|inst| inst.value()).collect();
-        chunks.push(BinaryChunk {
+        binary.add_chunk(BinaryChunk {
             address: block.origin.0,
             words,
-        })
+        });
     }
-    Binary {
-        chunks,
-        entry_point: directive.entry_point(),
-    }
+    binary
 }
 
 pub(crate) fn assemble_source(
