@@ -191,32 +191,52 @@ impl ProgramInstruction {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SourceFile {
+    pub(crate) punch: Option<PunchCommand>,
+    pub(crate) blocks: Vec<ManuscriptBlock>,
+}
+
+impl SourceFile {
+    pub(crate) fn empty() -> SourceFile {
+        SourceFile {
+            blocks: Vec::new(),
+            punch: None,
+        }
+    }
+}
+
+/// Represents the ☛☛PUNCH metacommand.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct PunchCommand(pub(crate) Option<Address>);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ManuscriptMetaCommand {
     Invalid, // e.g."☛☛BOGUS"
     // TODO: implement the T= metacommand.
     // TODO: implement the RC metacommand.
     // TODO: implement the XXX metacommand.
     BaseChange(NumeralMode),
-    Punch(Option<Address>),
+    Punch(PunchCommand),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ManuscriptItem {
+pub(crate) enum ManuscriptLine {
     MetaCommand(ManuscriptMetaCommand),
+    Code(Option<Origin>, Statement),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Statement {
+    // This will eventually be expanded to include assignments (which
+    // the User Guide terms "equalities").
     Instruction(ProgramInstruction),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ManuscriptBlock {
     pub(crate) origin: Option<Origin>,
-    pub(crate) items: Vec<ManuscriptItem>,
-}
-
-impl ManuscriptBlock {
-    pub(crate) fn new(origin: Option<Origin>, items: Vec<ManuscriptItem>) -> ManuscriptBlock {
-        ManuscriptBlock { origin, items }
-    }
+    pub(crate) statements: Vec<Statement>,
 }
 
 #[derive(Debug)]

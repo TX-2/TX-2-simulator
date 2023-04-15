@@ -11,8 +11,7 @@ use nom::sequence::{pair, preceded, separated_pair, terminated, tuple};
 
 use crate::ast::*;
 use crate::ek;
-use crate::state::{Error, NumeralMode, State, StateExtra};
-use crate::symtab::SymbolTable;
+use crate::state::{Error, NumeralMode, StateExtra};
 use crate::types::*;
 use base::prelude::*;
 
@@ -795,32 +794,33 @@ fn base_change<'a, 'b>(
     alt((decimal, octal))(input)
 }
 
-fn punch<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, ManuscriptMetaCommand> {
-    fn punch_address(a: Option<LiteralValue>) -> Result<ManuscriptMetaCommand, String> {
-        match a {
-            None => Ok(ManuscriptMetaCommand::Punch(None)),
-            Some(literal) => {
-                let value = literal.value();
-                match Unsigned18Bit::try_from(value) {
-                    Err(e) => Err(format!(
-                        "PUNCH address value {:o} is not a valid address: {}",
-                        value, e
-                    )),
-                    Ok(halfword) => {
-                        let addr: Address = Address::from(halfword);
-                        if addr.mark_bit() != Unsigned18Bit::ZERO {
-                            Err(format!(
-                                "PUNCH address value {:o} must not be a deferred address",
-                                addr
-                            ))
-                        } else {
-                            Ok(ManuscriptMetaCommand::Punch(Some(addr)))
-                        }
+fn punch_address(a: Option<LiteralValue>) -> Result<PunchCommand, String> {
+    match a {
+        None => Ok(PunchCommand(None)),
+        Some(literal) => {
+            let value = literal.value();
+            match Unsigned18Bit::try_from(value) {
+                Err(e) => Err(format!(
+                    "PUNCH address value {:o} is not a valid address: {}",
+                    value, e
+                )),
+                Ok(halfword) => {
+                    let addr: Address = Address::from(halfword);
+                    if addr.mark_bit() != Unsigned18Bit::ZERO {
+                        Err(format!(
+                            "PUNCH address value {:o} must not be a deferred address",
+                            addr
+                        ))
+                    } else {
+                        Ok(PunchCommand(Some(addr)))
                     }
                 }
             }
         }
     }
+}
+
+fn punch<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, ManuscriptMetaCommand> {
     match map_res(
         // We interpret "AA" in the descripion of the PUNCH
         // metacommand as accepting only literal numeric (and not
@@ -830,7 +830,10 @@ fn punch<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, Manuscri
         punch_address,
     )(input)
     {
-        Ok(cmd) => Ok(cmd),
+        Ok((input, punch)) => {
+            let cmd: ManuscriptMetaCommand = ManuscriptMetaCommand::Punch(punch);
+            Ok((input, cmd))
+        }
         Err(nom::Err::Error(e) | nom::Err::Failure(e)) => {
             let err = Error(
                 ErrorLocation::from(&e.input),
@@ -867,15 +870,6 @@ pub(crate) fn metacommand<'a, 'b>(
     )(input)
 }
 
-fn tag_definition_or_origin<'a, 'b>(
-    input: ek::LocatedSpan<'a, 'b>,
-) -> ek::IResult<'a, 'b, (Option<SymbolName>, Option<Origin>)> {
-    alt((
-        map(tag_definition, |name| (Some(name), None)),
-        map(origin, |addr| (None, Some(Origin(addr)))),
-    ))(input)
-}
-
 /// Accept either 'h' or ':' signalling the hold bit should be set.
 /// The documentation seems to use both, though perhaps ':' is the
 /// older usage.
@@ -902,31 +896,34 @@ pub(crate) fn maybe_hold<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<
 
 pub(crate) fn program_instruction<'a, 'b>(
     input: ek::LocatedSpan<'a, 'b>,
-) -> ek::IResult<'a, 'b, (Option<Origin>, ManuscriptItem)> {
+) -> ek::IResult<'a, 'b, ProgramInstruction> {
+    fn build_inst(
+        parts: (Option<SymbolName>, HoldBit, Vec<InstructionFragment>),
+    ) -> ProgramInstruction {
+        let (maybe_tag, holdbit, fragments) = parts;
+        ProgramInstruction {
+            tag: maybe_tag,
+            holdbit,
+            parts: fragments,
+        }
+    }
+
     map(
         tuple((
-            opt(tag_definition_or_origin),
+            opt(tag_definition),
             maybe_hold,
             program_instruction_fragments,
         )),
-        |(maybe_tag_or_origin, holdbit, fragments)| {
-            let (tag, origin) = maybe_tag_or_origin.unwrap_or((None, None));
-            (
-                origin,
-                ManuscriptItem::Instruction(ProgramInstruction {
-                    tag,
-                    holdbit,
-                    parts: fragments,
-                }),
-            )
-        },
+        build_inst,
     )(input)
 }
 
 fn execute_metacommand(state_extra: &StateExtra, cmd: &ManuscriptMetaCommand) {
     match cmd {
         ManuscriptMetaCommand::Invalid => {
-            todo!("error reporting for invalid metacommands is not implemented")
+            // Error messages about invalid metacommands are
+            // accumulated in the parser state and don't need to be
+            // separately reported.
         }
         ManuscriptMetaCommand::Punch(_) => {
             // Instead of executing this metacommand as we parse it,
@@ -937,22 +934,34 @@ fn execute_metacommand(state_extra: &StateExtra, cmd: &ManuscriptMetaCommand) {
     }
 }
 
-pub(crate) fn program_instruction_or_metacommand<'a, 'b>(
+pub(crate) fn statement<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, Statement> {
+    map(program_instruction, Statement::Instruction)(input)
+}
+
+pub(crate) fn manuscript_line<'a, 'b>(
     input: ek::LocatedSpan<'a, 'b>,
-) -> ek::IResult<'a, 'b, (Option<Origin>, ManuscriptItem)> {
+) -> ek::IResult<'a, 'b, ManuscriptLine> {
     fn parse_and_execute_metacommand<'a, 'b>(
         input: ek::LocatedSpan<'a, 'b>,
-    ) -> ek::IResult<'a, 'b, (Option<Origin>, ManuscriptItem)> {
+    ) -> ek::IResult<'a, 'b, ManuscriptLine> {
         match metacommand(input) {
             Ok((tail, cmd)) => {
                 execute_metacommand(&tail.extra, &cmd);
-                Ok((tail, (None, ManuscriptItem::MetaCommand(cmd))))
+                Ok((tail, ManuscriptLine::MetaCommand(cmd)))
             }
             Err(e) => Err(e),
         }
     }
 
-    alt((parse_and_execute_metacommand, program_instruction))(input)
+    fn build_code_line(parts: (Option<Address>, Statement)) -> ManuscriptLine {
+        let maybe_origin: Option<Origin> = parts.0.map(Origin);
+        ManuscriptLine::Code(maybe_origin, parts.1)
+    }
+
+    alt((
+        parse_and_execute_metacommand,
+        map(pair(opt(origin), statement), build_code_line),
+    ))(input)
 }
 
 pub(crate) fn comment<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, String> {
@@ -978,73 +987,90 @@ pub(crate) fn end_of_line<'a, 'b>(
     recognize(many1(one_end_of_line))(input)
 }
 
-/// Parse a manuscript (which is a sequence of metacommands, macros
-/// and assembly-language instructions).
-pub(crate) fn parse_manuscript<'a, 'b>(
-    input: ek::LocatedSpan<'a, 'b>,
-) -> ek::IResult<'a, 'b, Vec<(Option<Origin>, ManuscriptItem)>> {
-    // TODO: when we implement metacommands we will need to separate
-    // the processing of the metacommands and the generation of the
-    // assembled code, because in between those things has to come the
-    // execution of metacommands such as INSERT, DELETE, REPLACE.
-    preceded(
-        many0(end_of_line),
-        many0(terminated(
-            program_instruction_or_metacommand,
-            ek::expect(end_of_line, "expected newline after a program instruction"),
-        )),
-    )(input)
+fn manuscript_lines_to_blocks(
+    lines: Vec<ManuscriptLine>,
+) -> (Vec<ManuscriptBlock>, Option<PunchCommand>) {
+    let mut result: Vec<ManuscriptBlock> = Vec::new();
+    let mut current_statements: Vec<Statement> = Vec::new();
+    let mut maybe_punch: Option<PunchCommand> = None;
+    let mut effective_origin: Option<Origin> = None;
+
+    fn ship_block(
+        statements: &Vec<Statement>,
+        maybe_origin: Option<Origin>,
+        result: &mut Vec<ManuscriptBlock>,
+    ) {
+        if !statements.is_empty() {
+            result.push(ManuscriptBlock {
+                origin: maybe_origin,
+                statements: statements.to_vec(),
+            });
+        }
+    }
+
+    for line in lines {
+        match line {
+            ManuscriptLine::MetaCommand(ManuscriptMetaCommand::Invalid) => {
+                // The error was already reported in the parser state.
+                // The recovery action is just to ignore it.
+            }
+            ManuscriptLine::MetaCommand(ManuscriptMetaCommand::Punch(punch)) => {
+                maybe_punch = Some(punch);
+            }
+            ManuscriptLine::MetaCommand(ManuscriptMetaCommand::BaseChange(_)) => {
+                // These already took effect on the statements which
+                // were parsed following them, so no need to keep them
+                // now.
+            }
+            ManuscriptLine::Code(new_origin, statement) => {
+                if new_origin.is_some() {
+                    ship_block(&current_statements, effective_origin, &mut result);
+                    current_statements.clear();
+                    effective_origin = new_origin;
+                }
+                current_statements.push(statement);
+            }
+        }
+    }
+    ship_block(&current_statements, effective_origin, &mut result);
+    current_statements.clear();
+    (result, maybe_punch)
 }
 
-pub(crate) fn source_file(
-    body: &str,
-    _symtab: &mut SymbolTable,
-    errors: &mut Vec<Error>,
-) -> Result<Vec<ManuscriptBlock>, AssemblerFailure> {
-    fn setup(state: &mut State) {
-        // Octal is actually the default numeral mode, we just call
-        // set_numeral_mode here to keep Clippy happy until we
-        // implement ☛☛DECIMAL and ☛☛OCTAL.
-        state.set_numeral_mode(NumeralMode::Decimal); // appease Clippy
-        state.set_numeral_mode(NumeralMode::Octal);
-    }
-
-    fn parse_empty_file<'a, 'b>(
+pub(crate) fn source_file<'a, 'b>(
+    body: ek::LocatedSpan<'a, 'b>,
+) -> ek::IResult<'a, 'b, SourceFile> {
+    fn parse_empty_source_file<'a, 'b>(
         body: ek::LocatedSpan<'a, 'b>,
-    ) -> ek::IResult<'a, 'b, Vec<(Option<Origin>, ManuscriptItem)>> {
-        map(take(0usize), |_| Vec::new())(body)
+    ) -> ek::IResult<'a, 'b, SourceFile> {
+        map(take(0usize), |_| SourceFile::empty())(body)
     }
 
-    fn parse_source_file<'a, 'b>(
-        body: ek::LocatedSpan<'a, 'b>,
-    ) -> ek::IResult<'a, 'b, Vec<(Option<Origin>, ManuscriptItem)>> {
-        terminated(
-            alt((parse_manuscript, parse_empty_file)),
-            ek::expect_end_of_file,
-        )(body)
+    // Parse a manuscript (which is a sequence of metacommands, macros
+    // and assembly-language instructions).
+    pub(crate) fn parse_nonempty_source_file<'a, 'b>(
+        input: ek::LocatedSpan<'a, 'b>,
+    ) -> ek::IResult<'a, 'b, SourceFile> {
+        // TODO: when we implement metacommands we will need to separate
+        // the processing of the metacommands and the generation of the
+        // assembled code, because in between those things has to come the
+        // execution of metacommands such as INSERT, DELETE, REPLACE.
+        let parse_source_lines = preceded(
+            many0(end_of_line),
+            many0(terminated(
+                manuscript_line,
+                ek::expect(end_of_line, "expected newline after a program instruction"),
+            )),
+        );
+
+        map(parse_source_lines, |lines| {
+            let (blocks, punch) = manuscript_lines_to_blocks(lines);
+            SourceFile { blocks, punch }
+        })(input)
     }
 
-    let (prog_instr, new_errors) = ek::parse_with(body, parse_source_file, setup);
-    if !new_errors.is_empty() {
-        errors.extend(new_errors.into_iter());
-    }
-
-    // Separate the instuctions into blocks, each with an origin.
-    let mut result: Vec<ManuscriptBlock> = Vec::new();
-    let mut current_items: Vec<ManuscriptItem> = Vec::new();
-    let mut current_origin: Option<Origin> = None;
-    for (maybe_origin, item) in prog_instr {
-        if let Some(origin) = maybe_origin {
-            if !current_items.is_empty() {
-                result.push(ManuscriptBlock::new(current_origin, current_items.clone()));
-                current_items.clear();
-            }
-            current_origin = Some(origin);
-        }
-        current_items.push(item);
-    }
-    if !current_items.is_empty() {
-        result.push(ManuscriptBlock::new(current_origin, current_items));
-    }
-    Ok(result)
+    terminated(
+        alt((parse_nonempty_source_file, parse_empty_source_file)),
+        ek::expect_end_of_file,
+    )(body)
 }

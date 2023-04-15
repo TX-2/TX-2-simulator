@@ -5,8 +5,9 @@ use std::io::{BufReader, BufWriter, Read, Write};
 use tracing::{event, span, Level};
 
 use crate::ast::*;
+use crate::ek;
 use crate::parser::{source_file, ErrorLocation};
-use crate::state::Error;
+use crate::state::{Error, NumeralMode, State};
 use crate::symtab::*;
 use crate::types::*;
 use base::prelude::{
@@ -168,23 +169,9 @@ fn write_data<W: Write>(
     })
 }
 
-fn assemble_pass1(
-    source_file_body: &str,
-    symbols: &mut SymbolTable,
-    errors: &mut Vec<Error>,
-) -> Result<(Directive, OutputOptions), AssemblerFailure> {
-    let span = span!(Level::ERROR, "assembly pass 1");
-    let _enter = span.enter();
-    let options = OutputOptions {
-        // Because we don't parse the LIST etc. metacommands yet, we
-        // simply hard-code the list option so that the symbol table isn't
-        // unused.
-        list: true,
-    };
-    let manuscript: Vec<ManuscriptBlock> = source_file(source_file_body, symbols, errors)?;
+fn convert_source_file_to_directive(source_file: SourceFile) -> Directive {
     let mut directive: Directive = Directive::new();
-    let mut saw_punch: bool = false;
-    for mblock in manuscript {
+    for mblock in source_file.blocks {
         let effective_origin = match mblock.origin {
             None => {
                 let address = Origin::default();
@@ -208,52 +195,85 @@ fn assemble_pass1(
             origin: effective_origin,
             items: Vec::new(),
         };
-        for manuscript_item in mblock.items {
-            match manuscript_item {
-                ManuscriptItem::Instruction(inst) => {
+        for statement in mblock.statements {
+            match statement {
+                Statement::Instruction(inst) => {
                     block.push(inst);
                 }
-                ManuscriptItem::MetaCommand(ManuscriptMetaCommand::Punch(address)) => {
-                    saw_punch = true;
-                    match address {
-                        Some(a) => {
-                            event!(Level::INFO, "program entry point was specified as {:o}", a);
-                            directive.set_entry_point(a);
-                        }
-                        None => {
-                            event!(Level::INFO, "program entry point was not specified");
-                        }
-                    }
-                    // Because the PUNCH instruction causes the assembler
-                    // output to be punched to tape, this effectively
-                    // marks the end of the input.  On the real M4
-                    // assembler it is likely possible for there to be
-                    // more manuscript after the PUNCH metacommand, and
-                    // for this to generate a fresh reader leader and so
-                    // on.  But this is not supported here.  The reason we
-                    // don't support it is that we'd need to know the
-                    // answers to a lot of quesrtions we don't have
-                    // answers for right now.  For example, should the
-                    // existing program be cleared?  Should the symbol
-                    // table be cleared?
-                    break;
-                }
-                ManuscriptItem::MetaCommand(_) => (),
             }
         }
         directive.push(block);
     }
-    if !saw_punch {
-        event!(
-            Level::WARN,
-            "No PUNCH directive was given, program has no start address"
-        );
+
+    match source_file.punch {
+        Some(PunchCommand(Some(address))) => {
+            event!(
+                Level::INFO,
+                "program entry point was specified as {address:o}"
+            );
+            directive.set_entry_point(address);
+        }
+        Some(PunchCommand(None)) => {
+            event!(Level::INFO, "program entry point was not specified");
+        }
+        None => {
+            event!(
+                Level::WARN,
+                "No PUNCH directive was given, program has no start address"
+            );
+        }
     }
-    // TODO: implement the SAVE metacommand.
-    // TODO: implement the READ metacommand.
-    // TODO: implement the TAPE metacommand.
-    // TODO: implement the CORE metacommand.
-    // TODO: implement the ERRORS metacommand.
+    // Because the PUNCH instruction causes the assembler
+    // output to be punched to tape, this effectively
+    // marks the end of the input.  On the real M4
+    // assembler it is likely possible for there to be
+    // more manuscript after the PUNCH metacommand, and
+    // for this to generate a fresh reader leader and so
+    // on.  But this is not supported here.  The reason we
+    // don't support it is that we'd need to know the
+    // answers to a lot of quesrtions we don't have
+    // answers for right now.  For example, should the
+    // existing program be cleared?  Should the symbol
+    // table be cleared?
+
+    directive
+}
+
+fn assemble_pass1(
+    source_file_body: &str,
+    symbols: &mut SymbolTable,
+    errors: &mut Vec<Error>,
+) -> Result<(Directive, OutputOptions), AssemblerFailure> {
+    let span = span!(Level::ERROR, "assembly pass 1");
+    let _enter = span.enter();
+    let options = OutputOptions {
+        // Because we don't parse the LIST etc. metacommands yet, we
+        // simply hard-code the list option so that the symbol table isn't
+        // unused.
+        list: true,
+    };
+
+    fn assemble_source_file(
+        body: &str,
+        _symtab: &mut SymbolTable,
+        errors: &mut Vec<Error>,
+    ) -> Result<SourceFile, AssemblerFailure> {
+        fn setup(state: &mut State) {
+            // Octal is actually the default numeral mode, we just call
+            // set_numeral_mode here to keep Clippy happy until we
+            // implement ☛☛DECIMAL and ☛☛OCTAL.
+            state.set_numeral_mode(NumeralMode::Decimal); // appease Clippy
+            state.set_numeral_mode(NumeralMode::Octal);
+        }
+        let (source_file, new_errors) = ek::parse_with(body, source_file, setup);
+        if !new_errors.is_empty() {
+            errors.extend(new_errors.into_iter());
+        }
+        Ok(source_file)
+    }
+
+    let source: SourceFile = assemble_source_file(source_file_body, symbols, errors)?;
+    let directive = convert_source_file_to_directive(source);
     Ok((directive, options))
 }
 
@@ -298,6 +318,23 @@ fn test_assemble_pass1() {
                 Origin::default(),
                 directive
             );
+        }
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn assemble_nonempty_valid_input(input: &str) -> (Directive, SymbolTable) {
+    let mut symtab = SymbolTable::new();
+    let mut errors: Vec<Error> = Vec::new();
+    let result: Result<(Directive, OutputOptions), AssemblerFailure> =
+        assemble_pass1(input, &mut symtab, &mut errors);
+    if !errors.is_empty() {
+        panic!("assemble_nonempty_valid_input: errors were reported: {errors:?}");
+    }
+    match result {
+        Ok((directive, _options)) => (directive, symtab),
+        Err(e) => {
+            panic!("input should be valid: {}", e);
         }
     }
 }
