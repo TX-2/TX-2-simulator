@@ -1,4 +1,4 @@
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsStr;
 use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
@@ -65,14 +65,19 @@ fn assembler_golden_output_test(
     input_relative_path: &str,
     golden_output_relative_path: &str,
 ) -> Result<(), String> {
-    let input = get_test_input_file_name(input_relative_path).into_os_string();
-    let golden: OsString = get_test_input_file_name(golden_output_relative_path).into_os_string();
+    let input = get_test_input_file_name(input_relative_path);
+    let golden = get_test_input_file_name(golden_output_relative_path);
     let actual_output = get_temp_output_file_name();
 
-    match assemble_file(&input, actual_output.as_os_str()) {
-        Ok(()) => match files_are_identical(&golden, actual_output.as_os_str()) {
+    match assemble_file(input.as_os_str(), actual_output.as_os_str()) {
+        Ok(()) => match files_are_identical(golden.as_os_str(), actual_output.as_os_str()) {
             Ok(()) => Ok(()),
-            Err(e) => Err(e.to_string()),
+            Err(e) => Err(format!(
+                "{} and {} are not identical: {}",
+                golden.display(),
+                actual_output.display(),
+                e.to_string()
+            )),
         },
         Err(e) => Err(format!("failed to assemble {input_relative_path}: {e}")),
     }
