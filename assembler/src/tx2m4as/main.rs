@@ -1,6 +1,7 @@
 #![deny(unsafe_code)]
 
 use std::ffi::OsString;
+use std::path::PathBuf;
 
 use clap::ArgAction::Set;
 use clap::Parser;
@@ -40,7 +41,7 @@ fn run_asembler() -> Result<(), Fail> {
     {
         Err(e) => {
             return Err(Fail::InitialisationFailure(
-		format!("failed to initialise tracing filter (perhaps there is a problem with environment variables): {}", e)));
+                format!("failed to initialise tracing filter (perhaps there is a problem with environment variables): {}", e)));
         }
         Ok(layer) => layer,
     };
@@ -52,7 +53,8 @@ fn run_asembler() -> Result<(), Fail> {
 
     let span = span!(Level::ERROR, "assemble", input=?cli.input, output=?cli.output);
     let _enter = span.enter();
-    let result = assemble_file(&cli.input, &cli.output).map_err(Fail::AsmFail);
+    let output_path = PathBuf::from(cli.output);
+    let result = assemble_file(&cli.input, &output_path).map_err(Fail::AsmFail);
     if let Err(e) = &result {
         event!(Level::ERROR, "assembly failed: {:?}", e);
     } else {

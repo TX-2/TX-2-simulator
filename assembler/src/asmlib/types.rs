@@ -2,6 +2,7 @@ use std::error::Error;
 use std::ffi::{OsStr, OsString};
 use std::fmt::{self, Display, Formatter};
 use std::io::Error as IoError;
+use std::path::PathBuf;
 
 /// LineNumber values are usually derived from
 /// LocatedSpan::line_location() which returns a u32.
@@ -20,7 +21,7 @@ pub enum AssemblerFailure {
         line_number: Option<LineNumber>,
     },
     IoErrorOnOutput {
-        filename: OsString,
+        filename: PathBuf,
         error: IoError,
     },
     SyntaxError {
@@ -66,9 +67,11 @@ impl Display for AssemblerFailure {
                 write!(f, ": {}", error)
             }
             AssemblerFailure::IoErrorOnOutput { filename, error } => {
-                f.write_str("I/O error writing output file ")?;
-                write_os_string(f, filename)?;
-                write!(f, ": {}", error)
+                write!(
+                    f,
+                    "I/O error writing output file {}: {error}",
+                    filename.display(),
+                )
             }
             AssemblerFailure::SyntaxError { line, column, msg } => match column {
                 Some(col) => {

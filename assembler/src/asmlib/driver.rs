@@ -1,6 +1,7 @@
 use std::ffi::OsStr;
 use std::fs::OpenOptions;
 use std::io::{BufReader, BufWriter, Read, Write};
+use std::path::Path;
 
 use tracing::{event, span, Level};
 
@@ -47,13 +48,13 @@ fn update_checksum(sum: Signed18Bit, word: Unsigned36Bit) -> Signed18Bit {
 /// to the start of the reader leader in order to load the next
 /// block).
 fn create_tape_block(
-    origin: Origin,
+    address: Address,
     code: &[Unsigned36Bit],
     last: bool,
 ) -> Result<Vec<Unsigned36Bit>, AssemblerFailure> {
     if code.is_empty() {
         return Err(AssemblerFailure::BadTapeBlock(
-            format!("tape block at {origin:o} is empty but tape blocks are not allowed to be empty (the format does not support it)")
+            format!("tape block at {address:o} is empty but tape blocks are not allowed to be empty (the format does not support it)")
         ));
     }
     let len: Unsigned18Bit = match Unsigned18Bit::try_from(code.len()) {
@@ -64,7 +65,7 @@ fn create_tape_block(
         }
         Ok(len) => len,
     };
-    let end: Unsigned18Bit = match Unsigned18Bit::from(origin)
+    let end: Unsigned18Bit = match Unsigned18Bit::from(address)
         .checked_add(len)
         .and_then(|n| n.checked_sub(Unsigned18Bit::ONE))
     {
@@ -77,7 +78,7 @@ fn create_tape_block(
     };
     event!(
         Level::DEBUG,
-        "creating a tape block with origin={origin:>06o}, len={len:o}, end={end:>06o}"
+        "creating a tape block with origin={address:>06o}, len={len:o}, end={end:>06o}"
     );
     let mut block = Vec::with_capacity(code.len().saturating_add(2usize));
     let encoded_len: Unsigned18Bit = match Signed18Bit::try_from(len) {
@@ -138,17 +139,17 @@ fn create_begin_block(
             operand_address: OperandAddress::Direct(Address::from(u18!(0o27))),
         }
     };
-    let origin = Origin(Address::from(Unsigned18Bit::from(0o27_u8)));
+    let location = Address::from(Unsigned18Bit::from(0o27_u8));
     let code = vec![
         Instruction::from(&disconnect_tape).bits(),
         Instruction::from(&jump).bits(),
     ];
-    create_tape_block(origin, &code, !empty_program)
+    create_tape_block(location, &code, !empty_program)
 }
 
 fn write_data<W: Write>(
     writer: &mut W,
-    output_file_name: &OsStr,
+    output_file_name: &Path,
     data: &[Unsigned36Bit],
 ) -> Result<(), AssemblerFailure> {
     let mut inner = || -> Result<(), std::io::Error> {
@@ -164,7 +165,7 @@ fn write_data<W: Write>(
         Ok(())
     };
     inner().map_err(|e| AssemblerFailure::IoErrorOnOutput {
-        filename: output_file_name.to_owned(),
+        filename: output_file_name.to_path_buf(),
         error: e,
     })
 }
@@ -339,20 +340,132 @@ pub(crate) fn assemble_nonempty_valid_input(input: &str) -> (Directive, SymbolTa
     }
 }
 
-fn assemble_pass2(directive: &Directive) -> Vec<(Origin, Vec<Unsigned36Bit>)> {
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(crate) struct BinaryChunk {
+    pub(crate) address: Address,
+    pub(crate) words: Vec<Unsigned36Bit>,
+}
+
+impl BinaryChunk {
+    fn is_empty(&self) -> bool {
+        self.words.is_empty()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(crate) struct Binary {
+    pub(crate) entry_point: Option<Address>,
+    pub(crate) chunks: Vec<BinaryChunk>,
+}
+
+impl Binary {
+    fn is_empty(&self) -> bool {
+        self.chunks.is_empty()
+    }
+
+    fn write<W: Write>(
+        &self,
+        writer: &mut W,
+        output_file_name: &Path,
+    ) -> Result<(), AssemblerFailure> {
+        // The boot code reads the paper tape in PETR mode 0o30106
+        // (see base/src/memory.rs) which looks for an END MARK
+        // (code 0o76, no seventh bit set).  But, our PETR device
+        // emulation currently "invents" the END MARK (coinciding
+        // with the beginnng of the tape file) so we don't need to
+        // write it.
+        write_data(writer, output_file_name, &reader_leader())?;
+        for chunk in self.chunks.iter() {
+            if chunk.is_empty() {
+                event!(Level::ERROR, "Will not write empty block at {:o}; the assembler should not have generated one; this is a bug.",
+                       chunk.address,
+                );
+                continue;
+            }
+            let block = create_tape_block(chunk.address, &chunk.words, false)?;
+            write_data(writer, output_file_name, &block)?;
+        }
+
+        // After the rest of the program is punched, we write the special
+        // block for register 27.  This has to be last, becaause the
+        // standard reader leader uses the "next" field of the header to
+        // determine which is the last block.  When the "next" field
+        // points at 0o27 instead of 0o3, that means this is the final
+        // block.  WSo we have to emit this one last.
+        write_data(
+            writer,
+            output_file_name,
+            &create_begin_block(self.entry_point, self.is_empty())?,
+        )?;
+
+        writer
+            .flush()
+            .map_err(|e| AssemblerFailure::IoErrorOnOutput {
+                filename: output_file_name.to_owned(),
+                error: e,
+            })
+    }
+}
+
+fn assemble_pass2(directive: &Directive) -> Binary {
     let span = span!(Level::ERROR, "assembly pass 2");
     let _enter = span.enter();
-    let mut result: Vec<(Origin, Vec<Unsigned36Bit>)> = Vec::new();
+    let mut chunks: Vec<BinaryChunk> = Vec::new();
     for block in directive.blocks.iter() {
         let words: Vec<Unsigned36Bit> = block.items.iter().map(|inst| inst.value()).collect();
-        result.push((block.origin, words));
+        chunks.push(BinaryChunk {
+            address: block.origin.0,
+            words,
+        })
     }
-    result
+    Binary {
+        chunks,
+        entry_point: directive.entry_point(),
+    }
+}
+
+pub(crate) fn assemble_source(
+    source_file_body: &str,
+    symbols: &mut SymbolTable,
+) -> Result<Binary, AssemblerFailure> {
+    let mut errors = Vec::new();
+    let (directive, options) = assemble_pass1(source_file_body, symbols, &mut errors)?;
+    match errors.as_slice() {
+        [first, ..] => {
+            for e in errors.iter() {
+                eprintln!("{}", e);
+            }
+            let location: &ErrorLocation = &first.0;
+            let msg = first.1.as_str();
+            return Err(AssemblerFailure::SyntaxError {
+                line: location.line,
+                column: location.column,
+                msg: msg.to_string(),
+            });
+        }
+        [] => (),
+    }
+
+    event!(
+        Level::INFO,
+        "assembly pass 1 generated {} instructions",
+        directive.instruction_count()
+    );
+
+    // List the symbols.
+    if options.list {
+        symbols
+            .list()
+            .map_err(|e| AssemblerFailure::IoErrorOnStdout { error: e })?;
+    }
+
+    // Now we do pass 2.
+    Ok(assemble_pass2(&directive))
 }
 
 pub fn assemble_file(
     input_file_name: &OsStr,
-    output_file_name: &OsStr,
+    output_file_name: &Path,
 ) -> Result<(), AssemblerFailure> {
     let input_file = OpenOptions::new()
         .read(true)
@@ -364,9 +477,9 @@ pub fn assemble_file(
         })?;
 
     let mut symbols = SymbolTable::new();
-    let mut source_file_body: String = String::new();
-    let (directive, options) =
-        match BufReader::new(input_file).read_to_string(&mut source_file_body) {
+    let source_file_body = {
+        let mut body = String::new();
+        match BufReader::new(input_file).read_to_string(&mut body) {
             Err(e) => {
                 return Err(AssemblerFailure::IoErrorOnInput {
                     filename: input_file_name.to_owned(),
@@ -374,40 +487,11 @@ pub fn assemble_file(
                     line_number: None,
                 })
             }
-            Ok(_) => {
-                let mut errors = Vec::new();
-                let directive = assemble_pass1(&source_file_body, &mut symbols, &mut errors)?;
-                match errors.as_slice() {
-                    [first, ..] => {
-                        for e in errors.iter() {
-                            eprintln!("{}", e);
-                        }
-                        let location: &ErrorLocation = &first.0;
-                        let msg = first.1.as_str();
-                        return Err(AssemblerFailure::SyntaxError {
-                            line: location.line,
-                            column: location.column,
-                            msg: msg.to_string(),
-                        });
-                    }
-                    [] => directive,
-                }
-            }
-        };
-    event!(
-        Level::INFO,
-        "assembly pass1 generated {} instructions",
-        directive.instruction_count()
-    );
+            Ok(_) => body,
+        }
+    };
 
-    // Now we do pass 2.
-    if options.list {
-        symbols
-            .list()
-            .map_err(|e| AssemblerFailure::IoErrorOnStdout { error: e })?;
-    }
-
-    let user_program: Vec<(Origin, Vec<Unsigned36Bit>)> = assemble_pass2(&directive);
+    let user_program: Binary = assemble_source(&source_file_body, &mut symbols)?;
 
     // The Users Guide explains on page 6-23 how the punched binary
     // is created (and read back in).
@@ -420,38 +504,5 @@ pub fn assemble_file(
             error: e,
         })?;
     let mut writer = BufWriter::new(output_file);
-    // The boot code reads the paper tape in PETR mode 0o30106
-    // (see base/src/memory.rs) which looks for an END MARK
-    // (code 0o76, no seventh bit set).  But, our PETR device
-    // emulation currently "invents" the END MARK (coinciding
-    // with the beginnng of the tape file) so we don't need to
-    // write it.
-    write_data(&mut writer, output_file_name, &reader_leader())?;
-    for (origin, code) in &user_program {
-        if code.is_empty() {
-            event!(Level::ERROR, "Will not write empty block at {origin:o}; the assembler should not have generated one; this is a bug.");
-            continue;
-        }
-        let block = create_tape_block(*origin, code, false)?;
-        write_data(&mut writer, output_file_name, &block)?;
-    }
-
-    // After the rest of the program is punched, we write the special
-    // block for register 27.  This has to be last, becaause the
-    // standard reader leader uses the "next" field of the header to
-    // determine which is the last block.  When the "next" field
-    // points at 0o27 instead of 0o3, that means this is the final
-    // block.  WSo we have to emit this one last.
-    write_data(
-        &mut writer,
-        output_file_name,
-        &create_begin_block(directive.entry_point(), user_program.is_empty())?,
-    )?;
-
-    writer
-        .flush()
-        .map_err(|e| AssemblerFailure::IoErrorOnOutput {
-            filename: output_file_name.to_owned(),
-            error: e,
-        })
+    user_program.write(&mut writer, output_file_name)
 }
