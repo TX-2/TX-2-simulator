@@ -7,7 +7,7 @@ use std::cell::RefCell;
 use nom::combinator::map;
 
 use super::ast::{
-    Block, Elevation, HoldBit, InstructionFragment, LiteralValue, ManuscriptBlock,
+    Block, Elevation, Expression, HoldBit, InstructionFragment, LiteralValue, ManuscriptBlock,
     ManuscriptMetaCommand, Origin, ProgramInstruction, SourceFile, Statement, SymbolName,
 };
 use super::driver::assemble_nonempty_valid_input;
@@ -473,6 +473,109 @@ fn test_manuscript_with_real_arrow_tag() {
                     ))]
                 })]
             }]
+        }
+    );
+}
+
+#[test]
+fn test_assignment_literal() {
+    const INPUTS: &[&'static str] = &[
+        "FOO=2",
+        "FOO =2",
+        "F O O = 2", // spaces are also allowed inside symexes.
+    ];
+    for input in INPUTS {
+        dbg!(&input);
+        assert_eq!(
+            parse_successfully_with(input, statement, no_state_setup),
+            Statement::Assignment(
+                SymbolName {
+                    canonical: "FOO".to_string(),
+                },
+                Expression::Literal(LiteralValue::from((Elevation::Normal, u36!(2))))
+            )
+        )
+    }
+}
+
+#[test]
+fn test_assignment_lines() {
+    assert_eq!(
+        parse_successfully_with(
+            concat!(
+                "FOO=2\n",
+                // The trailing space on the next line is there to ensure we don't
+                // have a regression in end_of_line (which previously didn't permit
+                // trailing spaces).
+                "BAR=1 \n", // internal spaces in symexes are allowed.
+                // we also want to make sure we can parse a comment
+                // preceded by a space, and regular instructions
+                // following an assignment.
+                "6 ** WE PUT A NON-ASSIGNMENT HERE TO CHECK WE CAN PARSE REGULAR INSTRUCTIONS\n"
+            ),
+            source_file,
+            no_state_setup
+        ),
+        SourceFile {
+            punch: None,
+            blocks: vec![ManuscriptBlock {
+                origin: None,
+                statements: vec![
+                    Statement::Assignment(
+                        SymbolName {
+                            canonical: "FOO".to_string(),
+                        },
+                        Expression::Literal(LiteralValue::from((Elevation::Normal, u36!(2))))
+                    ),
+                    Statement::Assignment(
+                        SymbolName {
+                            canonical: "BAR".to_string(),
+                        },
+                        Expression::Literal(LiteralValue::from((Elevation::Normal, u36!(1))))
+                    ),
+                    Statement::Instruction(ProgramInstruction {
+                        tag: None,
+                        holdbit: HoldBit::Unspecified,
+                        parts: vec![InstructionFragment {
+                            value: Expression::Literal(LiteralValue::from((
+                                Elevation::Normal,
+                                u36!(6)
+                            )))
+                        }]
+                    })
+                ]
+            }]
+        }
+    );
+}
+
+#[test]
+fn test_assignment_origin() {
+    const INPUT: &str = concat!("FOO=1000\n", "1000|4\n",);
+    let tree = parse_successfully_with(INPUT, source_file, no_state_setup);
+    assert_eq!(
+        tree,
+        SourceFile {
+            punch: None,
+            blocks: vec![
+                ManuscriptBlock {
+                    origin: None,
+                    statements: vec![Statement::Assignment(
+                        SymbolName {
+                            canonical: "FOO".to_string()
+                        },
+                        Expression::Literal(LiteralValue::from((Elevation::Normal, u36!(0o1000))))
+                    ),]
+                },
+                ManuscriptBlock {
+                    origin: Some(Origin(Address::new(u18!(0o1000)))),
+                    statements: vec![Statement::Instruction(ProgramInstruction {
+                        tag: None,
+                        holdbit: HoldBit::Unspecified,
+                        parts: vec![InstructionFragment::from((Elevation::Normal, u36!(4),))]
+                    })]
+                }
+            ]
         }
     );
 }

@@ -1,6 +1,7 @@
 ///! Abstract syntax representation.   It's mostly not actually a tree.
-use std::fmt::{self, Display, Formatter, Octal};
+use std::fmt::{self, Display, Formatter, Octal, Write};
 
+use base::charset::{subscript_char, superscript_char};
 use base::prelude::*;
 
 use crate::ek;
@@ -23,6 +24,47 @@ impl From<(Elevation, Unsigned36Bit)> for LiteralValue {
     fn from((elevation, value): (Elevation, Unsigned36Bit)) -> LiteralValue {
         LiteralValue { elevation, value }
     }
+}
+
+impl std::fmt::Display for LiteralValue {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let s = self.value.to_string();
+        format_elevated_chars(f, &self.elevation, &s)
+    }
+}
+
+// TODO: avoid the panics from this function.
+fn format_elevated_chars(f: &mut Formatter<'_>, elevation: &Elevation, s: &str) -> fmt::Result {
+    match elevation {
+        Elevation::Normal => {
+            f.write_str(s)?;
+        }
+        Elevation::Superscript => {
+            for ch in s.chars() {
+                match superscript_char(ch) {
+                    Ok(superchar) => {
+                        f.write_char(superchar)?;
+                    }
+                    Err(e) => {
+                        panic!("cannot find superscript equivalent of '{ch}': {e}");
+                    }
+                }
+            }
+        }
+        Elevation::Subscript => {
+            for ch in s.chars() {
+                match subscript_char(ch) {
+                    Ok(sub) => {
+                        f.write_char(sub)?;
+                    }
+                    Err(e) => {
+                        panic!("cannot find superscript equivalent of '{ch}': {e}");
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Eventually we will support symbolic expressions.
@@ -48,6 +90,14 @@ impl From<LiteralValue> for Expression {
 impl From<(Elevation, Unsigned36Bit)> for Expression {
     fn from((e, v): (Elevation, Unsigned36Bit)) -> Expression {
         Expression::from(LiteralValue::from((e, v)))
+    }
+}
+
+impl std::fmt::Display for Expression {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Expression::Literal(value) => value.fmt(f),
+        }
     }
 }
 
@@ -93,10 +143,16 @@ impl From<Expression> for InstructionFragment {
     }
 }
 
-#[derive(Debug, Clone, Eq)]
+#[derive(Debug, Clone, Eq, PartialOrd, Ord)]
 pub(crate) struct SymbolName {
     pub(crate) canonical: String,
     // pub(crate) as_used: String,
+}
+
+impl std::fmt::Display for SymbolName {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        self.canonical.fmt(f)
+    }
 }
 
 impl PartialEq for SymbolName {
@@ -204,6 +260,14 @@ impl SourceFile {
             punch: None,
         }
     }
+
+    pub(crate) fn global_symbol_definitions(
+        &self,
+    ) -> impl Iterator<Item = (&SymbolName, &Expression)> {
+        self.blocks
+            .iter()
+            .flat_map(|block| block.global_symbol_definitions())
+    }
 }
 
 /// Represents the ☛☛PUNCH metacommand.
@@ -228,8 +292,7 @@ pub(crate) enum ManuscriptLine {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Statement {
-    // This will eventually be expanded to include assignments (which
-    // the User Guide terms "equalities").
+    Assignment(SymbolName, Expression), // User Guide calles these "equalities".
     Instruction(ProgramInstruction),
 }
 
@@ -237,6 +300,19 @@ pub(crate) enum Statement {
 pub(crate) struct ManuscriptBlock {
     pub(crate) origin: Option<Origin>,
     pub(crate) statements: Vec<Statement>,
+}
+
+impl ManuscriptBlock {
+    pub(crate) fn global_symbol_definitions(
+        &self,
+    ) -> impl Iterator<Item = (&SymbolName, &Expression)> {
+        self.statements
+            .iter()
+            .filter_map(|statement: &Statement| match statement {
+                Statement::Assignment(symbol_name, expression) => Some((symbol_name, expression)),
+                _ => None,
+            })
+    }
 }
 
 #[derive(Debug)]

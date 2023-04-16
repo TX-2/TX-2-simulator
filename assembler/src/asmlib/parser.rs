@@ -7,7 +7,7 @@ use nom::bytes::complete::{tag, take, take_until, take_while1};
 use nom::character::complete::{char, digit1, one_of, space0};
 use nom::combinator::{map, map_res, opt, recognize, verify};
 use nom::multi::{many0, many1};
-use nom::sequence::{pair, preceded, separated_pair, terminated, tuple};
+use nom::sequence::{delimited, pair, preceded, separated_pair, terminated, tuple};
 
 use crate::ast::*;
 use crate::ek;
@@ -934,8 +934,21 @@ fn execute_metacommand(state_extra: &StateExtra, cmd: &ManuscriptMetaCommand) {
     }
 }
 
+/// Assginments are called "equalities" in the TX-2 Users Handbook.
+/// See section 6-2.2, "SYMEX DEFINITON - TAGS - EQUALITIES -
+/// AUTOMATIC ASSIGNMENT".
+pub(crate) fn assignment<'a, 'b>(
+    input: ek::LocatedSpan<'a, 'b>,
+) -> ek::IResult<'a, 'b, (SymbolName, Expression)> {
+    let equals = delimited(space0, tag("="), space0);
+    separated_pair(parse_symex, equals, expression)(input)
+}
+
 pub(crate) fn statement<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, Statement> {
-    map(program_instruction, Statement::Instruction)(input)
+    alt((
+        map(program_instruction, Statement::Instruction),
+        map(assignment, |(sym, val)| Statement::Assignment(sym, val)),
+    ))(input)
 }
 
 pub(crate) fn manuscript_line<'a, 'b>(
@@ -981,7 +994,7 @@ pub(crate) fn end_of_line<'a, 'b>(
     fn one_end_of_line<'a, 'b>(
         input: ek::LocatedSpan<'a, 'b>,
     ) -> ek::IResult<'a, 'b, ek::LocatedSpan<'a, 'b>> {
-        recognize(preceded(opt(comment), newline))(input)
+        recognize(preceded(preceded(space0, opt(comment)), newline))(input)
     }
 
     recognize(many1(one_end_of_line))(input)
