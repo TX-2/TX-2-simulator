@@ -991,10 +991,12 @@ pub(crate) fn manuscript_line<'a, 'b>(
         ManuscriptLine::Code(maybe_origin, parts.1)
     }
 
-    alt((
+    let line = alt((
         parse_and_execute_metacommand,
         map(pair(opt(origin), statement), build_code_line),
-    ))(input)
+    ));
+
+    preceded(space0, line)(input)
 }
 
 pub(crate) fn comment<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, String> {

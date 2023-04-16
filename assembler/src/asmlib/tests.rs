@@ -551,7 +551,7 @@ fn test_assignment_lines() {
                 // The trailing space on the next line is there to ensure we don't
                 // have a regression in end_of_line (which previously didn't permit
                 // trailing spaces).
-                "BAR=1 \n", // internal spaces in symexes are allowed.
+                "    BAR = 1 \n", // leading and trailing spaces are allowed.
                 // we also want to make sure we can parse a comment
                 // preceded by a space, and regular instructions
                 // following an assignment.
