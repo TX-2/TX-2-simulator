@@ -729,6 +729,26 @@ pub(crate) fn literal<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a,
     alt((normal_literal, superscript_literal, subscript_literal))(input)
 }
 
+// Parse an expression; these can currently only take the form of a literal.
+// TX-2's M4 assembler allows arithmetic expressions also, but these are not
+// currently implemented.
+//
+// When we do implement fuller support for expressions, we need to pay
+// attention to the rules for symex termination (see section 6-2.3
+// "RULES FOR SYMEX FORMATION" item 8), because script changes
+// terminate symexes.
+//
+// This means that BAT² is not an identifier but an sequence[1] whose
+// value is computed by OR-ing the value of the symex BAT with the
+// value of the literal "²" (which is 2<<30, or 0o20_000_000_000).
+// Whether BAT² is itself an expression or an "InstructionFragment" is
+// something we will need to consider carefully.  For example, is
+// (BAT²) valid?  If yes, then so is (BAT²)+1, meaning that our
+// current rule for instruction_fragment may have to change
+// significantly.
+//
+// [1] I use "sequence" in the paragraph above to avoid saying
+// "expression" or "instruction fragment".
 pub(crate) fn expression<'a, 'b>(
     input: ek::LocatedSpan<'a, 'b>,
 ) -> ek::IResult<'a, 'b, Expression> {
