@@ -499,6 +499,50 @@ fn test_assignment_literal() {
 }
 
 #[test]
+fn test_assignment_superscript() {
+    const INPUTS: &[&'static str] = &[
+        // Unicode code point B2 is a superscript 2.
+        "FOO=\u{00B2}",
+        "FOO =\u{00B2}",
+        "F O O = \u{00B2}", // spaces are also allowed inside symexes.
+    ];
+    for input in INPUTS {
+        dbg!(&input);
+        assert_eq!(
+            parse_successfully_with(input, statement, no_state_setup),
+            Statement::Assignment(
+                SymbolName {
+                    canonical: "FOO".to_string(),
+                },
+                Expression::Literal(LiteralValue::from((Elevation::Superscript, u36!(2))))
+            )
+        )
+    }
+}
+
+#[test]
+fn test_assignment_subscript() {
+    const INPUTS: &[&'static str] = &[
+        // Unicode code point 2083 is a subscript 3.
+        "FOO=\u{2083}",
+        "FOO =\u{2083}",
+        "F O O = \u{2083}", // spaces are also allowed inside symexes.
+    ];
+    for input in INPUTS {
+        dbg!(&input);
+        assert_eq!(
+            parse_successfully_with(input, statement, no_state_setup),
+            Statement::Assignment(
+                SymbolName {
+                    canonical: "FOO".to_string(),
+                },
+                Expression::Literal(LiteralValue::from((Elevation::Subscript, u36!(3))))
+            )
+        )
+    }
+}
+
+#[test]
 fn test_assignment_lines() {
     assert_eq!(
         parse_successfully_with(
