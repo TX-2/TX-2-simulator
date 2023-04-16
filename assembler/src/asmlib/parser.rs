@@ -9,10 +9,10 @@ use nom::combinator::{map, map_res, opt, recognize, verify};
 use nom::multi::{many0, many1};
 use nom::sequence::{delimited, pair, preceded, separated_pair, terminated, tuple};
 
-use crate::ast::*;
-use crate::ek;
-use crate::state::{Error, NumeralMode, StateExtra};
-use crate::types::*;
+use super::ast::*;
+use super::ek;
+use super::state::{Error, NumeralMode, StateExtra};
+use super::types::*;
 use base::prelude::*;
 
 #[derive(Debug, Clone)]

@@ -4,17 +4,17 @@ use base::prelude::*;
 
 use tracing::{event, Level};
 
+use super::super::event::OutputEvent;
 use super::super::*;
-use crate::alarm::{Alarm, AlarmDetails, Alarmer, BadMemOp};
-use crate::alarmunit::AlarmUnit;
-use crate::context::Context;
-use crate::control::{
+use super::alarm::{Alarm, AlarmDetails, Alarmer, BadMemOp};
+use super::alarmunit::AlarmUnit;
+use super::context::Context;
+use super::control::{
     ControlRegisters, ControlUnit, DeviceManager, OpcodeResult, ProgramCounterChange, TrapCircuit,
 };
-use crate::event::OutputEvent;
-use crate::exchanger::exchanged_value_for_load;
-use crate::io::{TransferFailed, Unit};
-use crate::memory::{MemoryMapped, MemoryOpFailure, MemoryUnit, MetaBitChange};
+use super::exchanger::exchanged_value_for_load;
+use super::io::{TransferFailed, Unit};
+use super::memory::{MemoryMapped, MemoryOpFailure, MemoryUnit, MetaBitChange};
 
 #[derive(Debug, PartialEq, Eq)]
 enum TransferOutcome {

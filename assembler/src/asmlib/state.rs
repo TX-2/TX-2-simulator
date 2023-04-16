@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::fmt::{self, Display, Formatter};
 
-use crate::parser::ErrorLocation;
+use super::parser::ErrorLocation;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum NumeralMode {

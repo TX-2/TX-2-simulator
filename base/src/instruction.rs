@@ -44,8 +44,8 @@
 
 use std::fmt::{self, Debug, Formatter};
 
-use crate::prelude::*;
-use crate::subword;
+use super::prelude::*;
+use super::subword;
 
 mod format;
 

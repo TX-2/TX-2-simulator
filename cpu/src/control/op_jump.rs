@@ -1,12 +1,12 @@
 use base::prelude::*;
 use base::subword;
 
-use crate::alarm::{Alarm, AlarmDetails, Alarmer, BadMemOp};
-use crate::context::Context;
-use crate::control::{ControlUnit, OpcodeResult, ProgramCounterChange};
-use crate::exchanger::exchanged_value_for_load_without_sign_extension;
-use crate::memory::{BitChange, MemoryMapped, MemoryOpFailure, MemoryUnit, WordChange};
-use crate::UpdateE;
+use super::super::alarm::{Alarm, AlarmDetails, Alarmer, BadMemOp};
+use super::super::context::Context;
+use super::super::control::{ControlUnit, OpcodeResult, ProgramCounterChange};
+use super::super::exchanger::exchanged_value_for_load_without_sign_extension;
+use super::super::memory::{BitChange, MemoryMapped, MemoryOpFailure, MemoryUnit, WordChange};
+use super::super::UpdateE;
 
 /// ## "Jump Skip Class" opcodes
 ///
@@ -244,13 +244,13 @@ impl ControlUnit {
 
 #[cfg(test)]
 mod tests {
-    use crate::alarm::Alarm;
-    use crate::context::Context;
-    use crate::control::{
+    use super::super::super::alarm::Alarm;
+    use super::super::super::context::Context;
+    use super::super::super::control::{
         ConfigurationMemorySetup, OpcodeResult, PanicOnUnmaskedAlarm, ProgramCounterChange, UpdateE,
     };
-    use crate::memory::MetaBitChange;
-    use crate::{ControlUnit, MemoryConfiguration, MemoryUnit};
+    use super::super::super::memory::MetaBitChange;
+    use super::super::super::{ControlUnit, MemoryConfiguration, MemoryUnit};
     use base::instruction::{Opcode, SymbolicInstruction};
     use base::prelude::*;
     use core::time::Duration;

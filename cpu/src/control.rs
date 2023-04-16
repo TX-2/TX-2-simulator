@@ -31,16 +31,16 @@ use base::instruction::{Inst, Instruction, Opcode, OperandAddress, SymbolicInstr
 use base::prelude::*;
 use base::subword;
 
-use super::*;
-use crate::alarm::{Alarm, AlarmDetails, AlarmKind, Alarmer, BadMemOp};
-use crate::alarmunit::AlarmUnit;
-use crate::context::Context;
-use crate::exchanger::{
+use super::alarm::{Alarm, AlarmDetails, AlarmKind, Alarmer, BadMemOp};
+use super::alarmunit::AlarmUnit;
+use super::context::Context;
+use super::exchanger::{
     exchanged_value_for_load, exchanged_value_for_store, standard_plugboard_f_memory_settings,
     SystemConfiguration,
 };
-use crate::io::DeviceManager;
-use crate::memory::{self, ExtraBits, MemoryMapped, MemoryOpFailure, MemoryUnit, MetaBitChange};
+use super::io::DeviceManager;
+use super::memory::{self, ExtraBits, MemoryMapped, MemoryOpFailure, MemoryUnit, MetaBitChange};
+use super::*;
 
 use trap::TrapCircuit;
 

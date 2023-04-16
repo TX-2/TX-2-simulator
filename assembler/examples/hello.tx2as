@@ -74,7 +74,7 @@
 300| 027024033033
 301| 036056070046
 302| 036041033023
-303| 060000000000
+303|FOUR-> 060000000000
 ** Indicate to the assembler that it should generate a punched tape
 ** output (with the standard header) and that the header should begin
 ** the program by juming to location 100.

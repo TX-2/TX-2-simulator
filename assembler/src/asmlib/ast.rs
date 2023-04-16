@@ -4,8 +4,8 @@ use std::fmt::{self, Display, Formatter, Octal, Write};
 use base::charset::{subscript_char, superscript_char};
 use base::prelude::*;
 
-use crate::ek;
-use crate::state::NumeralMode;
+use super::ek;
+use super::state::NumeralMode;
 
 /// Eventually we will support symbolic expressions.
 #[derive(Debug, Clone, PartialEq, Eq)]

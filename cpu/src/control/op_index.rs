@@ -13,12 +13,12 @@ use tracing::{event, Level};
 use base::prelude::*;
 use base::subword;
 
-use crate::alarm::{Alarm, AlarmDetails, Alarmer, BadMemOp};
-use crate::context::Context;
-use crate::control::{
+use super::alarm::{Alarm, AlarmDetails, Alarmer, BadMemOp};
+use super::context::Context;
+use super::control::{
     sign_extend_index_value, ControlUnit, OpcodeResult, ProgramCounterChange, UpdateE,
 };
-use crate::memory::{MemoryUnit, MetaBitChange};
+use super::memory::{MemoryUnit, MetaBitChange};
 
 /// ## "Index Register Class" opcodes
 ///
@@ -276,11 +276,11 @@ impl ControlUnit {
 
 #[cfg(test)]
 mod tests {
-    use crate::context::Context;
-    use crate::control::{ConfigurationMemorySetup, PanicOnUnmaskedAlarm, UpdateE};
-    use crate::exchanger::SystemConfiguration;
-    use crate::memory::MetaBitChange;
-    use crate::{MemoryConfiguration, MemoryUnit};
+    use super::super::super::context::Context;
+    use super::super::super::control::{ConfigurationMemorySetup, PanicOnUnmaskedAlarm, UpdateE};
+    use super::super::super::exchanger::SystemConfiguration;
+    use super::super::super::memory::MetaBitChange;
+    use super::super::super::{MemoryConfiguration, MemoryUnit};
     use base::instruction::{Opcode, SymbolicInstruction};
     use base::prelude::*;
     use core::time::Duration;

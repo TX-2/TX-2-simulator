@@ -4,7 +4,7 @@ use std::fmt::{self, Display, Formatter};
 use base::charset::DescribedChar;
 use base::Unsigned6Bit;
 
-use crate::alarm::UnmaskedAlarm;
+use super::alarm::UnmaskedAlarm;
 
 #[derive(Debug)]
 pub enum InputEvent {

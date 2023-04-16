@@ -9,8 +9,8 @@ use nom::character::complete::anychar;
 use nom::combinator::{all_consuming, map, not, rest};
 use nom::sequence::preceded;
 
-use crate::parser::ErrorLocation;
-use crate::state::{Error, State, StateExtra};
+use super::parser::ErrorLocation;
+use super::state::{Error, State, StateExtra};
 
 pub(crate) type LocatedSpan<'a, 'b> = nom_locate::LocatedSpan<&'a str, StateExtra<'b>>;
 pub(crate) type IResult<'a, 'b, T> = nom::IResult<LocatedSpan<'a, 'b>, T>;

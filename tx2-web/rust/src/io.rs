@@ -10,9 +10,9 @@ use wasm_bindgen::prelude::*;
 use base::Unsigned6Bit;
 use cpu::*;
 
-use crate::context::make_context;
-use crate::io::keyboard::Code;
-use crate::samples::{sample_binary_echo, sample_binary_hello};
+use super::context::make_context;
+use super::io::keyboard::Code;
+use super::samples::{sample_binary_echo, sample_binary_hello};
 
 pub use keyboard::{
     draw_keyboard, HtmlCanvas2DPainter, KeyPaintError, SWITCH_TO_FAR, SWITCH_TO_NEAR,

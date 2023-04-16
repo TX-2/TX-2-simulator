@@ -14,11 +14,11 @@ use std::fmt::Debug;
 use std::rc::Rc;
 use std::time::Duration;
 
-use crate::context::Context;
-use crate::event::{InputEvent, InputEventError, OutputEvent};
-use crate::io::{FlagChange, TransferFailed, Unit, UnitStatus};
-use crate::types::*;
-use crate::{Alarm, AlarmDetails};
+use super::super::context::Context;
+use super::super::event::{InputEvent, InputEventError, OutputEvent};
+use super::super::io::{FlagChange, TransferFailed, Unit, UnitStatus};
+use super::super::types::*;
+use super::super::{Alarm, AlarmDetails};
 use base::charset::LincolnStateTextInfo;
 use base::charset::{lincoln_char_to_described_char, lincoln_writer_state_update, LincolnState};
 use base::prelude::*;

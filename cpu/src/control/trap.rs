@@ -5,10 +5,10 @@ use std::fmt::Write;
 use base::prelude::*;
 use std::time::Duration;
 
+use super::super::context::Context;
+use super::super::event::InputEvent;
+use super::super::io::{TransferFailed, Unit, UnitStatus};
 use super::super::*;
-use crate::context::Context;
-use crate::event::InputEvent;
-use crate::io::{TransferFailed, Unit, UnitStatus};
 
 #[derive(Debug)]
 pub(crate) struct TrapCircuit {

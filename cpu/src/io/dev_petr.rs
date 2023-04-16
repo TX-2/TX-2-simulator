@@ -29,7 +29,7 @@ use conv::*;
 use tracing::{event, Level};
 
 use super::*;
-use crate::io::{TransferFailed, Unit, UnitStatus};
+use super::{TransferFailed, Unit, UnitStatus};
 
 /// Is the tape motor running?
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]

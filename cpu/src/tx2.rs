@@ -8,15 +8,15 @@ use wasm_bindgen::prelude::*;
 
 use base::prelude::*;
 
-use crate::alarm::{Alarm, AlarmKind, UnmaskedAlarm};
-use crate::alarmunit::AlarmStatus;
-use crate::context::Context;
-use crate::control::{ConfigurationMemorySetup, ControlUnit, ResetMode, RunMode};
-use crate::event::{InputEvent, OutputEvent};
-use crate::io::{set_up_peripherals, DeviceManager, ExtendedUnitState};
-use crate::memory::{MemoryConfiguration, MemoryUnit};
-use crate::PETR;
-use crate::{InputEventError, PanicOnUnmaskedAlarm};
+use super::alarm::{Alarm, AlarmKind, UnmaskedAlarm};
+use super::alarmunit::AlarmStatus;
+use super::context::Context;
+use super::control::{ConfigurationMemorySetup, ControlUnit, ResetMode, RunMode};
+use super::event::{InputEvent, OutputEvent};
+use super::io::{set_up_peripherals, DeviceManager, ExtendedUnitState};
+use super::memory::{MemoryConfiguration, MemoryUnit};
+use super::PETR;
+use super::{InputEventError, PanicOnUnmaskedAlarm};
 
 #[wasm_bindgen]
 pub struct Tx2 {

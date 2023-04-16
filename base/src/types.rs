@@ -6,10 +6,10 @@ use std::cmp::Ordering;
 use std::fmt::{Debug, Display, Error, Formatter, Octal};
 use std::hash::{Hash, Hasher};
 
-use crate::onescomplement::error::ConversionFailed;
-use crate::onescomplement::signed::{Signed18Bit, Signed5Bit, Signed6Bit};
-use crate::onescomplement::unsigned::{Unsigned18Bit, Unsigned36Bit, Unsigned6Bit};
-use crate::onescomplement::{Sign, WordCommon};
+use super::onescomplement::error::ConversionFailed;
+use super::onescomplement::signed::{Signed18Bit, Signed5Bit, Signed6Bit};
+use super::onescomplement::unsigned::{Unsigned18Bit, Unsigned36Bit, Unsigned6Bit};
+use super::onescomplement::{Sign, WordCommon};
 
 /// The `IndexBy` trait implements address arithmetic (adding a signed
 /// or unsigned value to an address).

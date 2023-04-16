@@ -1,5 +1,6 @@
-use crate::ast::{Expression, SymbolName};
 use std::collections::BTreeMap;
+
+use super::ast::{Expression, SymbolName};
 
 /// A symbol which has a reference but no definition is known, will
 /// ben represented it by having it map to None.  The rules for how

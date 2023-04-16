@@ -1,8 +1,8 @@
 use std::ops::Shl;
 
-use crate::onescomplement::unsigned::{Unsigned36Bit, Unsigned6Bit};
+use super::onescomplement::unsigned::{Unsigned36Bit, Unsigned6Bit};
 #[cfg(test)]
-use crate::u36;
+use super::u36;
 
 /// Loading a line of data from PETR in assembly mode has the effect
 /// of first cycling the target word left by one bit position, and
@@ -157,7 +157,7 @@ fn round_trip(input: Unsigned36Bit) -> Result<(), String> {
         Ok(())
     } else {
         Err(format!("mismatch: input word {:012o} unsplayed to {:?}, which splayed to {:012o}, which doesn't match",
-		    input, unsplayed, output))
+                    input, unsplayed, output))
     }
 }
 

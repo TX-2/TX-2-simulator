@@ -1,7 +1,7 @@
-use crate::instruction::{Instruction, Opcode, OperandAddress, SymbolicInstruction};
-use crate::onescomplement::unsigned::*;
-use crate::types::Address;
-use crate::{u18, u5, u6};
+use super::instruction::{Instruction, Opcode, OperandAddress, SymbolicInstruction};
+use super::onescomplement::unsigned::*;
+use super::types::Address;
+use super::{u18, u5, u6};
 
 /// Convert a bit designator (as described in the documentation for
 /// the SKM opcode on page 3-34 of the User Handbook) into an

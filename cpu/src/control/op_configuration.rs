@@ -8,11 +8,11 @@
 use base::prelude::*;
 use base::subword;
 
-use crate::context::Context;
-use crate::control::{ControlUnit, OpcodeResult, UpdateE};
-use crate::exchanger::SystemConfiguration;
-use crate::memory::MemoryUnit;
-use crate::Alarm;
+use super::context::Context;
+use super::control::{ControlUnit, OpcodeResult, UpdateE};
+use super::exchanger::SystemConfiguration;
+use super::memory::MemoryUnit;
+use super::Alarm;
 
 use tracing::{event, Level};
 
@@ -53,11 +53,11 @@ impl ControlUnit {
 
 #[cfg(test)]
 mod tests {
-    use crate::context::Context;
-    use crate::control::{ConfigurationMemorySetup, PanicOnUnmaskedAlarm, UpdateE};
-    use crate::exchanger::SystemConfiguration;
-    use crate::memory::MetaBitChange;
-    use crate::{MemoryConfiguration, MemoryUnit};
+    use super::super::super::context::Context;
+    use super::super::super::control::{ConfigurationMemorySetup, PanicOnUnmaskedAlarm, UpdateE};
+    use super::super::super::exchanger::SystemConfiguration;
+    use super::super::super::memory::MetaBitChange;
+    use super::super::super::{MemoryConfiguration, MemoryUnit};
     use base::instruction::{Opcode, SymbolicInstruction};
     use base::prelude::*;
     use core::time::Duration;

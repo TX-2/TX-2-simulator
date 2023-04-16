@@ -16,7 +16,7 @@ use tracing::{event, Level};
 
 use base::prelude::*;
 
-use crate::memory::get_standard_plugboard;
+use super::memory::get_standard_plugboard;
 
 /// The Exchange Element behaves differently in the M->E (i.e. load)
 /// direction and the E->M (i.e. store) direction.  This enumeration

@@ -28,7 +28,7 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 
-use crate::{u6, Unsigned6Bit};
+use super::{u6, Unsigned6Bit};
 
 #[derive(Debug, Clone, Copy)]
 pub struct NoSubscriptKnown(char);

@@ -5,8 +5,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::Serialize;
 use tracing::{event, Level};
 
-use crate::alarm::{Alarm, AlarmDetails, AlarmKind, AlarmMaskability, Alarmer};
-use crate::changelog::ChangeIndex;
+use super::alarm::{Alarm, AlarmDetails, AlarmKind, AlarmMaskability, Alarmer};
+use super::changelog::ChangeIndex;
 
 #[cfg(test)]
 use base::Unsigned6Bit;

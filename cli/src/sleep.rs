@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 
 use tracing::{event, Level};
 
-use crate::clock::{BasicClock, Clock};
+use super::clock::{BasicClock, Clock};
 
 #[derive(Debug)]
 struct SignedDuration {

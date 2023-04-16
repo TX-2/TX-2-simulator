@@ -33,7 +33,7 @@ use tracing::{event, Level};
 
 use base::prelude::*;
 
-use crate::context::Context;
+use super::context::Context;
 
 pub(crate) const S_MEMORY_START: u32 = 0o0000000;
 pub(crate) const S_MEMORY_SIZE: u32 = 1 + 0o0177777;

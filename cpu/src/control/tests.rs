@@ -1,11 +1,11 @@
 use core::time::Duration;
 
-use crate::alarm::{Alarm, AlarmDetails};
-use crate::context::Context;
-use crate::control::ConfigurationMemorySetup;
-use crate::memory::MetaBitChange;
-use crate::DeviceManager;
-use crate::{ControlUnit, MemoryConfiguration, MemoryUnit, PanicOnUnmaskedAlarm, UpdateE};
+use super::alarm::{Alarm, AlarmDetails};
+use super::context::Context;
+use super::control::ConfigurationMemorySetup;
+use super::memory::MetaBitChange;
+use super::DeviceManager;
+use super::{ControlUnit, MemoryConfiguration, MemoryUnit, PanicOnUnmaskedAlarm, UpdateE};
 use base::prelude::*;
 
 fn make_ctx() -> Context {

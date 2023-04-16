@@ -17,8 +17,8 @@ pub mod prelude;
 pub mod readerleader;
 pub mod splay;
 pub mod subword;
-pub use crate::onescomplement::error;
-pub use crate::onescomplement::unsigned::*;
+pub use onescomplement::error;
+pub use onescomplement::unsigned::*;
 
 #[macro_export]
 macro_rules! u36 {

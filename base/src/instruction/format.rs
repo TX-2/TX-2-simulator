@@ -1,11 +1,14 @@
-use crate::charset::{subscript_char, superscript_char, NoSubscriptKnown, NoSuperscriptKnown};
-use crate::instruction::{
+/// Human-oriented formatting for instructions (or parts of instructions).
+use std::fmt::{self, Display, Formatter, Octal};
+
+use super::super::charset::{
+    subscript_char, superscript_char, NoSubscriptKnown, NoSuperscriptKnown,
+};
+use super::super::instruction::{
     index_address_to_bit_selection, BitSelector, DisassemblyFailure, Inst, Opcode, OperandAddress,
     Quarter, SymbolicInstruction,
 };
-use crate::prelude::*;
-/// Human-oriented formatting for instructions (or parts of instructions).
-use std::fmt::{self, Display, Formatter, Octal};
+use super::super::prelude::*;
 
 /// Render the quarter ("q") part of the bit selector ("q.b").
 impl Display for Quarter {

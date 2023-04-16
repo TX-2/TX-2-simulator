@@ -5,12 +5,12 @@ use std::path::Path;
 
 use tracing::{event, span, Level};
 
-use crate::ast::*;
-use crate::ek;
-use crate::parser::{source_file, ErrorLocation};
-use crate::state::{Error, NumeralMode, State};
-use crate::symtab::*;
-use crate::types::*;
+use super::ast::*;
+use super::ek;
+use super::parser::{source_file, ErrorLocation};
+use super::state::{Error, NumeralMode, State};
+use super::symtab::*;
+use super::types::*;
 use base::prelude::{
     join_halves, reader_leader, split_halves, u18, u5, u6, unsplay, Address, Instruction, Opcode,
     OperandAddress, Signed18Bit, SymbolicInstruction, Unsigned18Bit, Unsigned36Bit, Unsigned6Bit,

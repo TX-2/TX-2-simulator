@@ -13,10 +13,10 @@
 
 use tracing::{event, Level};
 
-use crate::alarm::Alarm;
-use crate::context::Context;
-use crate::control::{ControlUnit, MemoryUnit, OpcodeResult, UpdateE};
-use crate::exchanger::exchanged_value_for_load;
+use super::alarm::Alarm;
+use super::context::Context;
+use super::control::{ControlUnit, MemoryUnit, OpcodeResult, UpdateE};
+use super::exchanger::exchanged_value_for_load;
 use base::prelude::*;
 
 impl ControlUnit {
@@ -133,12 +133,12 @@ impl ControlUnit {
 
 #[cfg(test)]
 mod tests {
+    use super::super::super::context::Context;
+    use super::super::super::control::ConfigurationMemorySetup;
+    use super::super::super::exchanger::SystemConfiguration;
+    use super::super::super::memory::{MemoryMapped, MetaBitChange};
+    use super::super::super::{MemoryConfiguration, MemoryUnit};
     use super::super::{ControlUnit, PanicOnUnmaskedAlarm, UpdateE};
-    use crate::context::Context;
-    use crate::control::ConfigurationMemorySetup;
-    use crate::exchanger::SystemConfiguration;
-    use crate::memory::{MemoryMapped, MetaBitChange};
-    use crate::{MemoryConfiguration, MemoryUnit};
     use base::prelude::*;
     use base::subword::right_half;
     use core::time::Duration;
