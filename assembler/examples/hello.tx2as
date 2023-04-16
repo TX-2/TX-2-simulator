@@ -24,7 +24,8 @@
 ** X₁ is just a regular index register.  Arithmetic on the TX-2 is
 ** one's complement. The X registers are 18 bits wide.  Bit 17 is the
 ** sign bit.
-200|      REX₁ 777760     ** Set X₁ to -15 (decimal)
+200|
+          REX₁ 777760     ** Set X₁ to -15 (decimal)
 
 ** TX-2 consisders words to be composed of four quarters (Q4..Q1) with
 ** Q1 as least significant.  Most instructions can operate on just

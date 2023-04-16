@@ -991,9 +991,17 @@ pub(crate) fn manuscript_line<'a, 'b>(
         ManuscriptLine::Code(maybe_origin, parts.1)
     }
 
+    let origin_only = map(origin, |address| {
+        ManuscriptLine::JustOrigin(Origin(address))
+    });
+
     let line = alt((
         parse_and_execute_metacommand,
         map(pair(opt(origin), statement), build_code_line),
+        // Because we prefer to parse a statement if one exists,
+        // the origin_only alternative has to appear after the
+        // alternative which parses a statement.
+        origin_only,
     ));
 
     preceded(space0, line)(input)
@@ -1056,6 +1064,12 @@ fn manuscript_lines_to_blocks(
                 // These already took effect on the statements which
                 // were parsed following them, so no need to keep them
                 // now.
+            }
+            ManuscriptLine::JustOrigin(new_origin) => {
+                ship_block(&current_statements, effective_origin, &mut result);
+                current_statements.clear();
+                effective_origin = Some(new_origin);
+                // There is no statement to push, though.
             }
             ManuscriptLine::Code(new_origin, statement) => {
                 if new_origin.is_some() {

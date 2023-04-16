@@ -287,6 +287,7 @@ pub(crate) enum ManuscriptMetaCommand {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ManuscriptLine {
     MetaCommand(ManuscriptMetaCommand),
+    JustOrigin(Origin),
     Code(Option<Origin>, Statement),
 }
 
