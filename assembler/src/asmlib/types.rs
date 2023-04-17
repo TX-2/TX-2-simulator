@@ -4,6 +4,8 @@ use std::fmt::{self, Display, Formatter};
 use std::io::Error as IoError;
 use std::path::PathBuf;
 
+use base::prelude::Address;
+
 /// LineNumber values are usually derived from
 /// LocatedSpan::line_location() which returns a u32.
 pub(crate) type LineNumber = u32;
@@ -29,6 +31,8 @@ pub enum AssemblerFailure {
         column: Option<usize>,
         msg: String,
     },
+    ProgramTooBig(Address, usize),
+    UnimplementedFeature(String),
 }
 
 fn write_os_string(f: &mut Formatter<'_>, s: &OsStr) -> Result<(), fmt::Error> {
@@ -83,6 +87,15 @@ impl Display for AssemblerFailure {
                     write!(f, "line {}: {}", line, msg)
                 }
             },
+            AssemblerFailure::ProgramTooBig(base, block_size) => {
+                write!(
+                    f,
+                    "Program goes not fit into TX-2 memory; a block has origin {base:o} and size {block_size:o} but the largest possible address is {:o}", Address::MAX
+                )
+            }
+            AssemblerFailure::UnimplementedFeature(explanation) => {
+                write!(f, "Program uses an unimplemented feature: {}", explanation)
+            }
         }
     }
 }

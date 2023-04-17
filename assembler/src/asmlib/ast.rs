@@ -1,11 +1,13 @@
 ///! Abstract syntax representation.   It's mostly not actually a tree.
 use std::fmt::{self, Display, Formatter, Octal, Write};
+use std::hash::{Hash, Hasher};
 
 use base::charset::{subscript_char, superscript_char};
 use base::prelude::*;
 
 use super::ek;
 use super::state::NumeralMode;
+use super::symtab::{SymbolContext, SymbolDefinition};
 
 /// Eventually we will support symbolic expressions.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -67,7 +69,9 @@ fn format_elevated_chars(f: &mut Formatter<'_>, elevation: &Elevation, s: &str) 
     Ok(())
 }
 
-/// Eventually we will support symbolic expressions.
+/// Eventually we will support real expressions, but for now we only
+/// suport literals and references to symbols ("equalities" in the
+/// User Handbook).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Expression {
     Literal(LiteralValue),
@@ -161,6 +165,12 @@ impl PartialEq for SymbolName {
     }
 }
 
+impl Hash for SymbolName {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.canonical.hash(state)
+    }
+}
+
 impl<'a, 'b> SymbolName {
     // Symexes "TYPE A" and "TYPEA" are equivalent.
     fn canonical(span: &ek::LocatedSpan<'a, 'b>) -> String {
@@ -180,6 +190,8 @@ impl<'a, 'b> From<&ek::LocatedSpan<'a, 'b>> for SymbolName {
     }
 }
 
+// Once we support symbolic origins we should update
+// ManuscriptBlock::global_symbol_definitions() to expose them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Hash)]
 pub struct Origin(pub Address);
 
@@ -263,10 +275,25 @@ impl SourceFile {
 
     pub(crate) fn global_symbol_definitions(
         &self,
-    ) -> impl Iterator<Item = (&SymbolName, &Expression)> {
-        self.blocks
+    ) -> impl Iterator<Item = (SymbolName, SymbolDefinition)> {
+        let result: Vec<(SymbolName, SymbolDefinition)> = self
+            .blocks
             .iter()
-            .flat_map(|block| block.global_symbol_definitions())
+            .enumerate()
+            .flat_map(|(block_number, block)| block.global_symbol_definitions(block_number))
+            .collect();
+        result.into_iter()
+    }
+
+    pub(crate) fn global_symbol_references(
+        &self,
+    ) -> impl Iterator<Item = (SymbolName, SymbolContext)> {
+        let result: Vec<_> = self
+            .blocks
+            .iter()
+            .flat_map(|block| block.global_symbol_references())
+            .collect();
+        result.into_iter()
     }
 }
 
@@ -297,6 +324,15 @@ pub(crate) enum Statement {
     Instruction(ProgramInstruction),
 }
 
+impl Statement {
+    fn memory_size(&self) -> usize {
+        match self {
+            Statement::Assignment(_, _) => 0,
+            Statement::Instruction(_) => 1,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ManuscriptBlock {
     pub(crate) origin: Option<Origin>,
@@ -306,13 +342,52 @@ pub(crate) struct ManuscriptBlock {
 impl ManuscriptBlock {
     pub(crate) fn global_symbol_definitions(
         &self,
-    ) -> impl Iterator<Item = (&SymbolName, &Expression)> {
-        self.statements
-            .iter()
-            .filter_map(|statement: &Statement| match statement {
-                Statement::Assignment(symbol_name, expression) => Some((symbol_name, expression)),
-                _ => None,
-            })
+        block_number: usize,
+    ) -> impl Iterator<Item = (SymbolName, SymbolDefinition)> {
+        let mut offset = 0;
+        let mut result: Vec<(SymbolName, SymbolDefinition)> = Vec::new();
+        if let Some(_origin) = self.origin.as_ref() {
+            // When we support symbolic origins, push the definition here.
+        }
+        for statement in self.statements.iter() {
+            match statement {
+                Statement::Assignment(symbol_name, expression) => {
+                    result.push((
+                        symbol_name.clone(),
+                        SymbolDefinition::Equality(expression.clone()),
+                    ));
+                }
+                Statement::Instruction(ProgramInstruction {
+                    tag,
+                    holdbit: _,
+                    parts: _,
+                }) => {
+                    if let Some(name) = tag {
+                        result.push((
+                            name.clone(),
+                            SymbolDefinition::Tag {
+                                block: block_number,
+                                offset,
+                            },
+                        ));
+                    }
+                    offset += 1;
+                }
+            }
+        }
+        result.into_iter()
+    }
+
+    pub(crate) fn global_symbol_references(
+        &self,
+    ) -> impl Iterator<Item = (SymbolName, SymbolContext)> {
+        // Right now there is no way for a statement to refer to a
+        // symbol, because we don't suport symbolic expressions yet.
+        vec![].into_iter()
+    }
+
+    pub(crate) fn instruction_count(&self) -> usize {
+        self.statements.iter().map(|st| st.memory_size()).sum()
     }
 }
 

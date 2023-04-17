@@ -1,3 +1,4 @@
+use std::cmp::max;
 use std::ffi::OsStr;
 use std::fs::OpenOptions;
 use std::io::{BufReader, BufWriter, Read};
@@ -11,7 +12,7 @@ use super::parser::{source_file, ErrorLocation};
 use super::state::{Error, NumeralMode, State};
 use super::symtab::*;
 use super::types::*;
-use base::prelude::{Address, Unsigned36Bit};
+use base::prelude::{Address, Unsigned18Bit, Unsigned36Bit};
 
 mod output;
 
@@ -22,9 +23,9 @@ struct OutputOptions {
     list: bool,
 }
 
-fn convert_source_file_to_directive(source_file: SourceFile) -> Directive {
+fn convert_source_file_to_directive(source_file: &SourceFile) -> Directive {
     let mut directive: Directive = Directive::new();
-    for mblock in source_file.blocks {
+    for mblock in source_file.blocks.iter() {
         let effective_origin = match mblock.origin {
             None => {
                 let address = Origin::default();
@@ -48,10 +49,10 @@ fn convert_source_file_to_directive(source_file: SourceFile) -> Directive {
             origin: effective_origin,
             items: Vec::new(),
         };
-        for statement in mblock.statements {
+        for statement in mblock.statements.iter() {
             match statement {
                 Statement::Instruction(inst) => {
-                    block.push(inst);
+                    block.push(inst.clone());
                 }
                 Statement::Assignment(_, _) => (),
             }
@@ -134,7 +135,8 @@ pub(crate) fn assemble_nonempty_valid_input(input: &str) -> (Directive, SymbolTa
     }
     match result {
         Ok((source_file, _options)) => {
-            let directive = assemble_pass2(source_file, &mut symtab);
+            let directive = assemble_pass2(&source_file, &mut symtab)
+                .expect("test program should not extend beyong physical memory");
             (directive, symtab)
         }
         Err(e) => {
@@ -191,23 +193,75 @@ impl Binary {
     }
 }
 
+struct AddressOverflow(Address, usize);
+
+fn calculate_block_origins(
+    source_file: &SourceFile,
+    _symtab: &SymbolTable,
+) -> Result<Vec<(Option<SymbolName>, Address)>, AddressOverflow> {
+    let mut result = Vec::new();
+    let mut next_address: Option<Unsigned18Bit> = None;
+    for block in source_file.blocks.iter() {
+        let base = match block.origin {
+            // When symbolic origins become supported we will need to use
+            // the symbol table.
+            Some(Origin(address)) => {
+                let (physical, _mark) = address.split();
+                physical
+            }
+            None => match next_address {
+                Some(a) => a,
+                None => Origin::default().into(),
+            },
+        };
+        result.push((None, base.into()));
+        let blocksize: usize = block.instruction_count();
+        let size = Unsigned18Bit::try_from(blocksize)
+            .map_err(|_| AddressOverflow(Address::from(base), blocksize))?;
+        let next = match base.checked_add(size) {
+            Some(value) => value,
+            None => {
+                return Err(AddressOverflow(Address::from(base), size.into()));
+            }
+        };
+
+        next_address = Some(if let Some(n) = next_address {
+            max(n, next)
+        } else {
+            next
+        });
+    }
+    Ok(result)
+}
+
 /// Pass 2 converts the abstract syntax representation into a
 /// `Directive`, which is closer to binary code.
-fn assemble_pass2(source_file: SourceFile, symtab: &mut SymbolTable) -> Directive {
+fn assemble_pass2(
+    source_file: &SourceFile,
+    symtab: &mut SymbolTable,
+) -> Result<Directive, AddressOverflow> {
     let span = span!(Level::ERROR, "assembly pass 2");
     let _enter = span.enter();
 
+    for (symbol, context) in source_file.global_symbol_references() {
+        symtab.record_usage_context(symbol.clone(), context)
+    }
     for (symbol, definition) in source_file.global_symbol_definitions() {
         symtab.define(symbol.clone(), definition.clone())
     }
-
+    let origins: Vec<(Option<SymbolName>, Address)> = calculate_block_origins(source_file, symtab)?;
+    for (maybe_sym, address) in origins.iter() {
+        if let Some(sym) = maybe_sym {
+            symtab.define(sym.clone(), SymbolDefinition::Origin(*address));
+        }
+    }
     let directive = convert_source_file_to_directive(source_file);
     event!(
         Level::INFO,
         "assembly generated {} instructions",
         directive.instruction_count()
     );
-    directive
+    Ok(directive)
 }
 
 /// Pass 3 generates binary code.
@@ -253,22 +307,36 @@ pub(crate) fn assemble_source(
     }
 
     // Now we do pass 2.
-    let directive = assemble_pass2(source_file, symbols);
-    event!(
-        Level::INFO,
-        "assembly pass 2 generated {} instructions",
-        directive.instruction_count()
-    );
+    let binary = {
+        let directive = match assemble_pass2(&source_file, symbols) {
+            Ok(d) => d,
+            Err(AddressOverflow(base, size)) => {
+                return Err(AssemblerFailure::ProgramTooBig(base, size));
+            }
+        };
+        event!(
+            Level::INFO,
+            "assembly pass 2 generated {} instructions",
+            directive.instruction_count()
+        );
 
-    if options.list {
-        // List the symbols.
-        for (name, definition) in symbols.list() {
-            println!("{name} = {definition}");
+        dbg!(&symbols);
+        if options.list {
+            // List the symbols.
+            match symbols.list() {
+                Ok(list) => {
+                    for (name, definition) in list {
+                        println!("{name} = {definition}");
+                    }
+                }
+                Err(e) => return Err(AssemblerFailure::UnimplementedFeature(e.to_string())),
+            }
         }
-    }
 
-    // Pass 3 generates the binary output
-    let binary = assemble_pass3(directive);
+        // Pass 3 generates the binary output
+        assemble_pass3(directive)
+    };
+
     // The count here also doesn't include the size of the RC-block as
     // that is not yet implemented.
     event!(
