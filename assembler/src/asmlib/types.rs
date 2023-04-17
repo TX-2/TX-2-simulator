@@ -4,7 +4,7 @@ use std::fmt::{self, Display, Formatter};
 use std::io::Error as IoError;
 use std::path::PathBuf;
 
-use base::prelude::Address;
+use base::prelude::{Address, Unsigned18Bit};
 
 /// LineNumber values are usually derived from
 /// LocatedSpan::line_location() which returns a u32.
@@ -12,7 +12,6 @@ pub(crate) type LineNumber = u32;
 
 #[derive(Debug)]
 pub enum AssemblerFailure {
-    Unimplemented(String),
     BadTapeBlock(String),
     IoErrorOnStdout {
         error: IoError,
@@ -32,7 +31,6 @@ pub enum AssemblerFailure {
         msg: String,
     },
     ProgramTooBig(Address, usize),
-    UnimplementedFeature(String),
 }
 
 fn write_os_string(f: &mut Formatter<'_>, s: &OsStr) -> Result<(), fmt::Error> {
@@ -51,9 +49,6 @@ impl Display for AssemblerFailure {
         match self {
             AssemblerFailure::BadTapeBlock(explanation) => {
                 write!(f, "bad tape block: {}", explanation)
-            }
-            AssemblerFailure::Unimplemented(explanation) => {
-                write!(f, "use of unimplemented feature: {}", explanation)
             }
             AssemblerFailure::IoErrorOnStdout { error } => {
                 write!(f, "error writing on stdout: {}", error)
@@ -93,14 +88,9 @@ impl Display for AssemblerFailure {
                     "Program goes not fit into TX-2 memory; a block has origin {base:o} and size {block_size:o} but the largest possible address is {:o}", Address::MAX
                 )
             }
-            AssemblerFailure::UnimplementedFeature(explanation) => {
-                write!(f, "Program uses an unimplemented feature: {}", explanation)
-            }
         }
     }
 }
-
-impl Error for AssemblerFailure {}
 
 #[derive(Debug)]
 pub enum Fail {
@@ -118,3 +108,30 @@ impl Display for Fail {
 }
 
 impl Error for Fail {}
+
+#[derive(Debug)]
+pub(crate) struct AddressOverflow(pub(crate) Address, pub(crate) usize);
+
+impl std::error::Error for AddressOverflow {}
+
+impl Display for AddressOverflow {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(
+            f,
+            "Adding {:o} to {:o} would generate a result which doesn't fit into an 18-bit address",
+            self.0, self.1
+        )
+    }
+}
+
+pub(crate) fn offset_from_origin(
+    origin: &Address,
+    offset: usize,
+) -> Result<Address, AddressOverflow> {
+    let offset18 = Unsigned18Bit::try_from(offset).map_err(|_| AddressOverflow(*origin, offset))?;
+    let (physical, _mark) = origin.split();
+    match physical.checked_add(offset18) {
+        Some(total) => Ok(Address::from(total)),
+        None => Err(AddressOverflow(*origin, offset)),
+    }
+}

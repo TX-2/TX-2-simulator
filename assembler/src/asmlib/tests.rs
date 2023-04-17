@@ -14,6 +14,7 @@ use super::driver::assemble_nonempty_valid_input;
 use super::ek::{self, parse_partially_with};
 use super::parser::*;
 use super::state::{NumeralMode, State, StateExtra};
+use super::symtab::SymbolTable;
 
 #[cfg(test)]
 pub(crate) fn parse_successfully_with<'a, T, F, M>(
@@ -27,7 +28,10 @@ where
 {
     let (output, errors) = ek::parse_with(input_text, parser, state_setup);
     if !errors.is_empty() {
-        panic!("unexpected parse errors: {:?}", &errors);
+        panic!(
+            "unexpected parse errors for input '{}': {:?}",
+            input_text, &errors
+        );
     }
     output
 }
@@ -780,8 +784,9 @@ fn test_opcode() {
 
 #[test]
 fn program_instruction_with_opcode() {
+    let nosyms = SymbolTable::default();
     let inst = parse_successfully_with("²¹IOS₅₂ 30106", program_instruction, no_state_setup);
-    assert_eq!(inst.value(), u36!(0o210452_030106));
+    assert_eq!(inst.value(&nosyms), Ok(u36!(0o210452_030106)));
 }
 
 #[test]

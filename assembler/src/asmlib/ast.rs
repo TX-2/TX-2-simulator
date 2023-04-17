@@ -1,4 +1,5 @@
 ///! Abstract syntax representation.   It's mostly not actually a tree.
+use std::borrow::Cow;
 use std::fmt::{self, Display, Formatter, Octal, Write};
 use std::hash::{Hash, Hasher};
 
@@ -7,7 +8,7 @@ use base::prelude::*;
 
 use super::ek;
 use super::state::NumeralMode;
-use super::symtab::{SymbolContext, SymbolDefinition};
+use super::symtab::{SymbolContext, SymbolDefinition, SymbolLookupFailure, SymbolTable};
 
 /// Eventually we will support symbolic expressions.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -75,12 +76,16 @@ fn format_elevated_chars(f: &mut Formatter<'_>, elevation: &Elevation, s: &str) 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Expression {
     Literal(LiteralValue),
+    Symbol(Elevation, SymbolName),
 }
 
 impl Expression {
-    fn value(&self) -> Unsigned36Bit {
+    fn value(&self, symtab: &SymbolTable) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         match self {
-            Expression::Literal(literal) => literal.value(),
+            Expression::Literal(literal) => Ok(literal.value()),
+            Expression::Symbol(elevation, name) => {
+                symtab.lookup_final(name, &SymbolContext::from(elevation))
+            }
         }
     }
 }
@@ -97,10 +102,29 @@ impl From<(Elevation, Unsigned36Bit)> for Expression {
     }
 }
 
+fn elevated_string<'a>(s: &'a str, elevation: &Elevation) -> Cow<'a, str> {
+    match elevation {
+        Elevation::Normal => Cow::Borrowed(s),
+        Elevation::Superscript => Cow::Owned(
+            s.chars()
+                .map(|ch| superscript_char(ch).unwrap_or(ch))
+                .collect(),
+        ),
+        Elevation::Subscript => Cow::Owned(
+            s.chars()
+                .map(|ch| subscript_char(ch).unwrap_or(ch))
+                .collect(),
+        ),
+    }
+}
+
 impl std::fmt::Display for Expression {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Expression::Literal(value) => value.fmt(f),
+            Expression::Symbol(elevation, name) => {
+                elevated_string(&name.to_string(), elevation).fmt(f)
+            }
         }
     }
 }
@@ -128,8 +152,8 @@ pub(crate) struct InstructionFragment {
 }
 
 impl InstructionFragment {
-    pub(crate) fn value(&self) -> Unsigned36Bit {
-        self.value.value()
+    pub(crate) fn value(&self, symtab: &SymbolTable) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+        self.value.value(symtab)
     }
 }
 
@@ -246,16 +270,27 @@ pub(crate) struct ProgramInstruction {
 const HELD_MASK: Unsigned36Bit = u36!(1 << 35);
 
 impl ProgramInstruction {
-    pub(crate) fn value(&self) -> Unsigned36Bit {
-        let word = self
-            .parts
+    pub(crate) fn value(&self, symtab: &SymbolTable) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+        let or_looked_up_value = |accumulator: Result<Unsigned36Bit, SymbolLookupFailure>,
+                                  frag: &InstructionFragment|
+         -> Result<Unsigned36Bit, SymbolLookupFailure> {
+            match accumulator {
+                Ok(value) => match frag.value(symtab) {
+                    Ok(f) => Ok(value | f),
+                    Err(e) => Err(e),
+                },
+                Err(e) => Err(e),
+            }
+        };
+
+        self.parts
             .iter()
-            .fold(Unsigned36Bit::ZERO, |acc, frag| acc | frag.value());
-        match self.holdbit {
-            HoldBit::Hold => word | HELD_MASK,
-            HoldBit::NotHold => word & !HELD_MASK,
-            HoldBit::Unspecified => word,
-        }
+            .fold(Ok(Unsigned36Bit::ZERO), or_looked_up_value)
+            .map(|word| match self.holdbit {
+                HoldBit::Hold => word | HELD_MASK,
+                HoldBit::NotHold => word & !HELD_MASK,
+                HoldBit::Unspecified => word,
+            })
     }
 }
 

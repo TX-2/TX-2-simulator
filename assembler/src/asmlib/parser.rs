@@ -752,9 +752,13 @@ pub(crate) fn literal<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a,
 pub(crate) fn expression<'a, 'b>(
     input: ek::LocatedSpan<'a, 'b>,
 ) -> ek::IResult<'a, 'b, Expression> {
-    map(alt((literal, opcode)), |literal: LiteralValue| {
+    let symbolic_expression = map(symbol_name, |name| {
+        Expression::Symbol(Elevation::Normal, name)
+    });
+    let literal_expression = map(alt((literal, opcode)), |literal: LiteralValue| {
         Expression::from(literal)
-    })(input)
+    });
+    alt((literal_expression, symbolic_expression))(input)
 }
 
 /// An address expression is a literal value or a symex.  That is I
@@ -966,8 +970,11 @@ pub(crate) fn assignment<'a, 'b>(
 
 pub(crate) fn statement<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, Statement> {
     alt((
-        map(program_instruction, Statement::Instruction),
+        // We have to parse an assignment first here, in order to
+        // accept "FOO=2" as an assignment rather than the instruction
+        // fragment "FOO" followed by a syntax error.
         map(assignment, |(sym, val)| Statement::Assignment(sym, val)),
+        map(program_instruction, Statement::Instruction),
     ))(input)
 }
 

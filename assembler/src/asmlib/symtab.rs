@@ -2,8 +2,12 @@ use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::fmt::{self, Display, Formatter};
 
-use super::ast::{Expression, SymbolName};
+use tracing::{event, Level};
+
 use base::prelude::{Address, Unsigned36Bit};
+
+use super::ast::{Elevation, Expression, SymbolName};
+use super::types::offset_from_origin;
 
 #[derive(Debug, Default, PartialEq, Eq, Copy, Clone)]
 pub(crate) struct SymbolContext {
@@ -16,13 +20,6 @@ pub(crate) struct SymbolContext {
 }
 
 impl SymbolContext {
-    fn configuration() -> SymbolContext {
-        SymbolContext {
-            configuration: true,
-            ..SymbolContext::default()
-        }
-    }
-
     fn bits(&self) -> [bool; 4] {
         [self.configuration, self.index, self.address, self.origin]
     }
@@ -70,6 +67,28 @@ impl SymbolContext {
     }
 }
 
+impl From<&Elevation> for SymbolContext {
+    fn from(elevation: &Elevation) -> SymbolContext {
+        let (configuration, index, address) = match elevation {
+            Elevation::Superscript => (true, false, false),
+            Elevation::Subscript => (false, true, false),
+            Elevation::Normal => (false, false, true),
+        };
+        SymbolContext {
+            configuration,
+            index,
+            address,
+            origin: false,
+        }
+    }
+}
+
+impl From<Elevation> for SymbolContext {
+    fn from(elevation: Elevation) -> SymbolContext {
+        SymbolContext::from(&elevation)
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub(crate) enum SymbolDefinition {
     Tag { block: usize, offset: usize },
@@ -93,6 +112,7 @@ impl SymbolDefinition {
 #[derive(Debug, Default)]
 pub(crate) struct SymbolTable {
     definitions: BTreeMap<SymbolName, SymbolDefinition>,
+    block_oirigins: BTreeMap<usize, Address>,
 }
 
 #[derive(Debug)]
@@ -114,7 +134,7 @@ impl FinalLookupOperation {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub(crate) enum SymbolLookupFailure {
     Loop {
         target: SymbolName,
@@ -153,6 +173,10 @@ impl SymbolTable {
         self.definitions.insert(name, definition);
     }
 
+    pub(crate) fn record_block_origin(&mut self, block_number: usize, address: Address) {
+        self.block_oirigins.insert(block_number, address);
+    }
+
     pub(crate) fn record_usage_context(&mut self, name: SymbolName, context: SymbolContext) {
         self.definitions
             .entry(name)
@@ -181,10 +205,14 @@ impl SymbolTable {
         };
         match self.definitions.get(name) {
             Some(def) => match def {
-                SymbolDefinition::Tag {
-                    block: _,
-                    offset: _,
-                } => todo!(),
+                SymbolDefinition::Tag { block, offset } => match self.block_oirigins.get(block) {
+                    Some(address) => Ok(offset_from_origin(address, *offset)
+                        .expect("program is too long")
+                        .into()),
+                    None => {
+                        panic!("definition of tag {name} references block {block} but there is no such block");
+                    }
+                },
                 SymbolDefinition::Origin(address) => {
                     let (physical, mark) = address.split();
                     if mark {
@@ -194,6 +222,39 @@ impl SymbolTable {
                 }
                 SymbolDefinition::Equality(expression) => match expression {
                     Expression::Literal(literal) => Ok(literal.value()),
+                    Expression::Symbol(elevation, symbol_name) => {
+                        // We re-use the existing op object (1) to
+                        // detect cycles.  I'm not yet clear on how
+                        // precisely to make use of the elevation.
+                        //
+                        // For example, imagine B=² and we are
+                        // assembling this program:
+                        //
+                        //  X-> B TSD ...
+                        //  Y->  ᴮTSD ...
+                        //
+                        // What configuration value is to be used?
+                        // For the first insruction (at X), the
+                        // configuration value is clearly 2.  But for
+                        // the second (at Y), the value of B is
+                        // (2<<30), which is out of range for a
+                        // configuration value.
+                        //
+                        // Similarly, what if B is defined B=(4ᴰ) and D=1?
+                        //
+                        // Related questions arise around how we
+                        // establish what contexts a symbol has been
+                        // used in.
+                        //
+                        // TODO: figure out how this should be interpreted.
+                        if elevation != &Elevation::Normal {
+                            event!(
+                                Level::WARN,
+                                "superscript/subscript inside assignment value may not be correctly handled"
+                            );
+                        }
+                        self.final_lookup_helper(symbol_name, op)
+                    }
                 },
                 SymbolDefinition::Undefined(context_union) => {
                     if context_union.includes(&op.context) {
@@ -216,9 +277,8 @@ impl SymbolTable {
         self.final_lookup_helper(name, &mut op)
     }
 
-    pub(crate) fn list(&self) -> Result<Vec<(SymbolName, Unsigned36Bit)>, SymbolLookupFailure> {
-        let result: Vec<(SymbolName, Unsigned36Bit)> = self
-            .definitions
+    pub(crate) fn list(&self) -> Vec<(SymbolName, Unsigned36Bit)> {
+        self.definitions
             .iter()
             .filter_map(|(name, def)| match def {
                 SymbolDefinition::Equality(Expression::Literal(literal)) => {
@@ -226,7 +286,6 @@ impl SymbolTable {
                 }
                 _ => None, // only equalities are listed.
             })
-            .collect();
-        Ok(result)
+            .collect()
     }
 }

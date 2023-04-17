@@ -12,7 +12,7 @@ use super::parser::{source_file, ErrorLocation};
 use super::state::{Error, NumeralMode, State};
 use super::symtab::*;
 use super::types::*;
-use base::prelude::{Address, Unsigned18Bit, Unsigned36Bit};
+use base::prelude::{Address, Unsigned36Bit};
 
 mod output;
 
@@ -193,38 +193,24 @@ impl Binary {
     }
 }
 
-struct AddressOverflow(Address, usize);
-
 fn calculate_block_origins(
     source_file: &SourceFile,
     _symtab: &SymbolTable,
 ) -> Result<Vec<(Option<SymbolName>, Address)>, AddressOverflow> {
     let mut result = Vec::new();
-    let mut next_address: Option<Unsigned18Bit> = None;
+    let mut next_address: Option<Address> = None;
     for block in source_file.blocks.iter() {
         let base = match block.origin {
             // When symbolic origins become supported we will need to use
             // the symbol table.
-            Some(Origin(address)) => {
-                let (physical, _mark) = address.split();
-                physical
-            }
+            Some(Origin(address)) => address,
             None => match next_address {
                 Some(a) => a,
                 None => Origin::default().into(),
             },
         };
-        result.push((None, base.into()));
-        let blocksize: usize = block.instruction_count();
-        let size = Unsigned18Bit::try_from(blocksize)
-            .map_err(|_| AddressOverflow(Address::from(base), blocksize))?;
-        let next = match base.checked_add(size) {
-            Some(value) => value,
-            None => {
-                return Err(AddressOverflow(Address::from(base), size.into()));
-            }
-        };
-
+        result.push((None, base));
+        let next = offset_from_origin(&base, block.instruction_count())?;
         next_address = Some(if let Some(n) = next_address {
             max(n, next)
         } else {
@@ -250,10 +236,11 @@ fn assemble_pass2(
         symtab.define(symbol.clone(), definition.clone())
     }
     let origins: Vec<(Option<SymbolName>, Address)> = calculate_block_origins(source_file, symtab)?;
-    for (maybe_sym, address) in origins.iter() {
+    for (block_number, (maybe_sym, address)) in origins.iter().enumerate() {
         if let Some(sym) = maybe_sym {
             symtab.define(sym.clone(), SymbolDefinition::Origin(*address));
         }
+        symtab.record_block_origin(block_number, *address);
     }
     let directive = convert_source_file_to_directive(source_file);
     event!(
@@ -265,7 +252,10 @@ fn assemble_pass2(
 }
 
 /// Pass 3 generates binary code.
-fn assemble_pass3(directive: Directive) -> Binary {
+fn assemble_pass3(
+    directive: Directive,
+    symtab: &SymbolTable,
+) -> Result<Binary, SymbolLookupFailure> {
     let span = span!(Level::ERROR, "assembly pass 3");
     let _enter = span.enter();
 
@@ -275,13 +265,17 @@ fn assemble_pass3(directive: Directive) -> Binary {
     }
 
     for block in directive.blocks.iter() {
-        let words: Vec<Unsigned36Bit> = block.items.iter().map(|inst| inst.value()).collect();
+        let words: Vec<Unsigned36Bit> = block
+            .items
+            .iter()
+            .map(|inst| inst.value(symtab))
+            .collect::<Result<Vec<_>, SymbolLookupFailure>>()?;
         binary.add_chunk(BinaryChunk {
             address: block.origin.0,
             words,
         });
     }
-    binary
+    Ok(binary)
 }
 
 pub(crate) fn assemble_source(
@@ -320,21 +314,15 @@ pub(crate) fn assemble_source(
             directive.instruction_count()
         );
 
-        dbg!(&symbols);
         if options.list {
             // List the symbols.
-            match symbols.list() {
-                Ok(list) => {
-                    for (name, definition) in list {
-                        println!("{name} = {definition}");
-                    }
-                }
-                Err(e) => return Err(AssemblerFailure::UnimplementedFeature(e.to_string())),
+            for (name, definition) in symbols.list() {
+                println!("{name} = {definition}");
             }
         }
 
         // Pass 3 generates the binary output
-        assemble_pass3(directive)
+        assemble_pass3(directive, symbols).expect("all symbols should already have final values")
     };
 
     // The count here also doesn't include the size of the RC-block as
