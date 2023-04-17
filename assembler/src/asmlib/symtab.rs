@@ -52,11 +52,11 @@ impl SymbolContext {
             (true, _, _) => Unsigned36Bit::ZERO,
             (false, true, _) => {
                 // Should allocate the lowest unused X-register, but this is not yet implemented.
-                unimplemented!("should assign an index register here")
+                unimplemented!("should assign an index register here (https://github.com/TX-2/TX-2-simulator/issues/109)")
             }
             (false, false, true) => {
                 // Should assign an RC-word.
-                unimplemented!("should assign an RC-word here")
+                unimplemented!("should assign an RC-word here (https://github.com/TX-2/TX-2-simulator/issues/110)")
             }
             (false, false, false) => {
                 unreachable!(
