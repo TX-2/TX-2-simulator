@@ -1,5 +1,5 @@
-use std::fmt::Write;
-use std::num::IntErrorKind;
+mod helpers;
+
 use std::ops::Shl;
 
 use nom::branch::alt;
@@ -14,6 +14,8 @@ use super::ek;
 use super::state::{Error, NumeralMode, StateExtra};
 use super::types::*;
 use base::prelude::*;
+
+use helpers::*;
 
 #[derive(Debug, Clone)]
 pub(crate) struct ErrorLocation {
@@ -32,184 +34,28 @@ impl<'a, 'b> From<&ek::LocatedSpan<'a, 'b>> for ErrorLocation {
     }
 }
 
-pub(crate) fn maybe_superscript_sign<'a, 'b>(
-    input: ek::LocatedSpan<'a, 'b>,
-) -> ek::IResult<'a, 'b, Option<char>> {
-    opt(alt((
-        char('\u{207B}'), // U+207B: superscript minus
-        char('\u{207A}'), // U+207A: superscript plus
-    )))(input)
-}
-
-pub(crate) fn maybe_subscript_sign<'a, 'b>(
-    input: ek::LocatedSpan<'a, 'b>,
-) -> ek::IResult<'a, 'b, Option<char>> {
-    opt(alt((
-        char('\u{208B}'), // U+208B: subscript minus
-        char('\u{208A}'), // U+208A: subscript plus
-    )))(input)
-}
-
-fn make_u36(s: &str, radix: u32) -> Result<Unsigned36Bit, StringConversionFailed> {
-    match u64::from_str_radix(s, radix) {
-        Ok(n) => n.try_into().map_err(StringConversionFailed::Range),
-        Err(e) => match e.kind() {
-            IntErrorKind::Empty | IntErrorKind::InvalidDigit => {
-                Err(StringConversionFailed::NotOctal)
-            }
-            IntErrorKind::PosOverflow => {
-                Err(StringConversionFailed::Range(ConversionFailed::TooLarge))
-            }
-            _ => unreachable!(),
-        },
-    }
-}
-
-fn make_num(
-    (sign, digits, radix): (Option<char>, &str, u32),
-) -> Result<Unsigned36Bit, StringConversionFailed> {
-    let n = make_u36(digits, radix)?;
-    if let Some('-') = sign {
-        Ok(Unsigned36Bit::ZERO.wrapping_sub(n))
-    } else {
-        Ok(n)
-    }
-}
-
-fn make_num_from_span(
-    (sign, digits, dot): (Option<char>, ek::LocatedSpan, Option<ek::LocatedSpan>),
-) -> Result<Unsigned36Bit, StringConversionFailed> {
-    make_num((sign, &digits, digits.extra.radix(dot.is_some())))
-}
-
-fn maybe_superscript_sign_to_maybe_regular_sign(
-    maybe_superscript_sign: Option<char>,
-) -> Option<char> {
-    maybe_superscript_sign.map(|ch| match ch {
-        '\u{207B}' => '-', // U+207B: superscript minus
-        '\u{207A}' => '+', // U+207A: superscript plus
-        _ => unreachable!(),
-    })
-}
-
-fn maybe_subscript_sign_to_maybe_regular_sign(maybe_subscript_sign: Option<char>) -> Option<char> {
-    maybe_subscript_sign.map(|ch| match ch {
-        '\u{208B}' => '-', // U+208B: subscript minus
-        '\u{208A}' => '+', // U+208A: subscript plus
-        _ => unreachable!(),
-    })
-}
-
-fn superscript_oct_digit_to_value(ch: char) -> Option<u8> {
-    match ch {
-        '\u{2070}' => Some(0),
-        '\u{00B9}' => Some(1),
-        '\u{00B2}' => Some(2),
-        '\u{00B3}' => Some(3),
-        '\u{2074}' => Some(4),
-        '\u{2075}' => Some(5),
-        '\u{2076}' => Some(6),
-        '\u{2077}' => Some(7),
-        _ => None,
-    }
-}
-
-fn subscript_oct_digit_to_value(ch: char) -> Option<u8> {
-    match ch {
-        '\u{2080}' => Some(0),
-        '\u{2081}' => Some(1),
-        '\u{2082}' => Some(2),
-        '\u{2083}' => Some(3),
-        '\u{2084}' => Some(4),
-        '\u{2085}' => Some(5),
-        '\u{2086}' => Some(6),
-        '\u{2087}' => Some(7),
-        _ => None,
-    }
-}
-
-fn make_superscript_num(
-    (superscript_sign, superscript_digits, dot): (
-        Option<char>,
-        ek::LocatedSpan,
-        Option<ek::LocatedSpan>,
-    ),
-) -> Result<Unsigned36Bit, StringConversionFailed> {
-    let radix: u32 = superscript_digits.extra.radix(dot.is_some());
-    let sign: Option<char> = maybe_superscript_sign_to_maybe_regular_sign(superscript_sign);
-    let mut normal_digits: String = String::new();
-    for digit in superscript_digits.fragment().chars() {
-        if let Some(n) = superscript_oct_digit_to_value(digit) {
-            if write!(&mut normal_digits, "{}", n).is_err() {
-                // writes to strings always succeed
-                unreachable!()
-            }
-        } else {
-            return Err(StringConversionFailed::NotOctal);
-        }
-    }
-    make_num((sign, &normal_digits, radix))
-}
-
-fn make_subscript_num(
-    (subscript_sign, subscript_digits, dot): (Option<char>, ek::LocatedSpan, Option<char>),
-) -> Result<Unsigned36Bit, StringConversionFailed> {
-    let radix: u32 = subscript_digits.extra.radix(dot.is_some());
-    let sign: Option<char> = maybe_subscript_sign_to_maybe_regular_sign(subscript_sign);
-    let mut normal_digits: String = String::new();
-    for digit in subscript_digits.fragment().chars() {
-        if let Some(n) = subscript_oct_digit_to_value(digit) {
-            if write!(&mut normal_digits, "{}", n).is_err() {
-                // writes to strings always succeed
-                unreachable!()
-            }
-        } else {
-            return Err(StringConversionFailed::NotOctal);
-        }
-    }
-    make_num((sign, &normal_digits, radix))
-}
-
-/// The Linconln writer places the "regular" (i.e. not superscript or
-/// subscript) in the middle of the vertical rise of normal digits
-/// instead of on the line.  So, "3⋅141", not "3.141".
-fn maybe_normal_dot<'a, 'b>(
-    input: ek::LocatedSpan<'a, 'b>,
-) -> ek::IResult<'a, 'b, Option<ek::LocatedSpan<'a, 'b>>> {
-    opt(alt((
-        tag("\u{22C5}"), // Unicode Dot Operator U+22C5 ("⋅")
-        tag("\u{00B7}"), // Unicode Middle Dot U+00B7 ("·")
-    )))(input)
-}
-
-fn maybe_superscript_dot<'a, 'b>(
-    input: ek::LocatedSpan<'a, 'b>,
-) -> ek::IResult<'a, 'b, Option<ek::LocatedSpan<'a, 'b>>> {
-    opt(
-        tag("\u{0307} "), // Unicode Combining Dot Above ̇followed by space ("̇ ")
-    )(input)
-}
-
-/// Recognise a subscript dot.  On the Linconln Writer, the dot is
-/// raised above the line, like the dot customarily used for the
-/// dot-product.  Hence for subscripts we use the regular ascii dot
-/// (full stop, period) which is on the line.
-fn maybe_subscript_dot<'a, 'b>(
-    input: ek::LocatedSpan<'a, 'b>,
-) -> ek::IResult<'a, 'b, Option<char>> {
-    opt(char('.'))(input)
-}
-
 pub(crate) fn normal_literal<'a, 'b>(
     input: ek::LocatedSpan<'a, 'b>,
 ) -> ek::IResult<'a, 'b, LiteralValue> {
+    /// The Linconln writer places the "regular" (i.e. not superscript or
+    /// subscript) in the middle of the vertical rise of normal digits
+    /// instead of on the line.  So, "3⋅141", not "3.141".
+    fn maybe_normal_dot<'a, 'b>(
+        input: ek::LocatedSpan<'a, 'b>,
+    ) -> ek::IResult<'a, 'b, Option<ek::LocatedSpan<'a, 'b>>> {
+        opt(alt((
+            tag("\u{22C5}"), // Unicode Dot Operator U+22C5 ("⋅")
+            tag("\u{00B7}"), // Unicode Middle Dot U+00B7 ("·")
+        )))(input)
+    }
+
     fn maybe_sign<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, Option<char>> {
         opt(alt((char('-'), char('+'))))(input)
     }
     fn normal_number<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, Unsigned36Bit> {
         map_res(
             tuple((maybe_sign, digit1, maybe_normal_dot)),
-            make_num_from_span,
+            helpers::make_num_from_span,
         )(input)
     }
 
@@ -220,7 +66,7 @@ pub(crate) fn normal_literal<'a, 'b>(
 
 pub(crate) fn opcode<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, LiteralValue> {
     fn valid_opcode(s: ek::LocatedSpan) -> Result<LiteralValue, ()> {
-        match opcode_to_num(s.fragment()) {
+        match helpers::opcode_to_num(s.fragment()) {
             DecodedOpcode::Valid(opcode) => {
                 // Some instructions are assembled with the hold bit automatically set.
                 // These are JPX, JNX, LDE, ITE.  See Users Handbook, section 4-3.2 on page 4-5.
@@ -250,7 +96,7 @@ pub(crate) fn superscript_literal<'a, 'b>(
         input: ek::LocatedSpan<'a, 'b>,
     ) -> ek::IResult<'a, 'b, Unsigned36Bit> {
         fn is_superscript_oct_digit(ch: char) -> bool {
-            superscript_oct_digit_to_value(ch).is_some()
+            helpers::superscript_oct_digit_to_value(ch).is_some()
         }
 
         fn superscript_oct_digit1<'a, 'b>(
@@ -259,13 +105,30 @@ pub(crate) fn superscript_literal<'a, 'b>(
             take_while1(is_superscript_oct_digit)(input)
         }
 
+        pub(crate) fn maybe_superscript_sign<'a, 'b>(
+            input: ek::LocatedSpan<'a, 'b>,
+        ) -> ek::IResult<'a, 'b, Option<char>> {
+            opt(alt((
+                char('\u{207B}'), // U+207B: superscript minus
+                char('\u{207A}'), // U+207A: superscript plus
+            )))(input)
+        }
+
+        fn maybe_superscript_dot<'a, 'b>(
+            input: ek::LocatedSpan<'a, 'b>,
+        ) -> ek::IResult<'a, 'b, Option<ek::LocatedSpan<'a, 'b>>> {
+            opt(
+                tag("\u{0307} "), // Unicode Combining Dot Above ̇followed by space ("̇ ")
+            )(input)
+        }
+
         map_res(
             tuple((
                 maybe_superscript_sign,
                 superscript_oct_digit1,
                 maybe_superscript_dot,
             )),
-            make_superscript_num,
+            helpers::make_superscript_num,
         )(input)
     }
 
@@ -281,7 +144,7 @@ pub(crate) fn subscript_literal<'a, 'b>(
         input: ek::LocatedSpan<'a, 'b>,
     ) -> ek::IResult<'a, 'b, Unsigned36Bit> {
         fn is_subscript_oct_digit(ch: char) -> bool {
-            subscript_oct_digit_to_value(ch).is_some()
+            helpers::subscript_oct_digit_to_value(ch).is_some()
         }
 
         fn subscript_oct_digit1<'a, 'b>(
@@ -289,13 +152,33 @@ pub(crate) fn subscript_literal<'a, 'b>(
         ) -> ek::IResult<'a, 'b, ek::LocatedSpan<'a, 'b>> {
             take_while1(is_subscript_oct_digit)(input)
         }
+
+        pub(crate) fn maybe_subscript_sign<'a, 'b>(
+            input: ek::LocatedSpan<'a, 'b>,
+        ) -> ek::IResult<'a, 'b, Option<char>> {
+            opt(alt((
+                char('\u{208B}'), // U+208B: subscript minus
+                char('\u{208A}'), // U+208A: subscript plus
+            )))(input)
+        }
+
+        /// Recognise a subscript dot.  On the Linconln Writer, the dot is
+        /// raised above the line, like the dot customarily used for the
+        /// dot-product.  Hence for subscripts we use the regular ascii dot
+        /// (full stop, period) which is on the line.
+        fn maybe_subscript_dot<'a, 'b>(
+            input: ek::LocatedSpan<'a, 'b>,
+        ) -> ek::IResult<'a, 'b, Option<char>> {
+            opt(char('.'))(input)
+        }
+
         map_res(
             tuple((
                 maybe_subscript_sign,
                 subscript_oct_digit1,
                 maybe_subscript_dot,
             )),
-            make_subscript_num,
+            helpers::make_subscript_num,
         )(input)
     }
 
@@ -308,101 +191,6 @@ pub(crate) fn program_instruction_fragment<'a, 'b>(
     input: ek::LocatedSpan<'a, 'b>,
 ) -> ek::IResult<'a, 'b, InstructionFragment> {
     preceded(space0, map(expression, InstructionFragment::from))(input)
-}
-
-pub(crate) fn program_instruction_fragments<'a, 'b>(
-    input: ek::LocatedSpan<'a, 'b>,
-) -> ek::IResult<'a, 'b, Vec<InstructionFragment>> {
-    many1(program_instruction_fragment)(input)
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum DecodedOpcode {
-    Valid(Unsigned6Bit),
-    Invalid,
-}
-
-fn opcode_to_num(input: &str) -> DecodedOpcode {
-    let val: u8 = match input {
-        // opcode 1 is unused
-        // opcode 2 may be XEQ, but no documentation on this.
-        // opcode 3 is unused
-        "IOS" => 0o4, // see also Vol 3 page 16-05-07
-        "JMP" => 0o5,
-        "JPX" => 0o6,
-        "JNX" => 0o7,
-        "AUX" => 0o10,
-        "RSX" => 0o11,
-        "SKX" | "REX" | "SEX" => 0o12,
-        // opcode 0o13 = 11 is undefined (unused).
-        "EXX" => 0o14,
-        "ADX" => 0o15,
-        "DPX" => 0o16,
-        "SKM" => 0o17,
-        "LDE" => 0o20,
-        "SPF" => 0o21,
-        "SPG" => 0o22,
-        // op>code 0o23 = 19 is undefined (unused).
-        "LDA" => 0o24,
-        "LDB" => 0o25,
-        "LDC" => 0o26,
-        "LDD" => 0o27,
-        "STE" => 0o30,
-        "FLF" => 0o31,
-        "FLG" => 0o32,
-        // opcode 033 = 27 is unused.
-        "STA" => 0o34,
-        "STB" => 0o35,
-        "STC" => 0o36,
-        "STD" => 0o37,
-        "ITE" => 0o40,
-        "ITA" => 0o41,
-        "UNA" => 0o42,
-        "SED" => 0o43,
-
-        // I have two copies of the User Handbook and they differ in
-        // their description of opcodes 0o44, 0o45.
-        //
-        // In the August 1963 copy, 0o44 is missing and 0045 is JOV.
-        //
-        // In the index of the October 1961 copy, 0o44 is JOV and 0o45 is
-        // JZA (handwritten).  However, in this copy, page 3-32 (which
-        // describes JPA, JNA, JOV) gives JOV as 0o45.  So I assume this
-        // is just an error in the index.  This copy does not otherwise
-        // describe a JZA opcode.
-        "JOV" => 0o45,
-
-        "JPA" => 0o46,
-        "JNA" => 0o47,
-        // opcode 0o50 = 40 is undefined (unused).
-        // opcode 0o51 = 41 is undefined (unused).
-        // opcode 0o52 = 42 is undefined (unused).
-        // opcode 0o53 = 43 is undefined (unused).
-        "EXA" => 0o54,
-        "INS" => 0o55,
-        "COM" => 0o56,
-        "TSD" => 0o57,
-        "CYA" => 0o60,
-        "CYB" => 0o61,
-        "CAB" => 0o62,
-        // opcode 0o63 = 51 is unused.
-        "NOA" => 0o64,
-        "DSA" => 0o65,
-        "NAB" => 0o66,
-        "ADD" => 0o67,
-        "SCA" => 0o70,
-        "SCB" => 0o71,
-        "SAB" => 0o72,
-        // opcode 0o71 = 59 is unused.
-        "TLY" => 0o74,
-        "DIV" => 0o75,
-        "MUL" => 0o76,
-        "SUB" => 0o77,
-        _ => {
-            return DecodedOpcode::Invalid;
-        }
-    };
-    DecodedOpcode::Valid(Unsigned6Bit::try_from(val).unwrap())
 }
 
 fn spaces1<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, ek::LocatedSpan<'a, 'b>> {
@@ -650,7 +438,10 @@ pub(crate) fn parse_symex<'a, 'b>(
         }
 
         is_register_name(ident.fragment())
-            || matches!(opcode_to_num(ident.fragment()), DecodedOpcode::Valid(_))
+            || matches!(
+                helpers::opcode_to_num(ident.fragment()),
+                DecodedOpcode::Valid(_)
+            )
     }
 
     fn parse_nonblank_simple_symex_chars<'a, 'b>(
@@ -711,20 +502,6 @@ pub(crate) fn parse_symex<'a, 'b>(
     )(input)
 }
 
-pub(crate) fn arrow<'a, 'b>(
-    input: ek::LocatedSpan<'a, 'b>,
-) -> ek::IResult<'a, 'b, ek::LocatedSpan<'a, 'b>> {
-    fn just_arrow<'a, 'b>(
-        input: ek::LocatedSpan<'a, 'b>,
-    ) -> ek::IResult<'a, 'b, ek::LocatedSpan<'a, 'b>> {
-        alt((
-            tag("->"),
-            tag("\u{2192}"), // Unicode rightwards pointing arrow
-        ))(input)
-    }
-    recognize(tuple((space0, just_arrow, space0)))(input)
-}
-
 pub(crate) fn literal<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, LiteralValue> {
     alt((normal_literal, superscript_literal, subscript_literal))(input)
 }
@@ -779,106 +556,86 @@ pub(crate) fn symbol_name<'a, 'b>(
 pub(crate) fn tag_definition<'a, 'b>(
     input: ek::LocatedSpan<'a, 'b>,
 ) -> ek::IResult<'a, 'b, SymbolName> {
-    terminated(symbol_name, arrow)(input)
-}
-
-fn origin<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, Address> {
-    terminated(address_expression, pair(space0, tag("|")))(input)
-}
-
-pub(crate) fn double_hand<'a, 'b>(
-    input: ek::LocatedSpan<'a, 'b>,
-) -> ek::IResult<'a, 'b, Option<char>> {
-    fn hand<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, char> {
-        char('☛')(input)
-    }
-
-    preceded(
-        hand,
-        ek::expect(hand, "'☛' should be followed by another '☛'"),
-    )(input)
-}
-
-fn base_change<'a, 'b>(
-    input: ek::LocatedSpan<'a, 'b>,
-) -> ek::IResult<'a, 'b, ManuscriptMetaCommand> {
-    fn decimal<'a, 'b>(
+    fn arrow<'a, 'b>(
         input: ek::LocatedSpan<'a, 'b>,
-    ) -> ek::IResult<'a, 'b, ManuscriptMetaCommand> {
-        map(alt((tag("DECIMAL"), tag("DEC"))), |_| {
-            ManuscriptMetaCommand::BaseChange(NumeralMode::Decimal)
-        })(input)
-    }
-    fn octal<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, ManuscriptMetaCommand> {
-        map(alt((tag("OCTAL"), tag("OCT"))), |_| {
-            ManuscriptMetaCommand::BaseChange(NumeralMode::Octal)
-        })(input)
+    ) -> ek::IResult<'a, 'b, ek::LocatedSpan<'a, 'b>> {
+        let just_arrow = alt((
+            tag("->"),
+            tag("\u{2192}"), // Unicode rightwards pointing arrow
+        ));
+        recognize(tuple((space0, just_arrow, space0)))(input)
     }
 
-    alt((decimal, octal))(input)
-}
-
-fn punch_address(a: Option<LiteralValue>) -> Result<PunchCommand, String> {
-    match a {
-        None => Ok(PunchCommand(None)),
-        Some(literal) => {
-            let value = literal.value();
-            match Unsigned18Bit::try_from(value) {
-                Err(e) => Err(format!(
-                    "PUNCH address value {:o} is not a valid address: {}",
-                    value, e
-                )),
-                Ok(halfword) => {
-                    let addr: Address = Address::from(halfword);
-                    if addr.mark_bit() != Unsigned18Bit::ZERO {
-                        Err(format!(
-                            "PUNCH address value {:o} must not be a deferred address",
-                            addr
-                        ))
-                    } else {
-                        Ok(PunchCommand(Some(addr)))
-                    }
-                }
-            }
-        }
-    }
-}
-
-fn punch<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, ManuscriptMetaCommand> {
-    match map_res(
-        // We interpret "AA" in the descripion of the PUNCH
-        // metacommand as accepting only literal numeric (and not
-        // symbolic) values.  That may not be a correct
-        // interpretation, though.
-        preceded(preceded(tag("PUNCH"), spaces1), opt(literal)),
-        punch_address,
-    )(input)
-    {
-        Ok((input, punch)) => {
-            let cmd: ManuscriptMetaCommand = ManuscriptMetaCommand::Punch(punch);
-            Ok((input, cmd))
-        }
-        Err(nom::Err::Error(e) | nom::Err::Failure(e)) => {
-            let err = Error(
-                ErrorLocation::from(&e.input),
-                "invalid PUNCH address".to_string(),
-            );
-            e.input.extra.report_error(err);
-            Ok((e.input, ManuscriptMetaCommand::Invalid))
-        }
-        Err(e) => Err(e),
-    }
-}
-
-fn metacommand_body<'a, 'b>(
-    input: ek::LocatedSpan<'a, 'b>,
-) -> ek::IResult<'a, 'b, ManuscriptMetaCommand> {
-    alt((base_change, punch))(input)
+    terminated(symbol_name, arrow)(input)
 }
 
 pub(crate) fn metacommand<'a, 'b>(
     input: ek::LocatedSpan<'a, 'b>,
 ) -> ek::IResult<'a, 'b, ManuscriptMetaCommand> {
+    fn double_hand<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, Option<char>> {
+        fn hand<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, char> {
+            char('☛')(input)
+        }
+
+        preceded(
+            hand,
+            ek::expect(hand, "'☛' should be followed by another '☛'"),
+        )(input)
+    }
+
+    fn punch<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, ManuscriptMetaCommand> {
+        match map_res(
+            // We interpret "AA" in the descripion of the PUNCH
+            // metacommand as accepting only literal numeric (and not
+            // symbolic) values.  That may not be a correct
+            // interpretation, though.
+            preceded(preceded(tag("PUNCH"), spaces1), opt(literal)),
+            helpers::punch_address,
+        )(input)
+        {
+            Ok((input, punch)) => {
+                let cmd: ManuscriptMetaCommand = ManuscriptMetaCommand::Punch(punch);
+                Ok((input, cmd))
+            }
+            Err(nom::Err::Error(e) | nom::Err::Failure(e)) => {
+                let err = Error(
+                    ErrorLocation::from(&e.input),
+                    "invalid PUNCH address".to_string(),
+                );
+                e.input.extra.report_error(err);
+                Ok((e.input, ManuscriptMetaCommand::Invalid))
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    fn base_change<'a, 'b>(
+        input: ek::LocatedSpan<'a, 'b>,
+    ) -> ek::IResult<'a, 'b, ManuscriptMetaCommand> {
+        fn decimal<'a, 'b>(
+            input: ek::LocatedSpan<'a, 'b>,
+        ) -> ek::IResult<'a, 'b, ManuscriptMetaCommand> {
+            map(alt((tag("DECIMAL"), tag("DEC"))), |_| {
+                ManuscriptMetaCommand::BaseChange(NumeralMode::Decimal)
+            })(input)
+        }
+        fn octal<'a, 'b>(
+            input: ek::LocatedSpan<'a, 'b>,
+        ) -> ek::IResult<'a, 'b, ManuscriptMetaCommand> {
+            map(alt((tag("OCTAL"), tag("OCT"))), |_| {
+                ManuscriptMetaCommand::BaseChange(NumeralMode::Octal)
+            })(input)
+        }
+
+        alt((decimal, octal))(input)
+    }
+
+    fn metacommand_body<'a, 'b>(
+        input: ek::LocatedSpan<'a, 'b>,
+    ) -> ek::IResult<'a, 'b, ManuscriptMetaCommand> {
+        alt((base_change, punch))(input)
+    }
+
     map(
         pair(
             double_hand,
@@ -894,26 +651,26 @@ pub(crate) fn metacommand<'a, 'b>(
     )(input)
 }
 
-/// Accept either 'h' or ':' signalling the hold bit should be set.
-/// The documentation seems to use both, though perhaps ':' is the
-/// older usage.
-fn hold<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, HoldBit> {
-    map(alt((tag("h"), tag(":"))), |_| HoldBit::Hold)(input)
-}
-
-fn not_hold<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, HoldBit> {
-    map(
-        alt((
-            // Accept a combining overbar with h, as used on the TX-2.
-            tag("\u{0305}h"),
-            // Also accept the "h with stroke" (better known as h-bar) symbol.
-            tag("ℏ"),
-        )),
-        |_| HoldBit::NotHold,
-    )(input)
-}
-
 pub(crate) fn maybe_hold<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, HoldBit> {
+    /// Accept either 'h' or ':' signalling the hold bit should be set.
+    /// The documentation seems to use both, though perhaps ':' is the
+    /// older usage.
+    fn hold<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, HoldBit> {
+        map(alt((tag("h"), tag(":"))), |_| HoldBit::Hold)(input)
+    }
+
+    fn not_hold<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, HoldBit> {
+        map(
+            alt((
+                // Accept a combining overbar with h, as used on the TX-2.
+                tag("\u{0305}h"),
+                // Also accept the "h with stroke" (better known as h-bar) symbol.
+                tag("ℏ"),
+            )),
+            |_| HoldBit::NotHold,
+        )(input)
+    }
+
     let holdmapper = |got: Option<HoldBit>| got.unwrap_or(HoldBit::Unspecified);
     map(opt(preceded(space0, alt((hold, not_hold)))), holdmapper)(input)
 }
@@ -930,6 +687,12 @@ pub(crate) fn program_instruction<'a, 'b>(
             holdbit,
             parts: fragments,
         }
+    }
+
+    fn program_instruction_fragments<'a, 'b>(
+        input: ek::LocatedSpan<'a, 'b>,
+    ) -> ek::IResult<'a, 'b, Vec<InstructionFragment>> {
+        many1(program_instruction_fragment)(input)
     }
 
     map(
@@ -958,17 +721,17 @@ fn execute_metacommand(state_extra: &StateExtra, cmd: &ManuscriptMetaCommand) {
     }
 }
 
-/// Assginments are called "equalities" in the TX-2 Users Handbook.
-/// See section 6-2.2, "SYMEX DEFINITON - TAGS - EQUALITIES -
-/// AUTOMATIC ASSIGNMENT".
-pub(crate) fn assignment<'a, 'b>(
-    input: ek::LocatedSpan<'a, 'b>,
-) -> ek::IResult<'a, 'b, (SymbolName, Expression)> {
-    let equals = delimited(space0, tag("="), space0);
-    separated_pair(parse_symex, equals, expression)(input)
-}
-
 pub(crate) fn statement<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, Statement> {
+    /// Assginments are called "equalities" in the TX-2 Users Handbook.
+    /// See section 6-2.2, "SYMEX DEFINITON - TAGS - EQUALITIES -
+    /// AUTOMATIC ASSIGNMENT".
+    fn assignment<'a, 'b>(
+        input: ek::LocatedSpan<'a, 'b>,
+    ) -> ek::IResult<'a, 'b, (SymbolName, Expression)> {
+        let equals = delimited(space0, tag("="), space0);
+        separated_pair(parse_symex, equals, expression)(input)
+    }
+
     alt((
         // We have to parse an assignment first here, in order to
         // accept "FOO=2" as an assignment rather than the instruction
@@ -998,6 +761,9 @@ pub(crate) fn manuscript_line<'a, 'b>(
         ManuscriptLine::Code(maybe_origin, parts.1)
     }
 
+    fn origin<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, Address> {
+        terminated(address_expression, pair(space0, tag("|")))(input)
+    }
     let origin_only = map(origin, |address| {
         ManuscriptLine::JustOrigin(Origin(address))
     });
@@ -1037,62 +803,6 @@ pub(crate) fn end_of_line<'a, 'b>(
     recognize(many1(one_end_of_line))(input)
 }
 
-fn manuscript_lines_to_blocks(
-    lines: Vec<ManuscriptLine>,
-) -> (Vec<ManuscriptBlock>, Option<PunchCommand>) {
-    let mut result: Vec<ManuscriptBlock> = Vec::new();
-    let mut current_statements: Vec<Statement> = Vec::new();
-    let mut maybe_punch: Option<PunchCommand> = None;
-    let mut effective_origin: Option<Origin> = None;
-
-    fn ship_block(
-        statements: &Vec<Statement>,
-        maybe_origin: Option<Origin>,
-        result: &mut Vec<ManuscriptBlock>,
-    ) {
-        if !statements.is_empty() {
-            result.push(ManuscriptBlock {
-                origin: maybe_origin,
-                statements: statements.to_vec(),
-            });
-        }
-    }
-
-    for line in lines {
-        match line {
-            ManuscriptLine::MetaCommand(ManuscriptMetaCommand::Invalid) => {
-                // The error was already reported in the parser state.
-                // The recovery action is just to ignore it.
-            }
-            ManuscriptLine::MetaCommand(ManuscriptMetaCommand::Punch(punch)) => {
-                maybe_punch = Some(punch);
-            }
-            ManuscriptLine::MetaCommand(ManuscriptMetaCommand::BaseChange(_)) => {
-                // These already took effect on the statements which
-                // were parsed following them, so no need to keep them
-                // now.
-            }
-            ManuscriptLine::JustOrigin(new_origin) => {
-                ship_block(&current_statements, effective_origin, &mut result);
-                current_statements.clear();
-                effective_origin = Some(new_origin);
-                // There is no statement to push, though.
-            }
-            ManuscriptLine::Code(new_origin, statement) => {
-                if new_origin.is_some() {
-                    ship_block(&current_statements, effective_origin, &mut result);
-                    current_statements.clear();
-                    effective_origin = new_origin;
-                }
-                current_statements.push(statement);
-            }
-        }
-    }
-    ship_block(&current_statements, effective_origin, &mut result);
-    current_statements.clear();
-    (result, maybe_punch)
-}
-
 pub(crate) fn source_file<'a, 'b>(
     body: ek::LocatedSpan<'a, 'b>,
 ) -> ek::IResult<'a, 'b, SourceFile> {
@@ -1120,7 +830,7 @@ pub(crate) fn source_file<'a, 'b>(
         );
 
         map(parse_source_lines, |lines| {
-            let (blocks, punch) = manuscript_lines_to_blocks(lines);
+            let (blocks, punch) = helpers::manuscript_lines_to_blocks(lines);
             SourceFile { blocks, punch }
         })(input)
     }

@@ -67,34 +67,6 @@ fn test_assemble_blank_line() {
 }
 
 #[test]
-fn test_maybe_superscript_sign() {
-    for sign in [
-        '\u{207B}', // ⁻
-        '\u{207A}', // ⁺
-    ] {
-        let body = format!("{}", sign);
-        assert_eq!(
-            parse_successfully_with(&body, maybe_superscript_sign, no_state_setup),
-            Some(sign)
-        );
-    }
-}
-
-#[test]
-fn test_maybe_subscript_sign() {
-    for sign in [
-        '\u{208B}', // ₋
-        '\u{208A}', // ₊
-    ] {
-        let body = format!("{}", sign);
-        assert_eq!(
-            parse_successfully_with(&body, maybe_subscript_sign, no_state_setup),
-            Some(sign)
-        );
-    }
-}
-
-#[test]
 fn test_normal_literal_oct_defaultmode() {
     // No trailing dot on a number indicates octal base (unless there
     // was a previous ☛☛DECIMAL).
@@ -143,6 +115,11 @@ fn test_superscript_literal_oct() {
         parse_successfully_with("³⁶", superscript_literal, no_state_setup),
         LiteralValue::from((Elevation::Superscript, Unsigned36Bit::from(0o36_u32),))
     );
+    assert_eq!(
+        // U+207A: superscript plus
+        parse_successfully_with("\u{207A}³⁶", superscript_literal, no_state_setup),
+        LiteralValue::from((Elevation::Superscript, Unsigned36Bit::from(0o36_u32),))
+    );
 }
 
 #[test]
@@ -177,6 +154,10 @@ fn test_subscript_literal_oct_defaultmode() {
     assert_eq!(
         parse_successfully_with("₃₁", subscript_literal, no_state_setup),
         LiteralValue::from((Elevation::Subscript, Unsigned36Bit::from(0o31_u32),))
+    );
+    assert_eq!(
+        parse_successfully_with("₊₁₃", subscript_literal, no_state_setup),
+        LiteralValue::from((Elevation::Subscript, Unsigned36Bit::from(0o13_u32),))
     );
 }
 
@@ -402,16 +383,16 @@ fn test_manuscript_with_origin() {
 
 #[test]
 fn test_arrow() {
-    fn arrow_string<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, String> {
-        map(arrow, |s| s.to_string())(input)
+    fn tag_def_string<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, String> {
+        map(tag_definition, |s| s.to_string())(input)
     }
     assert_eq!(
-        parse_successfully_with("->", arrow_string, no_state_setup),
-        "->".to_string()
+        parse_successfully_with("FOO->", tag_def_string, no_state_setup),
+        "FOO".to_string()
     );
     assert_eq!(
-        parse_successfully_with("  -> ", arrow_string, no_state_setup),
-        "  -> ".to_string()
+        parse_successfully_with("BAR  -> ", tag_def_string, no_state_setup),
+        "BAR".to_string()
     );
 }
 
