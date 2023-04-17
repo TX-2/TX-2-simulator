@@ -298,3 +298,31 @@ pub(super) fn manuscript_lines_to_blocks(
     current_statements.clear();
     (result, maybe_punch)
 }
+
+/// Some instructions are assembled with the hold bit automatically
+/// set.  These are JPX, JNX, LDE, ITE.  See Users Handbook, section
+/// 4-3.2 on page 4-5.
+pub(super) fn opcode_auto_hold_bit(opcode: Unsigned6Bit) -> u64 {
+    if matches!(u8::from(opcode), 0o06 | 0o07 | 0o20 | 0o40) {
+        1 << 35
+    } else {
+        0
+    }
+}
+
+pub(super) fn is_nonblank_simple_symex_char(c: char) -> bool {
+    c.is_ascii_digit()
+        || c.is_ascii_uppercase()
+        || matches!(
+            c,
+            'i' | 'j' | 'k' | 'n' | 'p' | 'q' | 't' | 'w' | 'x' | 'y' | 'z' |
+            '.' | '\'' | '_' |
+            '\u{203E}' | // Unicode non-combining overline
+            '\u{25A1}' | // Unicode white square
+            '\u{25CB}' // Unicode white circle
+        )
+}
+
+pub(super) fn is_register_name(name: &str) -> bool {
+    matches!(name, "A" | "B" | "C" | "D" | "E")
+}

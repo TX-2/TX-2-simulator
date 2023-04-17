@@ -37,22 +37,17 @@ impl<'a, 'b> From<&ek::LocatedSpan<'a, 'b>> for ErrorLocation {
 }
 
 fn normal_literal<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, LiteralValue> {
-    /// The Linconln writer places the "regular" (i.e. not superscript or
-    /// subscript) in the middle of the vertical rise of normal digits
-    /// instead of on the line.  So, "3⋅141", not "3.141".
-    fn maybe_normal_dot<'a, 'b>(
-        input: ek::LocatedSpan<'a, 'b>,
-    ) -> ek::IResult<'a, 'b, Option<ek::LocatedSpan<'a, 'b>>> {
-        opt(alt((
+    fn normal_number<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, Unsigned36Bit> {
+        // The Linconln writer places the "regular" (i.e. not
+        // superscript or subscript) in the middle of the vertical
+        // rise of normal digits instead of on the line.  So, "3⋅141",
+        // not "3.141".
+        let maybe_normal_dot = opt(alt((
             tag("\u{22C5}"), // Unicode Dot Operator U+22C5 ("⋅")
             tag("\u{00B7}"), // Unicode Middle Dot U+00B7 ("·")
-        )))(input)
-    }
+        )));
+        let maybe_sign = opt(alt((char('-'), char('+'))));
 
-    fn maybe_sign<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, Option<char>> {
-        opt(alt((char('-'), char('+'))))(input)
-    }
-    fn normal_number<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, Unsigned36Bit> {
         map_res(
             tuple((maybe_sign, digit1, maybe_normal_dot)),
             helpers::make_num_from_span,
@@ -66,24 +61,20 @@ fn normal_literal<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b,
 
 fn opcode<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, LiteralValue> {
     fn valid_opcode(s: ek::LocatedSpan) -> Result<LiteralValue, ()> {
-        match helpers::opcode_to_num(s.fragment()) {
-            DecodedOpcode::Valid(opcode) => {
-                // Some instructions are assembled with the hold bit automatically set.
-                // These are JPX, JNX, LDE, ITE.  See Users Handbook, section 4-3.2 on page 4-5.
-                let maybe_hold: u64 = if matches!(u8::from(opcode), 0o06 | 0o07 | 0o20 | 0o40) {
-                    1 << 35
-                } else {
-                    0
-                };
-                Ok(LiteralValue::from((
-                    Elevation::Normal,
-                    // Bits 24-29 (dec) inclusive in the instruction word
-                    // represent the opcode, so shift the opcode's value
-                    // left by 24 decimal.
-                    Unsigned36Bit::from(opcode).shl(24).bitor(maybe_hold),
-                )))
-            }
-            DecodedOpcode::Invalid => Err(()),
+        if let DecodedOpcode::Valid(opcode) = helpers::opcode_to_num(s.fragment()) {
+            Ok(LiteralValue::from((
+                Elevation::Normal,
+                // Bits 24-29 (dec) inclusive in the instruction word
+                // represent the opcode, so shift the opcode's value
+                // left by 24 decimal.
+                Unsigned36Bit::from(opcode)
+                    .shl(24)
+                    // Some opcodes automatically set the hold
+                    // bit, so do that here.
+                    .bitor(helpers::opcode_auto_hold_bit(opcode)),
+            )))
+        } else {
+            Err(())
         }
     }
     map_res(take(3usize), valid_opcode)(input)
@@ -99,28 +90,15 @@ fn superscript_literal<'a, 'b>(
             helpers::superscript_oct_digit_to_value(ch).is_some()
         }
 
-        fn superscript_oct_digit1<'a, 'b>(
-            input: ek::LocatedSpan<'a, 'b>,
-        ) -> ek::IResult<'a, 'b, ek::LocatedSpan<'a, 'b>> {
-            take_while1(is_superscript_oct_digit)(input)
-        }
+        let superscript_oct_digit1 = take_while1(is_superscript_oct_digit);
+        let maybe_superscript_sign = opt(alt((
+            char('\u{207B}'), // U+207B: superscript minus
+            char('\u{207A}'), // U+207A: superscript plus
+        )));
 
-        fn maybe_superscript_sign<'a, 'b>(
-            input: ek::LocatedSpan<'a, 'b>,
-        ) -> ek::IResult<'a, 'b, Option<char>> {
-            opt(alt((
-                char('\u{207B}'), // U+207B: superscript minus
-                char('\u{207A}'), // U+207A: superscript plus
-            )))(input)
-        }
-
-        fn maybe_superscript_dot<'a, 'b>(
-            input: ek::LocatedSpan<'a, 'b>,
-        ) -> ek::IResult<'a, 'b, Option<ek::LocatedSpan<'a, 'b>>> {
-            opt(
-                tag("\u{0307} "), // Unicode Combining Dot Above ̇followed by space ("̇ ")
-            )(input)
-        }
+        let maybe_superscript_dot = opt(
+            tag("\u{0307} "), // Unicode Combining Dot Above ̇followed by space ("̇ ")
+        );
 
         map_res(
             tuple((
@@ -145,30 +123,17 @@ fn subscript_literal<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 
             helpers::subscript_oct_digit_to_value(ch).is_some()
         }
 
-        fn subscript_oct_digit1<'a, 'b>(
-            input: ek::LocatedSpan<'a, 'b>,
-        ) -> ek::IResult<'a, 'b, ek::LocatedSpan<'a, 'b>> {
-            take_while1(is_subscript_oct_digit)(input)
-        }
+        let subscript_oct_digit1 = take_while1(is_subscript_oct_digit);
+        let maybe_subscript_sign = opt(alt((
+            char('\u{208B}'), // U+208B: subscript minus
+            char('\u{208A}'), // U+208A: subscript plus
+        )));
 
-        fn maybe_subscript_sign<'a, 'b>(
-            input: ek::LocatedSpan<'a, 'b>,
-        ) -> ek::IResult<'a, 'b, Option<char>> {
-            opt(alt((
-                char('\u{208B}'), // U+208B: subscript minus
-                char('\u{208A}'), // U+208A: subscript plus
-            )))(input)
-        }
-
-        /// Recognise a subscript dot.  On the Linconln Writer, the dot is
-        /// raised above the line, like the dot customarily used for the
-        /// dot-product.  Hence for subscripts we use the regular ascii dot
-        /// (full stop, period) which is on the line.
-        fn maybe_subscript_dot<'a, 'b>(
-            input: ek::LocatedSpan<'a, 'b>,
-        ) -> ek::IResult<'a, 'b, Option<char>> {
-            opt(char('.'))(input)
-        }
+        // Recognise a subscript dot.  On the Linconln Writer, the dot
+        // is raised above the line, like the dot customarily used for
+        // the dot-product.  Hence for subscripts we use the regular
+        // ascii dot (full stop, period) which is on the line.
+        let maybe_subscript_dot = opt(char('.'));
 
         map_res(
             tuple((
@@ -193,19 +158,6 @@ fn program_instruction_fragment<'a, 'b>(
 
 fn spaces1<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, ek::LocatedSpan<'a, 'b>> {
     take_while1(|c| c == ' ')(input)
-}
-
-fn is_nonblank_simple_symex_char(c: char) -> bool {
-    c.is_ascii_digit()
-        || c.is_ascii_uppercase()
-        || matches!(
-            c,
-            'i' | 'j' | 'k' | 'n' | 'p' | 'q' | 't' | 'w' | 'x' | 'y' | 'z' |
-            '.' | '\'' | '_' |
-            '\u{203E}' | // Unicode non-combining overline
-            '\u{25A1}' | // Unicode white square
-            '\u{25CB}' // Unicode white circle
-        )
 }
 
 /// Recognise a single dead character, a character which does not
@@ -429,11 +381,7 @@ fn parse_compound_char<'a, 'b>(
 
 fn parse_symex<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, SymbolName> {
     fn is_reserved_identifier(ident: &ek::LocatedSpan) -> bool {
-        fn is_register_name(name: &str) -> bool {
-            matches!(name, "A" | "B" | "C" | "D" | "E")
-        }
-
-        is_register_name(ident.fragment())
+        helpers::is_register_name(ident.fragment())
             || matches!(
                 helpers::opcode_to_num(ident.fragment()),
                 DecodedOpcode::Valid(_)
