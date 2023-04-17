@@ -742,12 +742,6 @@ fn end_of_line<'a, 'b>(
 pub(crate) fn source_file<'a, 'b>(
     body: ek::LocatedSpan<'a, 'b>,
 ) -> ek::IResult<'a, 'b, SourceFile> {
-    fn parse_empty_source_file<'a, 'b>(
-        body: ek::LocatedSpan<'a, 'b>,
-    ) -> ek::IResult<'a, 'b, SourceFile> {
-        map(take(0usize), |_| SourceFile::empty())(body)
-    }
-
     // Parse a manuscript (which is a sequence of metacommands, macros
     // and assembly-language instructions).
     fn parse_nonempty_source_file<'a, 'b>(
@@ -771,8 +765,5 @@ pub(crate) fn source_file<'a, 'b>(
         })(input)
     }
 
-    terminated(
-        alt((parse_nonempty_source_file, parse_empty_source_file)),
-        ek::expect_end_of_file,
-    )(body)
+    terminated(parse_nonempty_source_file, ek::expect_end_of_file)(body)
 }

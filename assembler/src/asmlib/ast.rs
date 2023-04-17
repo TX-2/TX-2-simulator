@@ -301,13 +301,6 @@ pub(crate) struct SourceFile {
 }
 
 impl SourceFile {
-    pub(crate) fn empty() -> SourceFile {
-        SourceFile {
-            blocks: Vec::new(),
-            punch: None,
-        }
-    }
-
     pub(crate) fn global_symbol_definitions(
         &self,
     ) -> impl Iterator<Item = (SymbolName, SymbolDefinition)> {

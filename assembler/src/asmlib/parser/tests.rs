@@ -55,14 +55,6 @@ fn set_decimal_mode(state: &mut State) {
 }
 
 #[test]
-fn test_assemble_blank_line() {
-    assert_eq!(
-        parse_successfully_with("", source_file, no_state_setup),
-        SourceFile::empty()
-    );
-}
-
-#[test]
 fn test_normal_literal_oct_defaultmode() {
     // No trailing dot on a number indicates octal base (unless there
     // was a previous ☛☛DECIMAL).
@@ -267,7 +259,10 @@ fn test_parse_compound_char() {
 fn test_empty_manuscript() {
     assert_eq!(
         parse_successfully_with("", source_file, no_state_setup),
-        SourceFile::empty()
+        SourceFile {
+            blocks: vec![],
+            punch: None
+        }
     )
 }
 
