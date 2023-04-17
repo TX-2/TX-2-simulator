@@ -19,43 +19,43 @@ mod tests9;
 // which are always possible (e.g. From<i8> for Signed9Bit).
 macro_rules! from_native_type_to_self {
     ($SelfT:ty, $InnerT:ty, $SignedInnerT:ty, $($from:ty)*) => {
-	$(
-	    impl From<$from> for $SelfT {
-		fn from(n: $from) -> Self {
-		    let v: $SignedInnerT = n.into();
-		    Self {
-			bits: <$SelfT>::convert_to_ones_complement(v),
-		    }
-		}
-	    }
-	)*
+        $(
+            impl From<$from> for $SelfT {
+                fn from(n: $from) -> Self {
+                    let v: $SignedInnerT = n.into();
+                    Self {
+                        bits: <$SelfT>::convert_to_ones_complement(v),
+                    }
+                }
+            }
+        )*
     }
 }
 
 macro_rules! try_from_native_type_to_self {
     ($SelfT:ty, $InnerT:ty, $SignedInnerT:ty, $($from:ty)*) => {
-	$(
-	    impl TryFrom<$from> for $SelfT {
-		type Error = ConversionFailed;
-		fn try_from(n: $from) -> Result<$SelfT, ConversionFailed> {
-		    match n.try_into() {
-			Err(_) if n > 0 => Err(ConversionFailed::TooLarge),
-			Err(_) => Err(ConversionFailed::TooSmall),
-			Ok(signed_value) => {
-			    if signed_value > (Self::VALUE_BITS as $SignedInnerT) {
-				Err(ConversionFailed::TooLarge)
-			    } else if signed_value < -(Self::VALUE_BITS as $SignedInnerT) {
-				Err(ConversionFailed::TooSmall)
-			    } else {
-				Ok(Self {
-				    bits: <$SelfT>::convert_to_ones_complement(signed_value)
-				})
-			    }
-			}
-		    }
-		}
-	    }
-	)*
+        $(
+            impl TryFrom<$from> for $SelfT {
+                type Error = ConversionFailed;
+                fn try_from(n: $from) -> Result<$SelfT, ConversionFailed> {
+                    match n.try_into() {
+                        Err(_) if n > 0 => Err(ConversionFailed::TooLarge),
+                        Err(_) => Err(ConversionFailed::TooSmall),
+                        Ok(signed_value) => {
+                            if signed_value > (Self::VALUE_BITS as $SignedInnerT) {
+                                Err(ConversionFailed::TooLarge)
+                            } else if signed_value < -(Self::VALUE_BITS as $SignedInnerT) {
+                                Err(ConversionFailed::TooSmall)
+                            } else {
+                                Ok(Self {
+                                    bits: <$SelfT>::convert_to_ones_complement(signed_value)
+                                })
+                            }
+                        }
+                    }
+                }
+            }
+        )*
     }
 }
 
@@ -63,21 +63,21 @@ macro_rules! try_from_native_type_to_self {
 // which are always possible (e.g. From<Signed9Bit> for i16).
 macro_rules! from_self_to_native_type {
     ($SelfT:ty, $InnerT:ty, $SignedInnerT:ty, $($to:ty)*) => {
-	$(
-	    impl From<$SelfT> for $to {
-		fn from(n: $SelfT) -> $to {
-		    if n.is_zero() {
-			0 as Self
-		    } else if n.is_negative() {
-			let inverted_bits = (!n.bits) & <$SelfT>::VALUE_BITS;
-			let absolute_value = inverted_bits as $SignedInnerT;
-			(-absolute_value) as Self
-		    } else {
-			n.bits as Self
-		    }
-		}
-	    }
-	)*
+        $(
+            impl From<$SelfT> for $to {
+                fn from(n: $SelfT) -> $to {
+                    if n.is_zero() {
+                        0 as Self
+                    } else if n.is_negative() {
+                        let inverted_bits = (!n.bits) & <$SelfT>::VALUE_BITS;
+                        let absolute_value = inverted_bits as $SignedInnerT;
+                        (-absolute_value) as Self
+                    } else {
+                        n.bits as Self
+                    }
+                }
+            }
+        )*
     }
 }
 
@@ -85,26 +85,26 @@ macro_rules! from_self_to_native_type {
 // which may not always be possible (e.g. From<Signed18Bit> for u16).
 macro_rules! try_from_self_to_native_type {
     ($SelfT:ty, $InnerT:ty, $SignedInnerT:ty, $($to:ty)*) => {
-	$(
-	    impl TryFrom<$SelfT> for $to {
-		type Error = ConversionFailed;
-		fn try_from(n: $SelfT) -> Result<$to, ConversionFailed> {
-		    if n.is_zero() {
-			return Ok(0);
-		    }
-		    #[allow(unused_comparisons)]
-		    if n.is_negative() {
-			let inverted_bits: $InnerT = (!n.bits) & <$SelfT>::VALUE_BITS;
-			let absolute_value: $SignedInnerT = inverted_bits as $SignedInnerT;
-			<$to>::try_from(-absolute_value)
-			    .map_err(|_| ConversionFailed::TooSmall)
-		    } else {
-			<$to>::try_from(n.bits)
-			    .map_err(|_| ConversionFailed::TooLarge)
-		    }
-		}
-	    }
-	)*
+        $(
+            impl TryFrom<$SelfT> for $to {
+                type Error = ConversionFailed;
+                fn try_from(n: $SelfT) -> Result<$to, ConversionFailed> {
+                    if n.is_zero() {
+                        return Ok(0);
+                    }
+                    #[allow(unused_comparisons)]
+                    if n.is_negative() {
+                        let inverted_bits: $InnerT = (!n.bits) & <$SelfT>::VALUE_BITS;
+                        let absolute_value: $SignedInnerT = inverted_bits as $SignedInnerT;
+                        <$to>::try_from(-absolute_value)
+                            .map_err(|_| ConversionFailed::TooSmall)
+                    } else {
+                        <$to>::try_from(n.bits)
+                            .map_err(|_| ConversionFailed::TooLarge)
+                    }
+                }
+            }
+        )*
     }
 }
 
@@ -321,15 +321,11 @@ pub struct Signed5Bit {
 
 signed_ones_complement_impl!(Signed5Bit, 5, u8, i8, Unsigned5Bit);
 
-// We only support a limited set of conversions.
+// from_native_type_to_self: nothing is narrow enough to always succeed.
+try_from_native_type_to_self!(Signed5Bit, u8, i8, i8 u8 i16 u16 i32 u32 i64 u64 isize usize);
 
-// i8 -> Signed5Bit
-// u8 -> Signed5Bit
-try_from_native_type_to_self!(Signed5Bit, u8, i8, i8 u8);
-
-// Signed5Bit -> i8
-from_self_to_native_type!(Signed5Bit, u8, i8, i8);
-try_from_self_to_native_type!(Signed5Bit, u8, i8, u8);
+from_self_to_native_type!(Signed5Bit, u8, i8, i8 i16 i32 i64 isize);
+try_from_self_to_native_type!(Signed5Bit, u8, i8, u8 u16 u32 u64 usize);
 
 ////////////////////////////////////////////////////////////////////////
 // Signed6Bit
@@ -345,15 +341,11 @@ pub struct Signed6Bit {
 
 signed_ones_complement_impl!(Signed6Bit, 6, u8, i8, Unsigned6Bit);
 
-// We only support a limited set of conversions.
+// from_native_type_to_self: nothing is narrow enough to always succeed.
+try_from_native_type_to_self!(Signed6Bit, u8, i8, i8 u8 i16 u16 i32 u32 i64 u64 isize usize);
 
-// i8 -> Signed6Bit
-// u8 -> Signed6Bit
-try_from_native_type_to_self!(Signed6Bit, u8, i8, i8 u8);
-
-// Signed6Bit -> i8
-from_self_to_native_type!(Signed6Bit, u8, i8, i8);
-try_from_self_to_native_type!(Signed6Bit, u8, i8, u8);
+from_self_to_native_type!(Signed6Bit, u8, i8, i8 i16 i32 i64 isize);
+try_from_self_to_native_type!(Signed6Bit, u8, i8, u8 u16 u32 u64 usize);
 
 ////////////////////////////////////////////////////////////////////////
 // Signed9Bit
@@ -367,34 +359,11 @@ pub struct Signed9Bit {
 
 signed_ones_complement_impl!(Signed9Bit, 9, u16, i16, Unsigned9Bit);
 
-// i8 -> Signed9Bit
-// u8 -> Signed9Bit
 from_native_type_to_self!(Signed9Bit, u16, i16, i8 u8);
+try_from_native_type_to_self!(Signed9Bit, u16, i16, i16 u16 i32 u32 i64 u64 isize usize);
 
-// i16 -> Signed9Bit
-// u16 -> Signed9Bit
-// i32 -> Signed9Bit
-// u32 -> Signed9Bit
-// i64 -> Signed9Bit
-// u64 -> Signed9Bit
-try_from_native_type_to_self!(Signed9Bit, u16, i16, i16 u16 i32 u32 i64 u64);
-
-// Signed9Bit -> i8
-// Signed9Bit -> u8
-try_from_self_to_native_type!(Signed9Bit, u16, i16, i8 u8);
-
-// Signed9Bit -> i16
-from_self_to_native_type!(Signed9Bit, u16, i16, i16);
-// Signed9Bit -> u16
-try_from_self_to_native_type!(Signed9Bit, u16, i16, u16);
-// Signed9Bit -> i32
-from_self_to_native_type!(Signed9Bit, u16, i16, i32);
-// Signed9Bit -> u32
-try_from_self_to_native_type!(Signed9Bit, u16, i16, u32);
-// Signed9Bit -> i64
-from_self_to_native_type!(Signed9Bit, u16, i16, i64);
-// Signed9Bit -> u64
-try_from_self_to_native_type!(Signed9Bit, u16, i16, u64);
+from_self_to_native_type!(Signed9Bit, u16, i16, i16 i32 i64 isize);
+try_from_self_to_native_type!(Signed9Bit, u16, i16, i8 u8 u16 u32 u64 usize);
 
 ////////////////////////////////////////////////////////////////////////
 // Signed12Bit
@@ -408,34 +377,11 @@ pub struct Signed12Bit {
 
 signed_ones_complement_impl!(Signed12Bit, 12, u16, i16, Unsigned12Bit);
 
-// i8 -> Signed12Bit
-// u8 -> Signed12Bit
 from_native_type_to_self!(Signed12Bit, u16, i16, i8 u8);
+try_from_native_type_to_self!(Signed12Bit, u16, i16, i16 u16 i32 u32 i64 u64 isize usize);
 
-// i16 -> Signed12Bit
-// u16 -> Signed12Bit
-// i32 -> Signed12Bit
-// u32 -> Signed12Bit
-// i64 -> Signed12Bit
-// u64 -> Signed12Bit
-try_from_native_type_to_self!(Signed12Bit, u16, i16, i16 u16 i32 u32 i64 u64);
-
-// Signed12Bit -> i8
-// Signed12Bit -> u8
-try_from_self_to_native_type!(Signed12Bit, u16, i16, i8 u8);
-
-// Signed12Bit -> i16
-from_self_to_native_type!(Signed12Bit, u16, i16, i16);
-// Signed12Bit -> u16
-try_from_self_to_native_type!(Signed12Bit, u16, i16, u16);
-// Signed12Bit -> i32
-from_self_to_native_type!(Signed12Bit, u16, i16, i32);
-// Signed12Bit -> u32
-try_from_self_to_native_type!(Signed12Bit, u16, i16, u32);
-// Signed12Bit -> i64
-from_self_to_native_type!(Signed12Bit, u16, i16, i64);
-// Signed12Bit -> u64
-try_from_self_to_native_type!(Signed12Bit, u16, i16, u64);
+from_self_to_native_type!(Signed12Bit, u16, i16, i16 i32 i64 isize);
+try_from_self_to_native_type!(Signed12Bit, u16, i16, i8 u8 u16 u32 u64);
 
 ////////////////////////////////////////////////////////////////////////
 // Signed18Bit
@@ -447,34 +393,13 @@ pub struct Signed18Bit {
     pub(crate) bits: u32,
 }
 
-// i8 -> Signed18Bit
-// u8 -> Signed18Bit
-// i16 -> Signed18Bit
-// u16 -> Signed18Bit
-from_native_type_to_self!(Signed18Bit, u32, i32, i8 u8 i16 u16);
-
-// i32 -> Signed18Bit
-// u32 -> Signed18Bit
-// i64 -> Signed18Bit
-// u64 -> Signed18Bit
-try_from_native_type_to_self!(Signed18Bit, u32, i32, i32 u32 i64 u64);
-
-// Signed18Bit -> i8
-// Signed18Bit -> u8
-// Signed18Bit -> i16
-// Signed18Bit -> u16
-try_from_self_to_native_type!(Signed18Bit, u32, i32, i8 u8 i16 u16);
-
-// Signed18Bit -> i32
-from_self_to_native_type!(Signed18Bit, u32, i32, i32);
-// Signed18Bit -> u32
-try_from_self_to_native_type!(Signed18Bit, u32, i32, u32);
-// Signed18Bit -> i64
-from_self_to_native_type!(Signed18Bit, u32, i32, i64);
-// Signed18Bit -> u64
-try_from_self_to_native_type!(Signed18Bit, u32, i32, u64);
-
 signed_ones_complement_impl!(Signed18Bit, 18, u32, i32, Unsigned18Bit);
+
+from_native_type_to_self!(Signed18Bit, u32, i32, i8 u8 i16 u16);
+try_from_native_type_to_self!(Signed18Bit, u32, i32, i32 u32 i64 u64 isize usize);
+
+from_self_to_native_type!(Signed18Bit, u32, i32, i32 i64 isize);
+try_from_self_to_native_type!(Signed18Bit, u32, i32, i8 u8 i16 u16 u32 u64 usize);
 
 ////////////////////////////////////////////////////////////////////////
 // Signed36Bit
@@ -486,32 +411,13 @@ pub struct Signed36Bit {
     pub(crate) bits: u64,
 }
 
-// i8 -> Signed36Bit
-// u8 -> Signed36Bit
-// i16 -> Signed36Bit
-// u16 -> Signed36Bit
-// i32 -> Signed36Bit
-// u32 -> Signed36Bit
-from_native_type_to_self!(Signed36Bit, u64, i64, i8 u8 i16 u16 i32 u32);
-
-// i64 -> Signed36Bit
-// u64 -> Signed36Bit
-try_from_native_type_to_self!(Signed36Bit, u64, i64, i64 u64);
-
-// Signed36Bit -> i8
-// Signed36Bit -> u8
-// Signed36Bit -> i16
-// Signed36Bit -> u16
-// Signed36Bit -> i32
-// Signed36Bit -> u32
-try_from_self_to_native_type!(Signed36Bit, u64, i64, i8 u8 i16 u16 i32 u32);
-
-// Signed36Bit -> i64
-from_self_to_native_type!(Signed36Bit, u64, i64, i64);
-// Signed36Bit -> u64
-try_from_self_to_native_type!(Signed36Bit, u64, i64, u64);
-
 signed_ones_complement_impl!(Signed36Bit, 36, u64, i64, Unsigned36Bit);
+
+from_native_type_to_self!(Signed36Bit, u64, i64, i8 u8 i16 u16 i32 u32);
+try_from_native_type_to_self!(Signed36Bit, u64, i64, i64 u64 isize usize);
+
+from_self_to_native_type!(Signed36Bit, u64, i64, i64);
+try_from_self_to_native_type!(Signed36Bit, u64, i64, i8 u8 i16 u16 i32 u32 u64 isize usize);
 
 impl TryFrom<Unsigned18Bit> for Signed18Bit {
     type Error = ConversionFailed;

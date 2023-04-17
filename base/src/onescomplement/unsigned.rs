@@ -23,15 +23,15 @@ mod tests;
 /// which are always possible (e.g. From<u8> for Unsigned9Bit).
 macro_rules! from_native_type_to_self {
     ($SelfT:ty, $($from:ty)*) => {
-	$(
-	    impl From<$from> for $SelfT {
-		fn from(n: $from) -> Self {
-		    Self {
-			bits: n.into(),
-		    }
-		}
-	    }
-	)*
+        $(
+            impl From<$from> for $SelfT {
+                fn from(n: $from) -> Self {
+                    Self {
+                        bits: n.into(),
+                    }
+                }
+            }
+        )*
     }
 }
 
@@ -39,21 +39,21 @@ macro_rules! from_native_type_to_self {
 /// types which are always possible (e.g. From<Unsigned9Bit> for i16).
 macro_rules! from_self_to_native_type {
     ($SelfT:ty, $($to:ty)*) => {
-	$(
-	    impl From<$SelfT> for $to {
-		fn from(n: $SelfT) -> $to {
-		    // Note that $InnerT for Unsigned9Bit is u16, and
-		    // from_self_to_native_type is called with $to =
-		    // i16, because the limits of Unsigned9Bit are
-		    // wholly inside the limits of i16.  However,
-		    // since some u16 values call outside the range of
-		    // i16, we cannot use .into() here.  That is, we
-		    // know more about the range of values n.bits can
-		    // take than te compiler knows).
-		    n.bits as $to
-		}
-	    }
-	)*
+        $(
+            impl From<$SelfT> for $to {
+                fn from(n: $SelfT) -> $to {
+                    // Note that $InnerT for Unsigned9Bit is u16, and
+                    // from_self_to_native_type is called with $to =
+                    // i16, because the limits of Unsigned9Bit are
+                    // wholly inside the limits of i16.  However,
+                    // since some u16 values call outside the range of
+                    // i16, we cannot use .into() here.  That is, we
+                    // know more about the range of values n.bits can
+                    // take than te compiler knows).
+                    n.bits as $to
+                }
+            }
+        )*
     }
 }
 
@@ -62,14 +62,14 @@ macro_rules! from_self_to_native_type {
 /// TryFrom<Unsigned18Bit> for u8.
 macro_rules! try_from_self_to_native_type {
     ($SelfT:ty, $($to:ty)*) => {
-	$(
-	    impl TryFrom<$SelfT> for $to {
-		type Error = ConversionFailed;
-		fn try_from(n: $SelfT) -> Result<$to, ConversionFailed> {
-		    <$to>::try_from(n.bits).map_err(|_| ConversionFailed::TooLarge)
-		}
-	    }
-	)*
+        $(
+            impl TryFrom<$SelfT> for $to {
+                type Error = ConversionFailed;
+                fn try_from(n: $SelfT) -> Result<$to, ConversionFailed> {
+                    <$to>::try_from(n.bits).map_err(|_| ConversionFailed::TooLarge)
+                }
+            }
+        )*
     }
 }
 
@@ -78,39 +78,39 @@ macro_rules! try_from_self_to_native_type {
 /// TryFrom<u64> for Unsigned36Bit.
 macro_rules! try_from_native_type_to_self {
     ($SelfT:ty, $InnerT:ty, $($from:ty)*) => {
-	$(
-	    impl TryFrom<$from> for $SelfT {
-		type Error = ConversionFailed;
-		fn try_from(n: $from) -> Result<Self, ConversionFailed> {
-		    let bits: $InnerT = match n.try_into() {
-			Err(_) => {
-			    // Because $InnerT is unsigned, we know
-			    // that n < 0 is always an error case.
-			    // Since this macro also gets used for
-			    // conversions from unsigned types,
-			    // sometimes this conditional is useless
-			    // (and we expect it to be optimized
-			    // away).
-			    #[allow(unused_comparisons)]
-			    if n < 0 {
-				return Err(ConversionFailed::TooSmall);
-			    } else {
-				return Err(ConversionFailed::TooLarge);
-			    }
-			}
-			Ok(value) if value > Self::VALUE_BITS => {
-			    return Err(ConversionFailed::TooLarge);
-			}
-			Ok(value) => value,
-		    };
-		    Ok(
-			Self {
-			    bits,
-			}
-		    )
-		}
-	    }
-	)*
+        $(
+            impl TryFrom<$from> for $SelfT {
+                type Error = ConversionFailed;
+                fn try_from(n: $from) -> Result<Self, ConversionFailed> {
+                    let bits: $InnerT = match n.try_into() {
+                        Err(_) => {
+                            // Because $InnerT is unsigned, we know
+                            // that n < 0 is always an error case.
+                            // Since this macro also gets used for
+                            // conversions from unsigned types,
+                            // sometimes this conditional is useless
+                            // (and we expect it to be optimized
+                            // away).
+                            #[allow(unused_comparisons)]
+                            if n < 0 {
+                                return Err(ConversionFailed::TooSmall);
+                            } else {
+                                return Err(ConversionFailed::TooLarge);
+                            }
+                        }
+                        Ok(value) if value > Self::VALUE_BITS => {
+                            return Err(ConversionFailed::TooLarge);
+                        }
+                        Ok(value) => value,
+                    };
+                    Ok(
+                        Self {
+                            bits,
+                        }
+                    )
+                }
+            }
+        )*
     }
 }
 
@@ -529,11 +529,11 @@ unsigned_ones_complement_impl!(Unsigned36Bit, 36, u64, Signed36Bit);
 // all the things that always fit into Unsigned5Bit
 // (there are none)
 // all the things that Unsigned5Bit always fits into
-from_self_to_native_type!(Unsigned5Bit, u8 i8 u16 i16 u32 i32 u64 i64 usize);
+from_self_to_native_type!(Unsigned5Bit, u8 i8 u16 i16 u32 i32 u64 i64 usize isize);
 // all the things that Unsigned5Bit may not fit into
 // (there are none)
 // all the things that may not fit into Unsigned5Bit
-try_from_native_type_to_self!(Unsigned5Bit, u8, i8 u8 u16 i16 u32 i32 u64 i64 usize);
+try_from_native_type_to_self!(Unsigned5Bit, u8, i8 u8 u16 i16 u32 i32 u64 i64 usize isize);
 
 ////////////////////////////////////////////////////////////////////////
 // Unsigned6Bit
@@ -542,11 +542,11 @@ try_from_native_type_to_self!(Unsigned5Bit, u8, i8 u8 u16 i16 u32 i32 u64 i64 us
 // all the things that always fit into Unsigned6Bit
 // (there are none)
 // all the things that Unsigned5Bit always fits into
-from_self_to_native_type!(Unsigned6Bit, u8 i8 u16 i16 u32 i32 u64 i64 usize);
+from_self_to_native_type!(Unsigned6Bit, u8 i8 u16 i16 u32 i32 u64 i64 usize isize);
 // all the things that Unsigned6Bit may not fit into
 // (there are none)
 // all the things that may not fit into Unsigned6Bit
-try_from_native_type_to_self!(Unsigned6Bit, u8, i8 u8 u16 i16 u32 i32 u64 i64 usize);
+try_from_native_type_to_self!(Unsigned6Bit, u8, i8 u8 u16 i16 u32 i32 u64 i64 usize isize);
 
 impl From<Unsigned5Bit> for Unsigned6Bit {
     fn from(n: Unsigned5Bit) -> Self {
@@ -577,11 +577,11 @@ impl TryFrom<Unsigned18Bit> for Unsigned6Bit {
 // all the things that always fit into Unsigned9Bit
 from_native_type_to_self!(Unsigned9Bit, u8);
 // all the things that Unsigned9Bit always fits into
-from_self_to_native_type!(Unsigned9Bit, u16 i16 u32 i32 u64 i64);
+from_self_to_native_type!(Unsigned9Bit, u16 i16 u32 i32 u64 i64 usize isize);
 // all the things that Unsigned9Bit may not fit into
 try_from_self_to_native_type!(Unsigned9Bit, u8 i8);
 // all the things that may not fit into Unsigned9Bit
-try_from_native_type_to_self!(Unsigned9Bit, u16, i8 u16 i16 u32 i32 u64 i64);
+try_from_native_type_to_self!(Unsigned9Bit, u16, i8 u16 i16 u32 i32 u64 i64 usize isize);
 
 impl From<Unsigned5Bit> for Unsigned9Bit {
     fn from(n: Unsigned5Bit) -> Self {
@@ -606,7 +606,7 @@ impl From<Unsigned6Bit> for Unsigned9Bit {
 // all the things that always fit into Unsigned12Bit
 from_native_type_to_self!(Unsigned12Bit, u8);
 // all the things that Unsigned12Bit always fits into
-from_self_to_native_type!(Unsigned12Bit, u16 i16 u32 i32 u64 i64);
+from_self_to_native_type!(Unsigned12Bit, u16 i16 u32 i32 u64 i64 usize isize);
 // all the things that Unsigned12Bit may not fit into
 try_from_self_to_native_type!(Unsigned12Bit, u8 i8);
 // all the things that may not fit into Unsigned12Bit
@@ -657,7 +657,7 @@ impl TryFrom<Unsigned18Bit> for Unsigned12Bit {
 // all the things that always fit into Unsigned18Bit
 from_native_type_to_self!(Unsigned18Bit, u8 u16);
 // all the things that Unsigned18Bit always fits into
-from_self_to_native_type!(Unsigned18Bit, u32 i32 u64 i64);
+from_self_to_native_type!(Unsigned18Bit, u32 i32 u64 i64 usize isize);
 // all the things Unsigned18Bit may not fit into
 try_from_self_to_native_type!(Unsigned18Bit, u8 i8 u16 i16);
 // all the things that may not fit into Unsigned18Bit
