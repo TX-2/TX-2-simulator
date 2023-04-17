@@ -1,20 +1,30 @@
-// Assembler tests.
-
 use base::prelude::*;
 use base::u36;
 use std::cell::RefCell;
 
-use nom::combinator::map;
-
-use super::ast::{
+use super::super::ast::{
     Block, Elevation, Expression, HoldBit, InstructionFragment, LiteralValue, ManuscriptBlock,
     ManuscriptMetaCommand, Origin, ProgramInstruction, SourceFile, Statement, SymbolName,
 };
-use super::driver::assemble_nonempty_valid_input;
-use super::ek::{self, parse_partially_with};
-use super::parser::*;
-use super::state::{NumeralMode, State, StateExtra};
-use super::symtab::SymbolTable;
+use super::super::driver::assemble_nonempty_valid_input;
+use super::super::ek::{self, parse_partially_with};
+use super::super::parser::*;
+use super::super::state::{NumeralMode, State, StateExtra};
+use super::super::symtab::SymbolTable;
+
+#[cfg(test)]
+fn parse_test_input<'a, F>(input_text: &'a str, parser: F) -> Result<String, String>
+where
+    F: for<'b> Fn(ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, ek::LocatedSpan<'a, 'b>>,
+{
+    let rstate = RefCell::new(State::new());
+    let input: ek::LocatedSpan<'a, '_> =
+        ek::LocatedSpan::new_extra(input_text, StateExtra::new(&rstate));
+    match parser(input) {
+        Ok(out) => Ok(out.1.fragment().to_string()),
+        Err(e) => Err(e.to_string()),
+    }
+}
 
 #[cfg(test)]
 pub(crate) fn parse_successfully_with<'a, T, F, M>(
@@ -34,20 +44,6 @@ where
         );
     }
     output
-}
-
-#[cfg(test)]
-fn parse_test_input<'a, F>(input_text: &'a str, parser: F) -> Result<String, String>
-where
-    F: for<'b> Fn(ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, ek::LocatedSpan<'a, 'b>>,
-{
-    let rstate = RefCell::new(State::new());
-    let input: ek::LocatedSpan<'a, '_> =
-        ek::LocatedSpan::new_extra(input_text, StateExtra::new(&rstate));
-    match parser(input) {
-        Ok(out) => Ok(out.1.fragment().to_string()),
-        Err(e) => Err(e.to_string()),
-    }
 }
 
 #[cfg(test)]

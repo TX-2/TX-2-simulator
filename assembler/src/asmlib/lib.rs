@@ -9,8 +9,5 @@ mod state;
 mod symtab;
 mod types;
 
-#[cfg(test)]
-mod tests;
-
 pub use driver::*;
 pub use types::Fail;

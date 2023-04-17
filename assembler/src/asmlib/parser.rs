@@ -1,4 +1,6 @@
 mod helpers;
+#[cfg(test)]
+mod tests;
 
 use std::ops::Shl;
 
@@ -34,9 +36,7 @@ impl<'a, 'b> From<&ek::LocatedSpan<'a, 'b>> for ErrorLocation {
     }
 }
 
-pub(crate) fn normal_literal<'a, 'b>(
-    input: ek::LocatedSpan<'a, 'b>,
-) -> ek::IResult<'a, 'b, LiteralValue> {
+fn normal_literal<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, LiteralValue> {
     /// The Linconln writer places the "regular" (i.e. not superscript or
     /// subscript) in the middle of the vertical rise of normal digits
     /// instead of on the line.  So, "3⋅141", not "3.141".
@@ -64,7 +64,7 @@ pub(crate) fn normal_literal<'a, 'b>(
     })(input)
 }
 
-pub(crate) fn opcode<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, LiteralValue> {
+fn opcode<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, LiteralValue> {
     fn valid_opcode(s: ek::LocatedSpan) -> Result<LiteralValue, ()> {
         match helpers::opcode_to_num(s.fragment()) {
             DecodedOpcode::Valid(opcode) => {
@@ -89,7 +89,7 @@ pub(crate) fn opcode<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 
     map_res(take(3usize), valid_opcode)(input)
 }
 
-pub(crate) fn superscript_literal<'a, 'b>(
+fn superscript_literal<'a, 'b>(
     input: ek::LocatedSpan<'a, 'b>,
 ) -> ek::IResult<'a, 'b, LiteralValue> {
     fn superscript_octal_number<'a, 'b>(
@@ -105,7 +105,7 @@ pub(crate) fn superscript_literal<'a, 'b>(
             take_while1(is_superscript_oct_digit)(input)
         }
 
-        pub(crate) fn maybe_superscript_sign<'a, 'b>(
+        fn maybe_superscript_sign<'a, 'b>(
             input: ek::LocatedSpan<'a, 'b>,
         ) -> ek::IResult<'a, 'b, Option<char>> {
             opt(alt((
@@ -137,9 +137,7 @@ pub(crate) fn superscript_literal<'a, 'b>(
     })(input)
 }
 
-pub(crate) fn subscript_literal<'a, 'b>(
-    input: ek::LocatedSpan<'a, 'b>,
-) -> ek::IResult<'a, 'b, LiteralValue> {
+fn subscript_literal<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, LiteralValue> {
     fn subscript_octal_number<'a, 'b>(
         input: ek::LocatedSpan<'a, 'b>,
     ) -> ek::IResult<'a, 'b, Unsigned36Bit> {
@@ -153,7 +151,7 @@ pub(crate) fn subscript_literal<'a, 'b>(
             take_while1(is_subscript_oct_digit)(input)
         }
 
-        pub(crate) fn maybe_subscript_sign<'a, 'b>(
+        fn maybe_subscript_sign<'a, 'b>(
             input: ek::LocatedSpan<'a, 'b>,
         ) -> ek::IResult<'a, 'b, Option<char>> {
             opt(alt((
@@ -187,7 +185,7 @@ pub(crate) fn subscript_literal<'a, 'b>(
     })(input)
 }
 
-pub(crate) fn program_instruction_fragment<'a, 'b>(
+fn program_instruction_fragment<'a, 'b>(
     input: ek::LocatedSpan<'a, 'b>,
 ) -> ek::IResult<'a, 'b, InstructionFragment> {
     preceded(space0, map(expression, InstructionFragment::from))(input)
@@ -212,7 +210,7 @@ fn is_nonblank_simple_symex_char(c: char) -> bool {
 
 /// Recognise a single dead character, a character which does not
 /// advance the character/cursor when printed.
-pub(crate) fn dead_char<'a, 'b>(
+fn dead_char<'a, 'b>(
     input: ek::LocatedSpan<'a, 'b>,
 ) -> ek::IResult<'a, 'b, ek::LocatedSpan<'a, 'b>> {
     recognize(one_of(concat!(
@@ -380,7 +378,7 @@ pub(crate) fn dead_char<'a, 'b>(
 /// for computers imput flexibility", a one-page paper in
 /// Communications of the ACM, Volume 1, Issue 7, July 1958
 /// (https://doi.org/10.1145/368873.368879).
-pub(crate) fn parse_compound_char<'a, 'b>(
+fn parse_compound_char<'a, 'b>(
     input: ek::LocatedSpan<'a, 'b>,
 ) -> ek::IResult<'a, 'b, ek::LocatedSpan<'a, 'b>> {
     // accepts a single character which advances the carriage.
@@ -429,9 +427,7 @@ pub(crate) fn parse_compound_char<'a, 'b>(
     alt((two, three))(input)
 }
 
-pub(crate) fn parse_symex<'a, 'b>(
-    input: ek::LocatedSpan<'a, 'b>,
-) -> ek::IResult<'a, 'b, SymbolName> {
+fn parse_symex<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, SymbolName> {
     fn is_reserved_identifier(ident: &ek::LocatedSpan) -> bool {
         fn is_register_name(name: &str) -> bool {
             matches!(name, "A" | "B" | "C" | "D" | "E")
@@ -502,7 +498,7 @@ pub(crate) fn parse_symex<'a, 'b>(
     )(input)
 }
 
-pub(crate) fn literal<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, LiteralValue> {
+fn literal<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, LiteralValue> {
     alt((normal_literal, superscript_literal, subscript_literal))(input)
 }
 
@@ -526,9 +522,7 @@ pub(crate) fn literal<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a,
 //
 // [1] I use "sequence" in the paragraph above to avoid saying
 // "expression" or "instruction fragment".
-pub(crate) fn expression<'a, 'b>(
-    input: ek::LocatedSpan<'a, 'b>,
-) -> ek::IResult<'a, 'b, Expression> {
+fn expression<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, Expression> {
     let symbolic_expression = map(symbol_name, |name| {
         Expression::Symbol(Elevation::Normal, name)
     });
@@ -547,15 +541,11 @@ fn address_expression<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a,
     map_res(literal, |literal| Address::try_from(literal.value()))(input)
 }
 
-pub(crate) fn symbol_name<'a, 'b>(
-    input: ek::LocatedSpan<'a, 'b>,
-) -> ek::IResult<'a, 'b, SymbolName> {
+fn symbol_name<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, SymbolName> {
     map(parse_symex, SymbolName::from)(input)
 }
 
-pub(crate) fn tag_definition<'a, 'b>(
-    input: ek::LocatedSpan<'a, 'b>,
-) -> ek::IResult<'a, 'b, SymbolName> {
+fn tag_definition<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, SymbolName> {
     fn arrow<'a, 'b>(
         input: ek::LocatedSpan<'a, 'b>,
     ) -> ek::IResult<'a, 'b, ek::LocatedSpan<'a, 'b>> {
@@ -569,7 +559,7 @@ pub(crate) fn tag_definition<'a, 'b>(
     terminated(symbol_name, arrow)(input)
 }
 
-pub(crate) fn metacommand<'a, 'b>(
+fn metacommand<'a, 'b>(
     input: ek::LocatedSpan<'a, 'b>,
 ) -> ek::IResult<'a, 'b, ManuscriptMetaCommand> {
     fn double_hand<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, Option<char>> {
@@ -651,7 +641,7 @@ pub(crate) fn metacommand<'a, 'b>(
     )(input)
 }
 
-pub(crate) fn maybe_hold<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, HoldBit> {
+fn maybe_hold<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, HoldBit> {
     /// Accept either 'h' or ':' signalling the hold bit should be set.
     /// The documentation seems to use both, though perhaps ':' is the
     /// older usage.
@@ -675,7 +665,7 @@ pub(crate) fn maybe_hold<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<
     map(opt(preceded(space0, alt((hold, not_hold)))), holdmapper)(input)
 }
 
-pub(crate) fn program_instruction<'a, 'b>(
+fn program_instruction<'a, 'b>(
     input: ek::LocatedSpan<'a, 'b>,
 ) -> ek::IResult<'a, 'b, ProgramInstruction> {
     fn build_inst(
@@ -721,7 +711,7 @@ fn execute_metacommand(state_extra: &StateExtra, cmd: &ManuscriptMetaCommand) {
     }
 }
 
-pub(crate) fn statement<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, Statement> {
+fn statement<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, Statement> {
     /// Assginments are called "equalities" in the TX-2 Users Handbook.
     /// See section 6-2.2, "SYMEX DEFINITON - TAGS - EQUALITIES -
     /// AUTOMATIC ASSIGNMENT".
@@ -741,9 +731,7 @@ pub(crate) fn statement<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'
     ))(input)
 }
 
-pub(crate) fn manuscript_line<'a, 'b>(
-    input: ek::LocatedSpan<'a, 'b>,
-) -> ek::IResult<'a, 'b, ManuscriptLine> {
+fn manuscript_line<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, ManuscriptLine> {
     fn parse_and_execute_metacommand<'a, 'b>(
         input: ek::LocatedSpan<'a, 'b>,
     ) -> ek::IResult<'a, 'b, ManuscriptLine> {
@@ -780,18 +768,18 @@ pub(crate) fn manuscript_line<'a, 'b>(
     preceded(space0, line)(input)
 }
 
-pub(crate) fn comment<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, String> {
+fn comment<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, String> {
     map(
         recognize(preceded(preceded(space0, tag("**")), take_until("\n"))),
         |text: ek::LocatedSpan| text.fragment().to_string(),
     )(input)
 }
 
-pub(crate) fn newline<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, char> {
+fn newline<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, char> {
     char('\n')(input)
 }
 
-pub(crate) fn end_of_line<'a, 'b>(
+fn end_of_line<'a, 'b>(
     input: ek::LocatedSpan<'a, 'b>,
 ) -> ek::IResult<'a, 'b, ek::LocatedSpan<'a, 'b>> {
     fn one_end_of_line<'a, 'b>(
@@ -814,7 +802,7 @@ pub(crate) fn source_file<'a, 'b>(
 
     // Parse a manuscript (which is a sequence of metacommands, macros
     // and assembly-language instructions).
-    pub(crate) fn parse_nonempty_source_file<'a, 'b>(
+    fn parse_nonempty_source_file<'a, 'b>(
         input: ek::LocatedSpan<'a, 'b>,
     ) -> ek::IResult<'a, 'b, SourceFile> {
         // TODO: when we implement metacommands we will need to separate
