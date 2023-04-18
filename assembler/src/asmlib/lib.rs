@@ -3,7 +3,6 @@
 
 mod ast;
 mod driver;
-mod ek;
 mod parser;
 mod state;
 mod symtab;

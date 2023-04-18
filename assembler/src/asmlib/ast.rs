@@ -6,7 +6,6 @@ use std::hash::{Hash, Hasher};
 use base::charset::{subscript_char, superscript_char};
 use base::prelude::*;
 
-use super::ek;
 use super::state::NumeralMode;
 use super::symtab::{SymbolContext, SymbolDefinition, SymbolLookupFailure, SymbolTable};
 
@@ -192,25 +191,6 @@ impl PartialEq for SymbolName {
 impl Hash for SymbolName {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.canonical.hash(state)
-    }
-}
-
-impl<'a, 'b> SymbolName {
-    // Symexes "TYPE A" and "TYPEA" are equivalent.
-    fn canonical(span: &ek::LocatedSpan<'a, 'b>) -> String {
-        (*span.fragment())
-            .chars()
-            .filter(|ch: &char| -> bool { *ch != ' ' })
-            .collect()
-    }
-}
-
-impl<'a, 'b> From<&ek::LocatedSpan<'a, 'b>> for SymbolName {
-    fn from(location: &ek::LocatedSpan<'a, 'b>) -> SymbolName {
-        SymbolName {
-            canonical: SymbolName::canonical(location),
-            //as_used: location.fragment().to_string(),
-        }
     }
 }
 

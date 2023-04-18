@@ -7,8 +7,7 @@ use std::path::Path;
 use tracing::{event, span, Level};
 
 use super::ast::*;
-use super::ek;
-use super::parser::{source_file, ErrorLocation};
+use super::parser::{parse_source_file, ErrorLocation};
 use super::state::{Error, NumeralMode, State};
 use super::symtab::*;
 use super::types::*;
@@ -115,7 +114,7 @@ fn assemble_pass1(
         state.set_numeral_mode(NumeralMode::Decimal); // appease Clippy
         state.set_numeral_mode(NumeralMode::Octal);
     }
-    let (source_file, new_errors) = ek::parse_with(source_file_body, source_file, setup);
+    let (source_file, new_errors) = parse_source_file(source_file_body, setup);
     if !new_errors.is_empty() {
         errors.extend(new_errors.into_iter());
     }

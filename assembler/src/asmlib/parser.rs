@@ -1,3 +1,4 @@
+mod ek;
 mod helpers;
 #[cfg(test)]
 mod tests;
@@ -12,8 +13,7 @@ use nom::multi::{many0, many1};
 use nom::sequence::{delimited, pair, preceded, separated_pair, terminated, tuple};
 
 use super::ast::*;
-use super::ek;
-use super::state::{Error, NumeralMode, StateExtra};
+use super::state::{Error, NumeralMode, State, StateExtra};
 use super::types::*;
 use base::prelude::*;
 
@@ -739,9 +739,7 @@ fn end_of_line<'a, 'b>(
     recognize(many1(one_end_of_line))(input)
 }
 
-pub(crate) fn source_file<'a, 'b>(
-    body: ek::LocatedSpan<'a, 'b>,
-) -> ek::IResult<'a, 'b, SourceFile> {
+fn source_file<'a, 'b>(body: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, SourceFile> {
     // Parse a manuscript (which is a sequence of metacommands, macros
     // and assembly-language instructions).
     fn parse_nonempty_source_file<'a, 'b>(
@@ -766,4 +764,30 @@ pub(crate) fn source_file<'a, 'b>(
     }
 
     terminated(parse_nonempty_source_file, ek::expect_end_of_file)(body)
+}
+
+pub(crate) fn parse_source_file(
+    source_file_body: &str,
+    setup: fn(&mut State),
+) -> (SourceFile, Vec<Error>) {
+    ek::parse_with(source_file_body, source_file, setup)
+}
+
+impl<'a, 'b> SymbolName {
+    // Symexes "TYPE A" and "TYPEA" are equivalent.
+    fn canonical(span: &ek::LocatedSpan<'a, 'b>) -> String {
+        (*span.fragment())
+            .chars()
+            .filter(|ch: &char| -> bool { *ch != ' ' })
+            .collect()
+    }
+}
+
+impl<'a, 'b> From<&ek::LocatedSpan<'a, 'b>> for SymbolName {
+    fn from(location: &ek::LocatedSpan<'a, 'b>) -> SymbolName {
+        SymbolName {
+            canonical: SymbolName::canonical(location),
+            //as_used: location.fragment().to_string(),
+        }
+    }
 }

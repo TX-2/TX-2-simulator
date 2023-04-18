@@ -4,7 +4,7 @@ use std::num::IntErrorKind;
 use base::prelude::*;
 
 use super::super::ast::*;
-use super::super::ek;
+use super::ek;
 
 pub(super) fn make_u36(s: &str, radix: u32) -> Result<Unsigned36Bit, StringConversionFailed> {
     match u64::from_str_radix(s, radix) {

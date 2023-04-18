@@ -7,10 +7,10 @@ use super::super::ast::{
     ManuscriptMetaCommand, Origin, ProgramInstruction, SourceFile, Statement, SymbolName,
 };
 use super::super::driver::assemble_nonempty_valid_input;
-use super::super::ek::{self, parse_partially_with};
 use super::super::parser::*;
 use super::super::state::{NumeralMode, State, StateExtra};
 use super::super::symtab::SymbolTable;
+use super::ek::{self, parse_partially_with};
 
 #[cfg(test)]
 fn parse_test_input<'a, F>(input_text: &'a str, parser: F) -> Result<String, String>
