@@ -176,6 +176,12 @@ pub(crate) struct SymbolName {
     // pub(crate) as_used: String,
 }
 
+impl From<String> for SymbolName {
+    fn from(s: String) -> SymbolName {
+        SymbolName { canonical: s }
+    }
+}
+
 impl std::fmt::Display for SymbolName {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         self.canonical.fmt(f)

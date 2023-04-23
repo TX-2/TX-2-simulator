@@ -14,10 +14,17 @@ use super::super::driver::assemble_nonempty_valid_input;
 use super::super::parser::*;
 use super::super::state::{NumeralMode, State, StateExtra};
 use super::super::symtab::SymbolTable;
+use super::symex::{dead_char, parse_compound_char, parse_symex};
 use super::*;
 
 fn errors_as_string<'a, T: Display>(errors: &[Rich<'a, T>]) -> String {
-    errors.iter().map(|e| format!("{e}\n")).collect::<String>()
+    let n = errors.len();
+    errors
+        .iter()
+        .enumerate()
+        .map(|(i, e)| (i + 1, e))
+        .map(|(i, e)| format!("error {i}/{n}: {e}\n"))
+        .collect::<String>()
 }
 
 #[cfg(test)]
@@ -54,7 +61,8 @@ where
         .into_output_errors();
     if !errors.is_empty() {
         panic!(
-            "unexpected parse errors: {:?}",
+            "{} unexpected parse errors: {:?}",
+            errors.len(),
             &errors_as_string(errors.as_slice())
         );
     }
@@ -113,95 +121,99 @@ fn test_normal_literald_ec_decmode() {
     );
 }
 
-//#[test]
-//fn test_superscript_literal_oct() {
-//    // No trailing dot on a number indicates octal base (unless there
-//    // was a previous ☛☛DECIMAL).
-//    assert_eq!(
-//        parse_successfully_with("³⁶", superscript_literal, no_state_setup),
-//        LiteralValue::from((Elevation::Superscript, Unsigned36Bit::from(0o36_u32),))
-//    );
-//    assert_eq!(
-//        // U+207A: superscript plus
-//        parse_successfully_with("\u{207A}³⁶", superscript_literal, no_state_setup),
-//        LiteralValue::from((Elevation::Superscript, Unsigned36Bit::from(0o36_u32),))
-//    );
-//}
-//
-//#[test]
-//fn test_superscript_literal_dec_defaultmode() {
-//    // A trailing dot on a number indicates decimal base (unless there
-//    // was a previous ☛☛DECIMAL).
-//    assert_eq!(
-//        parse_successfully_with("³⁶̇ ", superscript_literal, no_state_setup),
-//        LiteralValue::from((
-//            Elevation::Superscript,
-//            Unsigned36Bit::from(36_u32), // decimal
-//        ))
-//    );
-//}
-//
-//#[test]
-//fn test_superscript_literal_dec_decmode() {
-//    // Simulate a previous ☛☛DECIMAL.
-//    assert_eq!(
-//        parse_successfully_with("³⁶", superscript_literal, set_decimal_mode),
-//        LiteralValue::from((
-//            Elevation::Superscript,
-//            Unsigned36Bit::from(36_u32), // decimal
-//        ))
-//    );
-//}
-//
-//#[test]
-//fn test_subscript_literal_oct_defaultmode() {
-//    // No trailing dot on a number indicates octal base (unless there
-//    // was a previous ☛☛DECIMAL).
-//    assert_eq!(
-//        parse_successfully_with("₃₁", subscript_literal, no_state_setup),
-//        LiteralValue::from((Elevation::Subscript, Unsigned36Bit::from(0o31_u32),))
-//    );
-//    assert_eq!(
-//        parse_successfully_with("₊₁₃", subscript_literal, no_state_setup),
-//        LiteralValue::from((Elevation::Subscript, Unsigned36Bit::from(0o13_u32),))
-//    );
-//}
-//
-//#[test]
-//fn test_subscript_literal_oct_decmode() {
-//    // Simulate a previous ☛☛DECIMAL, so that the trailing dot selects octal.
-//    assert_eq!(
-//        parse_successfully_with("₃₁.", subscript_literal, set_decimal_mode),
-//        LiteralValue::from((Elevation::Subscript, Unsigned36Bit::from(0o31_u32),))
-//    );
-//}
-//
-//#[test]
-//fn test_subscript_literal_dec() {
-//    // A trailing dot on a number indicates decimal base (unless there
-//    // was a previous ☛☛DECIMAL).
-//    assert_eq!(
-//        parse_successfully_with("₃₁.", subscript_literal, no_state_setup),
-//        LiteralValue::from((Elevation::Subscript, Unsigned36Bit::from(31_u32),))
-//    );
-//}
-//
-//#[test]
-//fn test_program_instruction_fragment() {
-//    assert_eq!(
-//        parse_successfully_with("₃₁", program_instruction_fragment, no_state_setup),
-//        InstructionFragment::from((Elevation::Subscript, Unsigned36Bit::from(0o31_u32),))
-//    );
-//    assert_eq!(
-//        parse_successfully_with("⁶³", program_instruction_fragment, no_state_setup),
-//        InstructionFragment::from((Elevation::Superscript, Unsigned36Bit::from(0o63_u32),))
-//    );
-//    assert_eq!(
-//        parse_successfully_with("6510", program_instruction_fragment, no_state_setup),
-//        InstructionFragment::from((Elevation::Normal, Unsigned36Bit::from(0o6510_u32),))
-//    );
-//}
-//
+#[test]
+fn test_superscript_literal_oct() {
+    // No trailing dot on a number indicates octal base (unless there
+    // was a previous ☛☛DECIMAL).
+    assert_eq!(
+        parse_successfully_with("³⁶", superscript_literal(), no_state_setup),
+        LiteralValue::from((Elevation::Superscript, Unsigned36Bit::from(0o36_u32),))
+    );
+    assert_eq!(
+        // U+207A: superscript plus
+        parse_successfully_with("\u{207A}³⁶", superscript_literal(), no_state_setup),
+        LiteralValue::from((Elevation::Superscript, Unsigned36Bit::from(0o36_u32),))
+    );
+}
+
+#[test]
+fn test_superscript_literal_dec_defaultmode() {
+    // A trailing dot on a number indicates decimal base (unless there
+    // was a previous ☛☛DECIMAL).
+    assert_eq!(
+        parse_successfully_with("³⁶̇ ", superscript_literal(), no_state_setup),
+        LiteralValue::from((
+            Elevation::Superscript,
+            Unsigned36Bit::from(36_u32), // decimal
+        ))
+    );
+}
+
+#[test]
+fn test_superscript_literal_dec_decmode() {
+    // Simulate a previous ☛☛DECIMAL.
+    assert_eq!(
+        parse_successfully_with("³⁶", superscript_literal(), set_decimal_mode),
+        LiteralValue::from((
+            Elevation::Superscript,
+            Unsigned36Bit::from(36_u32), // decimal
+        ))
+    );
+}
+
+#[test]
+fn test_subscript_literal_oct_defaultmode_nosign() {
+    // No trailing dot on a number indicates octal base (unless there
+    // was a previous ☛☛DECIMAL).
+    assert_eq!(
+        parse_successfully_with("₃₁", subscript_literal(), no_state_setup),
+        LiteralValue::from((Elevation::Subscript, Unsigned36Bit::from(0o31_u32),))
+    );
+}
+
+#[test]
+fn test_subscript_literal_oct_defaultmode_plus() {
+    assert_eq!(
+        parse_successfully_with("₊₁₃", subscript_literal(), no_state_setup),
+        LiteralValue::from((Elevation::Subscript, Unsigned36Bit::from(0o13_u32),))
+    );
+}
+
+#[test]
+fn test_subscript_literal_oct_decmode() {
+    // Simulate a previous ☛☛DECIMAL, so that the trailing dot selects octal.
+    assert_eq!(
+        parse_successfully_with("₃₁.", subscript_literal(), set_decimal_mode),
+        LiteralValue::from((Elevation::Subscript, Unsigned36Bit::from(0o31_u32),))
+    );
+}
+
+#[test]
+fn test_subscript_literal_dec() {
+    // A trailing dot on a number indicates decimal base (unless there
+    // was a previous ☛☛DECIMAL).
+    assert_eq!(
+        parse_successfully_with("₃₁.", subscript_literal(), no_state_setup),
+        LiteralValue::from((Elevation::Subscript, Unsigned36Bit::from(31_u32),))
+    );
+}
+
+#[test]
+fn test_program_instruction_fragment() {
+    assert_eq!(
+        parse_successfully_with("₃₁", program_instruction_fragment(), no_state_setup),
+        InstructionFragment::from((Elevation::Subscript, Unsigned36Bit::from(0o31_u32),))
+    );
+    assert_eq!(
+        parse_successfully_with("⁶³", program_instruction_fragment(), no_state_setup),
+        InstructionFragment::from((Elevation::Superscript, Unsigned36Bit::from(0o63_u32),))
+    );
+    assert_eq!(
+        parse_successfully_with("6510", program_instruction_fragment(), no_state_setup),
+        InstructionFragment::from((Elevation::Normal, Unsigned36Bit::from(0o6510_u32),))
+    );
+}
+
 //#[test]
 //fn test_program_instruction() {
 //    assert_eq!(
@@ -217,51 +229,51 @@ fn test_normal_literald_ec_decmode() {
 //        }
 //    );
 //}
-//
-//#[test]
-//fn test_parse_symex() {
-//    for (input, expected) in [
-//        ("SOMENAME", "SOMENAME"),
-//        ("SOME NAME", "SOMENAME"),
-//        // OK to use a reserved identifier if it is not the first
-//        // syllable in the symex.
-//        ("TEST A", "TESTA"),
-//        // If there's no space after it, it's not reserved
-//        ("ATEST", "ATEST"),
-//        // Otherwise, the reserved identifier is the whole of it.
-//        ("B", "B"),
-//        // A symex can contain digits and can even start with one.
-//        ("HOP2IT", "HOP2IT"),
-//        ("HOP 2 IT", "HOP2IT"),
-//        ("4REAL", "4REAL"),
-//        // Some lower case letters are supported
-//        ("j2", "j2"),
-//        // Dot, underscore
-//        (".q", ".q"),
-//        ("._q", "._q"),
-//        // Single quotes are allowed too
-//        ("SCRATCH 'N' SNIFF", "SCRATCH'N'SNIFF"),
-//        ("F '", "F'"),
-//    ] {
-//        let got: SymbolName = parse_successfully_with(input, parse_symex, no_state_setup);
-//        assert_eq!(got.canonical, expected);
-//    }
-//}
-//
-//#[test]
-//fn test_dead_char() {
-//    assert!(parse_test_input("X", dead_char).is_err());
-//    assert!(parse_test_input("\u{0332}", dead_char).is_ok());
-//}
-//
-//#[test]
-//fn test_parse_compound_char() {
-//    assert_eq!(
-//        parse_test_input("X\u{0008}Y", parse_compound_char),
-//        Ok("X\u{0008}Y".to_string())
-//    );
-//}
-//
+
+#[test]
+fn test_parse_symex() {
+    for (input, expected) in [
+        ("SOMENAME", "SOMENAME"),
+        ("SOME NAME", "SOMENAME"),
+        // OK to use a reserved identifier if it is not the first
+        // syllable in the symex.
+        ("TEST A", "TESTA"),
+        // If there's no space after it, it's not reserved
+        ("ATEST", "ATEST"),
+        // Otherwise, the reserved identifier is the whole of it.
+        ("B", "B"),
+        // A symex can contain digits and can even start with one.
+        ("HOP2IT", "HOP2IT"),
+        ("HOP 2 IT", "HOP2IT"),
+        ("4REAL", "4REAL"),
+        // Some lower case letters are supported
+        ("j2", "j2"),
+        // Dot, underscore
+        (".q", ".q"),
+        ("._q", "._q"),
+        // Single quotes are allowed too
+        ("SCRATCH 'N' SNIFF", "SCRATCH'N'SNIFF"),
+        ("F '", "F'"),
+    ] {
+        let got: SymbolName = parse_successfully_with(input, parse_symex(), no_state_setup);
+        assert_eq!(got.canonical, expected);
+    }
+}
+
+#[test]
+fn test_dead_char() {
+    assert!(parse_test_input("X", dead_char()).is_err());
+    assert!(parse_test_input("\u{0332}", dead_char()).is_ok());
+}
+
+#[test]
+fn test_parse_compound_char() {
+    assert_eq!(
+        parse_test_input("X\u{0008}Y", parse_compound_char()),
+        Ok("X\u{0008}Y".to_string())
+    );
+}
+
 //#[test]
 //fn test_empty_manuscript() {
 //    assert_eq!(

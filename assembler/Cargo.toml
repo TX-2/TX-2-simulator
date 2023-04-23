@@ -16,7 +16,7 @@ clap = { version = "3", features = ["derive"] }
 # https://github.com/Geal/nom/blob/main/LICENSE
 nom = "7"
 
-chumsky = "1.0.0-alpha.3"
+chumsky = { version="1.0.0-alpha.3", features=["label"] }
 
 # nom_locate has an MIT-style copyright license.
 # https://github.com/fflorent/nom_locate/blob/master/LICENSE

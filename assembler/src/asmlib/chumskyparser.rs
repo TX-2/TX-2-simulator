@@ -8,21 +8,21 @@ mod helpers;
 #[cfg(test)]
 mod tests; // temporary
 
-//use std::ops::Shl;
+use std::ops::Shl;
 
 use chumsky::error::Rich;
 use chumsky::extra::Full;
-use chumsky::input::ValueInput;
+use chumsky::input::{StrInput, ValueInput};
 use chumsky::prelude::*;
 use chumsky::primitive::one_of;
-use chumsky::text::digits;
+use chumsky::text::{digits, inline_whitespace};
 use chumsky::Parser;
 
 use super::ast::*;
 
 use super::state::NumeralMode;
 use super::types::*;
-//use base::prelude::*;
+use base::prelude::*;
 
 //use helpers::*;
 
@@ -40,7 +40,7 @@ fn opt_sign<'a, I>() -> impl Parser<'a, I, Option<char>, Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
 {
-    one_of("+-").or_not()
+    one_of("+-").or_not().labelled("sign")
 }
 
 fn digits1<'a, I>() -> impl Parser<'a, I, String, Extra<'a, char>>
@@ -70,6 +70,7 @@ where
                 Err(e) => Err(Rich::custom(span, e.to_string())),
             }
         })
+        .labelled("numeric literal")
 }
 
 //) -> impl Parser<'srcbody, &'srcbody str, LiteralValue, Extra<'srcbody, I>> {
@@ -93,364 +94,539 @@ where
 //    })
 //}
 
-////
-////fn opcode<'srcbody, I: Input<'srcbody>>(
-////) -> impl Parser<'srcbody, &'srcbody str, LiteralValue, Extra<'srcbody, I>> {
-////    fn valid_opcode(s: &str) -> Result<LiteralValue, ()> {
-////        if let DecodedOpcode::Valid(opcode) = helpers::opcode_to_num(s) {
-////            Ok(LiteralValue::from((
-////                Elevation::Normal,
-////                // Bits 24-29 (dec) inclusive in the instruction word
-////                // represent the opcode, so shift the opcode's value
-////                // left by 24 decimal.
-////                Unsigned36Bit::from(opcode)
-////                    .shl(24)
-////                    // Some opcodes automatically set the hold
-////                    // bit, so do that here.
-////                    .bitor(helpers::opcode_auto_hold_bit(opcode)),
-////            )))
-////        } else {
-////            Err(())
-////        }
-////    }
-////
-////    any().repeated().exactly(3).try_map(valid_opcode)
-////}
-////
-////fn superscript_literal<'srcbody, I: Input<'srcbody>>(
-////) -> impl Parser<'srcbody, &'srcbody str, LiteralValue, Extra<'srcbody, I>> {
-////    fn superscript_octal_number<'srcbody, I: Input<'srcbody>>(
-////    ) -> impl Parser<'srcbody, &'srcbody str, Unsigned36Bit, Extra<'srcbody, I>> {
-////        fn is_superscript_oct_digit(ch: char) -> bool {
-////            helpers::superscript_oct_digit_to_value(ch).is_some()
-////        }
-////
-////        let superscript_oct_digit1 = any().filter(is_superscript_oct_digit);
-////        let maybe_superscript_sign = choice((
-////            just("\u{207B}"), // U+207B: superscript minus
-////            just("\u{207A}"), // U+207A: superscript plus
-////        ))
-////        .or_not();
-////
-////        let maybe_superscript_dot = just(
-////            "\u{0307} ", // Unicode Combining Dot Above ̇followed by space ("̇ ")
-////        )
-////        .or_not()
-////        .map(Option::is_some);
-////
-////        maybe_superscript_sign()
-////            .then(superscript_oct_digit1)
-////            .then(maybe_superscript_dot)
-////            .try_map(helpers::make_superscript_num)
-////    }
-////
-////    superscript_octal_number().map(|n| LiteralValue::from((Elevation::Superscript, n)))
-////}
-////
-////fn subscript_literal<'srcbody, I: Input<'srcbody>>(
-////) -> impl Parser<'srcbody, &'srcbody str, LiteralValue, Extra<'srcbody, I>> {
-////    fn subscript_octal_number<'srcbody, I: Input<'srcbody>>(
-////    ) -> impl Parser<'srcbody, &'srcbody str, LiteralValue, Extra<'srcbody, I>> {
-////        fn is_subscript_oct_digit(ch: char) -> bool {
-////            helpers::subscript_oct_digit_to_value(ch).is_some()
-////        }
-////
-////        let maybe_subscript_dot = just('\u{0307}').then_ignore(just(' ')).or_not();
-////        let subscript_oct_digit1 = any().filter(is_subscript_oct_digit);
-////        let maybe_subscript_sign = one_of(concat!(
-////            "\u{208B}", // u+208B: subscript minus
-////            "\u{208A}", // U+208A: subscript plus
-////        ))
-////        .or_not();
-////
-////        // Recognise a subscript dot.  On the Linconln Writer, the dot
-////        // is raised above the line, like the dot customarily used for
-////        // the dot-product.  Hence for subscripts we use the regular
-////        // ascii dot (full stop, period) which is on the line.
-////        let maybe_subscript_opt = just('.').or_not();
-////
-////        maybe_subscript_sign()
-////            .then(subscript_oct_digit1())
-////            .then(maybe_subscript_dot())
-////            .map_res(helpers::make_subscript_num)
-////    }
-////
-////    subscript_octal_number().map(|n| LiteralValue::from((Elevation::Subscript, n)))
-////}
-////
-////fn program_instruction_fragment<'srcbody, I: Input<'srcbody>>(
-////) -> impl Parser<'srcbody, &'srcbody str, InstructionFragment, Extra<'srcbody, I>> {
-////    inline_whitespace().ignore_then(expression().map(InstructionFragment::from))
-////}
-////
-////fn spaces1<'srcbody, I: Input<'srcbody>>(
-////) -> impl Parser<'srcbody, &'srcbody str, (), Extra<'srcbody, I>> {
-////    just(' ').repeated().at_least(1)
-////}
-////
-////mod symex {
-////    use chumsky::prelude::*;
-////    use chumsky::primitive::just;
-////    use chumsky::text::{digits, inline_whitespace};
-////    use chumsky::Parser;
-////
-////    use super::helpers::{self, is_nonblank_simple_symex_char, DecodedOpcode};
-////    use super::{spaces1, Extra};
-////
-////    /// Recognise a single dead character, a character which does not
-////    /// advance the character/cursor when printed.
-////    fn dead_char<'srcbody, I: Input<'srcbody>>(
-////    ) -> impl Parser<'srcbody, &'srcbody str, I, Extra<'srcbody, I>> {
-////        one_of(concat!(
-////            "\u{0332}", // combining low line
-////            "\u{0305}", // combining overline
-////            "\u{20DD}", // combining enclosing circle
-////            "\u{20DE}", // combining enclosing square
-////        ))
-////    }
-////    /// Recognise a single compound character.
-////    ///
-////    /// ## Users Handbook Definition of Compound Characters
-////    ///
-////    /// Compound chars are described in item 7 on page 607 of the TX-2
-////    /// Users Handbook (Nov 63).
-////    ///
-////    /// Compound characters are described like so:
-////    ///
-////    ///  - Only one backspace
-////    ///  - Two or three characters only.
-////    ///  - Space bar is allowed
-////    ///  - Any sequence of characters is legal. (Except ...)
-////    ///
-////    /// This seems confusing at first but the key to understanding
-////    /// it is that the Lincoln Writer (from which these characters
-////    /// come) has four characters which don't advance the carriage
-////    /// when they are printed (underline, overline, square,
-////    /// circle).  That is, the following character is overstruck.
-////    /// The underline _ is one such character: then _ followed by G
-////    /// is a compound character, _ overstruck with G.  This would
-////    /// be a two-character compound character.
-////    ///
-////    /// A compound character can also be formed with a space,
-////    /// presumably for example a character which doesn't advance
-////    /// the carriage followed by a space, which does.
-////    ///
-////    /// Using our single allowed backspace, we could create a
-////    /// compound character using a character which does advance the
-////    /// carriage, for example K.  K\b> K overstruck with a >.
-////    ///
-////    /// Another three-character option is to use two
-////    /// non-carriage-advancing characters.  The documentation
-////    /// doesn't seem to clearly state whether Lincoln Writer codes
-////    /// 0o74 and 0o75 ("LOWER CASE" and "UPPER CASE") are
-////    /// permitted.  This makes a difference because for example
-////    /// CIRCLE is upper case while SQUARE is lower case (both
-////    /// signaled by code 013).   So I am not clear on whether
-////    /// this sequence of codes is a valid single compound
-////    /// character (assume we start in upper-case).
-////    ///
-////    /// Code  Representing          Advances carriage?
-////    /// 013   CIRCLE                No (it's special)
-////    /// 074   Shift to lower case   No (it's non-printing)
-////    /// 013   SQUARE                No (it's special)
-////    /// 057   *                     Yes (rightward)
-////    ///
-////    /// If valid this would represent a circle, square and asterisk
-////    /// all on the same spot.
-////    ///
-////    /// For the moment we don't need to worry about this, because we
-////    /// cannot tell the difference; the current parser implementation
-////    /// accepts Unicode input, and by the time the Lincoln Writer code
-////    /// have been translated into Unicode, the upper/lower case shift
-////    /// codes are no longer present in the parser's input.
-////    ///
-////    /// Another input that tests our understanding is this one:
-////    ///
-////    /// Code  Representing          Advances carriage?
-////    /// 013   CIRCLE                No (it's special)
-////    /// 062   Backspace             Yes (leftward!)
-////    /// 012   _ (underline)         No (it's special)
-////    ///
-////    /// This meets the letter of the condition (just one backspace,
-////    /// only three characters).  But the net effect of these code is a
-////    /// net leftward movement of the carriage/cursor.
-////    ///
-////    /// Yet another:
-////    /// 031   J                     Yes
-////    /// 062   Backspace             Yes (leftward!)
-////    /// 027   H                     Yes
-////    /// 062   Backspace             Yes (leftward!)
-////    /// 032   K                     Yes
-////    ///
-////    /// Here we apparently see 031 062 027 as the first compound
-////    /// character (three characters, one backspace) but is the
-////    /// following thing valid?  The problem is it starts with a
-////    /// backspace.  That cannot be part of the initial compound
-////    /// character because only one backspace is allowed.
-////    ///
-////    /// ## Additional Restrictions
-////    ///
-////    /// It seems that the Users Handbook underspecifies the compound
-////    /// character.  We will have to do something - accept some inputs
-////    /// and perhaps reject others.
-////    ///
-////    /// For now, I plan to add additional restrictions, not stated in
-////    /// the Users Handbook, which helps disambiguate:
-////    ///
-////    /// A compound character is a sequene of two or three characters
-////    /// which
-////    ///  1. Does not begin with a backspace
-////    ///  2. Does not end with a backspace
-////    ///  3. Does not end with a dead character (a character which does
-////    ///     not advance the carriage).
-////    ///  4. Includes either a backspace or a dead character.
-////    ///
-////    /// The thinking behind this restriction is that it enforces a
-////    /// requirement that the "compound character" not overlap with
-////    /// those characters that precede or follow it.
-////    ///
-////    /// If D represents a non-advancing character (_, square, and so
-////    /// on), X represents a character which does advance the carriage,
-////    /// S represents space and \b represents backspace, these are
-////    /// valid compound characters:
-////    ///
-////    /// DS
-////    /// DX
-////    /// S\bX
-////    /// X\bS
-////    /// S\bS (more about this one below)
-////    /// DDS
-////    /// DDX
-////    ///
-////    /// In terms of error-handling, once we see a dead character at
-////    /// the current input position, we know that we need to end up
-////    /// with a compound character which starts with it.  Once we see a
-////    /// regular character which advances the carriage followed by a
-////    /// backspace, we know we must be looking at a three-character
-////    /// compound character (i.e. it's an error for the character after
-////    /// the \b to be a dead character).
-////    ///
-////    /// The following examples would not be valid because the above
-////    /// rule disallows them.  After each I identify in parentheses the
-////    /// reason I think it should not be allowed (i.e. why our
-////    /// additional restriction is helpful).
-////    ///
-////    /// XX\b (would overlap the next character)
-////    /// DDD  (would overlap the next character)
-////    /// DXD  (would overlap the next character)
-////    /// DSD  (would overlap the next character)
-////    /// DDD  (would overlap the next character)
-////    /// SDD  (would overlap the next character)
-////    /// XDD  (would overlap the next character)
-////    /// \bDX (would overlap the previous character)
-////    /// \bXX (similar, but also visually appears to be two characters).
-////    ///
-////    /// These rules permit the form "S\bS" even though that's
-////    /// potentially confusing for users in that it is visually
-////    /// insidtinguishable from a single space.
-////    ///
-////    /// Condition 4 above ensures that these forms are not considered
-////    /// compound characters:
-////    ///
-////    /// XX  (we want to parse that as two simple characters)
-////    /// XXX (we want to parse that as three simple characters)
-////    /// XSX (we want to parse that as two single-character syllables
-////    ///     separated by a space)
-////    /// XDX (we want to parse this as the simple character X followed by
-////    ///      the compound character DX, because this reflects the fact
-////    ///      that the syllable takes up two "columns")
-////    ///
-////    /// This overstriking behaviour is described by A. Vanderburgh
-////    /// in "The Lincoln Keyboard - a typewriter keyboard designed
-////    /// for computers imput flexibility", a one-page paper in
-////    /// Communications of the ACM, Volume 1, Issue 7, July 1958
-////    /// (https://doi.org/10.1145/368873.368879).
-////    fn parse_compound_char<'srcbody, I: Input<'srcbody>>(
-////    ) -> impl Parser<'srcbody, &'srcbody str, I, Extra<'srcbody, I>> {
-////        // accepts a single character which advances the carriage.
-////        fn advances<'srcbody, I: Input<'srcbody>>(
-////        ) -> impl Parser<'srcbody, &'srcbody str, I, Extra<'srcbody, I>> {
-////            let parse_simple_nonblank = any().filter(is_nonblank_simple_symex_char);
-////            just(' ').or(parse_simple_nonblank)
-////        }
-////
-////        const BACKSPACE: char = '\u{8}';
-////        let bs = advances.then(just(BACKSPACE)).then(advances);
-////        let two = dead_char.then(advances);
-////        let three = bs.or(dead_char.then(two));
-////        choice((two, three))
-////    }
-////
-////    fn is_reserved_identifier(ident: &str) -> bool {
-////        helpers::is_register_name(ident)
-////            || matches!(helpers::opcode_to_num(ident), DecodedOpcode::Valid(_))
-////    }
-////
-////    fn parse_nonblank_simple_symex_chars<'srcbody, I: Input<'srcbody>>(
-////    ) -> impl Parser<'srcbody, &'srcbody str, I, Extra<'srcbody, I>> {
-////        any()
-////            .filter(is_nonblank_simple_symex_char)
-////            .repeated()
-////            .at_least(1)
-////    }
-////
-////    // This function gives the impression it wouldn't be very
-////    // efficient, but any TX-2 program will have to fit into the
-////    // address space of the machine, meaning that the assembler input
-////    // is unlikely to be more than 2^17 lines.  We can profile the
-////    // assembler on some longer input once the assembler actually
-////    // works.  For now we're concerned with correctness and we'll punt
-////    // on efficiency until we can quantify any problem.
-////    fn parse_symex_syllable<'srcbody, I: Input<'srcbody>>(
-////    ) -> impl Parser<'srcbody, &'srcbody str, I, Extra<'srcbody, I>> {
-////        choice((
-////            parse_nonblank_simple_symex_chars,
-////            // compound chars containing a space still don't terminate the symex.
-////            parse_compound_chars,
-////        ))
-////        .repeated()
-////        .at_least(1)
-////    }
-////
-////    fn parse_compound_chars<'srcbody, I: Input<'srcbody>>(
-////    ) -> impl Parser<'srcbody, &'srcbody str, I, Extra<'srcbody, I>> {
-////        parse_compound_char().repeated().at_least(1)
-////    }
-////
-////    pub(super) fn parse_symex_reserved_syllable<'srcbody, I: Input<'srcbody>>(
-////    ) -> impl Parser<'srcbody, &'srcbody str, I, Extra<'srcbody, I>> {
-////        parse_symex_syllable().filter(is_reserved_identifier)
-////    }
-////
-////    fn parse_symex_non_reserved_syllable<'srcbody, I: Input<'srcbody>>(
-////    ) -> impl Parser<'srcbody, &'srcbody str, I, Extra<'srcbody, I>> {
-////        fn not_reserved(input: &str) -> bool {
-////            !is_reserved_identifier(input)
-////        }
-////        parse_symex_syllable.filter(not_reserved)
-////    }
-////
-////    pub(super) fn parse_multi_syllable_symex<'srcbody, I: Input<'srcbody>>(
-////    ) -> impl Parser<'srcbody, &'srcbody str, I, Extra<'srcbody, I>> {
-////        let space_syllable = spaces1().ignore_then(parse_symex_syllable);
-////        parse_symex_non_reserved_syllable().then(space_syllable().repeated())
-////    }
-////}
-////
-////fn parse_symex<'srcbody, I: Input<'srcbody>>(
-////) -> impl Parser<'srcbody, &'srcbody str, I, Extra<'srcbody, I>> {
-////    choice((
-////        symex::parse_multi_syllable_symex,
-////        symex::parse_symex_reserved_syllable,
-////    ))
-////    .map(|loc| SymbolName::from(&loc))
-////}
-////
-////fn literal<'srcbody, I: Input<'srcbody>>(
-////) -> impl Parser<'srcbody, &'srcbody str, I, Extra<'srcbody, I>> {
-////    choice((normal_literal, superscript_literal, subscript_literal))
-////}
-////
+fn superscript_oct_digit1<'srcbody, I>() -> impl Parser<'srcbody, I, String, Extra<'srcbody, char>>
+where
+    I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
+{
+    fn superscript_oct_digit<'srcbody, I>() -> impl Parser<'srcbody, I, char, Extra<'srcbody, char>>
+    where
+        I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
+    {
+        any().filter(|ch| helpers::superscript_oct_digit_to_value(*ch).is_some())
+    }
+
+    superscript_oct_digit()
+        .repeated()
+        .at_least(1)
+        .collect::<String>()
+}
+
+fn maybe_superscript_dot<'srcbody, I>() -> impl Parser<'srcbody, I, bool, Extra<'srcbody, char>>
+where
+    I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
+{
+    just(
+        "\u{0307} ", // Unicode Combining Dot Above ̇followed by space ("̇ ")
+    )
+    .or_not()
+    .map(|x| x.is_some())
+}
+
+fn superscript_literal<'srcbody, I>(
+) -> impl Parser<'srcbody, I, LiteralValue, Extra<'srcbody, char>>
+where
+    I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
+{
+    fn maybe_superscript_sign<'srcbody, I>(
+    ) -> impl Parser<'srcbody, I, Option<char>, Extra<'srcbody, char>>
+    where
+        I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
+    {
+        one_of(concat!(
+            "\u{207B}", // U+207B: superscript minus
+            "\u{207A}", // U+207A: superscript plus
+        ))
+        .or_not()
+    }
+
+    maybe_superscript_sign()
+        .then(superscript_oct_digit1())
+        .then(maybe_superscript_dot())
+        .try_map_with_state(|((maybe_sign, digits), hasdot), span, state| {
+            match helpers::make_superscript_num(maybe_sign, &digits, hasdot, state) {
+                Ok(value) => Ok(LiteralValue::from((Elevation::Superscript, value))),
+                Err(e) => Err(Rich::custom(span, e.to_string())),
+            }
+        })
+        .labelled("numeric literal")
+}
+
+fn subscript_literal<'srcbody, I>() -> impl Parser<'srcbody, I, LiteralValue, Extra<'srcbody, char>>
+where
+    I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
+{
+    fn is_subscript_oct_digit(ch: &char) -> bool {
+        helpers::subscript_oct_digit_to_value(*ch).is_some()
+    }
+
+    fn maybe_subscript_sign<'srcbody, I>(
+    ) -> impl Parser<'srcbody, I, Option<char>, Extra<'srcbody, char>>
+    where
+        I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
+    {
+        one_of(concat!(
+            "\u{208B}", // u+208B: subscript minus
+            "\u{208A}", // U+208A: subscript plus
+        ))
+        .or_not()
+    }
+
+    fn subscript_oct_digit<'srcbody, I>() -> impl Parser<'srcbody, I, char, Extra<'srcbody, char>>
+    where
+        I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
+    {
+        any().filter(is_subscript_oct_digit)
+    }
+    fn subscript_oct_digit1<'srcbody, I>() -> impl Parser<'srcbody, I, String, Extra<'srcbody, char>>
+    where
+        I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
+    {
+        subscript_oct_digit()
+            .repeated()
+            .at_least(1)
+            .collect::<String>()
+    }
+
+    /// Recognise a subscript dot.  On the Linconln Writer, the dot
+    /// is raised above the line, like the dot customarily used for
+    /// the dot-product.  Hence for subscripts we use the regular
+    /// ascii dot (full stop, period) which is on the line.
+    fn maybe_subscript_dot<'srcbody, I>() -> impl Parser<'srcbody, I, bool, Extra<'srcbody, char>>
+    where
+        I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
+    {
+        just('.').or_not().map(|x| x.is_some())
+    }
+    maybe_subscript_sign()
+        .then(subscript_oct_digit1())
+        .then(maybe_subscript_dot())
+        .try_map_with_state(|((maybe_sign, digits), hasdot), span, state| {
+            match helpers::make_subscript_num(maybe_sign, &digits, hasdot, state) {
+                Ok(value) => Ok(LiteralValue::from((Elevation::Subscript, value))),
+                Err(e) => Err(Rich::custom(span, e.to_string())),
+            }
+        })
+        .labelled("numeric literal")
+}
+
+fn program_instruction_fragment<'srcbody, I>(
+) -> impl Parser<'srcbody, I, InstructionFragment, Extra<'srcbody, char>>
+where
+    I: Input<'srcbody, Token = char, Span = SimpleSpan> + StrInput<'srcbody, char>,
+{
+    //inline_whitespace().ignore_then(expression().map(InstructionFragment::from))
+    inline_whitespace().ignore_then(
+        literal().map(|literal| InstructionFragment::from(Expression::Literal(literal))),
+    )
+}
+
+fn spaces1<'srcbody, I>() -> impl Parser<'srcbody, I, (), Extra<'srcbody, char>>
+where
+    I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
+{
+    just(' ').repeated().at_least(1).ignored()
+}
+
+mod symex {
+    use chumsky::input::ValueInput;
+    use chumsky::prelude::*;
+    use chumsky::primitive::just;
+    use chumsky::text::{digits, inline_whitespace};
+    use chumsky::Parser;
+
+    use super::super::ast::{Elevation, LiteralValue};
+    use super::helpers::{self, is_nonblank_simple_symex_char, DecodedOpcode};
+    use super::{spaces1, Extra, SymbolName};
+    use base::Unsigned36Bit;
+
+    /// Recognise a single dead character, a character which does not
+    /// advance the character/cursor when printed.
+    pub(crate) fn dead_char<'a, I>() -> impl Parser<'a, I, String, Extra<'a, char>>
+    where
+        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    {
+        one_of(concat!(
+            "\u{0332}", // combining low line
+            "\u{0305}", // combining overline
+            "\u{20DD}", // combining enclosing circle
+            "\u{20DE}", // combining enclosing square
+        ))
+        .map(|ch| [ch].into_iter().collect())
+    }
+
+    fn canonical_symbol_name(s: &str) -> SymbolName {
+        // TODO: avoid copy where possible.
+        SymbolName {
+            canonical: s
+                .chars()
+                .filter(|ch: &char| -> bool { *ch != ' ' })
+                .collect(),
+        }
+    }
+
+    ////    /// Recognise a single compound character.
+    ////    ///
+    ////    /// ## Users Handbook Definition of Compound Characters
+    ////    ///
+    ////    /// Compound chars are described in item 7 on page 607 of the TX-2
+    ////    /// Users Handbook (Nov 63).
+    ////    ///
+    ////    /// Compound characters are described like so:
+    ////    ///
+    ////    ///  - Only one backspace
+    ////    ///  - Two or three characters only.
+    ////    ///  - Space bar is allowed
+    ////    ///  - Any sequence of characters is legal. (Except ...)
+    ////    ///
+    ////    /// This seems confusing at first but the key to understanding
+    ////    /// it is that the Lincoln Writer (from which these characters
+    ////    /// come) has four characters which don't advance the carriage
+    ////    /// when they are printed (underline, overline, square,
+    ////    /// circle).  That is, the following character is overstruck.
+    ////    /// The underline _ is one such character: then _ followed by G
+    ////    /// is a compound character, _ overstruck with G.  This would
+    ////    /// be a two-character compound character.
+    ////    ///
+    ////    /// A compound character can also be formed with a space,
+    ////    /// presumably for example a character which doesn't advance
+    ////    /// the carriage followed by a space, which does.
+    ////    ///
+    ////    /// Using our single allowed backspace, we could create a
+    ////    /// compound character using a character which does advance the
+    ////    /// carriage, for example K.  K\b> K overstruck with a >.
+    ////    ///
+    ////    /// Another three-character option is to use two
+    ////    /// non-carriage-advancing characters.  The documentation
+    ////    /// doesn't seem to clearly state whether Lincoln Writer codes
+    ////    /// 0o74 and 0o75 ("LOWER CASE" and "UPPER CASE") are
+    ////    /// permitted.  This makes a difference because for example
+    ////    /// CIRCLE is upper case while SQUARE is lower case (both
+    ////    /// signaled by code 013).   So I am not clear on whether
+    ////    /// this sequence of codes is a valid single compound
+    ////    /// character (assume we start in upper-case).
+    ////    ///
+    ////    /// Code  Representing          Advances carriage?
+    ////    /// 013   CIRCLE                No (it's special)
+    ////    /// 074   Shift to lower case   No (it's non-printing)
+    ////    /// 013   SQUARE                No (it's special)
+    ////    /// 057   *                     Yes (rightward)
+    ////    ///
+    ////    /// If valid this would represent a circle, square and asterisk
+    ////    /// all on the same spot.
+    ////    ///
+    ////    /// For the moment we don't need to worry about this, because we
+    ////    /// cannot tell the difference; the current parser implementation
+    ////    /// accepts Unicode input, and by the time the Lincoln Writer code
+    ////    /// have been translated into Unicode, the upper/lower case shift
+    ////    /// codes are no longer present in the parser's input.
+    ////    ///
+    ////    /// Another input that tests our understanding is this one:
+    ////    ///
+    ////    /// Code  Representing          Advances carriage?
+    ////    /// 013   CIRCLE                No (it's special)
+    ////    /// 062   Backspace             Yes (leftward!)
+    ////    /// 012   _ (underline)         No (it's special)
+    ////    ///
+    ////    /// This meets the letter of the condition (just one backspace,
+    ////    /// only three characters).  But the net effect of these code is a
+    ////    /// net leftward movement of the carriage/cursor.
+    ////    ///
+    ////    /// Yet another:
+    ////    /// 031   J                     Yes
+    ////    /// 062   Backspace             Yes (leftward!)
+    ////    /// 027   H                     Yes
+    ////    /// 062   Backspace             Yes (leftward!)
+    ////    /// 032   K                     Yes
+    ////    ///
+    ////    /// Here we apparently see 031 062 027 as the first compound
+    ////    /// character (three characters, one backspace) but is the
+    ////    /// following thing valid?  The problem is it starts with a
+    ////    /// backspace.  That cannot be part of the initial compound
+    ////    /// character because only one backspace is allowed.
+    ////    ///
+    ////    /// ## Additional Restrictions
+    ////    ///
+    ////    /// It seems that the Users Handbook underspecifies the compound
+    ////    /// character.  We will have to do something - accept some inputs
+    ////    /// and perhaps reject others.
+    ////    ///
+    ////    /// For now, I plan to add additional restrictions, not stated in
+    ////    /// the Users Handbook, which helps disambiguate:
+    ////    ///
+    ////    /// A compound character is a sequene of two or three characters
+    ////    /// which
+    ////    ///  1. Does not begin with a backspace
+    ////    ///  2. Does not end with a backspace
+    ////    ///  3. Does not end with a dead character (a character which does
+    ////    ///     not advance the carriage).
+    ////    ///  4. Includes either a backspace or a dead character.
+    ////    ///
+    ////    /// The thinking behind this restriction is that it enforces a
+    ////    /// requirement that the "compound character" not overlap with
+    ////    /// those characters that precede or follow it.
+    ////    ///
+    ////    /// If D represents a non-advancing character (_, square, and so
+    ////    /// on), X represents a character which does advance the carriage,
+    ////    /// S represents space and \b represents backspace, these are
+    ////    /// valid compound characters:
+    ////    ///
+    ////    /// DS
+    ////    /// DX
+    ////    /// S\bX
+    ////    /// X\bS
+    ////    /// S\bS (more about this one below)
+    ////    /// DDS
+    ////    /// DDX
+    ////    ///
+    ////    /// In terms of error-handling, once we see a dead character at
+    ////    /// the current input position, we know that we need to end up
+    ////    /// with a compound character which starts with it.  Once we see a
+    ////    /// regular character which advances the carriage followed by a
+    ////    /// backspace, we know we must be looking at a three-character
+    ////    /// compound character (i.e. it's an error for the character after
+    ////    /// the \b to be a dead character).
+    ////    ///
+    ////    /// The following examples would not be valid because the above
+    ////    /// rule disallows them.  After each I identify in parentheses the
+    ////    /// reason I think it should not be allowed (i.e. why our
+    ////    /// additional restriction is helpful).
+    ////    ///
+    ////    /// XX\b (would overlap the next character)
+    ////    /// DDD  (would overlap the next character)
+    ////    /// DXD  (would overlap the next character)
+    ////    /// DSD  (would overlap the next character)
+    ////    /// DDD  (would overlap the next character)
+    ////    /// SDD  (would overlap the next character)
+    ////    /// XDD  (would overlap the next character)
+    ////    /// \bDX (would overlap the previous character)
+    ////    /// \bXX (similar, but also visually appears to be two characters).
+    ////    ///
+    ////    /// These rules permit the form "S\bS" even though that's
+    ////    /// potentially confusing for users in that it is visually
+    ////    /// insidtinguishable from a single space.
+    ////    ///
+    ////    /// Condition 4 above ensures that these forms are not considered
+    ////    /// compound characters:
+    ////    ///
+    ////    /// XX  (we want to parse that as two simple characters)
+    ////    /// XXX (we want to parse that as three simple characters)
+    ////    /// XSX (we want to parse that as two single-character syllables
+    ////    ///     separated by a space)
+    ////    /// XDX (we want to parse this as the simple character X followed by
+    ////    ///      the compound character DX, because this reflects the fact
+    ////    ///      that the syllable takes up two "columns")
+    ////    ///
+    ////    /// This overstriking behaviour is described by A. Vanderburgh
+    ////    /// in "The Lincoln Keyboard - a typewriter keyboard designed
+    ////    /// for computers imput flexibility", a one-page paper in
+    ////    /// Communications of the ACM, Volume 1, Issue 7, July 1958
+    ////    /// (https://doi.org/10.1145/368873.368879).
+    pub(crate) fn parse_compound_char<'a, I>() -> impl Parser<'a, I, String, Extra<'a, char>>
+    where
+        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    {
+        // accepts a single character which advances the carriage.
+        fn advances<'a, I>() -> impl Parser<'a, I, char, Extra<'a, char>>
+        where
+            I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+        {
+            fn parse_simple_nonblank<'a, I>() -> impl Parser<'a, I, char, Extra<'a, char>>
+            where
+                I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+            {
+                any().filter(|ch| is_nonblank_simple_symex_char(*ch))
+            }
+            just(' ').or(parse_simple_nonblank())
+        }
+
+        const BACKSPACE: char = '\u{8}';
+
+        fn bs<'a, I>() -> impl Parser<'a, I, String, Extra<'a, char>>
+        where
+            I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+        {
+            advances()
+                .then(just(BACKSPACE))
+                .then(advances())
+                .map(|((ch1, ch2), ch3)| [ch1, ch2, ch3].into_iter().collect())
+        }
+
+        fn two<'a, I>() -> impl Parser<'a, I, String, Extra<'a, char>>
+        where
+            I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+        {
+            dead_char().then(advances()).map(|(mut s, ch)| {
+                s.push(ch);
+                s
+            })
+        }
+
+        fn three<'a, I>() -> impl Parser<'a, I, String, Extra<'a, char>>
+        where
+            I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+        {
+            bs().or(dead_char().then(two()).map(|(mut s1, s2)| {
+                s1.push_str(&s2);
+                s1
+            }))
+        }
+        choice((two(), three()))
+    }
+
+    fn is_reserved_identifier(ident: &str) -> bool {
+        helpers::is_register_name(ident)
+            || matches!(helpers::opcode_to_num(ident), DecodedOpcode::Valid(_))
+    }
+
+    fn parse_nonblank_simple_symex_chars<'a, I>() -> impl Parser<'a, I, String, Extra<'a, char>>
+    where
+        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    {
+        any()
+            .filter(|ch| is_nonblank_simple_symex_char(*ch))
+            .repeated()
+            .at_least(1)
+            .collect()
+    }
+
+    fn concat_strings(mut s: String, next: String) -> String {
+        s.push_str(&next);
+        s
+    }
+
+    // This function gives the impression it wouldn't be very
+    // efficient, but any TX-2 program will have to fit into the
+    // address space of the machine, meaning that the assembler input
+    // is unlikely to be more than 2^17 lines.  We can profile the
+    // assembler on some longer input once the assembler actually
+    // works.  For now we're concerned with correctness and we'll punt
+    // on efficiency until we can quantify any problem.
+    fn parse_symex_syllable<'a, I>() -> impl Parser<'a, I, String, Extra<'a, char>>
+    where
+        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    {
+        let parsers = || {
+            (
+                parse_nonblank_simple_symex_chars(), // returns String
+                // compound chars containing a space still don't terminate the symex.
+                parse_compound_chars(),
+            )
+        };
+        choice(parsers()).foldl(choice(parsers()).repeated(), concat_strings)
+    }
+
+    fn parse_compound_chars<'a, I>() -> impl Parser<'a, I, String, Extra<'a, char>>
+    where
+        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    {
+        parse_compound_char().foldl(parse_compound_char().repeated(), concat_strings)
+    }
+
+    pub(super) fn parse_symex_reserved_syllable<'a, I>(
+    ) -> impl Parser<'a, I, String, Extra<'a, char>>
+    where
+        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    {
+        parse_symex_syllable().try_map(|syllable, span| {
+            if is_reserved_identifier(&syllable) {
+                Ok(syllable)
+            } else {
+                Err(Rich::custom(span, "expected reserved syllable".to_string()))
+            }
+        })
+    }
+
+    fn parse_symex_non_reserved_syllable<'a, I>() -> impl Parser<'a, I, String, Extra<'a, char>>
+    where
+        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    {
+        parse_symex_syllable().try_map(|syllable, span| {
+            if is_reserved_identifier(&syllable) {
+                Err(Rich::custom(
+                    span,
+                    format!("'{syllable}' is a reserved identifier"),
+                ))
+            } else {
+                Ok(syllable)
+            }
+        })
+    }
+
+    pub(super) fn parse_multi_syllable_symex<'a, I>() -> impl Parser<'a, I, String, Extra<'a, char>>
+    where
+        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    {
+        fn space_syllable<'a, I>() -> impl Parser<'a, I, String, Extra<'a, char>>
+        where
+            I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+        {
+            spaces1().ignore_then(parse_symex_syllable())
+        }
+
+        parse_symex_non_reserved_syllable()
+            .then(
+                space_syllable()
+                    .repeated()
+                    // TODO: find a way to cut down on allocation of temporary strings.
+                    .collect::<Vec<String>>()
+                    .map(|v| v.join("")),
+            )
+            .map(|(head, tail)| format!("{head}{tail}"))
+    }
+
+    pub(super) fn parse_symex<'a, I>() -> impl Parser<'a, I, SymbolName, Extra<'a, char>>
+    where
+        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    {
+        choice((
+            parse_multi_syllable_symex(),
+            parse_symex_reserved_syllable(),
+        ))
+        .map(|s| canonical_symbol_name(&s))
+        // TODO: label this.
+    }
+}
+
+fn literal<'a, I>() -> impl Parser<'a, I, LiteralValue, Extra<'a, char>>
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+{
+    choice((normal_literal(), superscript_literal(), subscript_literal()))
+}
+
+fn opcode<'a, I>() -> impl Parser<'a, I, LiteralValue, Extra<'a, char>>
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+{
+    fn valid_opcode(s: &str) -> Result<LiteralValue, ()> {
+        if let helpers::DecodedOpcode::Valid(opcode) = helpers::opcode_to_num(s) {
+            Ok(LiteralValue::from((
+                Elevation::Normal,
+                // Bits 24-29 (dec) inclusive in the instruction word
+                // represent the opcode, so shift the opcode's value
+                // left by 24 decimal.
+                Unsigned36Bit::from(opcode)
+                    .shl(24)
+                    // Some opcodes automatically set the hold
+                    // bit, so do that here.
+                    .bitor(helpers::opcode_auto_hold_bit(opcode)),
+            )))
+        } else {
+            Err(())
+        }
+    }
+
+    any()
+        .repeated()
+        .exactly(3)
+        .collect::<String>()
+        .try_map(|text, span| {
+            valid_opcode(&text)
+                .map_err(|_| Rich::custom(span, format!("{text} is not a valid opcode")))
+        })
+        .labelled("opcode")
+}
+
 ////// Parse an expression; these can currently only take the form of a literal.
 ////// TX-2's M4 assembler allows arithmetic expressions also, but these are not
 ////// currently implemented.
@@ -471,12 +647,23 @@ where
 //////
 ////// [1] I use "sequence" in the paragraph above to avoid saying
 ////// "expression" or "instruction fragment".
-////fn expression<'srcbody, I: Input<'srcbody>>(
-////) -> impl Parser<'srcbody, &'srcbody str, Expression, Extra<'srcbody, I>> {
-////    let symbolic_expression = symbol.map(|name| Expression::Symbol(Elevation::Normal, name));
-////    let literal_expression = choice((literal, opcode)).map(Expression::from);
-////    choice((literal_expression, symbolic_expression))
+////fn expression<'a, I>() -> impl Parser<'a, I, Expression, Extra<'a, char>>
+////where
+////    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+////{
+////    fn symbolic_expression<'srcbody, I: Input<'srcbody>>(
+////    ) -> impl Parser<'srcbody, &'srcbody str, Expression, Extra<'srcbody, I>> {
+////        symbol().map(|name| Expression::Symbol(Elevation::Normal, name))
+////    }
+////
+////    fn literal_expression<'srcbody, I: Input<'srcbody>>(
+////    ) -> impl Parser<'srcbody, &'srcbody str, Expression, Extra<'srcbody, I>> {
+////        choice((literal(), opcode())).map(Expression::from)
+////    }
+////
+////    choice((literal_expression(), symbolic_expression()))
 ////}
+
 ////
 /////// An address expression is a literal value or a symex.  That is I
 /////// think it's not required that an arithmetic expression
@@ -487,12 +674,16 @@ where
 ////    // We should eventually support symexes here.
 ////    literal.map_res(|literal| Address::try_from(literal.value()))
 ////}
-////
-////fn symbol<'srcbody, I: Input<'srcbody>>(
-////) -> impl Parser<'srcbody, &'srcbody str, SymbolName, Extra<'srcbody, I>> {
-////    parse_symex().map(SymbolName::from)
-////}
-////
+
+//// fn symbol<'a, I>() -> impl Parser<'a, I, SymbolName, Extra<'a, char>>
+//// where
+////     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+//// {
+////     symex::parse_symex()
+////         .map(SymbolName::from)
+////         .labelled("symex (symbol) name")
+//// }
+
 ////fn tag_definition<'srcbody, I: Input<'srcbody>>(
 ////) -> impl Parser<'srcbody, &'srcbody str, SymbolName, Extra<'srcbody, I>> {
 ////    fn arrow<'srcbody, I: Input<'srcbody>>(
