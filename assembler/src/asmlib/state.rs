@@ -9,6 +9,19 @@ pub(crate) enum NumeralMode {
     Decimal,
 }
 
+impl NumeralMode {
+    pub(crate) fn radix(&self, alternate: bool) -> u32 {
+        match (&self, alternate) {
+            (&NumeralMode::Octal, false) | (&NumeralMode::Decimal, true) => 8,
+            (&NumeralMode::Decimal, false) | (&NumeralMode::Octal, true) => 10,
+        }
+    }
+
+    pub(crate) fn set_numeral_mode(&mut self, mode: NumeralMode) {
+        *self = mode;
+    }
+}
+
 // defeat derivable_impls here because if we simply derive Default
 // it's unclear which value we get as the default.
 #[allow(clippy::derivable_impls)]
@@ -49,14 +62,11 @@ impl State {
     }
 
     pub(crate) fn radix(&self, alternate: bool) -> u32 {
-        match (&self.radix, alternate) {
-            (&NumeralMode::Octal, false) | (&NumeralMode::Decimal, true) => 8,
-            (&NumeralMode::Decimal, false) | (&NumeralMode::Octal, true) => 10,
-        }
+        self.radix.radix(alternate)
     }
 
-    pub(crate) fn set_numeral_mode(&mut self, numeral_mode: NumeralMode) {
-        self.radix = numeral_mode
+    pub(crate) fn set_numeral_mode(&mut self, mode: NumeralMode) {
+        self.radix.set_numeral_mode(mode)
     }
 }
 
@@ -78,7 +88,7 @@ impl<'b> StateExtra<'b> {
         self.inner.borrow().radix(alternate)
     }
 
-    pub(crate) fn set_numeral_mode(&self, numeral_mode: NumeralMode) {
-        self.inner.borrow_mut().set_numeral_mode(numeral_mode);
+    pub(crate) fn set_numeral_mode(&self, mode: NumeralMode) {
+        self.inner.borrow_mut().set_numeral_mode(mode);
     }
 }

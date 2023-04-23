@@ -2,6 +2,7 @@
 #![deny(unsafe_code)]
 
 mod ast;
+mod chumskyparser;
 mod driver;
 mod parser;
 mod state;

@@ -655,7 +655,9 @@ fn execute_metacommand(state_extra: &StateExtra, cmd: &ManuscriptMetaCommand) {
             // we simply return it as part of the parser output, and
             // it is executed by the driver.
         }
-        ManuscriptMetaCommand::BaseChange(new_base) => state_extra.set_numeral_mode(*new_base),
+        ManuscriptMetaCommand::BaseChange(new_base) => {
+            state_extra.set_numeral_mode(*new_base);
+        }
     }
 }
 
