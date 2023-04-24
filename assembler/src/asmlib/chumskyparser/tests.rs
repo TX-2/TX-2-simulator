@@ -319,29 +319,29 @@ fn test_parse_compound_char() {
 //        }
 //    );
 //}
-//
-//#[test]
-//fn test_symbol_name_one_syllable() {
-//    assert_eq!(
-//        parse_successfully_with("START4", symbol_name, no_state_setup),
-//        SymbolName {
-//            canonical: "START4".to_string(),
-//            //as_used: "START4".to_string(),
-//        }
-//    );
-//}
-//
-//#[test]
-//fn test_symbol_name_two_syllables() {
-//    assert_eq!(
-//        parse_successfully_with("TWO WORDS", symbol_name, no_state_setup),
-//        SymbolName {
-//            canonical: "TWOWORDS".to_string(),
-//            //as_used: "TWO WORDS".to_string(),
-//        }
-//    );
-//}
-//
+
+#[test]
+fn test_symbol_name_one_syllable() {
+    assert_eq!(
+        parse_successfully_with("START4", symbol(), no_state_setup),
+        SymbolName {
+            canonical: "START4".to_string(),
+            //as_used: "START4".to_string(),
+        }
+    );
+}
+
+#[test]
+fn test_symbol_name_two_syllables() {
+    assert_eq!(
+        parse_successfully_with("TWO WORDS", symbol(), no_state_setup),
+        SymbolName {
+            canonical: "TWOWORDS".to_string(),
+            //as_used: "TWO WORDS".to_string(),
+        }
+    );
+}
+
 //#[test]
 //fn test_manuscript_with_single_syllable_tag() {
 //    assert_eq!(
@@ -744,20 +744,20 @@ fn test_parse_compound_char() {
 //    );
 //}
 //
-//#[test]
-//fn test_opcode() {
-//    let expected_instruction = Instruction::from(&SymbolicInstruction {
-//        held: false,
-//        configuration: Unsigned5Bit::ZERO,
-//        opcode: Opcode::Aux,
-//        index: Unsigned6Bit::ZERO,
-//        operand_address: OperandAddress::Direct(Address::ZERO),
-//    });
-//    assert_eq!(
-//        parse_successfully_with("AUX", opcode, no_state_setup),
-//        LiteralValue::from((Elevation::Normal, expected_instruction.bits(),))
-//    );
-//}
+#[test]
+fn test_opcode() {
+    let expected_instruction = Instruction::from(&SymbolicInstruction {
+        held: false,
+        configuration: Unsigned5Bit::ZERO,
+        opcode: Opcode::Aux,
+        index: Unsigned6Bit::ZERO,
+        operand_address: OperandAddress::Direct(Address::ZERO),
+    });
+    assert_eq!(
+        parse_successfully_with("AUX", opcode(), no_state_setup),
+        LiteralValue::from((Elevation::Normal, expected_instruction.bits(),))
+    );
+}
 //
 //#[test]
 //fn program_instruction_with_opcode() {
@@ -766,36 +766,36 @@ fn test_parse_compound_char() {
 //    assert_eq!(inst.value(&nosyms), Ok(u36!(0o210452_030106)));
 //}
 //
-//#[test]
-//fn hold() {
-//    assert_eq!(
-//        parse_successfully_with(" h", maybe_hold, no_state_setup),
-//        HoldBit::Hold
-//    );
-//    assert_eq!(
-//        parse_successfully_with(" :", maybe_hold, no_state_setup),
-//        HoldBit::Hold
-//    );
-//}
-//
-//#[test]
-//fn not_hold() {
-//    assert_eq!(
-//        //parse_successfully_with(" ℏ", maybe_hold, no_state_setup),
-//        parse_successfully_with("ℏ", maybe_hold, no_state_setup),
-//        HoldBit::NotHold
-//    );
-//    assert_eq!(
-//        //parse_successfully_with(" ̅h", maybe_hold, no_state_setup),
-//        parse_successfully_with("̅h", maybe_hold, no_state_setup),
-//        HoldBit::NotHold
-//    );
-//}
-//
-//#[test]
-//fn unspecified_hold() {
-//    assert_eq!(
-//        parse_successfully_with("", maybe_hold, no_state_setup),
-//        HoldBit::Unspecified
-//    );
-//}
+#[test]
+fn hold() {
+    assert_eq!(
+        parse_successfully_with(" h", maybe_hold(), no_state_setup),
+        HoldBit::Hold
+    );
+    assert_eq!(
+        parse_successfully_with(" :", maybe_hold(), no_state_setup),
+        HoldBit::Hold
+    );
+}
+
+#[test]
+fn not_hold() {
+    assert_eq!(
+        //parse_successfully_with(" ℏ", maybe_hold, no_state_setup),
+        parse_successfully_with("ℏ", maybe_hold(), no_state_setup),
+        HoldBit::NotHold
+    );
+    assert_eq!(
+        //parse_successfully_with(" ̅h", maybe_hold, no_state_setup),
+        parse_successfully_with("̅h", maybe_hold(), no_state_setup),
+        HoldBit::NotHold
+    );
+}
+
+#[test]
+fn unspecified_hold() {
+    assert_eq!(
+        parse_successfully_with("", maybe_hold(), no_state_setup),
+        HoldBit::Unspecified
+    );
+}

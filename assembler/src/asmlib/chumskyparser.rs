@@ -675,14 +675,14 @@ where
 ////    literal.map_res(|literal| Address::try_from(literal.value()))
 ////}
 
-//// fn symbol<'a, I>() -> impl Parser<'a, I, SymbolName, Extra<'a, char>>
-//// where
-////     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
-//// {
-////     symex::parse_symex()
-////         .map(SymbolName::from)
-////         .labelled("symex (symbol) name")
-//// }
+fn symbol<'a, I>() -> impl Parser<'a, I, SymbolName, Extra<'a, char>>
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+{
+    symex::parse_symex()
+        .map(SymbolName::from)
+        .labelled("symex (symbol) name")
+}
 
 ////fn tag_definition<'srcbody, I: Input<'srcbody>>(
 ////) -> impl Parser<'srcbody, &'srcbody str, SymbolName, Extra<'srcbody, I>> {
@@ -790,31 +790,22 @@ where
 ////            },
 ////        )(input)
 ////    }
-////
-////    fn maybe_hold<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, HoldBit> {
-////        /// Accept either 'h' or ':' signalling the hold bit should be set.
-////        /// The documentation seems to use both, though perhaps ':' is the
-////        /// older usage.
-////        fn hold<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, HoldBit> {
-////            map(alt((tag("h"), tag(":"))), |_| HoldBit::Hold)(input)
-////        }
-////
-////        fn not_hold<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, HoldBit> {
-////            map(
-////                alt((
-////                    // Accept a combining overbar with h, as used on the TX-2.
-////                    tag("\u{0305}h"),
-////                    // Also accept the "h with stroke" (better known as h-bar) symbol.
-////                    tag("ℏ"),
-////                )),
-////                |_| HoldBit::NotHold,
-////            )(input)
-////        }
-////
-////        let holdmapper = |got: Option<HoldBit>| got.unwrap_or(HoldBit::Unspecified);
-////        map(opt(preceded(space0, alt((hold, not_hold)))), holdmapper)(input)
-////    }
-////
+
+fn maybe_hold<'a, I>() -> impl Parser<'a, I, HoldBit, Extra<'a, char>>
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+{
+    // Accept either 'h' or ':' signalling the hold bit should be set.
+    // The documentation seems to use both, though perhaps ':' is the
+    // older usage.
+    choice((
+        one_of("h:").to(HoldBit::Hold),
+        choice((just("\u{0305}h"), just("ℏ"))).to(HoldBit::NotHold),
+    ))
+    .padded()
+    .or(empty().to(HoldBit::Unspecified))
+}
+
 ////    fn program_instruction<'a, 'b>(
 ////        input: ek::LocatedSpan<'a, 'b>,
 ////    ) -> ek::IResult<'a, 'b, ProgramInstruction> {
