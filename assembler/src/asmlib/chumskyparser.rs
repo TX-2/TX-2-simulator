@@ -463,95 +463,72 @@ where
         .labelled("tag definition")
 }
 
-////#[cfg(notyet)]
-////mod notyet {
-////    use super::ek;
-////    use super::helpers::*;
-////    fn metacommand<'a, 'b>(
-////        input: ek::LocatedSpan<'a, 'b>,
-////    ) -> ek::IResult<'a, 'b, ManuscriptMetaCommand> {
-////        fn double_hand<'a, 'b>(
-////            input: ek::LocatedSpan<'a, 'b>,
-////        ) -> ek::IResult<'a, 'b, Option<char>> {
-////            fn hand<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, char> {
-////                char('☛')(input)
-////            }
-////
-////            preceded(
-////                hand,
-////                ek::expect(hand, "'☛' should be followed by another '☛'"),
-////            )(input)
-////        }
-////
-////        fn punch<'a, 'b>(
-////            input: ek::LocatedSpan<'a, 'b>,
-////        ) -> ek::IResult<'a, 'b, ManuscriptMetaCommand> {
-////            match map_res(
-////                // We interpret "AA" in the descripion of the PUNCH
-////                // metacommand as accepting only literal numeric (and not
-////                // symbolic) values.  That may not be a correct
-////                // interpretation, though.
-////                preceded(preceded(tag("PUNCH"), spaces1), opt(literal)),
-////                helpers::punch_address,
-////            )(input)
-////            {
-////                Ok((input, punch)) => {
-////                    let cmd: ManuscriptMetaCommand = ManuscriptMetaCommand::Punch(punch);
-////                    Ok((input, cmd))
-////                }
-////                Err(nom::Err::Error(e) | nom::Err::Failure(e)) => {
-////                    let err = Error(
-////                        ErrorLocation::from(&e.input),
-////                        "invalid PUNCH address".to_string(),
-////                    );
-////                    e.input.extra.report_error(err);
-////                    Ok((e.input, ManuscriptMetaCommand::Invalid))
-////                }
-////                Err(e) => Err(e),
-////            }
-////        }
-////
-////        fn base_change<'a, 'b>(
-////            input: ek::LocatedSpan<'a, 'b>,
-////        ) -> ek::IResult<'a, 'b, ManuscriptMetaCommand> {
-////            fn decimal<'a, 'b>(
-////                input: ek::LocatedSpan<'a, 'b>,
-////            ) -> ek::IResult<'a, 'b, ManuscriptMetaCommand> {
-////                map(alt((tag("DECIMAL"), tag("DEC"))), |_| {
-////                    ManuscriptMetaCommand::BaseChange(NumeralMode::Decimal)
-////                })(input)
-////            }
-////            fn octal<'a, 'b>(
-////                input: ek::LocatedSpan<'a, 'b>,
-////            ) -> ek::IResult<'a, 'b, ManuscriptMetaCommand> {
-////                map(alt((tag("OCTAL"), tag("OCT"))), |_| {
-////                    ManuscriptMetaCommand::BaseChange(NumeralMode::Octal)
-////                })(input)
-////            }
-////
-////            alt((decimal, octal))(input)
-////        }
-////
-////        fn metacommand_body<'a, 'b>(
-////            input: ek::LocatedSpan<'a, 'b>,
-////        ) -> ek::IResult<'a, 'b, ManuscriptMetaCommand> {
-////            alt((base_change, punch))(input)
-////        }
-////
-////        map(
-////            pair(
-////                double_hand,
-////                ek::expect(
-////                    metacommand_body,
-////                    "double meta hand '☛☛' must be followed by a valid meta command",
-////                ),
-////            ),
-////            |got| match got {
-////                (Some(_), Some(cmd)) => cmd,
-////                _ => ManuscriptMetaCommand::Invalid,
-////            },
-////        )(input)
-////    }
+fn double_hand<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+{
+    let hand = just('☛');
+    hand.ignored()
+        .then(hand)
+        .ignored()
+        .labelled("double meta hand")
+}
+
+fn metacommand<'a, I>() -> impl Parser<'a, I, ManuscriptMetaCommand, Extra<'a, char>>
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+{
+    fn punch<'a, I>() -> impl Parser<'a, I, ManuscriptMetaCommand, Extra<'a, char>>
+    where
+        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+    {
+        // We currently have a limitation in the interpretation of
+        // "AA" in the PUNCH metacommand.  The documentation clearly
+        // states that this should be an honest tag.  We currently
+        // accept only numeric literals.
+        just("PUNCH")
+            .then(inline_whitespace())
+            .ignore_then(literal().or_not())
+            .try_map(|aa, span| match helpers::punch_address(aa) {
+                Ok(punch) => Ok(ManuscriptMetaCommand::Punch(punch)),
+                Err(msg) => Err(Rich::custom(span, msg)),
+            })
+            .labelled("PUNCH command")
+    }
+
+    fn base_change<'a, I>() -> impl Parser<'a, I, ManuscriptMetaCommand, Extra<'a, char>>
+    where
+        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    {
+        fn decimal<'a, I>() -> impl Parser<'a, I, ManuscriptMetaCommand, Extra<'a, char>>
+        where
+            I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+        {
+            choice((just("DECIMAL"), just("DEC")))
+                .to(ManuscriptMetaCommand::BaseChange(NumeralMode::Decimal))
+        }
+        fn octal<'a, I>() -> impl Parser<'a, I, ManuscriptMetaCommand, Extra<'a, char>>
+        where
+            I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+        {
+            choice((just("OCTAL"), just("OCT")))
+                .to(ManuscriptMetaCommand::BaseChange(NumeralMode::Octal))
+        }
+
+        choice((decimal(), octal())).labelled("base-change metacommand")
+    }
+
+    fn metacommand_body<'a, I>() -> impl Parser<'a, I, ManuscriptMetaCommand, Extra<'a, char>>
+    where
+        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+    {
+        choice((base_change(), punch()))
+    }
+
+    double_hand()
+        .ignore_then(metacommand_body())
+        .labelled("metacommand")
+}
 
 fn hold<'a, I>() -> impl Parser<'a, I, HoldBit, Extra<'a, char>>
 where

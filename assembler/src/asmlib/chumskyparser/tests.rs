@@ -704,15 +704,15 @@ fn test_multi_syllable_tag() {
 //        ManuscriptMetaCommand::BaseChange(NumeralMode::Octal)
 //    );
 //}
-//
-//#[test]
-//fn test_metacommand_octal() {
-//    assert_eq!(
-//        parse_successfully_with("☛☛OCTAL", metacommand, no_state_setup),
-//        ManuscriptMetaCommand::BaseChange(NumeralMode::Octal)
-//    );
-//}
-//
+
+#[test]
+fn test_metacommand_octal() {
+    assert_eq!(
+        parse_successfully_with("☛☛OCTAL", metacommand(), no_state_setup),
+        ManuscriptMetaCommand::BaseChange(NumeralMode::Octal)
+    );
+}
+
 //#[test]
 //fn test_metacommand_dec_changes_default_base() {
 //    const INPUT: &str = concat!("10\n", "☛☛DECIMAL\n", "10  ** Ten\n");

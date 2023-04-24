@@ -3,7 +3,7 @@ use std::num::IntErrorKind;
 
 use base::prelude::*;
 
-//use super::super::ast::*;
+use super::super::ast::*;
 use super::super::state::NumeralMode;
 
 pub(super) fn make_u36(s: &str, radix: u32) -> Result<Unsigned36Bit, StringConversionFailed> {
@@ -221,31 +221,31 @@ pub(super) fn opcode_to_num(input: &str) -> DecodedOpcode {
     DecodedOpcode::Valid(Unsigned6Bit::try_from(val).unwrap())
 }
 
-//// pub(super) fn punch_address(a: Option<LiteralValue>) -> Result<PunchCommand, String> {
-////     match a {
-////         None => Ok(PunchCommand(None)),
-////         Some(literal) => {
-////             let value = literal.value();
-////             match Unsigned18Bit::try_from(value) {
-////                 Err(e) => Err(format!(
-////                     "PUNCH address value {:o} is not a valid address: {}",
-////                     value, e
-////                 )),
-////                 Ok(halfword) => {
-////                     let addr: Address = Address::from(halfword);
-////                     if addr.mark_bit() != Unsigned18Bit::ZERO {
-////                         Err(format!(
-////                             "PUNCH address value {:o} must not be a deferred address",
-////                             addr
-////                         ))
-////                     } else {
-////                         Ok(PunchCommand(Some(addr)))
-////                     }
-////                 }
-////             }
-////         }
-////     }
-//// }
+pub(super) fn punch_address(a: Option<LiteralValue>) -> Result<PunchCommand, String> {
+    match a {
+        None => Ok(PunchCommand(None)),
+        Some(literal) => {
+            let value = literal.value();
+            match Unsigned18Bit::try_from(value) {
+                Err(e) => Err(format!(
+                    "PUNCH address value {:o} is not a valid address: {}",
+                    value, e
+                )),
+                Ok(halfword) => {
+                    let addr: Address = Address::from(halfword);
+                    if addr.mark_bit() != Unsigned18Bit::ZERO {
+                        Err(format!(
+                            "PUNCH address value {:o} must not be a deferred address",
+                            addr
+                        ))
+                    } else {
+                        Ok(PunchCommand(Some(addr)))
+                    }
+                }
+            }
+        }
+    }
+}
 ////
 //// pub(super) fn manuscript_lines_to_blocks(
 ////     lines: Vec<ManuscriptLine>,
