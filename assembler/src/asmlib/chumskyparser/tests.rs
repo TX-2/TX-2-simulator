@@ -10,7 +10,6 @@ use super::super::ast::{
     Block, Elevation, Expression, HoldBit, InstructionFragment, LiteralValue, ManuscriptBlock,
     ManuscriptMetaCommand, Origin, ProgramInstruction, SourceFile, Statement, SymbolName,
 };
-use super::super::driver::assemble_nonempty_valid_input;
 use super::super::parser::*;
 use super::super::state::{NumeralMode, State, StateExtra};
 use super::super::symtab::SymbolTable;
@@ -224,6 +223,14 @@ fn test_program_instruction_fragment() {
     assert_eq!(
         parse_successfully_with("6510", program_instruction_fragment(), no_state_setup),
         InstructionFragment::from((Elevation::Normal, Unsigned36Bit::from(0o6510_u32),))
+    );
+}
+
+#[test]
+fn test_assemble_octal_literal() {
+    assert_eq!(
+        parse_successfully_with("177777\n", program_instruction_fragment(), no_state_setup),
+        InstructionFragment::from((Elevation::Normal, Unsigned36Bit::from(0o177777_u32))),
     );
 }
 
@@ -623,87 +630,29 @@ fn test_multi_syllable_tag() {
 //    );
 //}
 //
-//#[cfg(test)]
-//fn assemble_literal(input: &str, expected: &InstructionFragment) {
-//    let (directive, symtab) = assemble_nonempty_valid_input(input);
-//    if !symtab.is_empty() {
-//        panic!("no symbol should have been generated");
-//    }
-//    match directive.blocks.as_slice() {
-//        [Block { origin: _, items }] => match items.as_slice() {
-//            [ProgramInstruction {
-//                tag: None,
-//                holdbit: HoldBit::Unspecified,
-//                parts,
-//            }] => match parts.as_slice() {
-//                [only_frag] => {
-//                    if only_frag == expected {
-//                        return;
-//                    }
-//                }
-//                _ => (), // fall through to panic.
-//            },
-//            _ => (), // fall through to panic.
-//        },
-//        _ => (), // fall through to panic.
-//    }
-//    panic!(
-//        "expected one instruction containing {:?}, got {:?}",
-//        &expected, &directive,
-//    );
-//}
-//
-//#[test]
-//fn test_assemble_octal_literal() {
-//    assemble_literal(
-//        "177777\n",
-//        &InstructionFragment::from((Elevation::Normal, Unsigned36Bit::from(0o177777_u32))),
-//    );
-//}
-//
-//#[test]
-//fn test_assemble_octal_superscript_literal() {
-//    assemble_literal(
-//        "⁺³⁶\n", // 36, superscript
-//        &InstructionFragment::from((Elevation::Superscript, Unsigned36Bit::from(0o36_u32))),
-//    );
-//}
-//
-//#[test]
-//fn test_assemble_octal_subscript_literal() {
-//    assemble_literal(
-//        "₁₃\n", // without sign
-//        &InstructionFragment::from((Elevation::Subscript, Unsigned36Bit::from(0o13_u32))),
-//    );
-//    assemble_literal(
-//        "₊₁₃\n", // with optional + sign
-//        &InstructionFragment::from((Elevation::Subscript, Unsigned36Bit::from(0o13_u32))),
-//    );
-//}
-//
-//#[test]
-//fn test_metacommand_decimal() {
-//    assert_eq!(
-//        parse_successfully_with("☛☛DECIMAL", metacommand, no_state_setup),
-//        ManuscriptMetaCommand::BaseChange(NumeralMode::Decimal)
-//    );
-//}
-//
-//#[test]
-//fn test_metacommand_dec() {
-//    assert_eq!(
-//        parse_successfully_with("☛☛DEC", metacommand, no_state_setup),
-//        ManuscriptMetaCommand::BaseChange(NumeralMode::Decimal)
-//    );
-//}
-//
-//#[test]
-//fn test_metacommand_oct() {
-//    assert_eq!(
-//        parse_successfully_with("☛☛OCT", metacommand, no_state_setup),
-//        ManuscriptMetaCommand::BaseChange(NumeralMode::Octal)
-//    );
-//}
+#[test]
+fn test_metacommand_decimal() {
+    assert_eq!(
+        parse_successfully_with("☛☛DECIMAL", metacommand(), no_state_setup),
+        ManuscriptMetaCommand::BaseChange(NumeralMode::Decimal)
+    );
+}
+
+#[test]
+fn test_metacommand_dec() {
+    assert_eq!(
+        parse_successfully_with("☛☛DEC", metacommand(), no_state_setup),
+        ManuscriptMetaCommand::BaseChange(NumeralMode::Decimal)
+    );
+}
+
+#[test]
+fn test_metacommand_oct() {
+    assert_eq!(
+        parse_successfully_with("☛☛OCT", metacommand(), no_state_setup),
+        ManuscriptMetaCommand::BaseChange(NumeralMode::Octal)
+    );
+}
 
 #[test]
 fn test_metacommand_octal() {
@@ -713,44 +662,6 @@ fn test_metacommand_octal() {
     );
 }
 
-//#[test]
-//fn test_metacommand_dec_changes_default_base() {
-//    const INPUT: &str = concat!("10\n", "☛☛DECIMAL\n", "10  ** Ten\n");
-//    let (directive, _) = assemble_nonempty_valid_input(INPUT);
-//    if let [Block { origin: _, items }] = directive.blocks.as_slice() {
-//        if let [ProgramInstruction {
-//            tag: None,
-//            holdbit: HoldBit::Unspecified,
-//            parts: first_parts,
-//        }, ProgramInstruction {
-//            tag: None,
-//            holdbit: HoldBit::Unspecified,
-//            parts: second_parts,
-//        }] = items.as_slice()
-//        {
-//            assert_eq!(
-//                &first_parts.as_slice(),
-//                &[InstructionFragment::from((
-//                    Elevation::Normal,
-//                    Unsigned36Bit::from(0o10_u32),
-//                ))],
-//            );
-//            assert_eq!(
-//                &second_parts.as_slice(),
-//                &[InstructionFragment::from((
-//                    Elevation::Normal,
-//                    Unsigned36Bit::from(0o12_u32),
-//                ))],
-//            );
-//            return;
-//        }
-//    }
-//    panic!(
-//        "expected two items with value 10 octal and 12 octal, got {:?}",
-//        &directive,
-//    );
-//}
-//
 #[test]
 fn test_opcode() {
     let expected_instruction = Instruction::from(&SymbolicInstruction {

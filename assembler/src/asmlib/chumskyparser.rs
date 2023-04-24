@@ -500,22 +500,13 @@ where
     where
         I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
     {
-        fn decimal<'a, I>() -> impl Parser<'a, I, ManuscriptMetaCommand, Extra<'a, char>>
-        where
-            I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
-        {
+        choice((
             choice((just("DECIMAL"), just("DEC")))
-                .to(ManuscriptMetaCommand::BaseChange(NumeralMode::Decimal))
-        }
-        fn octal<'a, I>() -> impl Parser<'a, I, ManuscriptMetaCommand, Extra<'a, char>>
-        where
-            I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
-        {
+                .to(ManuscriptMetaCommand::BaseChange(NumeralMode::Decimal)),
             choice((just("OCTAL"), just("OCT")))
-                .to(ManuscriptMetaCommand::BaseChange(NumeralMode::Octal))
-        }
-
-        choice((decimal(), octal())).labelled("base-change metacommand")
+                .to(ManuscriptMetaCommand::BaseChange(NumeralMode::Octal)),
+        ))
+        .labelled("base-change metacommand")
     }
 
     fn metacommand_body<'a, I>() -> impl Parser<'a, I, ManuscriptMetaCommand, Extra<'a, char>>

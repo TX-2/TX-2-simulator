@@ -14,6 +14,8 @@ use super::types::*;
 use base::prelude::{Address, Unsigned36Bit};
 
 mod output;
+#[cfg(test)]
+mod tests;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 struct OutputOptions {
@@ -376,46 +378,4 @@ pub fn assemble_file(
         })?;
     let mut writer = BufWriter::new(output_file);
     output::write_user_program(&user_program, &mut writer, output_file_name)
-}
-
-#[cfg(test)]
-mod tests {
-    use base::prelude::{u18, u36, Address};
-
-    use super::super::{
-        ast::{
-            Elevation, Expression, HoldBit, InstructionFragment, LiteralValue, ManuscriptBlock,
-            ProgramInstruction, PunchCommand, SourceFile, Statement,
-        },
-        state::Error,
-    };
-    use super::assemble_pass1;
-
-    #[test]
-    fn test_assemble_pass1() {
-        let input = concat!("14\n", "☛☛PUNCH 26\n");
-        let mut errors: Vec<Error> = Vec::new();
-        let (source_file, _options) =
-            assemble_pass1(input, &mut errors).expect("pass 1 should succeed");
-
-        assert_eq!(
-            source_file,
-            SourceFile {
-                punch: Some(PunchCommand(Some(Address::from(u18!(0o26))))),
-                blocks: vec![ManuscriptBlock {
-                    origin: None,
-                    statements: vec![Statement::Instruction(ProgramInstruction {
-                        tag: None,
-                        holdbit: HoldBit::Unspecified,
-                        parts: vec![InstructionFragment {
-                            value: Expression::Literal(LiteralValue::from((
-                                Elevation::Normal,
-                                u36!(0o14)
-                            )))
-                        }]
-                    })]
-                }]
-            }
-        );
-    }
 }
