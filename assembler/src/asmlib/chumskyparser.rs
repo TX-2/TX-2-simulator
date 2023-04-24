@@ -54,7 +54,10 @@ fn maybe_dot<'a, I>() -> impl Parser<'a, I, bool, Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
 {
-    one_of("\u{22C5}\u{00B7}").or_not().map(|x| x.is_some())
+    one_of("\u{22C5}\u{00B7}")
+        .or_not()
+        .map(|x| x.is_some())
+        .labelled("dot")
 }
 
 fn normal_literal<'a, I>() -> impl Parser<'a, I, LiteralValue, Extra<'a, char>>
@@ -109,6 +112,7 @@ where
         .repeated()
         .at_least(1)
         .collect::<String>()
+        .labelled("superscript octal digits")
 }
 
 fn maybe_superscript_dot<'srcbody, I>() -> impl Parser<'srcbody, I, bool, Extra<'srcbody, char>>
@@ -120,6 +124,7 @@ where
     )
     .or_not()
     .map(|x| x.is_some())
+    .labelled("superscript dot")
 }
 
 fn superscript_literal<'srcbody, I>(
@@ -214,17 +219,18 @@ fn program_instruction_fragment<'srcbody, I>(
 where
     I: Input<'srcbody, Token = char, Span = SimpleSpan> + StrInput<'srcbody, char>,
 {
-    //inline_whitespace().ignore_then(expression().map(InstructionFragment::from))
-    inline_whitespace().ignore_then(
-        literal().map(|literal| InstructionFragment::from(Expression::Literal(literal))),
-    )
+    expression().padded().map(InstructionFragment::from)
 }
 
 fn spaces1<'srcbody, I>() -> impl Parser<'srcbody, I, (), Extra<'srcbody, char>>
 where
     I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
 {
-    just(' ').repeated().at_least(1).ignored()
+    just(' ')
+        .repeated()
+        .at_least(1)
+        .ignored()
+        .labelled("one or more spaces")
 }
 
 mod symex {
@@ -239,21 +245,6 @@ mod symex {
     use super::{spaces1, Extra, SymbolName};
     use base::Unsigned36Bit;
 
-    /// Recognise a single dead character, a character which does not
-    /// advance the character/cursor when printed.
-    pub(crate) fn dead_char<'a, I>() -> impl Parser<'a, I, String, Extra<'a, char>>
-    where
-        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
-    {
-        one_of(concat!(
-            "\u{0332}", // combining low line
-            "\u{0305}", // combining overline
-            "\u{20DD}", // combining enclosing circle
-            "\u{20DE}", // combining enclosing square
-        ))
-        .map(|ch| [ch].into_iter().collect())
-    }
-
     fn canonical_symbol_name(s: &str) -> SymbolName {
         // TODO: avoid copy where possible.
         SymbolName {
@@ -262,215 +253,6 @@ mod symex {
                 .filter(|ch: &char| -> bool { *ch != ' ' })
                 .collect(),
         }
-    }
-
-    ////    /// Recognise a single compound character.
-    ////    ///
-    ////    /// ## Users Handbook Definition of Compound Characters
-    ////    ///
-    ////    /// Compound chars are described in item 7 on page 607 of the TX-2
-    ////    /// Users Handbook (Nov 63).
-    ////    ///
-    ////    /// Compound characters are described like so:
-    ////    ///
-    ////    ///  - Only one backspace
-    ////    ///  - Two or three characters only.
-    ////    ///  - Space bar is allowed
-    ////    ///  - Any sequence of characters is legal. (Except ...)
-    ////    ///
-    ////    /// This seems confusing at first but the key to understanding
-    ////    /// it is that the Lincoln Writer (from which these characters
-    ////    /// come) has four characters which don't advance the carriage
-    ////    /// when they are printed (underline, overline, square,
-    ////    /// circle).  That is, the following character is overstruck.
-    ////    /// The underline _ is one such character: then _ followed by G
-    ////    /// is a compound character, _ overstruck with G.  This would
-    ////    /// be a two-character compound character.
-    ////    ///
-    ////    /// A compound character can also be formed with a space,
-    ////    /// presumably for example a character which doesn't advance
-    ////    /// the carriage followed by a space, which does.
-    ////    ///
-    ////    /// Using our single allowed backspace, we could create a
-    ////    /// compound character using a character which does advance the
-    ////    /// carriage, for example K.  K\b> K overstruck with a >.
-    ////    ///
-    ////    /// Another three-character option is to use two
-    ////    /// non-carriage-advancing characters.  The documentation
-    ////    /// doesn't seem to clearly state whether Lincoln Writer codes
-    ////    /// 0o74 and 0o75 ("LOWER CASE" and "UPPER CASE") are
-    ////    /// permitted.  This makes a difference because for example
-    ////    /// CIRCLE is upper case while SQUARE is lower case (both
-    ////    /// signaled by code 013).   So I am not clear on whether
-    ////    /// this sequence of codes is a valid single compound
-    ////    /// character (assume we start in upper-case).
-    ////    ///
-    ////    /// Code  Representing          Advances carriage?
-    ////    /// 013   CIRCLE                No (it's special)
-    ////    /// 074   Shift to lower case   No (it's non-printing)
-    ////    /// 013   SQUARE                No (it's special)
-    ////    /// 057   *                     Yes (rightward)
-    ////    ///
-    ////    /// If valid this would represent a circle, square and asterisk
-    ////    /// all on the same spot.
-    ////    ///
-    ////    /// For the moment we don't need to worry about this, because we
-    ////    /// cannot tell the difference; the current parser implementation
-    ////    /// accepts Unicode input, and by the time the Lincoln Writer code
-    ////    /// have been translated into Unicode, the upper/lower case shift
-    ////    /// codes are no longer present in the parser's input.
-    ////    ///
-    ////    /// Another input that tests our understanding is this one:
-    ////    ///
-    ////    /// Code  Representing          Advances carriage?
-    ////    /// 013   CIRCLE                No (it's special)
-    ////    /// 062   Backspace             Yes (leftward!)
-    ////    /// 012   _ (underline)         No (it's special)
-    ////    ///
-    ////    /// This meets the letter of the condition (just one backspace,
-    ////    /// only three characters).  But the net effect of these code is a
-    ////    /// net leftward movement of the carriage/cursor.
-    ////    ///
-    ////    /// Yet another:
-    ////    /// 031   J                     Yes
-    ////    /// 062   Backspace             Yes (leftward!)
-    ////    /// 027   H                     Yes
-    ////    /// 062   Backspace             Yes (leftward!)
-    ////    /// 032   K                     Yes
-    ////    ///
-    ////    /// Here we apparently see 031 062 027 as the first compound
-    ////    /// character (three characters, one backspace) but is the
-    ////    /// following thing valid?  The problem is it starts with a
-    ////    /// backspace.  That cannot be part of the initial compound
-    ////    /// character because only one backspace is allowed.
-    ////    ///
-    ////    /// ## Additional Restrictions
-    ////    ///
-    ////    /// It seems that the Users Handbook underspecifies the compound
-    ////    /// character.  We will have to do something - accept some inputs
-    ////    /// and perhaps reject others.
-    ////    ///
-    ////    /// For now, I plan to add additional restrictions, not stated in
-    ////    /// the Users Handbook, which helps disambiguate:
-    ////    ///
-    ////    /// A compound character is a sequene of two or three characters
-    ////    /// which
-    ////    ///  1. Does not begin with a backspace
-    ////    ///  2. Does not end with a backspace
-    ////    ///  3. Does not end with a dead character (a character which does
-    ////    ///     not advance the carriage).
-    ////    ///  4. Includes either a backspace or a dead character.
-    ////    ///
-    ////    /// The thinking behind this restriction is that it enforces a
-    ////    /// requirement that the "compound character" not overlap with
-    ////    /// those characters that precede or follow it.
-    ////    ///
-    ////    /// If D represents a non-advancing character (_, square, and so
-    ////    /// on), X represents a character which does advance the carriage,
-    ////    /// S represents space and \b represents backspace, these are
-    ////    /// valid compound characters:
-    ////    ///
-    ////    /// DS
-    ////    /// DX
-    ////    /// S\bX
-    ////    /// X\bS
-    ////    /// S\bS (more about this one below)
-    ////    /// DDS
-    ////    /// DDX
-    ////    ///
-    ////    /// In terms of error-handling, once we see a dead character at
-    ////    /// the current input position, we know that we need to end up
-    ////    /// with a compound character which starts with it.  Once we see a
-    ////    /// regular character which advances the carriage followed by a
-    ////    /// backspace, we know we must be looking at a three-character
-    ////    /// compound character (i.e. it's an error for the character after
-    ////    /// the \b to be a dead character).
-    ////    ///
-    ////    /// The following examples would not be valid because the above
-    ////    /// rule disallows them.  After each I identify in parentheses the
-    ////    /// reason I think it should not be allowed (i.e. why our
-    ////    /// additional restriction is helpful).
-    ////    ///
-    ////    /// XX\b (would overlap the next character)
-    ////    /// DDD  (would overlap the next character)
-    ////    /// DXD  (would overlap the next character)
-    ////    /// DSD  (would overlap the next character)
-    ////    /// DDD  (would overlap the next character)
-    ////    /// SDD  (would overlap the next character)
-    ////    /// XDD  (would overlap the next character)
-    ////    /// \bDX (would overlap the previous character)
-    ////    /// \bXX (similar, but also visually appears to be two characters).
-    ////    ///
-    ////    /// These rules permit the form "S\bS" even though that's
-    ////    /// potentially confusing for users in that it is visually
-    ////    /// insidtinguishable from a single space.
-    ////    ///
-    ////    /// Condition 4 above ensures that these forms are not considered
-    ////    /// compound characters:
-    ////    ///
-    ////    /// XX  (we want to parse that as two simple characters)
-    ////    /// XXX (we want to parse that as three simple characters)
-    ////    /// XSX (we want to parse that as two single-character syllables
-    ////    ///     separated by a space)
-    ////    /// XDX (we want to parse this as the simple character X followed by
-    ////    ///      the compound character DX, because this reflects the fact
-    ////    ///      that the syllable takes up two "columns")
-    ////    ///
-    ////    /// This overstriking behaviour is described by A. Vanderburgh
-    ////    /// in "The Lincoln Keyboard - a typewriter keyboard designed
-    ////    /// for computers imput flexibility", a one-page paper in
-    ////    /// Communications of the ACM, Volume 1, Issue 7, July 1958
-    ////    /// (https://doi.org/10.1145/368873.368879).
-    pub(crate) fn parse_compound_char<'a, I>() -> impl Parser<'a, I, String, Extra<'a, char>>
-    where
-        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
-    {
-        // accepts a single character which advances the carriage.
-        fn advances<'a, I>() -> impl Parser<'a, I, char, Extra<'a, char>>
-        where
-            I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
-        {
-            fn parse_simple_nonblank<'a, I>() -> impl Parser<'a, I, char, Extra<'a, char>>
-            where
-                I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
-            {
-                any().filter(|ch| is_nonblank_simple_symex_char(*ch))
-            }
-            just(' ').or(parse_simple_nonblank())
-        }
-
-        const BACKSPACE: char = '\u{8}';
-
-        fn bs<'a, I>() -> impl Parser<'a, I, String, Extra<'a, char>>
-        where
-            I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
-        {
-            advances()
-                .then(just(BACKSPACE))
-                .then(advances())
-                .map(|((ch1, ch2), ch3)| [ch1, ch2, ch3].into_iter().collect())
-        }
-
-        fn two<'a, I>() -> impl Parser<'a, I, String, Extra<'a, char>>
-        where
-            I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
-        {
-            dead_char().then(advances()).map(|(mut s, ch)| {
-                s.push(ch);
-                s
-            })
-        }
-
-        fn three<'a, I>() -> impl Parser<'a, I, String, Extra<'a, char>>
-        where
-            I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
-        {
-            bs().or(dead_char().then(two()).map(|(mut s1, s2)| {
-                s1.push_str(&s2);
-                s1
-            }))
-        }
-        choice((two(), three()))
     }
 
     fn is_reserved_identifier(ident: &str) -> bool {
@@ -487,6 +269,7 @@ mod symex {
             .repeated()
             .at_least(1)
             .collect()
+            .labelled("nonblank simple symex character")
     }
 
     fn concat_strings(mut s: String, next: String) -> String {
@@ -494,32 +277,17 @@ mod symex {
         s
     }
 
-    // This function gives the impression it wouldn't be very
-    // efficient, but any TX-2 program will have to fit into the
-    // address space of the machine, meaning that the assembler input
-    // is unlikely to be more than 2^17 lines.  We can profile the
-    // assembler on some longer input once the assembler actually
-    // works.  For now we're concerned with correctness and we'll punt
-    // on efficiency until we can quantify any problem.
+    // Compound chars are not supported at the moment, see docs/assembler/index.md.
     fn parse_symex_syllable<'a, I>() -> impl Parser<'a, I, String, Extra<'a, char>>
     where
         I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
     {
-        let parsers = || {
-            (
-                parse_nonblank_simple_symex_chars(), // returns String
-                // compound chars containing a space still don't terminate the symex.
-                parse_compound_chars(),
+        parse_nonblank_simple_symex_chars()
+            .foldl(
+                parse_nonblank_simple_symex_chars().repeated(),
+                concat_strings,
             )
-        };
-        choice(parsers()).foldl(choice(parsers()).repeated(), concat_strings)
-    }
-
-    fn parse_compound_chars<'a, I>() -> impl Parser<'a, I, String, Extra<'a, char>>
-    where
-        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
-    {
-        parse_compound_char().foldl(parse_compound_char().repeated(), concat_strings)
+            .labelled("symex syllable")
     }
 
     pub(super) fn parse_symex_reserved_syllable<'a, I>(
@@ -527,13 +295,15 @@ mod symex {
     where
         I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
     {
-        parse_symex_syllable().try_map(|syllable, span| {
-            if is_reserved_identifier(&syllable) {
-                Ok(syllable)
-            } else {
-                Err(Rich::custom(span, "expected reserved syllable".to_string()))
-            }
-        })
+        parse_symex_syllable()
+            .try_map(|syllable, span| {
+                if is_reserved_identifier(&syllable) {
+                    Ok(syllable)
+                } else {
+                    Err(Rich::custom(span, "expected reserved syllable".to_string()))
+                }
+            })
+            .labelled("reserved symex")
     }
 
     fn parse_symex_non_reserved_syllable<'a, I>() -> impl Parser<'a, I, String, Extra<'a, char>>
@@ -564,14 +334,8 @@ mod symex {
         }
 
         parse_symex_non_reserved_syllable()
-            .then(
-                space_syllable()
-                    .repeated()
-                    // TODO: find a way to cut down on allocation of temporary strings.
-                    .collect::<Vec<String>>()
-                    .map(|v| v.join("")),
-            )
-            .map(|(head, tail)| format!("{head}{tail}"))
+            .foldl(parse_symex_syllable().padded().repeated(), concat_strings)
+            .labelled("multi-syllable symex")
     }
 
     pub(super) fn parse_symex<'a, I>() -> impl Parser<'a, I, SymbolName, Extra<'a, char>>
@@ -583,7 +347,7 @@ mod symex {
             parse_symex_reserved_syllable(),
         ))
         .map(|s| canonical_symbol_name(&s))
-        // TODO: label this.
+        .labelled("symbol name")
     }
 }
 
@@ -592,6 +356,7 @@ where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
 {
     choice((normal_literal(), superscript_literal(), subscript_literal()))
+        .labelled("numeric literal")
 }
 
 fn opcode<'a, I>() -> impl Parser<'a, I, LiteralValue, Extra<'a, char>>
@@ -627,42 +392,46 @@ where
         .labelled("opcode")
 }
 
-////// Parse an expression; these can currently only take the form of a literal.
-////// TX-2's M4 assembler allows arithmetic expressions also, but these are not
-////// currently implemented.
-//////
-////// When we do implement fuller support for expressions, we need to pay
-////// attention to the rules for symex termination (see section 6-2.3
-////// "RULES FOR SYMEX FORMATION" item 8), because script changes
-////// terminate symexes.
-//////
-////// This means that BAT² is not an identifier but a sequence[1] whose
-////// value is computed by OR-ing the value of the symex BAT with the
-////// value of the literal "²" (which is 2<<30, or 0o20_000_000_000).
-////// Whether BAT² is itself an expression or an "InstructionFragment" is
-////// something we will need to consider carefully.  For example, is
-////// (BAT²) valid?  If yes, then so is (BAT²)+1, meaning that our
-////// current rule for instruction_fragment may have to change
-////// significantly.
-//////
-////// [1] I use "sequence" in the paragraph above to avoid saying
-////// "expression" or "instruction fragment".
-////fn expression<'a, I>() -> impl Parser<'a, I, Expression, Extra<'a, char>>
-////where
-////    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
-////{
-////    fn symbolic_expression<'srcbody, I: Input<'srcbody>>(
-////    ) -> impl Parser<'srcbody, &'srcbody str, Expression, Extra<'srcbody, I>> {
-////        symbol().map(|name| Expression::Symbol(Elevation::Normal, name))
-////    }
-////
-////    fn literal_expression<'srcbody, I: Input<'srcbody>>(
-////    ) -> impl Parser<'srcbody, &'srcbody str, Expression, Extra<'srcbody, I>> {
-////        choice((literal(), opcode())).map(Expression::from)
-////    }
-////
-////    choice((literal_expression(), symbolic_expression()))
-////}
+/// Parse an expression; these can currently only take the form of a literal.
+/// TX-2's M4 assembler allows arithmetic expressions also, but these are not
+/// currently implemented.
+///
+/// When we do implement fuller support for expressions, we need to pay
+/// attention to the rules for symex termination (see section 6-2.3
+/// "RULES FOR SYMEX FORMATION" item 8), because script changes
+/// terminate symexes.
+///
+/// This means that BAT² is not an identifier but a sequence[1] whose
+/// value is computed by OR-ing the value of the symex BAT with the
+/// value of the literal "²" (which is 2<<30, or 0o20_000_000_000).
+/// Whether BAT² is itself an expression or an "InstructionFragment" is
+/// something we will need to consider carefully.  For example, is
+/// (BAT²) valid?  If yes, then so is (BAT²)+1, meaning that our
+/// current rule for instruction_fragment may have to change
+/// significantly.
+///
+/// [1] I use "sequence" in the paragraph above to avoid saying
+/// "expression" or "instruction fragment".
+fn expression<'a, I>() -> impl Parser<'a, I, Expression, Extra<'a, char>>
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+{
+    fn literal_expression<'a, I>() -> impl Parser<'a, I, Expression, Extra<'a, char>>
+    where
+        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    {
+        choice((literal(), opcode())).map(Expression::from)
+    }
+
+    fn symbolic_expression<'a, I>() -> impl Parser<'a, I, Expression, Extra<'a, char>>
+    where
+        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    {
+        symbol().map(|name| Expression::Symbol(Elevation::Normal, name))
+    }
+
+    choice((literal_expression(), symbolic_expression()))
+}
 
 ////
 /////// An address expression is a literal value or a symex.  That is I
@@ -684,23 +453,16 @@ where
         .labelled("symex (symbol) name")
 }
 
-////fn tag_definition<'srcbody, I: Input<'srcbody>>(
-////) -> impl Parser<'srcbody, &'srcbody str, SymbolName, Extra<'srcbody, I>> {
-////    fn arrow<'srcbody, I: Input<'srcbody>>(
-////    ) -> impl Parser<'srcbody, &'srcbody str, (), Extra<'srcbody, I>> {
-////        let just_arrow = choice((
-////            just("->"),
-////            just("\u{2192}"), // Unicode rightwards pointing arrow
-////        ));
-////        inline_whitespace()
-////            .ignore_then(just_arrow())
-////            .ignore_then(inline_whitespace())
-////            .ignored()
-////    }
-////
-////    symbol().then_ignore(arrow())
-////}
-////
+fn tag_definition<'a, I>() -> impl Parser<'a, I, SymbolName, Extra<'a, char>>
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+{
+    let just_arrow = choice((just("->"), just("\u{2192}")));
+    symbol()
+        .then_ignore(just_arrow.padded())
+        .labelled("tag definition")
+}
+
 ////#[cfg(notyet)]
 ////mod notyet {
 ////    use super::ek;
@@ -791,51 +553,61 @@ where
 ////        )(input)
 ////    }
 
-fn maybe_hold<'a, I>() -> impl Parser<'a, I, HoldBit, Extra<'a, char>>
+fn hold<'a, I>() -> impl Parser<'a, I, HoldBit, Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
 {
     // Accept either 'h' or ':' signalling the hold bit should be set.
     // The documentation seems to use both, though perhaps ':' is the
     // older usage.
-    choice((
-        one_of("h:").to(HoldBit::Hold),
-        choice((just("\u{0305}h"), just("ℏ"))).to(HoldBit::NotHold),
-    ))
-    .padded()
-    .or(empty().to(HoldBit::Unspecified))
+    let h = one_of("h:").to(HoldBit::Hold);
+    let nh = just("\u{0305}h").or(just("ℏ")).to(HoldBit::NotHold);
+    choice((h, nh)).padded().labelled("instruction hold bit")
 }
 
-////    fn program_instruction<'a, 'b>(
-////        input: ek::LocatedSpan<'a, 'b>,
-////    ) -> ek::IResult<'a, 'b, ProgramInstruction> {
-////        fn build_inst(
-////            parts: (Option<SymbolName>, HoldBit, Vec<InstructionFragment>),
-////        ) -> ProgramInstruction {
-////            let (maybe_tag, holdbit, fragments) = parts;
-////            ProgramInstruction {
-////                tag: maybe_tag,
-////                holdbit,
-////                parts: fragments,
-////            }
-////        }
-////
-////        fn program_instruction_fragments<'a, 'b>(
-////            input: ek::LocatedSpan<'a, 'b>,
-////        ) -> ek::IResult<'a, 'b, Vec<InstructionFragment>> {
-////            many1(program_instruction_fragment)(input)
-////        }
-////
-////        map(
-////            tuple((
-////                opt(tag_definition),
-////                maybe_hold,
-////                program_instruction_fragments,
-////            )),
-////            build_inst,
-////        )(input)
-////    }
-////
+fn program_instruction_fragments<'a, I>(
+) -> impl Parser<'a, I, Vec<InstructionFragment>, Extra<'a, char>>
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+{
+    program_instruction_fragment()
+        .repeated()
+        .at_least(1)
+        .collect()
+        .labelled("program instruction")
+}
+
+fn hold_and_fragments<'a, I>(
+) -> impl Parser<'a, I, (HoldBit, Vec<InstructionFragment>), Extra<'a, char>>
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+{
+    //maybe_hold().then(program_instruction_fragments())
+    program_instruction_fragments().map(|frags| (HoldBit::Unspecified, frags))
+}
+
+fn program_instruction<'a, I>() -> impl Parser<'a, I, ProgramInstruction, Extra<'a, char>>
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+{
+    fn build_inst(parts: (Option<SymbolName>, Vec<InstructionFragment>)) -> ProgramInstruction {
+        let (maybe_tag, fragments) = parts;
+        let holdbit = None;
+        ProgramInstruction {
+            tag: maybe_tag,
+            holdbit: holdbit.unwrap_or(HoldBit::Unspecified),
+            parts: fragments,
+        }
+    }
+
+    tag_definition()
+        .or_not()
+        .then(program_instruction_fragments())
+        .map(build_inst)
+        .padded()
+        .labelled("optional tag definition followed by a program instruction")
+}
+
 ////    fn execute_metacommand(state_extra: &StateExtra, cmd: &ManuscriptMetaCommand) {
 ////        match cmd {
 ////            ManuscriptMetaCommand::Invalid => {

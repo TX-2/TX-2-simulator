@@ -14,7 +14,7 @@ use super::super::driver::assemble_nonempty_valid_input;
 use super::super::parser::*;
 use super::super::state::{NumeralMode, State, StateExtra};
 use super::super::symtab::SymbolTable;
-use super::symex::{dead_char, parse_compound_char, parse_symex};
+use super::symex::{parse_multi_syllable_symex, parse_symex};
 use super::*;
 
 fn errors_as_string<'a, T: Display>(errors: &[Rich<'a, T>]) -> String {
@@ -50,18 +50,18 @@ where
 #[cfg(test)]
 pub(crate) fn parse_successfully_with<'a, I, O, P, M>(input: I, parser: P, mut state_setup: M) -> O
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Display,
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Display + Clone,
     P: Parser<'a, I, O, Extra<'a, char>>,
     M: FnMut(&mut NumeralMode),
 {
     let mut state = NumeralMode::default();
     state_setup(&mut state);
     let (output, errors) = parser
-        .parse_with_state(input, &mut state)
+        .parse_with_state(input.clone(), &mut state)
         .into_output_errors();
     if !errors.is_empty() {
         panic!(
-            "{} unexpected parse errors: {:?}",
+            "{} unexpected parse errors for input '{input}': {:?}",
             errors.len(),
             &errors_as_string(errors.as_slice())
         );
@@ -150,6 +150,19 @@ fn test_superscript_literal_dec_defaultmode() {
 }
 
 #[test]
+fn test_superscript_literal_oct_defaultmode() {
+    // No trailing dot on a number indicates octal base (unless there
+    // was a previous ☛☛DECIMAL).
+    assert_eq!(
+        parse_successfully_with("³⁶", superscript_literal(), no_state_setup),
+        LiteralValue::from((
+            Elevation::Superscript,
+            Unsigned36Bit::from(0o36_u32), // octal
+        ))
+    );
+}
+
+#[test]
 fn test_superscript_literal_dec_decmode() {
     // Simulate a previous ☛☛DECIMAL.
     assert_eq!(
@@ -214,21 +227,21 @@ fn test_program_instruction_fragment() {
     );
 }
 
-//#[test]
-//fn test_program_instruction() {
-//    assert_eq!(
-//        parse_successfully_with("⁶673₃₁", program_instruction, no_state_setup),
-//        ProgramInstruction {
-//            tag: None,
-//            holdbit: HoldBit::Unspecified,
-//            parts: vec![
-//                InstructionFragment::from((Elevation::Superscript, Unsigned36Bit::from(0o6_u32),)),
-//                InstructionFragment::from((Elevation::Normal, Unsigned36Bit::from(0o673_u32),)),
-//                InstructionFragment::from((Elevation::Subscript, Unsigned36Bit::from(0o31_u32),)),
-//            ]
-//        }
-//    );
-//}
+#[test]
+fn test_program_instruction() {
+    assert_eq!(
+        parse_successfully_with("⁶673₃₁", program_instruction(), no_state_setup),
+        ProgramInstruction {
+            tag: None,
+            holdbit: HoldBit::Unspecified,
+            parts: vec![
+                InstructionFragment::from((Elevation::Superscript, Unsigned36Bit::from(0o6_u32),)),
+                InstructionFragment::from((Elevation::Normal, Unsigned36Bit::from(0o673_u32),)),
+                InstructionFragment::from((Elevation::Subscript, Unsigned36Bit::from(0o31_u32),)),
+            ]
+        }
+    );
+}
 
 #[test]
 fn test_parse_symex() {
@@ -258,20 +271,6 @@ fn test_parse_symex() {
         let got: SymbolName = parse_successfully_with(input, parse_symex(), no_state_setup);
         assert_eq!(got.canonical, expected);
     }
-}
-
-#[test]
-fn test_dead_char() {
-    assert!(parse_test_input("X", dead_char()).is_err());
-    assert!(parse_test_input("\u{0332}", dead_char()).is_ok());
-}
-
-#[test]
-fn test_parse_compound_char() {
-    assert_eq!(
-        parse_test_input("X\u{0008}Y", parse_compound_char()),
-        Ok("X\u{0008}Y".to_string())
-    );
 }
 
 //#[test]
@@ -390,33 +389,41 @@ fn test_symbol_name_two_syllables() {
 //        }
 //    );
 //}
-//
-//#[test]
-//fn test_arrow() {
-//    assert_eq!(
-//        parse_successfully_with("FOO->", tag_def_string, no_state_setup),
-//        "FOO".to_string()
-//    );
-//    assert_eq!(
-//        parse_successfully_with("BAR  -> ", tag_def_string, no_state_setup),
-//        "BAR".to_string()
-//    );
-//}
-//
-//#[test]
-//fn test_multi_syllable_tag() {
-//    let (tail, symbol, errors) = parse_partially_with("CODE HERE->205\n", parse_symex);
-//    assert!(errors.is_empty());
-//    assert_eq!(
-//        symbol,
-//        SymbolName {
-//            canonical: "CODEHERE".to_string(),
-//            //as_used: "CODE HERE".to_string(),
-//        }
-//    );
-//    assert_eq!(tail, "->205\n");
-//}
-//
+
+#[test]
+fn test_arrow() {
+    assert_eq!(
+        parse_successfully_with("FOO->", tag_definition(), no_state_setup),
+        SymbolName {
+            canonical: "FOO".to_string()
+        }
+    );
+    assert_eq!(
+        parse_successfully_with("BAR  -> ", tag_definition(), no_state_setup),
+        SymbolName {
+            canonical: "BAR".to_string(),
+        }
+    );
+}
+
+#[test]
+fn test_multi_syllable_tag() {
+    let inst = parse_successfully_with("CODE HERE->205 ", program_instruction(), no_state_setup);
+    assert_eq!(
+        inst,
+        ProgramInstruction {
+            tag: Some(SymbolName {
+                canonical: "CODEHERE".to_string(),
+                //as_used: "CODE HERE".to_string(),
+            }),
+            holdbit: HoldBit::Unspecified,
+            parts: vec![InstructionFragment {
+                value: Expression::from(LiteralValue::from((Elevation::Normal, u36!(0o205)))),
+            }]
+        }
+    );
+}
+
 //#[test]
 //fn test_manuscript_with_multi_syllable_tag() {
 //    assert_eq!(
@@ -758,22 +765,41 @@ fn test_opcode() {
         LiteralValue::from((Elevation::Normal, expected_instruction.bits(),))
     );
 }
-//
-//#[test]
-//fn program_instruction_with_opcode() {
-//    let nosyms = SymbolTable::default();
-//    let inst = parse_successfully_with("²¹IOS₅₂ 30106", program_instruction, no_state_setup);
-//    assert_eq!(inst.value(&nosyms), Ok(u36!(0o210452_030106)));
-//}
-//
+
 #[test]
-fn hold() {
+fn test_multi_syllable_symex() {
     assert_eq!(
-        parse_successfully_with(" h", maybe_hold(), no_state_setup),
+        parse_successfully_with("FOO", parse_multi_syllable_symex(), no_state_setup),
+        "FOO"
+    );
+    assert_eq!(
+        parse_successfully_with("FOO BAR", parse_multi_syllable_symex(), no_state_setup),
+        "FOOBAR"
+    );
+    assert_eq!(
+        parse_successfully_with("FOO  BAR", parse_multi_syllable_symex(), no_state_setup),
+        "FOOBAR"
+    );
+}
+
+#[test]
+fn program_instruction_with_opcode() {
+    let nosyms = SymbolTable::default();
+    assert_eq!(
+        parse_successfully_with("²¹IOS₅₂ 30106", program_instruction(), no_state_setup)
+            .value(&nosyms),
+        Ok(u36!(0o210452_030106))
+    );
+}
+
+#[test]
+fn test_hold() {
+    assert_eq!(
+        parse_successfully_with(" h", hold(), no_state_setup),
         HoldBit::Hold
     );
     assert_eq!(
-        parse_successfully_with(" :", maybe_hold(), no_state_setup),
+        parse_successfully_with(" :", hold(), no_state_setup),
         HoldBit::Hold
     );
 }
@@ -782,20 +808,12 @@ fn hold() {
 fn not_hold() {
     assert_eq!(
         //parse_successfully_with(" ℏ", maybe_hold, no_state_setup),
-        parse_successfully_with("ℏ", maybe_hold(), no_state_setup),
+        parse_successfully_with("ℏ", hold(), no_state_setup),
         HoldBit::NotHold
     );
     assert_eq!(
         //parse_successfully_with(" ̅h", maybe_hold, no_state_setup),
-        parse_successfully_with("̅h", maybe_hold(), no_state_setup),
+        parse_successfully_with("̅h", hold(), no_state_setup),
         HoldBit::NotHold
-    );
-}
-
-#[test]
-fn unspecified_hold() {
-    assert_eq!(
-        parse_successfully_with("", maybe_hold(), no_state_setup),
-        HoldBit::Unspecified
     );
 }
