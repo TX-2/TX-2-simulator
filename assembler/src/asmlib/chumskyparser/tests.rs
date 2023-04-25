@@ -10,8 +10,7 @@ use super::super::ast::{
     Block, Elevation, Expression, HoldBit, InstructionFragment, LiteralValue, ManuscriptBlock,
     ManuscriptMetaCommand, Origin, ProgramInstruction, SourceFile, Statement, SymbolName,
 };
-use super::super::parser::*;
-use super::super::state::{NumeralMode, State, StateExtra};
+use super::super::state::NumeralMode;
 use super::super::symtab::SymbolTable;
 use super::symex::{parse_multi_syllable_symex, parse_symex};
 use super::*;
@@ -369,7 +368,11 @@ fn test_terminated_manuscript_line_with_bare_literal() {
     );
     assert_eq!(
         parse_successfully_with("1\n", terminated_manuscript_line(), no_state_setup),
-        expected_line
+        Some(expected_line)
+    );
+    assert_eq!(
+        parse_successfully_with("\n", terminated_manuscript_line(), no_state_setup),
+        None
     );
 }
 

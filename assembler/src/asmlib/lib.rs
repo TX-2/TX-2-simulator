@@ -4,7 +4,6 @@
 mod ast;
 mod chumskyparser;
 mod driver;
-mod parser;
 mod state;
 mod symtab;
 mod types;

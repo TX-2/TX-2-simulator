@@ -4,11 +4,12 @@ use std::fs::OpenOptions;
 use std::io::{BufReader, BufWriter, Read};
 use std::path::Path;
 
+use chumsky::error::Rich;
 use tracing::{event, span, Level};
 
 use super::ast::*;
-use super::parser::{parse_source_file, ErrorLocation};
-use super::state::{Error, NumeralMode, State};
+use super::chumskyparser::parse_source_file;
+use super::state::NumeralMode;
 use super::symtab::*;
 use super::types::*;
 use base::prelude::{Address, Unsigned36Bit};
@@ -96,10 +97,10 @@ fn convert_source_file_to_directive(source_file: &SourceFile) -> Directive {
 }
 
 /// Pass 1 converts the program source into an abstract syntax representation.
-fn assemble_pass1(
-    source_file_body: &str,
-    errors: &mut Vec<Error>,
-) -> Result<(SourceFile, OutputOptions), AssemblerFailure> {
+fn assemble_pass1<'a>(
+    source_file_body: &'a str,
+    errors: &mut Vec<Rich<'a, char>>,
+) -> Result<(Option<SourceFile>, OutputOptions), AssemblerFailure> {
     let span = span!(Level::ERROR, "assembly pass 1");
     let _enter = span.enter();
     let options = OutputOptions {
@@ -109,33 +110,33 @@ fn assemble_pass1(
         list: true,
     };
 
-    fn setup(state: &mut State) {
+    fn setup(state: &mut NumeralMode) {
         // Octal is actually the default numeral mode, we just call
         // set_numeral_mode here to keep Clippy happy until we
         // implement ☛☛DECIMAL and ☛☛OCTAL.
         state.set_numeral_mode(NumeralMode::Decimal); // appease Clippy
         state.set_numeral_mode(NumeralMode::Octal);
     }
-    let (source_file, new_errors) = parse_source_file(source_file_body, setup);
-    if !new_errors.is_empty() {
-        errors.extend(new_errors.into_iter());
-    }
-    Ok((source_file, options))
+
+    let (sf, mut new_errors) = parse_source_file(source_file_body, setup);
+    errors.append(&mut new_errors);
+    Ok((sf, options))
 }
 
 /// This test helper is defined here so that we don't have to expose
 /// assemble_pass1, assemble_pass2.
 #[cfg(test)]
-pub(crate) fn assemble_nonempty_valid_input(input: &str) -> (Directive, SymbolTable) {
+pub(crate) fn assemble_nonempty_valid_input<'a>(input: &'a str) -> (Directive, SymbolTable) {
     let mut symtab = SymbolTable::default();
-    let mut errors: Vec<Error> = Vec::new();
-    let result: Result<(SourceFile, OutputOptions), AssemblerFailure> =
+    let mut errors: Vec<Rich<'_, char>> = Vec::new();
+    let result: Result<(Option<SourceFile>, OutputOptions), AssemblerFailure> =
         assemble_pass1(input, &mut errors);
     if !errors.is_empty() {
         panic!("assemble_nonempty_valid_input: errors were reported: {errors:?}");
     }
     match result {
-        Ok((source_file, _options)) => {
+        Ok((None, _)) => unreachable!("parser should generate output if there are no errors"),
+        Ok((Some(source_file), _options)) => {
             let directive = assemble_pass2(&source_file, &mut symtab)
                 .expect("test program should not extend beyong physical memory");
             (directive, symtab)
@@ -279,6 +280,26 @@ fn assemble_pass3(
     Ok(binary)
 }
 
+fn pos_line_column(s: &str, pos: usize) -> Result<(usize, usize), ()> {
+    let mut line = 1;
+    let mut column = 1;
+    for (i, ch) in s.chars().enumerate() {
+        if i == pos {
+            return Ok((line, column));
+        }
+        match ch {
+            '\n' => {
+                column = 1;
+                line += 1;
+            }
+            _ => {
+                column += 1;
+            }
+        }
+    }
+    Err(())
+}
+
 pub(crate) fn assemble_source(
     source_file_body: &str,
     symbols: &mut SymbolTable,
@@ -290,16 +311,18 @@ pub(crate) fn assemble_source(
             for e in errors.iter() {
                 eprintln!("{}", e);
             }
-            let location: &ErrorLocation = &first.0;
-            let msg = first.1.as_str();
+            let (line, column) = pos_line_column(source_file_body, first.span().start)
+                .expect("span for error message should be inside the file");
             return Err(AssemblerFailure::SyntaxError {
-                line: location.line,
-                column: location.column,
-                msg: msg.to_string(),
+                line: line as u32,
+                column: Some(column),
+                msg: first.to_string(),
             });
         }
         [] => (),
     }
+    let source_file =
+        source_file.expect("assembly pass1 generated no errors, an AST should have been returned");
 
     // Now we do pass 2.
     let binary = {

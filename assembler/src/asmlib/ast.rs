@@ -317,7 +317,6 @@ pub(crate) struct PunchCommand(pub(crate) Option<Address>);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ManuscriptMetaCommand {
-    Invalid, // e.g."☛☛BOGUS"
     // TODO: implement the T= metacommand.
     // TODO: implement the RC metacommand.
     // TODO: implement the XXX metacommand.

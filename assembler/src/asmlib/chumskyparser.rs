@@ -591,11 +591,6 @@ where
 
 fn execute_metacommand(state: &mut NumeralMode, cmd: &ManuscriptMetaCommand) {
     match cmd {
-        ManuscriptMetaCommand::Invalid => {
-            // Error messages about invalid metacommands are
-            // accumulated in the parser state and don't need to be
-            // separately reported.
-        }
         ManuscriptMetaCommand::Punch(_) => {
             // Instead of executing this metacommand as we parse it,
             // we simply return it as part of the parser output, and
@@ -740,7 +735,7 @@ where
         .labelled("comment or end-of-line")
 }
 
-fn terminated_manuscript_line<'a, I>() -> impl Parser<'a, I, ManuscriptLine, Extra<'a, char>>
+fn terminated_manuscript_line<'a, I>() -> impl Parser<'a, I, Option<ManuscriptLine>, Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
 {
@@ -752,6 +747,7 @@ where
             eprintln!("recognised manuscript_line {ml:?} at {span:?}");
             ml
         })
+        .or_not()
         .then_ignore(end_of_line().map_with_span(|_, span| {
             eprintln!("recognised end_of_line at {span:?}");
         }))
@@ -767,13 +763,14 @@ where
     where
         I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
     {
-        terminated_manuscript_line()
-            .repeated()
-            .collect()
-            .map(|lines| {
+        terminated_manuscript_line().repeated().collect().map(
+            |lines: Vec<Option<ManuscriptLine>>| {
+                // Filter out empty lines.
+                let lines: Vec<ManuscriptLine> = lines.into_iter().flatten().collect();
                 let (blocks, punch) = helpers::manuscript_lines_to_blocks(lines);
                 SourceFile { blocks, punch }
-            })
+            },
+        )
     }
     source_file_as_blocks().then_ignore(end())
 }

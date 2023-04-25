@@ -1,11 +1,8 @@
 use base::prelude::{u18, u36, Address, Unsigned36Bit};
 
-use super::super::{
-    ast::{
-        Block, Elevation, Expression, HoldBit, InstructionFragment, LiteralValue, ManuscriptBlock,
-        ProgramInstruction, PunchCommand, SourceFile, Statement,
-    },
-    state::Error,
+use super::super::ast::{
+    Block, Elevation, Expression, HoldBit, InstructionFragment, LiteralValue, ManuscriptBlock,
+    ProgramInstruction, PunchCommand, SourceFile, Statement,
 };
 use super::assemble_nonempty_valid_input;
 use super::assemble_pass1;
@@ -43,13 +40,13 @@ fn assemble_literal(input: &str, expected: &InstructionFragment) {
 #[test]
 fn test_assemble_pass1() {
     let input = concat!("14\n", "☛☛PUNCH 26\n");
-    let mut errors: Vec<Error> = Vec::new();
+    let mut errors = Vec::new();
     let (source_file, _options) =
         assemble_pass1(input, &mut errors).expect("pass 1 should succeed");
 
     assert_eq!(
         source_file,
-        SourceFile {
+        Some(SourceFile {
             punch: Some(PunchCommand(Some(Address::from(u18!(0o26))))),
             blocks: vec![ManuscriptBlock {
                 origin: None,
@@ -64,7 +61,7 @@ fn test_assemble_pass1() {
                     }]
                 })]
             }]
-        }
+        })
     );
 }
 

@@ -270,10 +270,6 @@ pub(super) fn manuscript_lines_to_blocks(
 
     for line in lines {
         match line {
-            ManuscriptLine::MetaCommand(ManuscriptMetaCommand::Invalid) => {
-                // The error was already reported in the parser state.
-                // The recovery action is just to ignore it.
-            }
             ManuscriptLine::MetaCommand(ManuscriptMetaCommand::Punch(punch)) => {
                 maybe_punch = Some(punch);
             }
