@@ -589,153 +589,153 @@ fn test_manuscript_with_real_arrow_tag() {
     );
 }
 
-//#[test]
-//fn test_assignment_literal() {
-//    const INPUTS: &[&'static str] = &[
-//        "FOO=2",
-//        "FOO =2",
-//        "F O O = 2", // spaces are also allowed inside symexes.
-//    ];
-//    for input in INPUTS {
-//        dbg!(&input);
-//        assert_eq!(
-//            parse_successfully_with(input, statement, no_state_setup),
-//            Statement::Assignment(
-//                SymbolName {
-//                    canonical: "FOO".to_string(),
-//                },
-//                Expression::Literal(LiteralValue::from((Elevation::Normal, u36!(2))))
-//            )
-//        )
-//    }
-//}
-//
-//#[test]
-//fn test_assignment_superscript() {
-//    const INPUTS: &[&'static str] = &[
-//        // Unicode code point B2 is a superscript 2.
-//        "FOO=\u{00B2}",
-//        "FOO =\u{00B2}",
-//        "F O O = \u{00B2}", // spaces are also allowed inside symexes.
-//    ];
-//    for input in INPUTS {
-//        dbg!(&input);
-//        assert_eq!(
-//            parse_successfully_with(input, statement, no_state_setup),
-//            Statement::Assignment(
-//                SymbolName {
-//                    canonical: "FOO".to_string(),
-//                },
-//                Expression::Literal(LiteralValue::from((Elevation::Superscript, u36!(2))))
-//            )
-//        )
-//    }
-//}
-//
-//#[test]
-//fn test_assignment_subscript() {
-//    const INPUTS: &[&'static str] = &[
-//        // Unicode code point 2083 is a subscript 3.
-//        "FOO=\u{2083}",
-//        "FOO =\u{2083}",
-//        "F O O = \u{2083}", // spaces are also allowed inside symexes.
-//    ];
-//    for input in INPUTS {
-//        dbg!(&input);
-//        assert_eq!(
-//            parse_successfully_with(input, statement, no_state_setup),
-//            Statement::Assignment(
-//                SymbolName {
-//                    canonical: "FOO".to_string(),
-//                },
-//                Expression::Literal(LiteralValue::from((Elevation::Subscript, u36!(3))))
-//            )
-//        )
-//    }
-//}
-//
-//#[test]
-//fn test_assignment_lines() {
-//    assert_eq!(
-//        parse_successfully_with(
-//            concat!(
-//                "FOO=2\n",
-//                // The trailing space on the next line is there to ensure we don't
-//                // have a regression in end_of_line (which previously didn't permit
-//                // trailing spaces).
-//                "    BAR = 1 \n", // leading and trailing spaces are allowed.
-//                // we also want to make sure we can parse a comment
-//                // preceded by a space, and regular instructions
-//                // following an assignment.
-//                "6 ** WE PUT A NON-ASSIGNMENT HERE TO CHECK WE CAN PARSE REGULAR INSTRUCTIONS\n"
-//            ),
-//            source_file,
-//            no_state_setup
-//        ),
-//        SourceFile {
-//            punch: None,
-//            blocks: vec![ManuscriptBlock {
-//                origin: None,
-//                statements: vec![
-//                    Statement::Assignment(
-//                        SymbolName {
-//                            canonical: "FOO".to_string(),
-//                        },
-//                        Expression::Literal(LiteralValue::from((Elevation::Normal, u36!(2))))
-//                    ),
-//                    Statement::Assignment(
-//                        SymbolName {
-//                            canonical: "BAR".to_string(),
-//                        },
-//                        Expression::Literal(LiteralValue::from((Elevation::Normal, u36!(1))))
-//                    ),
-//                    Statement::Instruction(ProgramInstruction {
-//                        tag: None,
-//                        holdbit: HoldBit::Unspecified,
-//                        parts: vec![InstructionFragment {
-//                            value: Expression::Literal(LiteralValue::from((
-//                                Elevation::Normal,
-//                                u36!(6)
-//                            )))
-//                        }]
-//                    })
-//                ]
-//            }]
-//        }
-//    );
-//}
-//
-//#[test]
-//fn test_assignment_origin() {
-//    const INPUT: &str = concat!("FOO=1000\n", "1000|4\n",);
-//    let tree = parse_successfully_with(INPUT, source_file, no_state_setup);
-//    assert_eq!(
-//        tree,
-//        SourceFile {
-//            punch: None,
-//            blocks: vec![
-//                ManuscriptBlock {
-//                    origin: None,
-//                    statements: vec![Statement::Assignment(
-//                        SymbolName {
-//                            canonical: "FOO".to_string()
-//                        },
-//                        Expression::Literal(LiteralValue::from((Elevation::Normal, u36!(0o1000))))
-//                    ),]
-//                },
-//                ManuscriptBlock {
-//                    origin: Some(Origin(Address::new(u18!(0o1000)))),
-//                    statements: vec![Statement::Instruction(ProgramInstruction {
-//                        tag: None,
-//                        holdbit: HoldBit::Unspecified,
-//                        parts: vec![InstructionFragment::from((Elevation::Normal, u36!(4),))]
-//                    })]
-//                }
-//            ]
-//        }
-//    );
-//}
-//
+#[test]
+fn test_assignment_literal() {
+    const INPUTS: &[&'static str] = &[
+        "FOO=2",
+        "FOO =2",
+        "F O O = 2", // spaces are also allowed inside symexes.
+    ];
+    for input in INPUTS {
+        dbg!(&input);
+        assert_eq!(
+            parse_successfully_with(*input, statement(), no_state_setup),
+            Statement::Assignment(
+                SymbolName {
+                    canonical: "FOO".to_string(),
+                },
+                Expression::Literal(LiteralValue::from((Elevation::Normal, u36!(2))))
+            )
+        )
+    }
+}
+
+#[test]
+fn test_assignment_superscript() {
+    const INPUTS: &[&'static str] = &[
+        // Unicode code point B2 is a superscript 2.
+        "FOO=\u{00B2}",
+        "FOO =\u{00B2}",
+        "F O O = \u{00B2}", // spaces are also allowed inside symexes.
+    ];
+    for input in INPUTS {
+        dbg!(input);
+        assert_eq!(
+            parse_successfully_with(*input, statement(), no_state_setup),
+            Statement::Assignment(
+                SymbolName {
+                    canonical: "FOO".to_string(),
+                },
+                Expression::Literal(LiteralValue::from((Elevation::Superscript, u36!(2))))
+            )
+        )
+    }
+}
+
+#[test]
+fn test_assignment_subscript() {
+    const INPUTS: &[&'static str] = &[
+        // Unicode code point 2083 is a subscript 3.
+        "FOO=\u{2083}",
+        "FOO =\u{2083}",
+        "F O O = \u{2083}", // spaces are also allowed inside symexes.
+    ];
+    for input in INPUTS {
+        dbg!(&input);
+        assert_eq!(
+            parse_successfully_with(*input, statement(), no_state_setup),
+            Statement::Assignment(
+                SymbolName {
+                    canonical: "FOO".to_string(),
+                },
+                Expression::Literal(LiteralValue::from((Elevation::Subscript, u36!(3))))
+            )
+        )
+    }
+}
+
+#[test]
+fn test_assignment_lines() {
+    assert_eq!(
+        parse_successfully_with(
+            concat!(
+                "FOO=2\n",
+                // The trailing space on the next line is there to ensure we don't
+                // have a regression in end_of_line (which previously didn't permit
+                // trailing spaces).
+                "    BAR = 1 \n", // leading and trailing spaces are allowed.
+                // we also want to make sure we can parse a comment
+                // preceded by a space, and regular instructions
+                // following an assignment.
+                "6 ** WE PUT A NON-ASSIGNMENT HERE TO CHECK WE CAN PARSE REGULAR INSTRUCTIONS\n"
+            ),
+            source_file(),
+            no_state_setup
+        ),
+        SourceFile {
+            punch: None,
+            blocks: vec![ManuscriptBlock {
+                origin: None,
+                statements: vec![
+                    Statement::Assignment(
+                        SymbolName {
+                            canonical: "FOO".to_string(),
+                        },
+                        Expression::Literal(LiteralValue::from((Elevation::Normal, u36!(2))))
+                    ),
+                    Statement::Assignment(
+                        SymbolName {
+                            canonical: "BAR".to_string(),
+                        },
+                        Expression::Literal(LiteralValue::from((Elevation::Normal, u36!(1))))
+                    ),
+                    Statement::Instruction(ProgramInstruction {
+                        tag: None,
+                        holdbit: HoldBit::Unspecified,
+                        parts: vec![InstructionFragment {
+                            value: Expression::Literal(LiteralValue::from((
+                                Elevation::Normal,
+                                u36!(6)
+                            )))
+                        }]
+                    })
+                ]
+            }]
+        }
+    );
+}
+
+#[test]
+fn test_assignment_origin() {
+    const INPUT: &str = concat!("FOO=1000\n", "1000|4\n",);
+    let tree = parse_successfully_with(INPUT, source_file(), no_state_setup);
+    assert_eq!(
+        tree,
+        SourceFile {
+            punch: None,
+            blocks: vec![
+                ManuscriptBlock {
+                    origin: None,
+                    statements: vec![Statement::Assignment(
+                        SymbolName {
+                            canonical: "FOO".to_string()
+                        },
+                        Expression::Literal(LiteralValue::from((Elevation::Normal, u36!(0o1000))))
+                    ),]
+                },
+                ManuscriptBlock {
+                    origin: Some(Origin(Address::new(u18!(0o1000)))),
+                    statements: vec![Statement::Instruction(ProgramInstruction {
+                        tag: None,
+                        holdbit: HoldBit::Unspecified,
+                        parts: vec![InstructionFragment::from((Elevation::Normal, u36!(4),))]
+                    })]
+                }
+            ]
+        }
+    );
+}
+
 #[test]
 fn test_metacommand_decimal() {
     assert_eq!(

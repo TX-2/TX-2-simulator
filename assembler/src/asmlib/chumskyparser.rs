@@ -244,7 +244,7 @@ mod symex {
 
     use super::super::ast::{Elevation, LiteralValue};
     use super::helpers::{self, is_nonblank_simple_symex_char, DecodedOpcode};
-    use super::{spaces1, Extra, SymbolName};
+    use super::{opt_horizontal_whitespace, spaces1, Extra, SymbolName};
     use base::Unsigned36Bit;
 
     fn canonical_symbol_name(s: &str) -> SymbolName {
@@ -336,7 +336,12 @@ mod symex {
         }
 
         parse_symex_non_reserved_syllable()
-            .foldl(parse_symex_syllable().padded().repeated(), concat_strings)
+            .foldl(
+                parse_symex_syllable()
+                    .padded_by(opt_horizontal_whitespace())
+                    .repeated(),
+                concat_strings,
+            )
             .labelled("multi-syllable symex")
     }
 
@@ -537,7 +542,9 @@ where
     // older usage.
     let h = one_of("h:").to(HoldBit::Hold);
     let nh = just("\u{0305}h").or(just("ℏ")).to(HoldBit::NotHold);
-    choice((h, nh)).padded().labelled("instruction hold bit")
+    choice((h, nh))
+        .padded_by(opt_horizontal_whitespace())
+        .labelled("instruction hold bit")
 }
 
 fn program_instruction_fragments<'a, I>(
@@ -609,8 +616,11 @@ where
     where
         I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
     {
-        let equals = just('=').padded();
-        symex::parse_symex().then_ignore(equals).then(expression())
+        let equals = just('=').padded_by(opt_horizontal_whitespace());
+        symex::parse_symex()
+            .then_ignore(equals)
+            .then(expression())
+            .padded_by(opt_horizontal_whitespace())
     }
 
     choice((
@@ -622,6 +632,10 @@ where
     ))
 }
 
+/// Matches and ignores zero or more horizontal-whitespace characters.
+/// That is, spaces or tabs but not newlines or carriage returns.  We
+/// also don't match backspaces, because eventually those need to be
+/// supported as part of a compound character.
 fn opt_horizontal_whitespace<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
