@@ -12,15 +12,7 @@ base = {path = "../base" }
 # https://github.com/clap-rs/clap/blob/master/LICENSE-APACHE
 clap = { version = "3", features = ["derive"] }
 
-# nom has an MIT-style copyright license.
-# https://github.com/Geal/nom/blob/main/LICENSE
-nom = "7"
-
 chumsky = { version="1.0.0-alpha.3", features=["label"] }
-
-# nom_locate has an MIT-style copyright license.
-# https://github.com/fflorent/nom_locate/blob/master/LICENSE
-nom_locate = "4"
 
 # tempfile has an "MIT or Apache-2.0" copyright license
 tempfile = "3"
