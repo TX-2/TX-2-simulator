@@ -280,17 +280,17 @@ fn test_parse_symex() {
     }
 }
 
-//#[test]
-//fn test_empty_manuscript() {
-//    assert_eq!(
-//        parse_successfully_with("", source_file, no_state_setup),
-//        SourceFile {
-//            blocks: vec![],
-//            punch: None
-//        }
-//    )
-//}
-//
+#[test]
+fn test_empty_manuscript() {
+    assert_eq!(
+        parse_successfully_with("", source_file(), no_state_setup),
+        SourceFile {
+            blocks: vec![],
+            punch: None
+        }
+    )
+}
+
 //#[test]
 //fn test_manuscript_without_tag() {
 //    assert_eq!(
@@ -431,33 +431,33 @@ fn test_multi_syllable_tag() {
     );
 }
 
-//#[test]
-//fn test_manuscript_with_multi_syllable_tag() {
-//    assert_eq!(
-//        parse_successfully_with(
-//            "CODE HERE->205 ** Also a comment\n",
-//            source_file,
-//            no_state_setup
-//        ),
-//        SourceFile {
-//            punch: None,
-//            blocks: vec![ManuscriptBlock {
-//                origin: None,
-//                statements: vec![Statement::Instruction(ProgramInstruction {
-//                    tag: Some(SymbolName {
-//                        canonical: "CODEHERE".to_string(),
-//                    }),
-//                    holdbit: HoldBit::Unspecified,
-//                    parts: vec![InstructionFragment::from((
-//                        Elevation::Normal,
-//                        Unsigned36Bit::from(0o205_u32),
-//                    ))]
-//                })]
-//            }]
-//        }
-//    );
-//}
-//
+#[test]
+fn test_manuscript_with_multi_syllable_tag() {
+    assert_eq!(
+        parse_successfully_with(
+            "CODE HERE->205 ** Also a comment\n",
+            source_file(),
+            no_state_setup
+        ),
+        SourceFile {
+            punch: None,
+            blocks: vec![ManuscriptBlock {
+                origin: None,
+                statements: vec![Statement::Instruction(ProgramInstruction {
+                    tag: Some(SymbolName {
+                        canonical: "CODEHERE".to_string(),
+                    }),
+                    holdbit: HoldBit::Unspecified,
+                    parts: vec![InstructionFragment::from((
+                        Elevation::Normal,
+                        Unsigned36Bit::from(0o205_u32),
+                    ))]
+                })]
+            }]
+        }
+    );
+}
+
 //#[test]
 //fn test_manuscript_with_real_arrow_tag() {
 //    const INPUT: &str = "HERE→207\n"; // real Unicode rightward arrow (U+2192).
@@ -727,4 +727,14 @@ fn not_hold() {
         parse_successfully_with("̅h", hold(), no_state_setup),
         HoldBit::NotHold
     );
+}
+
+#[test]
+fn line_end() {
+    parse_successfully_with("  ** THIS IS A COMMENT\n", end_of_line(), no_state_setup);
+}
+
+#[test]
+fn test_comment() {
+    parse_successfully_with("**THIS IS A COMMENT", comment(), no_state_setup);
 }

@@ -433,16 +433,22 @@ where
     choice((literal_expression(), symbolic_expression()))
 }
 
-////
-/////// An address expression is a literal value or a symex.  That is I
-/////// think it's not required that an arithmetic expression
-/////// (e.g. "5+BAR") be accepted in an origin notation (such as
-/////// "<something>|").
-////fn address_expression<'srcbody, I: Input<'srcbody>>(
-////) -> impl Parser<'srcbody, &'srcbody str, Address, Extra<'srcbody, I>> {
-////    // We should eventually support symexes here.
-////    literal.map_res(|literal| Address::try_from(literal.value()))
-////}
+/// An address expression is a literal value or a symex.  That is I
+/// think it's not required that an arithmetic expression
+/// (e.g. "5+BAR") be accepted in an origin notation (such as
+/// "<something>|").
+fn address_expression<'a, I>() -> impl Parser<'a, I, Address, Extra<'a, char>>
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+{
+    // We should eventually support symexes here.
+    literal()
+        .try_map(|lit, span| match Address::try_from(lit.value()) {
+            Ok(addr) => Ok(addr),
+            Err(e) => Err(Rich::custom(span, format!("not a valid address: {e}"))),
+        })
+        .labelled("address expression")
+}
 
 fn symbol<'a, I>() -> impl Parser<'a, I, SymbolName, Extra<'a, char>>
 where
@@ -576,157 +582,171 @@ where
         .labelled("optional tag definition followed by a program instruction")
 }
 
-////    fn execute_metacommand(state_extra: &StateExtra, cmd: &ManuscriptMetaCommand) {
-////        match cmd {
-////            ManuscriptMetaCommand::Invalid => {
-////                // Error messages about invalid metacommands are
-////                // accumulated in the parser state and don't need to be
-////                // separately reported.
-////            }
-////            ManuscriptMetaCommand::Punch(_) => {
-////                // Instead of executing this metacommand as we parse it,
-////                // we simply return it as part of the parser output, and
-////                // it is executed by the driver.
-////            }
-////            ManuscriptMetaCommand::BaseChange(new_base) => state_extra.set_numeral_mode(*new_base),
-////        }
-////    }
-////
-////    fn statement<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, Statement> {
-////        /// Assginments are called "equalities" in the TX-2 Users Handbook.
-////        /// See section 6-2.2, "SYMEX DEFINITON - TAGS - EQUALITIES -
-////        /// AUTOMATIC ASSIGNMENT".
-////        fn assignment<'a, 'b>(
-////            input: ek::LocatedSpan<'a, 'b>,
-////        ) -> ek::IResult<'a, 'b, (SymbolName, Expression)> {
-////            let equals = delimited(space0, tag("="), space0);
-////            separated_pair(parse_symex, equals, expression)(input)
-////        }
-////
-////        alt((
-////            // We have to parse an assignment first here, in order to
-////            // accept "FOO=2" as an assignment rather than the instruction
-////            // fragment "FOO" followed by a syntax error.
-////            map(assignment, |(sym, val)| Statement::Assignment(sym, val)),
-////            map(program_instruction, Statement::Instruction),
-////        ))(input)
-////    }
-////
-////    fn manuscript_line<'a, 'b>(
-////        input: ek::LocatedSpan<'a, 'b>,
-////    ) -> ek::IResult<'a, 'b, ManuscriptLine> {
-////        fn parse_and_execute_metacommand<'a, 'b>(
-////            input: ek::LocatedSpan<'a, 'b>,
-////        ) -> ek::IResult<'a, 'b, ManuscriptLine> {
-////            match metacommand(input) {
-////                Ok((tail, cmd)) => {
-////                    execute_metacommand(&tail.extra, &cmd);
-////                    Ok((tail, ManuscriptLine::MetaCommand(cmd)))
-////                }
-////                Err(e) => Err(e),
-////            }
-////        }
-////
-////        fn build_code_line(parts: (Option<Address>, Statement)) -> ManuscriptLine {
-////            let maybe_origin: Option<Origin> = parts.0.map(Origin);
-////            ManuscriptLine::Code(maybe_origin, parts.1)
-////        }
-////
-////        fn origin<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, Address> {
-////            terminated(address_expression, pair(space0, tag("|")))(input)
-////        }
-////        let origin_only = map(origin, |address| {
-////            ManuscriptLine::JustOrigin(Origin(address))
-////        });
-////
-////        let line = alt((
-////            parse_and_execute_metacommand,
-////            map(pair(opt(origin), statement), build_code_line),
-////            // Because we prefer to parse a statement if one exists,
-////            // the origin_only alternative has to appear after the
-////            // alternative which parses a statement.
-////            origin_only,
-////        ));
-////
-////        preceded(space0, line)(input)
-////    }
-////
-////    fn comment<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, String> {
-////        map(
-////            recognize(preceded(preceded(space0, tag("**")), take_until("\n"))),
-////            |text: ek::LocatedSpan| text.fragment().to_string(),
-////        )(input)
-////    }
-////
-////    fn newline<'a, 'b>(input: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, char> {
-////        char('\n')(input)
-////    }
-////
-////    fn end_of_line<'a, 'b>(
-////        input: ek::LocatedSpan<'a, 'b>,
-////    ) -> ek::IResult<'a, 'b, ek::LocatedSpan<'a, 'b>> {
-////        fn one_end_of_line<'a, 'b>(
-////            input: ek::LocatedSpan<'a, 'b>,
-////        ) -> ek::IResult<'a, 'b, ek::LocatedSpan<'a, 'b>> {
-////            recognize(preceded(preceded(space0, opt(comment)), newline))(input)
-////        }
-////
-////        recognize(many1(one_end_of_line))(input)
-////    }
-////
-////    fn source_file<'a, 'b>(body: ek::LocatedSpan<'a, 'b>) -> ek::IResult<'a, 'b, SourceFile> {
-////        // Parse a manuscript (which is a sequence of metacommands, macros
-////        // and assembly-language instructions).
-////        fn parse_nonempty_source_file<'a, 'b>(
-////            input: ek::LocatedSpan<'a, 'b>,
-////        ) -> ek::IResult<'a, 'b, SourceFile> {
-////            // TODO: when we implement metacommands we will need to separate
-////            // the processing of the metacommands and the generation of the
-////            // assembled code, because in between those things has to come the
-////            // execution of metacommands such as INSERT, DELETE, REPLACE.
-////            let parse_source_lines = preceded(
-////                many0(end_of_line),
-////                many0(terminated(
-////                    manuscript_line,
-////                    ek::expect(end_of_line, "expected newline after a program instruction"),
-////                )),
-////            );
-////
-////            map(parse_source_lines, |lines| {
-////                let (blocks, punch) = helpers::manuscript_lines_to_blocks(lines);
-////                SourceFile { blocks, punch }
-////            })(input)
-////        }
-////
-////        terminated(parse_nonempty_source_file, ek::expect_end_of_file)(body)
-////    }
-////
-////    pub(crate) fn parse_source_file(
-////        source_file_body: &str,
-////        setup: fn(&mut State),
-////    ) -> (SourceFile, Vec<Error>) {
-////        ek::parse_with(source_file_body, source_file, setup)
-////    }
-////
-////    impl<'a, 'b> SymbolName {
-////        // Symexes "TYPE A" and "TYPEA" are equivalent.
-////        fn canonical(span: &ek::LocatedSpan<'a, 'b>) -> String {
-////            (*span.fragment())
-////                .chars()
-////                .filter(|ch: &char| -> bool { *ch != ' ' })
-////                .collect()
-////        }
-////    }
-////
-////    impl<'a, 'b> From<&ek::LocatedSpan<'a, 'b>> for SymbolName {
-////        fn from(location: &ek::LocatedSpan<'a, 'b>) -> SymbolName {
-////            SymbolName {
-////                canonical: SymbolName::canonical(location),
-////                //as_used: location.fragment().to_string(),
-////            }
-////        }
-////    }
-////}
+fn execute_metacommand(state: &mut NumeralMode, cmd: &ManuscriptMetaCommand) {
+    match cmd {
+        ManuscriptMetaCommand::Invalid => {
+            // Error messages about invalid metacommands are
+            // accumulated in the parser state and don't need to be
+            // separately reported.
+        }
+        ManuscriptMetaCommand::Punch(_) => {
+            // Instead of executing this metacommand as we parse it,
+            // we simply return it as part of the parser output, and
+            // it is executed by the driver.
+        }
+        ManuscriptMetaCommand::BaseChange(new_base) => state.set_numeral_mode(*new_base),
+    }
+}
+
+fn statement<'a, I>() -> impl Parser<'a, I, Statement, Extra<'a, char>>
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+{
+    /// Assginments are called "equalities" in the TX-2 Users Handbook.
+    /// See section 6-2.2, "SYMEX DEFINITON - TAGS - EQUALITIES -
+    /// AUTOMATIC ASSIGNMENT".
+    fn assignment<'a, I>() -> impl Parser<'a, I, (SymbolName, Expression), Extra<'a, char>>
+    where
+        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+    {
+        let equals = just('=').padded();
+        symex::parse_symex().then_ignore(equals).then(expression())
+    }
+
+    choice((
+        // We have to parse an assignment first here, in order to
+        // accept "FOO=2" as an assignment rather than the instruction
+        // fragment "FOO" followed by a syntax error.
+        assignment().map(|(sym, val)| Statement::Assignment(sym, val)),
+        program_instruction().map(Statement::Instruction),
+    ))
+}
+
+fn manuscript_line<'a, I>() -> impl Parser<'a, I, ManuscriptLine, Extra<'a, char>>
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+{
+    fn parse_and_execute_metacommand<'a, I>() -> impl Parser<'a, I, ManuscriptLine, Extra<'a, char>>
+    where
+        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+    {
+        metacommand()
+            .map_with_state(|cmd, _span, state| {
+                execute_metacommand(state, &cmd);
+                ManuscriptLine::MetaCommand(cmd)
+            })
+            .labelled("metacommand")
+    }
+
+    fn build_code_line(parts: (Option<Address>, Statement)) -> ManuscriptLine {
+        let maybe_origin: Option<Origin> = parts.0.map(Origin);
+        ManuscriptLine::Code(maybe_origin, parts.1)
+    }
+
+    fn origin<'a, I>() -> impl Parser<'a, I, Address, Extra<'a, char>>
+    where
+        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+    {
+        address_expression().padded().then_ignore(just('|'))
+    }
+
+    fn origin_only<'a, I>() -> impl Parser<'a, I, ManuscriptLine, Extra<'a, char>>
+    where
+        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+    {
+        origin()
+            .map(|address| ManuscriptLine::JustOrigin(Origin(address)))
+            .labelled("origin")
+    }
+
+    fn optional_origin_with_statement<'a, I>() -> impl Parser<'a, I, ManuscriptLine, Extra<'a, char>>
+    where
+        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+    {
+        origin()
+            .or_not()
+            .then(statement())
+            .map(build_code_line)
+            .labelled("statement with origin")
+    }
+
+    fn line<'a, I>() -> impl Parser<'a, I, ManuscriptLine, Extra<'a, char>>
+    where
+        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+    {
+        choice((
+            // Ignore whitespace after the metacommand but not before it.
+            parse_and_execute_metacommand().then_ignore(inline_whitespace()),
+            optional_origin_with_statement().padded(),
+            // Because we prefer to parse a statement if one exists,
+            // the origin_only alternative has to appear after the
+            // alternative which parses a statement.
+            origin_only().padded(),
+        ))
+    }
+
+    line().padded()
+}
+
+fn comment<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + StrInput<'a, char>,
+{
+    just("**").ignore_then(none_of("\n").repeated().ignored())
+}
+
+fn end_of_line<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + StrInput<'a, char>,
+{
+    fn one_end_of_line<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
+    where
+        I: Input<'a, Token = char, Span = SimpleSpan> + StrInput<'a, char>,
+    {
+        inline_whitespace()
+            .then(comment().or_not())
+            .then(chumsky::text::newline())
+            .ignored()
+            .labelled("comment or end-of-line")
+    }
+
+    one_end_of_line().repeated().at_least(1).ignored()
+}
+
+fn source_file<'a, I>() -> impl Parser<'a, I, SourceFile, Extra<'a, char>>
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+{
+    // Parse a manuscript (which is a sequence of metacommands, macros
+    // and assembly-language instructions).
+
+    fn parse_nonempty_source_file<'a, I>() -> impl Parser<'a, I, SourceFile, Extra<'a, char>>
+    where
+        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+    {
+        // TODO: when we implement metacommands we will need to separate
+        // the processing of the metacommands and the generation of the
+        // assembled code, because in between those things has to come the
+        // execution of metacommands such as INSERT, DELETE, REPLACE.
+        let line = manuscript_line().then_ignore(end_of_line());
+        line.repeated().collect().map(|lines| {
+            let (blocks, punch) = helpers::manuscript_lines_to_blocks(lines);
+            SourceFile { blocks, punch }
+        })
+    }
+    parse_nonempty_source_file().then_ignore(end())
+}
+
+pub(crate) fn parse_source_file(
+    source_file_body: &str,
+    setup: fn(&mut NumeralMode),
+) -> (Option<SourceFile>, Vec<Rich<'_, char>>) {
+    let mut state = NumeralMode::default();
+    setup(&mut state);
+    source_file()
+        .parse_with_state(source_file_body, &mut state)
+        .into_output_errors()
+}
 
 // Local Variables:
 // mode: rustic

@@ -461,7 +461,6 @@ fn test_assignment_literal() {
         "F O O = 2", // spaces are also allowed inside symexes.
     ];
     for input in INPUTS {
-        dbg!(&input);
         assert_eq!(
             parse_successfully_with(input, statement, no_state_setup),
             Statement::Assignment(
@@ -483,7 +482,6 @@ fn test_assignment_superscript() {
         "F O O = \u{00B2}", // spaces are also allowed inside symexes.
     ];
     for input in INPUTS {
-        dbg!(&input);
         assert_eq!(
             parse_successfully_with(input, statement, no_state_setup),
             Statement::Assignment(
@@ -505,7 +503,6 @@ fn test_assignment_subscript() {
         "F O O = \u{2083}", // spaces are also allowed inside symexes.
     ];
     for input in INPUTS {
-        dbg!(&input);
         assert_eq!(
             parse_successfully_with(input, statement, no_state_setup),
             Statement::Assignment(

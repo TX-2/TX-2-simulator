@@ -246,62 +246,62 @@ pub(super) fn punch_address(a: Option<LiteralValue>) -> Result<PunchCommand, Str
         }
     }
 }
-////
-//// pub(super) fn manuscript_lines_to_blocks(
-////     lines: Vec<ManuscriptLine>,
-//// ) -> (Vec<ManuscriptBlock>, Option<PunchCommand>) {
-////     let mut result: Vec<ManuscriptBlock> = Vec::new();
-////     let mut current_statements: Vec<Statement> = Vec::new();
-////     let mut maybe_punch: Option<PunchCommand> = None;
-////     let mut effective_origin: Option<Origin> = None;
-////
-////     fn ship_block(
-////         statements: &Vec<Statement>,
-////         maybe_origin: Option<Origin>,
-////         result: &mut Vec<ManuscriptBlock>,
-////     ) {
-////         if !statements.is_empty() {
-////             result.push(ManuscriptBlock {
-////                 origin: maybe_origin,
-////                 statements: statements.to_vec(),
-////             });
-////         }
-////     }
-////
-////     for line in lines {
-////         match line {
-////             ManuscriptLine::MetaCommand(ManuscriptMetaCommand::Invalid) => {
-////                 // The error was already reported in the parser state.
-////                 // The recovery action is just to ignore it.
-////             }
-////             ManuscriptLine::MetaCommand(ManuscriptMetaCommand::Punch(punch)) => {
-////                 maybe_punch = Some(punch);
-////             }
-////             ManuscriptLine::MetaCommand(ManuscriptMetaCommand::BaseChange(_)) => {
-////                 // These already took effect on the statements which
-////                 // were parsed following them, so no need to keep them
-////                 // now.
-////             }
-////             ManuscriptLine::JustOrigin(new_origin) => {
-////                 ship_block(&current_statements, effective_origin, &mut result);
-////                 current_statements.clear();
-////                 effective_origin = Some(new_origin);
-////                 // There is no statement to push, though.
-////             }
-////             ManuscriptLine::Code(new_origin, statement) => {
-////                 if new_origin.is_some() {
-////                     ship_block(&current_statements, effective_origin, &mut result);
-////                     current_statements.clear();
-////                     effective_origin = new_origin;
-////                 }
-////                 current_statements.push(statement);
-////             }
-////         }
-////     }
-////     ship_block(&current_statements, effective_origin, &mut result);
-////     current_statements.clear();
-////     (result, maybe_punch)
-//// }
+
+pub(super) fn manuscript_lines_to_blocks(
+    lines: Vec<ManuscriptLine>,
+) -> (Vec<ManuscriptBlock>, Option<PunchCommand>) {
+    let mut result: Vec<ManuscriptBlock> = Vec::new();
+    let mut current_statements: Vec<Statement> = Vec::new();
+    let mut maybe_punch: Option<PunchCommand> = None;
+    let mut effective_origin: Option<Origin> = None;
+
+    fn ship_block(
+        statements: &Vec<Statement>,
+        maybe_origin: Option<Origin>,
+        result: &mut Vec<ManuscriptBlock>,
+    ) {
+        if !statements.is_empty() {
+            result.push(ManuscriptBlock {
+                origin: maybe_origin,
+                statements: statements.to_vec(),
+            });
+        }
+    }
+
+    for line in lines {
+        match line {
+            ManuscriptLine::MetaCommand(ManuscriptMetaCommand::Invalid) => {
+                // The error was already reported in the parser state.
+                // The recovery action is just to ignore it.
+            }
+            ManuscriptLine::MetaCommand(ManuscriptMetaCommand::Punch(punch)) => {
+                maybe_punch = Some(punch);
+            }
+            ManuscriptLine::MetaCommand(ManuscriptMetaCommand::BaseChange(_)) => {
+                // These already took effect on the statements which
+                // were parsed following them, so no need to keep them
+                // now.
+            }
+            ManuscriptLine::JustOrigin(new_origin) => {
+                ship_block(&current_statements, effective_origin, &mut result);
+                current_statements.clear();
+                effective_origin = Some(new_origin);
+                // There is no statement to push, though.
+            }
+            ManuscriptLine::Code(new_origin, statement) => {
+                if new_origin.is_some() {
+                    ship_block(&current_statements, effective_origin, &mut result);
+                    current_statements.clear();
+                    effective_origin = new_origin;
+                }
+                current_statements.push(statement);
+            }
+        }
+    }
+    ship_block(&current_statements, effective_origin, &mut result);
+    current_statements.clear();
+    (result, maybe_punch)
+}
 
 /// Some instructions are assembled with the hold bit automatically
 /// set.  These are JPX, JNX, LDE, ITE.  See Users Handbook, section
