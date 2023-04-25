@@ -219,7 +219,9 @@ fn program_instruction_fragment<'srcbody, I>(
 where
     I: Input<'srcbody, Token = char, Span = SimpleSpan> + StrInput<'srcbody, char>,
 {
-    expression().padded().map(InstructionFragment::from)
+    expression()
+        .padded_by(opt_horizontal_whitespace())
+        .map(InstructionFragment::from)
 }
 
 fn spaces1<'srcbody, I>() -> impl Parser<'srcbody, I, (), Extra<'srcbody, char>>
@@ -464,9 +466,8 @@ where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
 {
     let just_arrow = choice((just("->"), just("\u{2192}")));
-    symbol()
-        .then_ignore(just_arrow.padded())
-        .labelled("tag definition")
+    let arrow = just_arrow.padded_by(opt_horizontal_whitespace());
+    symbol().then_ignore(arrow).labelled("tag definition")
 }
 
 fn double_hand<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
@@ -578,7 +579,6 @@ where
         .or_not()
         .then(program_instruction_fragments())
         .map(build_inst)
-        .padded()
         .labelled("optional tag definition followed by a program instruction")
 }
 
@@ -622,6 +622,13 @@ where
     ))
 }
 
+fn opt_horizontal_whitespace<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+{
+    one_of("\t ").repeated().ignored()
+}
+
 fn manuscript_line<'a, I>() -> impl Parser<'a, I, ManuscriptLine, Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
@@ -647,7 +654,9 @@ where
     where
         I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
     {
-        address_expression().padded().then_ignore(just('|'))
+        address_expression()
+            .padded_by(opt_horizontal_whitespace())
+            .then_ignore(just('|'))
     }
 
     fn origin_only<'a, I>() -> impl Parser<'a, I, ManuscriptLine, Extra<'a, char>>
@@ -676,16 +685,16 @@ where
     {
         choice((
             // Ignore whitespace after the metacommand but not before it.
-            parse_and_execute_metacommand().then_ignore(inline_whitespace()),
-            optional_origin_with_statement().padded(),
+            parse_and_execute_metacommand(),
+            optional_origin_with_statement(),
             // Because we prefer to parse a statement if one exists,
             // the origin_only alternative has to appear after the
             // alternative which parses a statement.
-            origin_only().padded(),
+            origin_only(),
         ))
     }
 
-    line().padded()
+    line()
 }
 
 fn comment<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
@@ -704,13 +713,34 @@ where
         I: Input<'a, Token = char, Span = SimpleSpan> + StrInput<'a, char>,
     {
         inline_whitespace()
+            .or_not()
             .then(comment().or_not())
             .then(chumsky::text::newline())
             .ignored()
-            .labelled("comment or end-of-line")
     }
 
-    one_end_of_line().repeated().at_least(1).ignored()
+    one_end_of_line()
+        .repeated()
+        .at_least(1)
+        .ignored()
+        .labelled("comment or end-of-line")
+}
+
+fn terminated_manuscript_line<'a, I>() -> impl Parser<'a, I, ManuscriptLine, Extra<'a, char>>
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+{
+    // If we support INSERT, DELETE, REPLACE, we will need to
+    // separate the processing of the metacommands and the
+    // generation of the assembled code.
+    manuscript_line()
+        .map_with_span(|ml, span| {
+            eprintln!("recognised manuscript_line {ml:?} at {span:?}");
+            ml
+        })
+        .then_ignore(end_of_line().map_with_span(|_, span| {
+            eprintln!("recognised end_of_line at {span:?}");
+        }))
 }
 
 fn source_file<'a, I>() -> impl Parser<'a, I, SourceFile, Extra<'a, char>>
@@ -719,22 +749,19 @@ where
 {
     // Parse a manuscript (which is a sequence of metacommands, macros
     // and assembly-language instructions).
-
-    fn parse_nonempty_source_file<'a, I>() -> impl Parser<'a, I, SourceFile, Extra<'a, char>>
+    fn source_file_as_blocks<'a, I>() -> impl Parser<'a, I, SourceFile, Extra<'a, char>>
     where
         I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
     {
-        // TODO: when we implement metacommands we will need to separate
-        // the processing of the metacommands and the generation of the
-        // assembled code, because in between those things has to come the
-        // execution of metacommands such as INSERT, DELETE, REPLACE.
-        let line = manuscript_line().then_ignore(end_of_line());
-        line.repeated().collect().map(|lines| {
-            let (blocks, punch) = helpers::manuscript_lines_to_blocks(lines);
-            SourceFile { blocks, punch }
-        })
+        terminated_manuscript_line()
+            .repeated()
+            .collect()
+            .map(|lines| {
+                let (blocks, punch) = helpers::manuscript_lines_to_blocks(lines);
+                SourceFile { blocks, punch }
+            })
     }
-    parse_nonempty_source_file().then_ignore(end())
+    source_file_as_blocks().then_ignore(end())
 }
 
 pub(crate) fn parse_source_file(

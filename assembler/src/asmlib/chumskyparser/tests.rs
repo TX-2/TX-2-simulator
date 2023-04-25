@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::fmt::{Debug, Display};
 
 use base::prelude::*;
 use base::u36;
@@ -49,16 +49,19 @@ where
 #[cfg(test)]
 pub(crate) fn parse_successfully_with<'a, I, O, P, M>(input: I, parser: P, mut state_setup: M) -> O
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Display + Clone,
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Display + Clone + Debug,
     P: Parser<'a, I, O, Extra<'a, char>>,
     M: FnMut(&mut NumeralMode),
+    O: Debug,
 {
+    dbg!(&input);
     let mut state = NumeralMode::default();
     state_setup(&mut state);
     let (output, errors) = parser
         .parse_with_state(input.clone(), &mut state)
         .into_output_errors();
     if !errors.is_empty() {
+        dbg!(&output);
         panic!(
             "{} unexpected parse errors for input '{input}': {:?}",
             errors.len(),
@@ -229,7 +232,7 @@ fn test_program_instruction_fragment() {
 #[test]
 fn test_assemble_octal_literal() {
     assert_eq!(
-        parse_successfully_with("177777\n", program_instruction_fragment(), no_state_setup),
+        parse_successfully_with(" 177777 ", program_instruction_fragment(), no_state_setup),
         InstructionFragment::from((Elevation::Normal, Unsigned36Bit::from(0o177777_u32))),
     );
 }
@@ -291,40 +294,119 @@ fn test_empty_manuscript() {
     )
 }
 
-//#[test]
-//fn test_manuscript_without_tag() {
-//    assert_eq!(
-//        parse_successfully_with(
-//            "673 ** This is a comment\n71\n",
-//            source_file,
-//            no_state_setup
-//        ),
-//        SourceFile {
-//            blocks: vec![ManuscriptBlock {
-//                origin: None,
-//                statements: vec![
-//                    Statement::Instruction(ProgramInstruction {
-//                        tag: None,
-//                        holdbit: HoldBit::Unspecified,
-//                        parts: vec![InstructionFragment::from((
-//                            Elevation::Normal,
-//                            Unsigned36Bit::from(0o673_u32),
-//                        ))],
-//                    }),
-//                    Statement::Instruction(ProgramInstruction {
-//                        tag: None,
-//                        holdbit: HoldBit::Unspecified,
-//                        parts: vec![InstructionFragment::from((
-//                            Elevation::Normal,
-//                            Unsigned36Bit::from(0o71_u32),
-//                        ))],
-//                    }),
-//                ]
-//            }],
-//            punch: None,
-//        }
-//    );
-//}
+#[test]
+fn test_comment_does_not_eat_newline() {
+    let comment_text = "**COMMENT";
+    let comment_with_newline = format!("{comment_text}\n");
+    match parse_test_input(comment_with_newline.as_str(), comment()) {
+        Err(_) => (), // expected outcome
+        Ok(out) => {
+            panic!("attempt to parse '{comment_with_newline:?}' as a comment unexpectedly succeeded (the newline was not rejected), producing {out:?}");
+        }
+    }
+    // Verify that the above (expected) error was in fact caused by
+    // the presence of the newline.
+    parse_test_input(comment_text, comment())
+        .expect("should be able to successfully parse the comment itself");
+}
+
+#[test]
+fn test_manuscript_line_with_bare_literal() {
+    assert_eq!(
+        parse_successfully_with("1", manuscript_line(), no_state_setup),
+        ManuscriptLine::Code(
+            None,
+            Statement::Instruction(ProgramInstruction {
+                tag: None,
+                holdbit: HoldBit::Unspecified,
+                parts: vec![InstructionFragment::from((
+                    Elevation::Normal,
+                    Unsigned36Bit::from(1_u32),
+                ))]
+            })
+        )
+    );
+}
+
+#[test]
+fn test_manuscript_with_bare_literal() {
+    assert_eq!(
+        parse_successfully_with("1\n", source_file(), no_state_setup),
+        SourceFile {
+            punch: None,
+            blocks: vec![ManuscriptBlock {
+                origin: None,
+                statements: vec![Statement::Instruction(ProgramInstruction {
+                    tag: None,
+                    holdbit: HoldBit::Unspecified,
+                    parts: vec![InstructionFragment::from((
+                        Elevation::Normal,
+                        Unsigned36Bit::from(1_u32),
+                    ))],
+                }),]
+            }]
+        }
+    );
+}
+
+#[test]
+fn test_terminated_manuscript_line_with_bare_literal() {
+    let expected_line = ManuscriptLine::Code(
+        None,
+        Statement::Instruction(ProgramInstruction {
+            tag: None,
+            holdbit: HoldBit::Unspecified,
+            parts: vec![InstructionFragment::from((
+                Elevation::Normal,
+                Unsigned36Bit::from(1_u32),
+            ))],
+        }),
+    );
+
+    assert_eq!(
+        parse_successfully_with("1", manuscript_line(), no_state_setup),
+        expected_line
+    );
+    assert_eq!(
+        parse_successfully_with("1\n", terminated_manuscript_line(), no_state_setup),
+        expected_line
+    );
+}
+
+#[test]
+fn test_manuscript_without_tag() {
+    assert_eq!(
+        parse_successfully_with(
+            "673 ** This is a comment\n71\n",
+            source_file(),
+            no_state_setup
+        ),
+        SourceFile {
+            blocks: vec![ManuscriptBlock {
+                origin: None,
+                statements: vec![
+                    Statement::Instruction(ProgramInstruction {
+                        tag: None,
+                        holdbit: HoldBit::Unspecified,
+                        parts: vec![InstructionFragment::from((
+                            Elevation::Normal,
+                            Unsigned36Bit::from(0o673_u32),
+                        ))],
+                    }),
+                    Statement::Instruction(ProgramInstruction {
+                        tag: None,
+                        holdbit: HoldBit::Unspecified,
+                        parts: vec![InstructionFragment::from((
+                            Elevation::Normal,
+                            Unsigned36Bit::from(0o71_u32),
+                        ))],
+                    }),
+                ]
+            }],
+            punch: None,
+        }
+    );
+}
 
 #[test]
 fn test_symbol_name_one_syllable() {
@@ -348,54 +430,58 @@ fn test_symbol_name_two_syllables() {
     );
 }
 
-//#[test]
-//fn test_manuscript_with_single_syllable_tag() {
-//    assert_eq!(
-//        parse_successfully_with(
-//            "START4  \t->\t205 ** comment here\n",
-//            source_file,
-//            no_state_setup
-//        ),
-//        SourceFile {
-//            blocks: vec![ManuscriptBlock {
-//                origin: None,
-//                statements: vec![Statement::Instruction(ProgramInstruction {
-//                    tag: Some(SymbolName {
-//                        canonical: "START4".to_string(),
-//                        //as_used: "START4".to_string(),
-//                    }),
-//                    holdbit: HoldBit::Unspecified,
-//                    parts: vec![InstructionFragment::from((
-//                        Elevation::Normal,
-//                        Unsigned36Bit::from(0o205_u32),
-//                    )),]
-//                })]
-//            }],
-//            punch: None
-//        }
-//    );
-//}
-//
-//#[test]
-//fn test_manuscript_with_origin() {
-//    assert_eq!(
-//        parse_successfully_with("100 | 202 ** literal value\n", source_file, no_state_setup),
-//        SourceFile {
-//            punch: None,
-//            blocks: vec![ManuscriptBlock {
-//                origin: Some(Origin(Address::new(u18!(0o100)))),
-//                statements: vec![Statement::Instruction(ProgramInstruction {
-//                    tag: None,
-//                    holdbit: HoldBit::Unspecified,
-//                    parts: vec![InstructionFragment::from((
-//                        Elevation::Normal,
-//                        Unsigned36Bit::from(0o202_u32),
-//                    ))]
-//                })],
-//            }]
-//        }
-//    );
-//}
+#[test]
+fn test_manuscript_with_single_syllable_tag() {
+    assert_eq!(
+        parse_successfully_with(
+            "START4  \t->\t205 ** comment here\n",
+            source_file(),
+            no_state_setup
+        ),
+        SourceFile {
+            blocks: vec![ManuscriptBlock {
+                origin: None,
+                statements: vec![Statement::Instruction(ProgramInstruction {
+                    tag: Some(SymbolName {
+                        canonical: "START4".to_string(),
+                        //as_used: "START4".to_string(),
+                    }),
+                    holdbit: HoldBit::Unspecified,
+                    parts: vec![InstructionFragment::from((
+                        Elevation::Normal,
+                        Unsigned36Bit::from(0o205_u32),
+                    )),]
+                })]
+            }],
+            punch: None
+        }
+    );
+}
+
+#[test]
+fn test_manuscript_with_origin() {
+    assert_eq!(
+        parse_successfully_with(
+            "100 | 202 ** literal value\n",
+            source_file(),
+            no_state_setup
+        ),
+        SourceFile {
+            punch: None,
+            blocks: vec![ManuscriptBlock {
+                origin: Some(Origin(Address::new(u18!(0o100)))),
+                statements: vec![Statement::Instruction(ProgramInstruction {
+                    tag: None,
+                    holdbit: HoldBit::Unspecified,
+                    parts: vec![InstructionFragment::from((
+                        Elevation::Normal,
+                        Unsigned36Bit::from(0o202_u32),
+                    ))]
+                })],
+            }]
+        }
+    );
+}
 
 #[test]
 fn test_arrow() {
@@ -458,31 +544,51 @@ fn test_manuscript_with_multi_syllable_tag() {
     );
 }
 
-//#[test]
-//fn test_manuscript_with_real_arrow_tag() {
-//    const INPUT: &str = "HERE→207\n"; // real Unicode rightward arrow (U+2192).
-//    assert_eq!(
-//        parse_successfully_with(INPUT, source_file, no_state_setup),
-//        SourceFile {
-//            punch: None,
-//            blocks: vec![ManuscriptBlock {
-//                origin: None,
-//                statements: vec![Statement::Instruction(ProgramInstruction {
-//                    tag: Some(SymbolName {
-//                        canonical: "HERE".to_string(),
-//                        //as_used: "HERE".to_string(),
-//                    }),
-//                    holdbit: HoldBit::Unspecified,
-//                    parts: vec![InstructionFragment::from((
-//                        Elevation::Normal,
-//                        Unsigned36Bit::from(0o207_u32),
-//                    ))]
-//                })]
-//            }]
-//        }
-//    );
-//}
-//
+#[test]
+fn test_manuscript_line_with_real_arrow_tag() {
+    const INPUT: &str = "HERE→207"; // real Unicode rightward arrow (U+2192).
+    assert_eq!(
+        parse_successfully_with(INPUT, manuscript_line(), no_state_setup),
+        ManuscriptLine::Code(
+            None,
+            Statement::Instruction(ProgramInstruction {
+                tag: Some(SymbolName {
+                    canonical: "HERE".to_string(),
+                }),
+                holdbit: HoldBit::Unspecified,
+                parts: vec![InstructionFragment {
+                    value: Expression::from((Elevation::Normal, u36!(0o207)))
+                }],
+            })
+        )
+    );
+}
+
+#[test]
+fn test_manuscript_with_real_arrow_tag() {
+    const INPUT: &str = "HERE→207\n"; // real Unicode rightward arrow (U+2192).
+    assert_eq!(
+        parse_successfully_with(INPUT, source_file(), no_state_setup),
+        SourceFile {
+            punch: None,
+            blocks: vec![ManuscriptBlock {
+                origin: None,
+                statements: vec![Statement::Instruction(ProgramInstruction {
+                    tag: Some(SymbolName {
+                        canonical: "HERE".to_string(),
+                        //as_used: "HERE".to_string(),
+                    }),
+                    holdbit: HoldBit::Unspecified,
+                    parts: vec![InstructionFragment::from((
+                        Elevation::Normal,
+                        Unsigned36Bit::from(0o207_u32),
+                    ))]
+                })]
+            }]
+        }
+    );
+}
+
 //#[test]
 //fn test_assignment_literal() {
 //    const INPUTS: &[&'static str] = &[
@@ -730,8 +836,20 @@ fn not_hold() {
 }
 
 #[test]
-fn line_end() {
-    parse_successfully_with("  ** THIS IS A COMMENT\n", end_of_line(), no_state_setup);
+fn test_end_of_line() {
+    fn good(s: &str) {
+        parse_successfully_with(s, end_of_line(), no_state_setup);
+    }
+    good("\n");
+    good(" \n");
+    good("\t\n");
+    good("\n\n");
+    good("\n \n");
+    good("**COMMENT\n");
+    good("**COMMENT \n");
+    good(" **COMMENT \n");
+    good(" **COMMENT1 \n**COMMENT2\n");
+    good(" **COMMENT1 \n**COMMENT2\n\n");
 }
 
 #[test]
