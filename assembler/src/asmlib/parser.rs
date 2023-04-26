@@ -24,16 +24,6 @@ use super::state::NumeralMode;
 use super::types::*;
 use base::prelude::*;
 
-//use helpers::*;
-
-#[derive(Debug, Clone)]
-pub(crate) struct ErrorLocation {
-    /// line is usually derived from LocatedSpan::location_line() which returns
-    /// a u32.
-    pub(crate) line: LineNumber,
-    pub(crate) column: Option<usize>,
-}
-
 pub(crate) type Extra<'a, T> = Full<Rich<'a, T>, NumeralMode, ()>;
 
 fn opt_sign<'a, I>() -> impl Parser<'a, I, Option<char>, Extra<'a, char>>
