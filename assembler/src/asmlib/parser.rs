@@ -5,17 +5,15 @@
 #![allow(dead_code)]
 
 mod helpers;
+mod terminal;
 #[cfg(test)]
 mod tests; // temporary
-
-use std::ops::Shl;
 
 use chumsky::error::Rich;
 use chumsky::extra::Full;
 use chumsky::input::{StrInput, ValueInput};
 use chumsky::prelude::*;
 use chumsky::primitive::one_of;
-use chumsky::text::{digits, inline_whitespace};
 use chumsky::Parser;
 
 use super::ast::*;
@@ -30,24 +28,14 @@ fn opt_sign<'a, I>() -> impl Parser<'a, I, Option<char>, Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
 {
-    one_of("+-").or_not().labelled("sign")
-}
-
-fn digits1<'a, I>() -> impl Parser<'a, I, String, Extra<'a, char>>
-where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
-{
-    digits(10).at_least(1).collect::<String>()
+    terminal::sign().or_not().labelled("sign")
 }
 
 fn maybe_dot<'a, I>() -> impl Parser<'a, I, bool, Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
 {
-    one_of("\u{22C5}\u{00B7}")
-        .or_not()
-        .map(|x| x.is_some())
-        .labelled("dot")
+    terminal::dot().or_not().map(|x| x.is_some())
 }
 
 fn normal_literal<'a, I>() -> impl Parser<'a, I, LiteralValue, Extra<'a, char>>
@@ -55,7 +43,7 @@ where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
 {
     opt_sign()
-        .then(digits1())
+        .then(terminal::digits1())
         .then(maybe_dot())
         .try_map_with_state(|((maybe_sign, digits), hasdot), span, state| {
             match helpers::make_num(maybe_sign, &digits, hasdot, state) {
@@ -66,55 +54,14 @@ where
         .labelled("numeric literal")
 }
 
-//) -> impl Parser<'srcbody, &'srcbody str, LiteralValue, Extra<'srcbody, I>> {
-//    let maybe_sign = one_of("-+").or_not();
-//    // Accept either Unicode Dot Operator U+22C5 ("⋅") or Unicode Middle Dot U+00B7 ("·").
-//    let maybe_dot = one_of("\u{22C5}\u{00B7}").or_not();
-//    let digits1 = digits(10).at_least(1).slice();
-//    let normal_number =
-//        opt_sign
-//            .then(digits1)
-//            .then(maybe_dot)
-//            .map_with_state(|output, _span, state| {
-//                let sign: Option<char> = output.0 .0;
-//                let digits = output.0 .1;
-//                let hasdot = output.1 .0;
-//                helpers::make_num(sign, digits, state, hasdot)
-//            });
-//    normal_number.map(|n| InstructionFragment {
-//        elevation: Elevation::Normal,
-//        value: n,
-//    })
-//}
-
-fn superscript_oct_digit1<'srcbody, I>() -> impl Parser<'srcbody, I, String, Extra<'srcbody, char>>
-where
-    I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
-{
-    fn superscript_oct_digit<'srcbody, I>() -> impl Parser<'srcbody, I, char, Extra<'srcbody, char>>
-    where
-        I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
-    {
-        any().filter(|ch| helpers::superscript_oct_digit_to_value(*ch).is_some())
-    }
-
-    superscript_oct_digit()
-        .repeated()
-        .at_least(1)
-        .collect::<String>()
-        .labelled("superscript octal digits")
-}
-
 fn maybe_superscript_dot<'srcbody, I>() -> impl Parser<'srcbody, I, bool, Extra<'srcbody, char>>
 where
     I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
 {
-    just(
-        "\u{0307} ", // Unicode Combining Dot Above ̇followed by space ("̇ ")
-    )
-    .or_not()
-    .map(|x| x.is_some())
-    .labelled("superscript dot")
+    terminal::superscript_dot()
+        .or_not()
+        .map(|x| x.is_some())
+        .labelled("superscript dot")
 }
 
 fn superscript_literal<'srcbody, I>(
@@ -122,20 +69,9 @@ fn superscript_literal<'srcbody, I>(
 where
     I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
 {
-    fn maybe_superscript_sign<'srcbody, I>(
-    ) -> impl Parser<'srcbody, I, Option<char>, Extra<'srcbody, char>>
-    where
-        I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
-    {
-        one_of(concat!(
-            "\u{207B}", // U+207B: superscript minus
-            "\u{207A}", // U+207A: superscript plus
-        ))
+    terminal::superscript_sign()
         .or_not()
-    }
-
-    maybe_superscript_sign()
-        .then(superscript_oct_digit1())
+        .then(terminal::superscript_oct_digit1())
         .then(maybe_superscript_dot())
         .try_map_with_state(|((maybe_sign, digits), hasdot), span, state| {
             match helpers::make_superscript_num(maybe_sign, &digits, hasdot, state) {
@@ -150,33 +86,19 @@ fn subscript_literal<'srcbody, I>() -> impl Parser<'srcbody, I, LiteralValue, Ex
 where
     I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
 {
-    fn is_subscript_oct_digit(ch: &char) -> bool {
-        helpers::subscript_oct_digit_to_value(*ch).is_some()
-    }
-
     fn maybe_subscript_sign<'srcbody, I>(
     ) -> impl Parser<'srcbody, I, Option<char>, Extra<'srcbody, char>>
     where
         I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
     {
-        one_of(concat!(
-            "\u{208B}", // u+208B: subscript minus
-            "\u{208A}", // U+208A: subscript plus
-        ))
-        .or_not()
+        terminal::subscript_sign().or_not()
     }
 
-    fn subscript_oct_digit<'srcbody, I>() -> impl Parser<'srcbody, I, char, Extra<'srcbody, char>>
-    where
-        I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
-    {
-        any().filter(is_subscript_oct_digit)
-    }
     fn subscript_oct_digit1<'srcbody, I>() -> impl Parser<'srcbody, I, String, Extra<'srcbody, char>>
     where
         I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
     {
-        subscript_oct_digit()
+        terminal::subscript_oct_digit()
             .repeated()
             .at_least(1)
             .collect::<String>()
@@ -190,8 +112,9 @@ where
     where
         I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
     {
-        just('.').or_not().map(|x| x.is_some())
+        terminal::subscript_dot().or_not().map(|x| x.is_some())
     }
+
     maybe_subscript_sign()
         .then(subscript_oct_digit1())
         .then(maybe_subscript_dot())
@@ -214,28 +137,17 @@ where
         .map(InstructionFragment::from)
 }
 
-fn spaces1<'srcbody, I>() -> impl Parser<'srcbody, I, (), Extra<'srcbody, char>>
-where
-    I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
-{
-    just(' ')
-        .repeated()
-        .at_least(1)
-        .ignored()
-        .labelled("one or more spaces")
-}
-
 mod symex {
-    use chumsky::input::ValueInput;
+    use base::Unsigned36Bit;
+
+    use chumsky::input::{StrInput, ValueInput};
     use chumsky::prelude::*;
-    use chumsky::primitive::just;
-    use chumsky::text::{digits, inline_whitespace};
     use chumsky::Parser;
 
     use super::super::ast::{Elevation, LiteralValue};
-    use super::helpers::{self, is_nonblank_simple_symex_char, DecodedOpcode};
-    use super::{opt_horizontal_whitespace, spaces1, Extra, SymbolName};
-    use base::Unsigned36Bit;
+    use super::helpers::{self, DecodedOpcode};
+    use super::terminal;
+    use super::{opt_horizontal_whitespace, Extra, SymbolName};
 
     fn canonical_symbol_name(s: &str) -> SymbolName {
         // TODO: avoid copy where possible.
@@ -252,18 +164,6 @@ mod symex {
             || matches!(helpers::opcode_to_num(ident), DecodedOpcode::Valid(_))
     }
 
-    fn parse_nonblank_simple_symex_chars<'a, I>() -> impl Parser<'a, I, String, Extra<'a, char>>
-    where
-        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
-    {
-        any()
-            .filter(|ch| is_nonblank_simple_symex_char(*ch))
-            .repeated()
-            .at_least(1)
-            .collect()
-            .labelled("nonblank simple symex character")
-    }
-
     fn concat_strings(mut s: String, next: String) -> String {
         s.push_str(&next);
         s
@@ -274,9 +174,9 @@ mod symex {
     where
         I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
     {
-        parse_nonblank_simple_symex_chars()
+        terminal::nonblank_simple_symex_chars()
             .foldl(
-                parse_nonblank_simple_symex_chars().repeated(),
+                terminal::nonblank_simple_symex_chars().repeated(),
                 concat_strings,
             )
             .labelled("symex syllable")
@@ -314,13 +214,27 @@ mod symex {
         })
     }
 
+    pub(super) fn spaces1<'srcbody, I>() -> impl Parser<'srcbody, I, (), Extra<'srcbody, char>>
+    where
+        I: Input<'srcbody, Token = char, Span = SimpleSpan>
+            + ValueInput<'srcbody>
+            + StrInput<'srcbody, char>,
+    {
+        terminal::inline_whitespace()
+            .ignored()
+            .repeated()
+            .at_least(1)
+            .ignored()
+            .labelled("one or more spaces")
+    }
+
     pub(super) fn parse_multi_syllable_symex<'a, I>() -> impl Parser<'a, I, String, Extra<'a, char>>
     where
         I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
     {
         fn space_syllable<'a, I>() -> impl Parser<'a, I, String, Extra<'a, char>>
         where
-            I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+            I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
         {
             spaces1().ignore_then(parse_symex_syllable())
         }
@@ -356,39 +270,6 @@ where
         .labelled("numeric literal")
 }
 
-fn opcode<'a, I>() -> impl Parser<'a, I, LiteralValue, Extra<'a, char>>
-where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
-{
-    fn valid_opcode(s: &str) -> Result<LiteralValue, ()> {
-        if let helpers::DecodedOpcode::Valid(opcode) = helpers::opcode_to_num(s) {
-            Ok(LiteralValue::from((
-                Elevation::Normal,
-                // Bits 24-29 (dec) inclusive in the instruction word
-                // represent the opcode, so shift the opcode's value
-                // left by 24 decimal.
-                Unsigned36Bit::from(opcode)
-                    .shl(24)
-                    // Some opcodes automatically set the hold
-                    // bit, so do that here.
-                    .bitor(helpers::opcode_auto_hold_bit(opcode)),
-            )))
-        } else {
-            Err(())
-        }
-    }
-
-    any()
-        .repeated()
-        .exactly(3)
-        .collect::<String>()
-        .try_map(|text, span| {
-            valid_opcode(&text)
-                .map_err(|_| Rich::custom(span, format!("{text} is not a valid opcode")))
-        })
-        .labelled("opcode")
-}
-
 /// Parse an expression; these can currently only take the form of a literal.
 /// TX-2's M4 assembler allows arithmetic expressions also, but these are not
 /// currently implemented.
@@ -417,7 +298,7 @@ where
     where
         I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
     {
-        choice((literal(), opcode())).map(Expression::from)
+        choice((literal(), terminal::opcode())).map(Expression::from)
     }
 
     fn symbolic_expression<'a, I>() -> impl Parser<'a, I, Expression, Extra<'a, char>>
@@ -460,20 +341,8 @@ fn tag_definition<'a, I>() -> impl Parser<'a, I, SymbolName, Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
 {
-    let just_arrow = choice((just("->"), just("\u{2192}")));
-    let arrow = just_arrow.padded_by(opt_horizontal_whitespace());
+    let arrow = terminal::arrow().padded_by(opt_horizontal_whitespace());
     symbol().then_ignore(arrow).labelled("tag definition")
-}
-
-fn double_hand<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
-where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
-{
-    let hand = just('☛');
-    hand.ignored()
-        .then(hand)
-        .ignored()
-        .labelled("double meta hand")
 }
 
 fn metacommand<'a, I>() -> impl Parser<'a, I, ManuscriptMetaCommand, Extra<'a, char>>
@@ -488,8 +357,8 @@ where
         // "AA" in the PUNCH metacommand.  The documentation clearly
         // states that this should be an honest tag.  We currently
         // accept only numeric literals.
-        just("PUNCH")
-            .then(inline_whitespace())
+        terminal::punch()
+            .then(terminal::inline_whitespace())
             .ignore_then(literal().or_not())
             .try_map(|aa, span| match helpers::punch_address(aa) {
                 Ok(punch) => Ok(ManuscriptMetaCommand::Punch(punch)),
@@ -503,10 +372,8 @@ where
         I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
     {
         choice((
-            choice((just("DECIMAL"), just("DEC")))
-                .to(ManuscriptMetaCommand::BaseChange(NumeralMode::Decimal)),
-            choice((just("OCTAL"), just("OCT")))
-                .to(ManuscriptMetaCommand::BaseChange(NumeralMode::Octal)),
+            terminal::decimal().to(ManuscriptMetaCommand::BaseChange(NumeralMode::Decimal)),
+            terminal::octal().to(ManuscriptMetaCommand::BaseChange(NumeralMode::Octal)),
         ))
         .labelled("base-change metacommand")
     }
@@ -518,23 +385,9 @@ where
         choice((base_change(), punch()))
     }
 
-    double_hand()
+    terminal::double_hand()
         .ignore_then(metacommand_body())
         .labelled("metacommand")
-}
-
-fn hold<'a, I>() -> impl Parser<'a, I, HoldBit, Extra<'a, char>>
-where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
-{
-    // Accept either 'h' or ':' signalling the hold bit should be set.
-    // The documentation seems to use both, though perhaps ':' is the
-    // older usage.
-    let h = one_of("h:").to(HoldBit::Hold);
-    let nh = just("\u{0305}h").or(just("ℏ")).to(HoldBit::NotHold);
-    choice((h, nh))
-        .padded_by(opt_horizontal_whitespace())
-        .labelled("instruction hold bit")
 }
 
 fn program_instruction_fragments<'a, I>(
@@ -549,22 +402,17 @@ where
         .labelled("program instruction")
 }
 
-fn hold_and_fragments<'a, I>(
-) -> impl Parser<'a, I, (HoldBit, Vec<InstructionFragment>), Extra<'a, char>>
-where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
-{
-    //maybe_hold().then(program_instruction_fragments())
-    program_instruction_fragments().map(|frags| (HoldBit::Unspecified, frags))
-}
-
 fn program_instruction<'a, I>() -> impl Parser<'a, I, ProgramInstruction, Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
 {
-    fn build_inst(parts: (Option<SymbolName>, Vec<InstructionFragment>)) -> ProgramInstruction {
-        let (maybe_tag, fragments) = parts;
-        let holdbit = None;
+    fn build_inst(
+        parts: (
+            Option<SymbolName>,
+            (Option<HoldBit>, Vec<InstructionFragment>),
+        ),
+    ) -> ProgramInstruction {
+        let (maybe_tag, (holdbit, fragments)) = parts;
         ProgramInstruction {
             tag: maybe_tag,
             holdbit: holdbit.unwrap_or(HoldBit::Unspecified),
@@ -572,9 +420,27 @@ where
         }
     }
 
+    fn maybe_hold<'a, I>() -> impl Parser<'a, I, Option<HoldBit>, Extra<'a, char>>
+    where
+        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+    {
+        terminal::hold()
+            .or_not()
+            .padded_by(opt_horizontal_whitespace())
+            .labelled("instruction hold bit")
+    }
+
+    fn hold_and_fragments<'a, I>(
+    ) -> impl Parser<'a, I, (Option<HoldBit>, Vec<InstructionFragment>), Extra<'a, char>>
+    where
+        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+    {
+        maybe_hold().then(program_instruction_fragments())
+    }
+
     tag_definition()
         .or_not()
-        .then(program_instruction_fragments())
+        .then(hold_and_fragments())
         .map(build_inst)
         .labelled("optional tag definition followed by a program instruction")
 }
@@ -601,9 +467,8 @@ where
     where
         I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
     {
-        let equals = just('=').padded_by(opt_horizontal_whitespace());
         symex::parse_symex()
-            .then_ignore(equals)
+            .then_ignore(terminal::equals().padded_by(opt_horizontal_whitespace()))
             .then(expression())
             .padded_by(opt_horizontal_whitespace())
     }
@@ -625,7 +490,7 @@ fn opt_horizontal_whitespace<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
 {
-    one_of("\t ").repeated().ignored()
+    terminal::horizontal_whitespace().repeated().ignored()
 }
 
 fn manuscript_line<'a, I>() -> impl Parser<'a, I, ManuscriptLine, Extra<'a, char>>
@@ -655,7 +520,7 @@ where
     {
         address_expression()
             .padded_by(opt_horizontal_whitespace())
-            .then_ignore(just('|'))
+            .then_ignore(terminal::pipe())
     }
 
     fn origin_only<'a, I>() -> impl Parser<'a, I, ManuscriptLine, Extra<'a, char>>
@@ -696,13 +561,6 @@ where
     line()
 }
 
-fn comment<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
-where
-    I: Input<'a, Token = char, Span = SimpleSpan> + StrInput<'a, char>,
-{
-    just("**").ignore_then(none_of("\n").repeated().ignored())
-}
-
 fn end_of_line<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + StrInput<'a, char>,
@@ -711,9 +569,9 @@ where
     where
         I: Input<'a, Token = char, Span = SimpleSpan> + StrInput<'a, char>,
     {
-        inline_whitespace()
+        terminal::inline_whitespace()
             .or_not()
-            .then(comment().or_not())
+            .then(terminal::comment().or_not())
             .then(chumsky::text::newline())
             .ignored()
     }

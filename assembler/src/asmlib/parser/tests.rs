@@ -294,10 +294,15 @@ fn test_empty_manuscript() {
 }
 
 #[test]
+fn test_comment() {
+    parse_successfully_with("**THIS IS A COMMENT", terminal::comment(), no_state_setup);
+}
+
+#[test]
 fn test_comment_does_not_eat_newline() {
     let comment_text = "**COMMENT";
     let comment_with_newline = format!("{comment_text}\n");
-    match parse_test_input(comment_with_newline.as_str(), comment()) {
+    match parse_test_input(comment_with_newline.as_str(), terminal::comment()) {
         Err(_) => (), // expected outcome
         Ok(out) => {
             panic!("attempt to parse '{comment_with_newline:?}' as a comment unexpectedly succeeded (the newline was not rejected), producing {out:?}");
@@ -305,7 +310,7 @@ fn test_comment_does_not_eat_newline() {
     }
     // Verify that the above (expected) error was in fact caused by
     // the presence of the newline.
-    parse_test_input(comment_text, comment())
+    parse_test_input(comment_text, terminal::comment())
         .expect("should be able to successfully parse the comment itself");
 }
 
@@ -781,7 +786,7 @@ fn test_opcode() {
         operand_address: OperandAddress::Direct(Address::ZERO),
     });
     assert_eq!(
-        parse_successfully_with("AUX", opcode(), no_state_setup),
+        parse_successfully_with("AUX", super::terminal::opcode(), no_state_setup),
         LiteralValue::from((Elevation::Normal, expected_instruction.bits(),))
     );
 }
@@ -815,11 +820,11 @@ fn program_instruction_with_opcode() {
 #[test]
 fn test_hold() {
     assert_eq!(
-        parse_successfully_with(" h", hold(), no_state_setup),
+        parse_successfully_with("h", terminal::hold(), no_state_setup),
         HoldBit::Hold
     );
     assert_eq!(
-        parse_successfully_with(" :", hold(), no_state_setup),
+        parse_successfully_with(":", terminal::hold(), no_state_setup),
         HoldBit::Hold
     );
 }
@@ -827,13 +832,11 @@ fn test_hold() {
 #[test]
 fn not_hold() {
     assert_eq!(
-        //parse_successfully_with(" ℏ", maybe_hold, no_state_setup),
-        parse_successfully_with("ℏ", hold(), no_state_setup),
+        parse_successfully_with("ℏ", terminal::hold(), no_state_setup),
         HoldBit::NotHold
     );
     assert_eq!(
-        //parse_successfully_with(" ̅h", maybe_hold, no_state_setup),
-        parse_successfully_with("̅h", hold(), no_state_setup),
+        parse_successfully_with("̅h", terminal::hold(), no_state_setup),
         HoldBit::NotHold
     );
 }
@@ -853,9 +856,4 @@ fn test_end_of_line() {
     good(" **COMMENT \n");
     good(" **COMMENT1 \n**COMMENT2\n");
     good(" **COMMENT1 \n**COMMENT2\n\n");
-}
-
-#[test]
-fn test_comment() {
-    parse_successfully_with("**THIS IS A COMMENT", comment(), no_state_setup);
 }
