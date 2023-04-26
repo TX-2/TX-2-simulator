@@ -345,6 +345,16 @@ where
     symbol().then_ignore(arrow).labelled("tag definition")
 }
 
+fn named_metacommand<'a, I>(name: &'static str) -> impl Parser<'a, I, (), Extra<'a, char>>
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+{
+    terminal::metacommand_name()
+        .filter(move |n| n == name)
+        .then(terminal::inline_whitespace())
+        .ignored()
+}
+
 fn metacommand<'a, I>() -> impl Parser<'a, I, ManuscriptMetaCommand, Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
@@ -357,8 +367,7 @@ where
         // "AA" in the PUNCH metacommand.  The documentation clearly
         // states that this should be an honest tag.  We currently
         // accept only numeric literals.
-        terminal::punch()
-            .then(terminal::inline_whitespace())
+        named_metacommand("PUNCH")
             .ignore_then(literal().or_not())
             .try_map(|aa, span| match helpers::punch_address(aa) {
                 Ok(punch) => Ok(ManuscriptMetaCommand::Punch(punch)),
@@ -369,25 +378,18 @@ where
 
     fn base_change<'a, I>() -> impl Parser<'a, I, ManuscriptMetaCommand, Extra<'a, char>>
     where
-        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
     {
         choice((
-            terminal::decimal().to(ManuscriptMetaCommand::BaseChange(NumeralMode::Decimal)),
-            terminal::octal().to(ManuscriptMetaCommand::BaseChange(NumeralMode::Octal)),
+            choice((named_metacommand("DECIMAL"), named_metacommand("DEC")))
+                .to(ManuscriptMetaCommand::BaseChange(NumeralMode::Decimal)),
+            choice((named_metacommand("OCTAL"), named_metacommand("OCT")))
+                .to(ManuscriptMetaCommand::BaseChange(NumeralMode::Octal)),
         ))
         .labelled("base-change metacommand")
     }
 
-    fn metacommand_body<'a, I>() -> impl Parser<'a, I, ManuscriptMetaCommand, Extra<'a, char>>
-    where
-        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
-    {
-        choice((base_change(), punch()))
-    }
-
-    terminal::double_hand()
-        .ignore_then(metacommand_body())
-        .labelled("metacommand")
+    choice((base_change(), punch())).labelled("metacommand")
 }
 
 fn program_instruction_fragments<'a, I>(

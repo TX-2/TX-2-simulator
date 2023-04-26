@@ -159,46 +159,17 @@ where
         .labelled("opcode")
 }
 
-pub(super) fn double_hand<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
+pub(super) fn metacommand_name<'a, I>() -> impl Parser<'a, I, String, Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
 {
-    let hand = just('☛');
-    hand.ignored()
-        .then(hand)
-        .ignored()
-        .labelled("double meta hand")
-}
-
-pub(super) fn punch<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
-where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
-{
-    // TODO: this is not actually a very good terminal because
-    // it lacks context.  For example this is a valid program:
-    //
-    // 100| 4
-    //      PUNCH = 6
-    // ☛☛PUNCH 200
-    //
-    // Here, PUNCH is a perfectly good symbol.
-    just("PUNCH").ignored()
-}
-
-pub(super) fn decimal<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
-where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
-{
-    // TODO: this is not actually a very good terminal for the same reason as PUNCH.
-    choice((just("DECIMAL"), just("DEC"))).ignored()
-}
-
-pub(super) fn octal<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
-where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
-{
-    // TODO: this is not actually a very good terminal for the same reason as PUNCH.
-    choice((just("OCTAL"), just("OCT"))).ignored()
+    just("☛☛").ignore_then(
+        one_of("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+            .repeated()
+            .at_least(2)
+            .collect()
+            .labelled("metacommand name"),
+    )
 }
 
 pub(super) fn hold<'a, I>() -> impl Parser<'a, I, HoldBit, Extra<'a, char>>
@@ -208,9 +179,10 @@ where
     // Accept either 'h' or ':' signalling the hold bit should be set.
     // The documentation seems to use both, though perhaps ':' is the
     // older usage.
-    let h = one_of("h:").to(HoldBit::Hold);
-    let nh = just("\u{0305}h").or(just("ℏ")).to(HoldBit::NotHold);
-    choice((h, nh))
+    choice((
+        one_of("h:").to(HoldBit::Hold),
+        just("\u{0305}h").or(just("ℏ")).to(HoldBit::NotHold),
+    ))
 }
 
 pub(super) fn equals<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
