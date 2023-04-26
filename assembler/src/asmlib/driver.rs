@@ -8,7 +8,7 @@ use chumsky::error::Rich;
 use tracing::{event, span, Level};
 
 use super::ast::*;
-use super::chumskyparser::parse_source_file;
+use super::parser::parse_source_file;
 use super::state::NumeralMode;
 use super::symtab::*;
 use super::types::*;
