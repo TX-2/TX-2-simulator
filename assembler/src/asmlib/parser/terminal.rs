@@ -212,3 +212,10 @@ where
 {
     just("**").ignore_then(none_of("\n").repeated().ignored())
 }
+
+pub(super) fn end_of_input<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + StrInput<'a, char>,
+{
+    chumsky::prelude::end()
+}

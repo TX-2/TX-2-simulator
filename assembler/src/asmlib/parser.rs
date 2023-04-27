@@ -7,12 +7,12 @@
 mod helpers;
 mod terminal;
 #[cfg(test)]
-mod tests; // temporary
+mod tests;
 
 use chumsky::error::Rich;
 use chumsky::extra::Full;
 use chumsky::input::{StrInput, ValueInput};
-use chumsky::prelude::*;
+use chumsky::prelude::{choice, Input, IterParser, SimpleSpan};
 use chumsky::primitive::one_of;
 use chumsky::Parser;
 
@@ -622,7 +622,7 @@ where
             },
         )
     }
-    source_file_as_blocks().then_ignore(end())
+    source_file_as_blocks().then_ignore(terminal::end_of_input())
 }
 
 pub(crate) fn parse_source_file(
