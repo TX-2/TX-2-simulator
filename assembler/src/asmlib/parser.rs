@@ -505,15 +505,7 @@ where
     // If we support INSERT, DELETE, REPLACE, we will need to
     // separate the processing of the metacommands and the
     // generation of the assembled code.
-    manuscript_line()
-        .map_with_span(|ml, span| {
-            eprintln!("recognised manuscript_line {ml:?} at {span:?}");
-            ml
-        })
-        .or_not()
-        .then_ignore(end_of_line().map_with_span(|_, span| {
-            eprintln!("recognised end_of_line at {span:?}");
-        }))
+    manuscript_line().or_not().then_ignore(end_of_line())
 }
 
 fn source_file<'a, I>() -> impl Parser<'a, I, SourceFile, Extra<'a, char>>
