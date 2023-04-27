@@ -7,7 +7,7 @@ use chumsky::error::Rich;
 use chumsky::prelude::*;
 
 use super::super::ast::{
-    Block, Elevation, Expression, HoldBit, InstructionFragment, LiteralValue, ManuscriptBlock,
+    Elevation, Expression, HoldBit, InstructionFragment, LiteralValue, ManuscriptBlock,
     ManuscriptMetaCommand, Origin, ProgramInstruction, SourceFile, Statement, SymbolName,
 };
 use super::super::state::NumeralMode;

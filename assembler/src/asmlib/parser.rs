@@ -1,8 +1,6 @@
 // This code is not yet used, but I don't want to comment things out
 // or ass cfg conditionals as I will simply need to reverse them when
 // we do start using it.
-#![allow(unused_imports)]
-#![allow(dead_code)]
 
 mod helpers;
 mod terminal;
@@ -13,13 +11,11 @@ use chumsky::error::Rich;
 use chumsky::extra::Full;
 use chumsky::input::{StrInput, ValueInput};
 use chumsky::prelude::{choice, Input, IterParser, SimpleSpan};
-use chumsky::primitive::one_of;
 use chumsky::Parser;
 
 use super::ast::*;
 
 use super::state::NumeralMode;
-use super::types::*;
 use base::prelude::*;
 
 pub(crate) type Extra<'a, T> = Full<Rich<'a, T>, NumeralMode, ()>;
@@ -138,13 +134,10 @@ where
 }
 
 mod symex {
-    use base::Unsigned36Bit;
-
-    use chumsky::input::{StrInput, ValueInput};
+    use chumsky::input::ValueInput;
     use chumsky::prelude::*;
     use chumsky::Parser;
 
-    use super::super::ast::{Elevation, LiteralValue};
     use super::helpers::{self, DecodedOpcode};
     use super::terminal;
     use super::{opt_horizontal_whitespace, Extra, SymbolName};
@@ -214,31 +207,10 @@ mod symex {
         })
     }
 
-    pub(super) fn spaces1<'srcbody, I>() -> impl Parser<'srcbody, I, (), Extra<'srcbody, char>>
-    where
-        I: Input<'srcbody, Token = char, Span = SimpleSpan>
-            + ValueInput<'srcbody>
-            + StrInput<'srcbody, char>,
-    {
-        terminal::inline_whitespace()
-            .ignored()
-            .repeated()
-            .at_least(1)
-            .ignored()
-            .labelled("one or more spaces")
-    }
-
     pub(super) fn parse_multi_syllable_symex<'a, I>() -> impl Parser<'a, I, String, Extra<'a, char>>
     where
         I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
     {
-        fn space_syllable<'a, I>() -> impl Parser<'a, I, String, Extra<'a, char>>
-        where
-            I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
-        {
-            spaces1().ignore_then(parse_symex_syllable())
-        }
-
         parse_symex_non_reserved_syllable()
             .foldl(
                 parse_symex_syllable()
