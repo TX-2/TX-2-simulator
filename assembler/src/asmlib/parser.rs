@@ -14,17 +14,22 @@ use chumsky::prelude::{choice, Input, IterParser, SimpleSpan};
 use chumsky::Parser;
 
 use super::ast::*;
-
 use super::state::NumeralMode;
 use base::prelude::*;
+use helpers::Sign;
 
 pub(crate) type Extra<'a, T> = Full<Rich<'a, T>, NumeralMode, ()>;
 
-fn opt_sign<'a, I>() -> impl Parser<'a, I, Option<char>, Extra<'a, char>>
+fn opt_sign<'a, I>() -> impl Parser<'a, I, Option<Sign>, Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
 {
-    terminal::sign().or_not().labelled("sign")
+    choice((
+        terminal::plus().to(Sign::Plus),
+        terminal::minus().to(Sign::Minus),
+    ))
+    .or_not()
+    .labelled("sign")
 }
 
 fn maybe_dot<'a, I>() -> impl Parser<'a, I, bool, Extra<'a, char>>
@@ -65,9 +70,19 @@ fn superscript_literal<'srcbody, I>(
 where
     I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
 {
-    terminal::superscript_sign()
+    fn superscript_sign<'srcbody, I>() -> impl Parser<'srcbody, I, Sign, Extra<'srcbody, char>>
+    where
+        I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
+    {
+        choice((
+            terminal::superscript_plus().to(Sign::Plus),
+            terminal::superscript_minus().to(Sign::Minus),
+        ))
+    }
+
+    superscript_sign()
         .or_not()
-        .then(terminal::superscript_oct_digit1())
+        .then(terminal::superscript_digit1())
         .then(maybe_superscript_dot())
         .try_map_with_state(|((maybe_sign, digits), hasdot), span, state| {
             match helpers::make_superscript_num(maybe_sign, &digits, hasdot, state) {
@@ -82,12 +97,14 @@ fn subscript_literal<'srcbody, I>() -> impl Parser<'srcbody, I, LiteralValue, Ex
 where
     I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
 {
-    fn maybe_subscript_sign<'srcbody, I>(
-    ) -> impl Parser<'srcbody, I, Option<char>, Extra<'srcbody, char>>
+    fn subscript_sign<'srcbody, I>() -> impl Parser<'srcbody, I, Sign, Extra<'srcbody, char>>
     where
         I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
     {
-        terminal::subscript_sign().or_not()
+        choice((
+            terminal::subscript_minus().to(Sign::Minus),
+            terminal::subscript_plus().to(Sign::Plus),
+        ))
     }
 
     fn subscript_oct_digit1<'srcbody, I>() -> impl Parser<'srcbody, I, String, Extra<'srcbody, char>>
@@ -111,7 +128,7 @@ where
         terminal::subscript_dot().or_not().map(|x| x.is_some())
     }
 
-    maybe_subscript_sign()
+    (subscript_sign().or_not())
         .then(subscript_oct_digit1())
         .then(maybe_subscript_dot())
         .try_map_with_state(|((maybe_sign, digits), hasdot), span, state| {

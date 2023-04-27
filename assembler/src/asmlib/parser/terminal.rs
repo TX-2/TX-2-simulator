@@ -18,11 +18,18 @@ where
     choice((just("->"), just("\u{2192}"))).ignored()
 }
 
-pub(super) fn sign<'a, I>() -> impl Parser<'a, I, char, Extra<'a, char>>
+pub(super) fn plus<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
 {
-    one_of("+-")
+    just('+').ignored()
+}
+
+pub(super) fn minus<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+{
+    just('-').ignored()
 }
 
 pub(super) fn inline_whitespace<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
@@ -46,7 +53,7 @@ where
     one_of("\u{22C5}\u{00B7}").ignored()
 }
 
-pub(super) fn superscript_oct_digit1<'srcbody, I>(
+pub(super) fn superscript_digit1<'srcbody, I>(
 ) -> impl Parser<'srcbody, I, String, Extra<'srcbody, char>>
 where
     I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
@@ -62,39 +69,47 @@ where
         .repeated()
         .at_least(1)
         .collect::<String>()
-        .labelled("superscript octal digits")
+        .labelled("superscript digits")
 }
 
-pub(super) fn superscript_dot<'srcbody, I>(
-) -> impl Parser<'srcbody, I, &'srcbody str, Extra<'srcbody, char>>
+pub(super) fn superscript_dot<'srcbody, I>() -> impl Parser<'srcbody, I, (), Extra<'srcbody, char>>
 where
     I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
 {
     just(
         "\u{0307} ", // Unicode Combining Dot Above ̇followed by space ("̇ ")
     )
+    .ignored()
 }
 
-pub(super) fn superscript_sign<'srcbody, I>(
-) -> impl Parser<'srcbody, I, char, Extra<'srcbody, char>>
+pub(super) fn superscript_minus<'srcbody, I>() -> impl Parser<'srcbody, I, (), Extra<'srcbody, char>>
 where
     I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
 {
-    one_of(concat!(
-        "\u{207B}", // U+207B: superscript minus
-        "\u{207A}", // U+207A: superscript plus
-    ))
+    just('\u{207B}').ignored() // U+207B: superscript minus
 }
 
-pub(super) fn subscript_sign<'srcbody, I>() -> impl Parser<'srcbody, I, char, Extra<'srcbody, char>>
+pub(super) fn superscript_plus<'srcbody, I>() -> impl Parser<'srcbody, I, (), Extra<'srcbody, char>>
 where
     I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
 {
-    one_of(concat!(
-        "\u{208B}", // u+208B: subscript minus
-        "\u{208A}", // U+208A: subscript plus
-    ))
+    just('\u{207A}').ignored() // U+207A: superscript plus
 }
+
+pub(super) fn subscript_plus<'srcbody, I>() -> impl Parser<'srcbody, I, (), Extra<'srcbody, char>>
+where
+    I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
+{
+    just('\u{208A}').ignored() // U+208A: subscript plus
+}
+
+pub(super) fn subscript_minus<'srcbody, I>() -> impl Parser<'srcbody, I, (), Extra<'srcbody, char>>
+where
+    I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
+{
+    just('\u{208B}').ignored() // u+208B: subscript minus
+}
+
 pub(super) fn subscript_oct_digit<'srcbody, I>(
 ) -> impl Parser<'srcbody, I, char, Extra<'srcbody, char>>
 where

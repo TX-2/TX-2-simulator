@@ -6,6 +6,12 @@ use base::prelude::*;
 use super::super::ast::*;
 use super::super::state::NumeralMode;
 
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub(super) enum Sign {
+    Plus,
+    Minus,
+}
+
 pub(super) fn make_u36(s: &str, radix: u32) -> Result<Unsigned36Bit, StringConversionFailed> {
     match u64::from_str_radix(s, radix) {
         Ok(n) => n.try_into().map_err(StringConversionFailed::Range),
@@ -22,13 +28,13 @@ pub(super) fn make_u36(s: &str, radix: u32) -> Result<Unsigned36Bit, StringConve
 }
 
 pub(super) fn make_num(
-    sign: Option<char>,
+    sign: Option<Sign>,
     digits: &str,
     hasdot: bool,
     state: &mut NumeralMode,
 ) -> Result<Unsigned36Bit, StringConversionFailed> {
     make_u36(digits, state.radix(hasdot)).map(|n| {
-        if let Some('-') = sign {
+        if let Some(Sign::Minus) = sign {
             Unsigned36Bit::ZERO.wrapping_sub(n)
         } else {
             n
@@ -41,26 +47,6 @@ pub(super) fn make_num(
 //// //) -> Result<Unsigned36Bit, StringConversionFailed> {
 //// //    make_num((sign, &digits, digits.extra.radix(dot.is_some())))
 //// //}
-
-pub(super) fn maybe_superscript_sign_to_maybe_regular_sign(
-    maybe_superscript_sign: Option<char>,
-) -> Option<char> {
-    maybe_superscript_sign.map(|ch| match ch {
-        '\u{207B}' => '-', // U+207B: superscript minus
-        '\u{207A}' => '+', // U+207A: superscript plus
-        _ => unreachable!(),
-    })
-}
-
-pub(super) fn maybe_subscript_sign_to_maybe_regular_sign(
-    maybe_subscript_sign: Option<char>,
-) -> Option<char> {
-    maybe_subscript_sign.map(|ch| match ch {
-        '\u{208B}' => '-', // U+208B: subscript minus
-        '\u{208A}' => '+', // U+208A: subscript plus
-        _ => unreachable!(),
-    })
-}
 
 pub(super) fn superscript_oct_digit_to_value(ch: char) -> Option<u8> {
     match ch {
@@ -91,12 +77,11 @@ pub(super) fn subscript_oct_digit_to_value(ch: char) -> Option<u8> {
 }
 
 pub(super) fn make_superscript_num(
-    sign: Option<char>,
+    sign: Option<Sign>,
     superscript_digits: &str,
     hasdot: bool,
     state: &mut NumeralMode,
 ) -> Result<Unsigned36Bit, StringConversionFailed> {
-    let sign: Option<char> = maybe_superscript_sign_to_maybe_regular_sign(sign);
     let mut normal_digits: String = String::new();
     for digit in superscript_digits.chars() {
         if let Some(n) = superscript_oct_digit_to_value(digit) {
@@ -112,12 +97,11 @@ pub(super) fn make_superscript_num(
 }
 
 pub(super) fn make_subscript_num(
-    sign: Option<char>,
+    sign: Option<Sign>,
     subscript_digits: &str,
     hasdot: bool,
     state: &mut NumeralMode,
 ) -> Result<Unsigned36Bit, StringConversionFailed> {
-    let sign: Option<char> = maybe_subscript_sign_to_maybe_regular_sign(sign);
     let mut normal_digits: String = String::new();
     for digit in subscript_digits.chars() {
         if let Some(n) = subscript_oct_digit_to_value(digit) {
