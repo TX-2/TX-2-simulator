@@ -20,32 +20,21 @@ use helpers::Sign;
 
 pub(crate) type Extra<'a, T> = Full<Rich<'a, T>, NumeralMode, ()>;
 
-fn opt_sign<'a, I>() -> impl Parser<'a, I, Option<Sign>, Extra<'a, char>>
-where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
-{
-    choice((
-        terminal::plus().to(Sign::Plus),
-        terminal::minus().to(Sign::Minus),
-    ))
-    .or_not()
-    .labelled("sign")
-}
-
-fn maybe_dot<'a, I>() -> impl Parser<'a, I, bool, Extra<'a, char>>
-where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
-{
-    terminal::dot().or_not().map(|x| x.is_some())
-}
-
 fn normal_literal<'a, I>() -> impl Parser<'a, I, LiteralValue, Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
 {
-    opt_sign()
+    let opt_sign = choice((
+        terminal::plus().to(Sign::Plus),
+        terminal::minus().to(Sign::Minus),
+    ))
+    .or_not()
+    .labelled("sign");
+    let maybe_dot = terminal::dot().or_not().map(|x| x.is_some());
+
+    opt_sign
         .then(terminal::digits1())
-        .then(maybe_dot())
+        .then(maybe_dot)
         .try_map_with_state(|((maybe_sign, digits), hasdot), span, state| {
             match helpers::make_num(maybe_sign, &digits, hasdot, state) {
                 Ok(value) => Ok(LiteralValue::from((Elevation::Normal, value))),
@@ -70,17 +59,12 @@ fn superscript_literal<'srcbody, I>(
 where
     I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
 {
-    fn superscript_sign<'srcbody, I>() -> impl Parser<'srcbody, I, Sign, Extra<'srcbody, char>>
-    where
-        I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
-    {
-        choice((
-            terminal::superscript_plus().to(Sign::Plus),
-            terminal::superscript_minus().to(Sign::Minus),
-        ))
-    }
+    let superscript_sign = choice((
+        terminal::superscript_plus().to(Sign::Plus),
+        terminal::superscript_minus().to(Sign::Minus),
+    ));
 
-    superscript_sign()
+    superscript_sign
         .or_not()
         .then(terminal::superscript_digit1())
         .then(maybe_superscript_dot())
@@ -97,40 +81,25 @@ fn subscript_literal<'srcbody, I>() -> impl Parser<'srcbody, I, LiteralValue, Ex
 where
     I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
 {
-    fn subscript_sign<'srcbody, I>() -> impl Parser<'srcbody, I, Sign, Extra<'srcbody, char>>
-    where
-        I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
-    {
-        choice((
-            terminal::subscript_minus().to(Sign::Minus),
-            terminal::subscript_plus().to(Sign::Plus),
-        ))
-    }
+    let subscript_sign = choice((
+        terminal::subscript_minus().to(Sign::Minus),
+        terminal::subscript_plus().to(Sign::Plus),
+    ));
 
-    fn subscript_oct_digit1<'srcbody, I>() -> impl Parser<'srcbody, I, String, Extra<'srcbody, char>>
-    where
-        I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
-    {
-        terminal::subscript_oct_digit()
-            .repeated()
-            .at_least(1)
-            .collect::<String>()
-    }
+    let subscript_oct_digit1 = terminal::subscript_oct_digit()
+        .repeated()
+        .at_least(1)
+        .collect::<String>();
 
-    /// Recognise a subscript dot.  On the Linconln Writer, the dot
-    /// is raised above the line, like the dot customarily used for
-    /// the dot-product.  Hence for subscripts we use the regular
-    /// ascii dot (full stop, period) which is on the line.
-    fn maybe_subscript_dot<'srcbody, I>() -> impl Parser<'srcbody, I, bool, Extra<'srcbody, char>>
-    where
-        I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
-    {
-        terminal::subscript_dot().or_not().map(|x| x.is_some())
-    }
+    // Recognise a subscript dot.  On the Linconln Writer, the dot
+    // is raised above the line, like the dot customarily used for
+    // the dot-product.  Hence for subscripts we use the regular
+    // ascii dot (full stop, period) which is on the line.
+    let maybe_subscript_dot = terminal::subscript_dot().or_not().map(|x| x.is_some());
 
-    (subscript_sign().or_not())
-        .then(subscript_oct_digit1())
-        .then(maybe_subscript_dot())
+    (subscript_sign.or_not())
+        .then(subscript_oct_digit1)
+        .then(maybe_subscript_dot)
         .try_map_with_state(|((maybe_sign, digits), hasdot), span, state| {
             match helpers::make_subscript_num(maybe_sign, &digits, hasdot, state) {
                 Ok(value) => Ok(LiteralValue::from((Elevation::Subscript, value))),
@@ -180,7 +149,7 @@ mod symex {
     }
 
     // Compound chars are not supported at the moment, see docs/assembler/index.md.
-    fn parse_symex_syllable<'a, I>() -> impl Parser<'a, I, String, Extra<'a, char>>
+    fn symex_syllable<'a, I>() -> impl Parser<'a, I, String, Extra<'a, char>>
     where
         I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
     {
@@ -197,7 +166,7 @@ mod symex {
     where
         I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
     {
-        parse_symex_syllable()
+        symex_syllable()
             .try_map(|syllable, span| {
                 if is_reserved_identifier(&syllable) {
                     Ok(syllable)
@@ -212,7 +181,7 @@ mod symex {
     where
         I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
     {
-        parse_symex_syllable().try_map(|syllable, span| {
+        symex_syllable().try_map(|syllable, span| {
             if is_reserved_identifier(&syllable) {
                 Err(Rich::custom(
                     span,
@@ -230,7 +199,7 @@ mod symex {
     {
         parse_symex_non_reserved_syllable()
             .foldl(
-                parse_symex_syllable()
+                symex_syllable()
                     .padded_by(opt_horizontal_whitespace())
                     .repeated(),
                 concat_strings,
@@ -283,21 +252,10 @@ fn expression<'a, I>() -> impl Parser<'a, I, Expression, Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
 {
-    fn literal_expression<'a, I>() -> impl Parser<'a, I, Expression, Extra<'a, char>>
-    where
-        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
-    {
-        choice((literal(), terminal::opcode())).map(Expression::from)
-    }
-
-    fn symbolic_expression<'a, I>() -> impl Parser<'a, I, Expression, Extra<'a, char>>
-    where
-        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
-    {
-        symbol().map(|name| Expression::Symbol(Elevation::Normal, name))
-    }
-
-    choice((literal_expression(), symbolic_expression()))
+    choice((
+        choice((literal(), terminal::opcode())).map(Expression::from),
+        symbol().map(|name| Expression::Symbol(Elevation::Normal, name)),
+    ))
 }
 
 /// An address expression is a literal value or a symex.  That is I
@@ -334,20 +292,20 @@ where
     symbol().then_ignore(arrow).labelled("tag definition")
 }
 
-fn named_metacommand<'a, I>(name: &'static str) -> impl Parser<'a, I, (), Extra<'a, char>>
-where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
-{
-    terminal::metacommand_name()
-        .filter(move |n| n == name)
-        .then(terminal::inline_whitespace())
-        .ignored()
-}
-
 fn metacommand<'a, I>() -> impl Parser<'a, I, ManuscriptMetaCommand, Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
 {
+    fn named_metacommand<'a, I>(name: &'static str) -> impl Parser<'a, I, (), Extra<'a, char>>
+    where
+        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+    {
+        terminal::metacommand_name()
+            .filter(move |n| n == name)
+            .then(terminal::inline_whitespace())
+            .ignored()
+    }
+
     fn punch<'a, I>() -> impl Parser<'a, I, ManuscriptMetaCommand, Extra<'a, char>>
     where
         I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
@@ -381,18 +339,6 @@ where
     choice((base_change(), punch())).labelled("metacommand")
 }
 
-fn program_instruction_fragments<'a, I>(
-) -> impl Parser<'a, I, Vec<InstructionFragment>, Extra<'a, char>>
-where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
-{
-    program_instruction_fragment()
-        .repeated()
-        .at_least(1)
-        .collect()
-        .labelled("program instruction")
-}
-
 fn program_instruction<'a, I>() -> impl Parser<'a, I, ProgramInstruction, Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
@@ -411,40 +357,22 @@ where
         }
     }
 
-    fn maybe_hold<'a, I>() -> impl Parser<'a, I, Option<HoldBit>, Extra<'a, char>>
-    where
-        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
-    {
-        terminal::hold()
-            .or_not()
-            .padded_by(opt_horizontal_whitespace())
-            .labelled("instruction hold bit")
-    }
+    let maybe_hold = terminal::hold()
+        .or_not()
+        .padded_by(opt_horizontal_whitespace())
+        .labelled("instruction hold bit");
 
-    fn hold_and_fragments<'a, I>(
-    ) -> impl Parser<'a, I, (Option<HoldBit>, Vec<InstructionFragment>), Extra<'a, char>>
-    where
-        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
-    {
-        maybe_hold().then(program_instruction_fragments())
-    }
+    let program_instruction_fragments = program_instruction_fragment()
+        .repeated()
+        .at_least(1)
+        .collect()
+        .labelled("program instruction");
 
     tag_definition()
         .or_not()
-        .then(hold_and_fragments())
+        .then(maybe_hold.then(program_instruction_fragments))
         .map(build_inst)
         .labelled("optional tag definition followed by a program instruction")
-}
-
-fn execute_metacommand(state: &mut NumeralMode, cmd: &ManuscriptMetaCommand) {
-    match cmd {
-        ManuscriptMetaCommand::Punch(_) => {
-            // Instead of executing this metacommand as we parse it,
-            // we simply return it as part of the parser output, and
-            // it is executed by the driver.
-        }
-        ManuscriptMetaCommand::BaseChange(new_base) => state.set_numeral_mode(*new_base),
-    }
 }
 
 fn statement<'a, I>() -> impl Parser<'a, I, Statement, Extra<'a, char>>
@@ -488,6 +416,17 @@ fn manuscript_line<'a, I>() -> impl Parser<'a, I, ManuscriptLine, Extra<'a, char
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
 {
+    fn execute_metacommand(state: &mut NumeralMode, cmd: &ManuscriptMetaCommand) {
+        match cmd {
+            ManuscriptMetaCommand::Punch(_) => {
+                // Instead of executing this metacommand as we parse it,
+                // we simply return it as part of the parser output, and
+                // it is executed by the driver.
+            }
+            ManuscriptMetaCommand::BaseChange(new_base) => state.set_numeral_mode(*new_base),
+        }
+    }
+
     fn parse_and_execute_metacommand<'a, I>() -> impl Parser<'a, I, ManuscriptLine, Extra<'a, char>>
     where
         I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
@@ -505,47 +444,37 @@ where
         ManuscriptLine::Code(maybe_origin, parts.1)
     }
 
-    fn origin<'a, I>() -> impl Parser<'a, I, Address, Extra<'a, char>>
-    where
-        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
-    {
-        address_expression()
-            .padded_by(opt_horizontal_whitespace())
-            .then_ignore(terminal::pipe())
-    }
-
-    fn origin_only<'a, I>() -> impl Parser<'a, I, ManuscriptLine, Extra<'a, char>>
-    where
-        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
-    {
-        origin()
-            .map(|address| ManuscriptLine::JustOrigin(Origin(address)))
-            .labelled("origin")
-    }
-
-    fn optional_origin_with_statement<'a, I>() -> impl Parser<'a, I, ManuscriptLine, Extra<'a, char>>
-    where
-        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
-    {
-        origin()
-            .or_not()
-            .then(statement())
-            .map(build_code_line)
-            .labelled("statement with origin")
-    }
-
     fn line<'a, I>() -> impl Parser<'a, I, ManuscriptLine, Extra<'a, char>>
     where
         I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
     {
+        fn origin<'a, I>() -> impl Parser<'a, I, Address, Extra<'a, char>>
+        where
+            I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+        {
+            address_expression()
+                .padded_by(opt_horizontal_whitespace())
+                .then_ignore(terminal::pipe())
+        }
+
+        let optional_origin_with_statement = origin()
+            .or_not()
+            .then(statement())
+            .map(build_code_line)
+            .labelled("statement with origin");
+
+        let origin_only = origin()
+            .map(|address| ManuscriptLine::JustOrigin(Origin(address)))
+            .labelled("origin");
+
         choice((
             // Ignore whitespace after the metacommand but not before it.
             parse_and_execute_metacommand(),
-            optional_origin_with_statement(),
+            optional_origin_with_statement,
             // Because we prefer to parse a statement if one exists,
             // the origin_only alternative has to appear after the
             // alternative which parses a statement.
-            origin_only(),
+            origin_only,
         ))
     }
 
@@ -556,18 +485,13 @@ fn end_of_line<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + StrInput<'a, char>,
 {
-    fn one_end_of_line<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
-    where
-        I: Input<'a, Token = char, Span = SimpleSpan> + StrInput<'a, char>,
-    {
-        terminal::inline_whitespace()
-            .or_not()
-            .then(terminal::comment().or_not())
-            .then(chumsky::text::newline())
-            .ignored()
-    }
+    let one_end_of_line = terminal::inline_whitespace()
+        .or_not()
+        .then(terminal::comment().or_not())
+        .then(chumsky::text::newline())
+        .ignored();
 
-    one_end_of_line()
+    one_end_of_line
         .repeated()
         .at_least(1)
         .ignored()
