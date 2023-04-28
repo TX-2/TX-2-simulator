@@ -1,7 +1,3 @@
-// This code is not yet used, but I don't want to comment things out
-// or ass cfg conditionals as I will simply need to reverse them when
-// we do start using it.
-
 mod helpers;
 mod terminal;
 #[cfg(test)]
