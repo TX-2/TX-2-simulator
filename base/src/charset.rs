@@ -274,6 +274,9 @@ pub struct DescribedChar {
     /// When advance is `true`, printing this character should advance
     /// the printing position.
     pub advance: bool,
+    /// Indicates whether the label on the Lincoln Writer keyboard
+    /// is the same as the Unicode representation.
+    pub label_matches_unicode: bool,
 }
 
 fn unprintable(c: Unsigned6Bit, state: LincolnState) -> DescribedChar {
@@ -282,6 +285,7 @@ fn unprintable(c: Unsigned6Bit, state: LincolnState) -> DescribedChar {
         unicode_representation: None,
         attributes: state,
         advance: false,
+        label_matches_unicode: false,
     }
 }
 fn bycase(lower: char, upper: char, state: &LincolnState) -> Option<char> {
@@ -382,7 +386,7 @@ pub fn lincoln_char_to_described_char(
             )
         }
         0o14 | 0o15 | 0o16 | 0o17 => return Some(unprintable(lin_ch, *state)), // "READ IN", "BEGIN", "NO", "YES"
-        0o20 => by_case('A', '≈'), // Almost Equal To (U+2248)
+        0o20 => by_case('A', 'n'),
         0o21 => by_case('B', '⊂'), // Subset of (U+2282)
         0o22 => by_case('C', '∨'), // Logical or (U+2228)
         0o23 => by_case('D', 'q'),
@@ -435,8 +439,29 @@ pub fn lincoln_char_to_described_char(
         0o75 => None,             // UPPER CASE; state change already done
         0o76 => return Some(unprintable(lin_ch, *state)), // STOP
         0o77 => {
-            // Supposedly NULLIFY but it's used on tape to delete
-            // the previous character so delete fits.
+            // Supposedly NULLIFY.  It's used on paper tape as a way
+            // to delete a character. Punching out all the bit holes
+            // changes the code to 0o77 and applications supposedly
+            // ignore these characters on the basis that the user has
+            // deleted them.
+            //
+            // For example suppose the user presses 'Q' followed by
+            // 'DELETE'.
+            //
+            // In off-line mode, where the LW is being used only to
+            // prepare a paper tape the TX-2 doesn't directly see the
+            // codes.  The tape will be punched with code 0o40
+            // (representing 'Q') and then the same location will be
+            // re-punched with 0o77 (effectively deleting the 'Q').
+            // Later when the paper tape is read, the only code the
+            // machine will see is the 0o77 (assuming that there was
+            // no previous upper/lower case change code).
+            //
+            // In on-line mode the TX-2 will see two codes, 0o40
+            // followed by 0o77; the Lincoln Writer cannot "un-send"
+            // the 0o40. This is the same behaviour as modern
+            // computers have for DELETE.  Therefore we map this code
+            // to ASCII DEL.
             Some('\u{007F}')
         }
         _ => unreachable!("All Unsigned6Bit values should have been handled"),
@@ -448,11 +473,34 @@ pub fn lincoln_char_to_described_char(
             Script::Sub => subscript_char(base).ok(),
             Script::Super => superscript_char(base).ok(),
         };
+        // Non-carriage-advancing characters don't strictly match the
+        // key label, because we represent them as combining
+        // characters and so there's a space in the key label too.
+        let label_matches_unicode = advance
+            && match display {
+                None => false,
+                Some(' ') => {
+                    // Here the mapping is to ' ' but in the keyboard
+                    // implementation, the space bar's label is the
+                    // zero-length string.
+                    false
+                }
+                Some('\n' | '\r' | '\t' | '\u{0008}' | '\u{008D}' | '\u{007F}') => false,
+                Some('☛') => {
+                    // On the keyboard we label this with '☞' (Unicode
+                    // U+261E) instead of '☛'(U+261B) because the
+                    // outline looks more readable on the drawn
+                    // keyboard.  So these don't match.
+                    false
+                }
+                Some(_) => true,
+            };
         Some(DescribedChar {
             base_char: LincolnChar::UnicodeBaseChar(base),
             unicode_representation: display,
             attributes: *state,
             advance,
+            label_matches_unicode,
         })
     } else {
         None
@@ -491,6 +539,7 @@ pub fn lincoln_to_unicode_strict(
                 unicode_representation: Some(display),
                 attributes: _,
                 advance: _,
+                label_matches_unicode: _,
             }) => {
                 result.push(display);
             }
@@ -499,6 +548,7 @@ pub fn lincoln_to_unicode_strict(
                 unicode_representation: None,
                 attributes,
                 advance: _,
+                label_matches_unicode: _,
             }) => match attributes.script {
                 Script::Normal => unreachable!(),
                 Script::Sub => {
@@ -564,6 +614,7 @@ impl UnicodeToLincolnMapping {
                             unicode_representation: Some(display),
                             attributes: _,
                             advance: _,
+                            label_matches_unicode: _,
                         }) = lincoln_char_to_described_char(ch, &mut state)
                         {
                             m.insert(display, LincChar { state, value: ch });

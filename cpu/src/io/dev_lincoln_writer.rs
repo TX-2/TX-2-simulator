@@ -277,6 +277,7 @@ fn lw_output_space() {
                 colour: Colour::Black,
             },
             advance: true,
+            label_matches_unicode: false,
         }),
         &LincolnState::default(),
         &state,
@@ -326,6 +327,7 @@ fn lw_output_cr_resets_state() {
                 colour: Colour::Red,
             },
             advance: true,
+            label_matches_unicode: true,
         }),
         &LincolnState {
             script: Script::Super,
@@ -352,6 +354,7 @@ fn lw_output_cr_resets_state() {
                 colour: Colour::Red,
             },
             advance: true,
+            label_matches_unicode: false,
         }),
         &LincolnState {
             script: Script::Normal,

@@ -1,14 +1,14 @@
 //! This module implements the keyboard of the Lincoln Writer.
 //!
 //! A diagram of the keyboard layout appears in the Lincoln Lab
-//! Division 6 Quarterly Progress Report, 15 June 1958.  This disgram
-//! is presumably to scale but dimensions are not given on it.
-//! The Lincoln Writer actually has two keyboards.  The keyboard
-//! nearest the typist contains decimal digts, majuscule letters (ABC,
-//! etc.), the space bar and a few others.  The keyboard further from
-//! the typist contains some minuscule latin letters, some Greek
-//! letters (minuscule and majuscule) and some symbols (hand, *, arrow,
-//! #, ?).
+//! Division 6 Quarterly Progress Report, 15 June 1958 (Fig. 63-7, on
+//! PDF page 38, page numbered 24).  This diagram is presumably to
+//! scale but dimensions are not given on it.  The Lincoln Writer
+//! actually has two keyboards.  The keyboard nearest the typist
+//! contains decimal digts, majuscule letters (ABC, etc.), the space
+//! bar and a few others.  The keyboard further from the typist
+//! contains some minuscule latin letters, some Greek letters
+//! (minuscule and majuscule) and some symbols (hand, *, arrow, #, ?).
 //!
 //! The near keyboard produces the symbols shown in the left-hand
 //! column of the character set shown in table 7-6 of the TX-2 Lincoln
@@ -86,7 +86,7 @@
 //! Whole unit (incl indicators): 23.8*14.5
 //!
 
-use core::fmt::Display;
+use core::fmt::{Debug, Display};
 #[cfg(test)]
 use std::collections::{HashMap, HashSet};
 
@@ -94,6 +94,11 @@ use conv::*;
 use tracing::{event, Level};
 use wasm_bindgen::prelude::*;
 use web_sys::{CanvasRenderingContext2d, TextMetrics};
+
+#[cfg(test)]
+use base::charset::{lincoln_char_to_described_char, Colour, DescribedChar, LincolnState, Script};
+#[cfg(test)]
+use base::Unsigned6Bit;
 
 // Horizontal gap between LHS of unit and the first key of each row:
 const HPOS_DELETE: f32 = 0.7;
@@ -201,13 +206,32 @@ impl KeyShape {
     }
 }
 
-#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Copy, Clone, Hash, PartialEq, Eq)]
 pub(crate) enum Code {
     /// Represents a single key on the Lincoln Writer.  Lincoln Writer
     /// key codes are actually 6 bits but we convert elsewhere.
     Far(u8),
     Near(u8),
     Unknown,
+}
+
+impl Debug for Code {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let code = match self {
+            Code::Far(code) => {
+                f.write_str("Far(")?;
+                code
+            }
+            Code::Near(code) => {
+                f.write_str("Near(")?;
+                code
+            }
+            Code::Unknown => {
+                return f.write_str("Unknown");
+            }
+        };
+        write!(f, "{code:#o})")
+    }
 }
 
 pub const SWITCH_TO_FAR: u8 = 0o74; // LOWER CASE
@@ -326,7 +350,9 @@ pub enum KeyPaintError {
 impl Display for KeyPaintError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            KeyPaintError::Failed(s) | KeyPaintError::InvalidFontMetrics(s) => s.fmt(f),
+            KeyPaintError::Failed(s) | KeyPaintError::InvalidFontMetrics(s) => {
+                std::fmt::Display::fmt(&s, f)
+            }
             KeyPaintError::TextTooBig { msg, lines } => {
                 write!(f, "key label text {lines:?} is too big: {msg}")
             }
@@ -1100,6 +1126,16 @@ fn row2() -> &'static [Key] {
             code: Code::Far(0o11),
         },
         Key /* n */ {
+            // On the diagram in the progress report (see module
+            // header for details) this looks very clearly like a
+            // lower-case Greek eta (η, Unicode U+03B7).  However two
+            // other considerations make me believe this is in fact n
+            // (lower-case N):
+            //
+            // 1. It's next to "p" on the keyboard
+            // 2. The symbol in in the Users Handbook, although hard
+            //    to make out, really doesn't look like an eta because
+            //    it doesn't have a long tail on the right-hand side.
             left: HPOS_TILDE + 5.0 * KEY_AND_GAP_WIDTH,
             top: VPOS_TILDE,
             shape: KeyShape::Square,
@@ -1935,6 +1971,82 @@ fn code_round_trips_as_pixel_colour() {
             }
             Err(msg) => {
                 panic!("Key code {:?} mapped to hit detection colour {} but this could not be round-tripped: {}", key.code, colour, msg);
+            }
+        }
+    }
+}
+
+#[test]
+fn known_keys_consistent_with_base_charset() {
+    // This test ensures that key code assignments in the keycode
+    // implementation are consistent with the code concersion logic in
+    // lincoln_char_to_described_char().
+    for key in all_keys() {
+        let (uppercase, code) = match key.code {
+            Code::Near(code) => (false, code),
+            Code::Far(code) => (true, code),
+            Code::Unknown => {
+                event!(
+                    Level::WARN,
+                    "Skipping consistency check for key {key:?} because it has an unknown code",
+                );
+                continue;
+            }
+        };
+        let mut state = LincolnState {
+            script: Script::Normal,
+            colour: Colour::Black,
+            uppercase,
+        };
+        let code: Unsigned6Bit = match <Unsigned6Bit as std::convert::TryFrom<u8>>::try_from(code) {
+            Ok(x) => x,
+            Err(e) => {
+                panic!("key code for key {key:?} does not fit into 6 bits: {e}");
+            }
+        };
+        match lincoln_char_to_described_char(code, &mut state) {
+            Some(DescribedChar {
+                label_matches_unicode: false,
+                ..
+            }) => {
+                // The label on this key isn't supposed to match its
+                // Unicode representation.  For example LINE FEED is
+                // Unicode '\n'.
+            }
+            Some(described) => {
+                if let Some(unicode) = described.unicode_representation {
+                    let unicode_as_string = format!("{unicode}");
+                    let one_line_text =
+                        key.label.text.iter().fold(String::new(), |mut acc, line| {
+                            if !acc.is_empty() {
+                                acc.push(' ');
+                            }
+                            acc.push_str(line);
+                            acc
+                        });
+                    if unicode_as_string != one_line_text {
+                        panic!("inconsistency for key {key:?}: label is {:?} (on one line: '{one_line_text}') but lincoln_char_to_described_char calls it '{unicode_as_string}'", key.label.text);
+                    }
+                }
+            }
+            None => {
+                // Some codes are not expected to have a mapping in
+                // lincoln_char_to_described_char.  Some codes we
+                // classify here as expect_match=true are handled
+                // above by the label_matches_unicode=false case
+                // above.  That is, they do have a mapping in
+                // lincoln_char_to_described_char but they don't have
+                // a unicode representation.
+                let expect_match = match u8::from(code) {
+                    0o00..=0o13 => true,
+                    0o14..=0o17 => false,
+                    0o20..=0o57 => true,
+                    0o60..=0o77 => false,
+                    0o100..=u8::MAX => unreachable!(),
+                };
+                if expect_match {
+                    panic!("key {key:?} has no support in lincoln_char_to_described_char");
+                }
             }
         }
     }

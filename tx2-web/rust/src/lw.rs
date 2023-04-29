@@ -58,6 +58,7 @@ pub(crate) fn display_lw_unit_output_event(unit: Unsigned6Bit, ch: DescribedChar
             attributes,
             advance,
             unicode_representation: _,
+            label_matches_unicode: _,
         } => {
             let s: String = generate_html_for_char(uch, &attributes, advance);
             current_line_text.push_str(&s);
