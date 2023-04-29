@@ -360,7 +360,7 @@ pub fn lincoln_char_to_described_char(
     let by_case = |lower, upper: char| -> Option<char> { bycase(lower, upper, state) };
     let base_char: Option<char> = match u8::from(lin_ch) {
         0o00 => by_case('0', '☛'), // \U261B, black hand pointing right
-        0o01 => by_case('1', 'Σ'),  // \U03A3, Greek capital letter Sigma
+        0o01 => by_case('1', 'Σ'), // \U03A3, Greek capital letter Sigma
         0o02 => by_case('2', '|'),
         0o03 => by_case('3', '‖'), // \U2016, double vertical line
         0o04 => by_case('4', '/'),
@@ -408,9 +408,9 @@ pub fn lincoln_char_to_described_char(
         0o43 => by_case('T', '∈'), // Element of, U+2208
         0o44 => by_case('U', 'h'),
         0o45 => by_case('V', '⊃'), // Superset of, U+2283
-        0o46 => by_case('W', 'β'),  // Greek beta symbol, U+03B2
+        0o46 => by_case('W', 'β'), // Greek beta symbol, U+03B2
         0o47 => by_case('X', '∧'), // Logical And U+2227
-        0o50 => by_case('Y', 'λ'),  // Greek small letter lambda, U+03BB
+        0o50 => by_case('Y', 'λ'), // Greek small letter lambda, U+03BB
         0o51 => by_case('Z', '~'),
         0o52 => by_case('(', '{'),
         0o53 => by_case(')', '}'),
