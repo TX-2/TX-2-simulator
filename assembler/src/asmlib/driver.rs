@@ -394,6 +394,7 @@ pub fn assemble_file(
     let output_file = OpenOptions::new()
         .create(true)
         .write(true)
+        .truncate(true)
         .open(output_file_name)
         .map_err(|e| AssemblerFailure::IoErrorOnOutput {
             filename: output_file_name.to_owned(),

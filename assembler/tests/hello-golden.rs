@@ -1,7 +1,7 @@
 use std::ffi::OsStr;
-use std::fs::File;
-use std::io::Read;
-use std::path::PathBuf;
+use std::fs::{File, OpenOptions};
+use std::io::{BufWriter, Read, Write};
+use std::path::{Path, PathBuf};
 
 use tempfile;
 
@@ -22,6 +22,7 @@ fn get_test_input_file_name(relative_to_manifest: &str) -> PathBuf {
 
 fn get_temp_output_file_name() -> tempfile::TempPath {
     tempfile::Builder::new()
+        .prefix("hello_golden_")
         .suffix(".tape")
         .tempfile()
         .expect("should be able to create a temporary file")
@@ -61,6 +62,34 @@ fn files_are_identical(expected: &OsStr, got: &OsStr) -> Result<(), String> {
     Ok(())
 }
 
+fn fill_output_file_with_garbage(name: &Path) {
+    let f = match OpenOptions::new().write(true).open(name) {
+        Ok(f) => f,
+        Err(e) => {
+            panic!(
+                "should be able to open temporary file {} for writing: {e}",
+                name.display()
+            );
+        }
+    };
+    let mut w = BufWriter::new(f);
+    let data = [0u8; 1024];
+    for _ in 0..1000 {
+        if let Err(e) = w.write(&data) {
+            panic!(
+                "failed to write data to temporary file {}: {e}",
+                name.display()
+            );
+        }
+    }
+    if let Err(e) = w.flush() {
+        panic!(
+            "failed to flush output data to temporary file {}: {e}",
+            name.display()
+        );
+    }
+}
+
 fn assembler_golden_output_test(
     input_relative_path: &str,
     golden_output_relative_path: &str,
@@ -68,7 +97,7 @@ fn assembler_golden_output_test(
     let input = get_test_input_file_name(input_relative_path);
     let golden = get_test_input_file_name(golden_output_relative_path);
     let actual_output = get_temp_output_file_name();
-
+    fill_output_file_with_garbage(&actual_output.to_path_buf());
     match assemble_file(input.as_os_str(), &actual_output.to_path_buf()) {
         Ok(()) => match files_are_identical(golden.as_os_str(), actual_output.as_os_str()) {
             Ok(()) => Ok(()),
