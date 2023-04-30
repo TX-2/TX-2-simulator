@@ -111,25 +111,9 @@ impl AlarmUnit {
         match kind.maskable() {
             AlarmMaskability::Unmaskable => false,
             AlarmMaskability::Maskable => {
-                if kind == AlarmKind::QSAL {
-                    // In one of the start-up routines run as a result of
-                    // CODABO, memory is wiped by over-writing it with a
-                    // repeating pattern, starting from the top down.
-                    // This causes writes to plugboard memory which we
-                    // discard and to the unmapped gap below them.  We
-                    // have to be able to completer this routine to start
-                    // the computer.  So the TX-2 must have either started
-                    // up with QSAL masked, or it must ignore writes to
-                    // unmapped locations.  I don't know which of these
-                    // was the case yet.  For now, we just behave as if
-                    // QSAL was masked when the operation is a write.
-                    //
-                    // TODO: is this correct for writes to un-mapped
-                    // memory?
-                    true
-                } else {
-                    self.masked.contains(&kind)
-                }
+                // TODO: is this correct for writes to un-mapped
+                // memory?
+                self.masked.contains(&kind)
             }
         }
     }
