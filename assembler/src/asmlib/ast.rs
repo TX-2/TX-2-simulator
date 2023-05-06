@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use std::fmt::{self, Display, Formatter, Octal, Write};
 use std::hash::{Hash, Hasher};
 
-use base::charset::{subscript_char, superscript_char};
+use base::charset::{subscript_char, superscript_char, Script};
 use base::prelude::*;
 
 use super::state::NumeralMode;
@@ -12,7 +12,7 @@ use super::symtab::{SymbolContext, SymbolDefinition, SymbolLookupFailure, Symbol
 /// Eventually we will support symbolic expressions.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct LiteralValue {
-    elevation: Elevation,
+    elevation: Script,
     value: Unsigned36Bit,
 }
 
@@ -22,8 +22,8 @@ impl LiteralValue {
     }
 }
 
-impl From<(Elevation, Unsigned36Bit)> for LiteralValue {
-    fn from((elevation, value): (Elevation, Unsigned36Bit)) -> LiteralValue {
+impl From<(Script, Unsigned36Bit)> for LiteralValue {
+    fn from((elevation, value): (Script, Unsigned36Bit)) -> LiteralValue {
         LiteralValue { elevation, value }
     }
 }
@@ -36,12 +36,12 @@ impl std::fmt::Display for LiteralValue {
 }
 
 // TODO: avoid the panics from this function.
-fn format_elevated_chars(f: &mut Formatter<'_>, elevation: &Elevation, s: &str) -> fmt::Result {
+fn format_elevated_chars(f: &mut Formatter<'_>, elevation: &Script, s: &str) -> fmt::Result {
     match elevation {
-        Elevation::Normal => {
+        Script::Normal => {
             f.write_str(s)?;
         }
-        Elevation::Superscript => {
+        Script::Super => {
             for ch in s.chars() {
                 match superscript_char(ch) {
                     Ok(superchar) => {
@@ -53,7 +53,7 @@ fn format_elevated_chars(f: &mut Formatter<'_>, elevation: &Elevation, s: &str) 
                 }
             }
         }
-        Elevation::Subscript => {
+        Script::Sub => {
             for ch in s.chars() {
                 match subscript_char(ch) {
                     Ok(sub) => {
@@ -75,7 +75,7 @@ fn format_elevated_chars(f: &mut Formatter<'_>, elevation: &Elevation, s: &str) 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Expression {
     Literal(LiteralValue),
-    Symbol(Elevation, SymbolName),
+    Symbol(Script, SymbolName),
 }
 
 impl Expression {
@@ -95,21 +95,21 @@ impl From<LiteralValue> for Expression {
     }
 }
 
-impl From<(Elevation, Unsigned36Bit)> for Expression {
-    fn from((e, v): (Elevation, Unsigned36Bit)) -> Expression {
+impl From<(Script, Unsigned36Bit)> for Expression {
+    fn from((e, v): (Script, Unsigned36Bit)) -> Expression {
         Expression::from(LiteralValue::from((e, v)))
     }
 }
 
-fn elevated_string<'a>(s: &'a str, elevation: &Elevation) -> Cow<'a, str> {
+fn elevated_string<'a>(s: &'a str, elevation: &Script) -> Cow<'a, str> {
     match elevation {
-        Elevation::Normal => Cow::Borrowed(s),
-        Elevation::Superscript => Cow::Owned(
+        Script::Normal => Cow::Borrowed(s),
+        Script::Super => Cow::Owned(
             s.chars()
                 .map(|ch| superscript_char(ch).unwrap_or(ch))
                 .collect(),
         ),
-        Elevation::Subscript => Cow::Owned(
+        Script::Sub => Cow::Owned(
             s.chars()
                 .map(|ch| subscript_char(ch).unwrap_or(ch))
                 .collect(),
@@ -129,23 +129,6 @@ impl std::fmt::Display for Expression {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Elevation {
-    Superscript, // e.g. config values
-    Normal,      // e.g. the address part of an instruction
-    Subscript,   // e.g. the index bits
-}
-
-impl Elevation {
-    fn shift(&self) -> u32 {
-        match self {
-            Elevation::Superscript => 30, // This is a config value.
-            Elevation::Subscript => 18,   // This is an index value
-            Elevation::Normal => 0,       // e.g. an address value
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct InstructionFragment {
     pub(crate) value: Expression,
 }
@@ -156,8 +139,8 @@ impl InstructionFragment {
     }
 }
 
-impl From<(Elevation, Unsigned36Bit)> for InstructionFragment {
-    fn from((e, v): (Elevation, Unsigned36Bit)) -> InstructionFragment {
+impl From<(Script, Unsigned36Bit)> for InstructionFragment {
+    fn from((e, v): (Script, Unsigned36Bit)) -> InstructionFragment {
         InstructionFragment {
             value: Expression::from((e, v)),
         }

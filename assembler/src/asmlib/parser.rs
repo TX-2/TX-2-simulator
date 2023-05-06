@@ -11,6 +11,7 @@ use chumsky::Parser;
 
 use super::ast::*;
 use super::state::NumeralMode;
+use base::charset::Script;
 use base::prelude::*;
 use helpers::Sign;
 
@@ -33,7 +34,7 @@ where
         .then(maybe_dot)
         .try_map_with_state(|((maybe_sign, digits), hasdot), span, state| {
             match helpers::make_num(maybe_sign, &digits, hasdot, state) {
-                Ok(value) => Ok(LiteralValue::from((Elevation::Normal, value))),
+                Ok(value) => Ok(LiteralValue::from((Script::Normal, value))),
                 Err(e) => Err(Rich::custom(span, e.to_string())),
             }
         })
@@ -66,7 +67,7 @@ where
         .then(maybe_superscript_dot())
         .try_map_with_state(|((maybe_sign, digits), hasdot), span, state| {
             match helpers::make_superscript_num(maybe_sign, &digits, hasdot, state) {
-                Ok(value) => Ok(LiteralValue::from((Elevation::Superscript, value))),
+                Ok(value) => Ok(LiteralValue::from((Script::Super, value))),
                 Err(e) => Err(Rich::custom(span, e.to_string())),
             }
         })
@@ -98,7 +99,7 @@ where
         .then(maybe_subscript_dot)
         .try_map_with_state(|((maybe_sign, digits), hasdot), span, state| {
             match helpers::make_subscript_num(maybe_sign, &digits, hasdot, state) {
-                Ok(value) => Ok(LiteralValue::from((Elevation::Subscript, value))),
+                Ok(value) => Ok(LiteralValue::from((Script::Sub, value))),
                 Err(e) => Err(Rich::custom(span, e.to_string())),
             }
         })
@@ -250,7 +251,7 @@ where
 {
     choice((
         choice((literal(), terminal::opcode())).map(Expression::from),
-        symbol().map(|name| Expression::Symbol(Elevation::Normal, name)),
+        symbol().map(|name| Expression::Symbol(Script::Normal, name)),
     ))
 }
 

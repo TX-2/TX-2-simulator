@@ -1,7 +1,10 @@
-use base::prelude::{u18, u36, Address, Unsigned36Bit};
+use base::{
+    charset::Script,
+    prelude::{u18, u36, Address, Unsigned36Bit},
+};
 
 use super::super::ast::{
-    Block, Elevation, Expression, HoldBit, InstructionFragment, LiteralValue, ManuscriptBlock,
+    Block, Expression, HoldBit, InstructionFragment, LiteralValue, ManuscriptBlock,
     ProgramInstruction, PunchCommand, SourceFile, Statement,
 };
 use super::assemble_nonempty_valid_input;
@@ -55,7 +58,7 @@ fn test_assemble_pass1() {
                     holdbit: HoldBit::Unspecified,
                     parts: vec![InstructionFragment {
                         value: Expression::Literal(LiteralValue::from((
-                            Elevation::Normal,
+                            Script::Normal,
                             u36!(0o14)
                         )))
                     }]
@@ -83,14 +86,14 @@ fn test_metacommand_dec_changes_default_base() {
             assert_eq!(
                 &first_parts.as_slice(),
                 &[InstructionFragment::from((
-                    Elevation::Normal,
+                    Script::Normal,
                     Unsigned36Bit::from(0o10_u32),
                 ))],
             );
             assert_eq!(
                 &second_parts.as_slice(),
                 &[InstructionFragment::from((
-                    Elevation::Normal,
+                    Script::Normal,
                     Unsigned36Bit::from(0o12_u32),
                 ))],
             );
@@ -107,7 +110,7 @@ fn test_metacommand_dec_changes_default_base() {
 fn test_assemble_octal_superscript_literal() {
     assemble_literal(
         "⁺³⁶\n", // 36, superscript
-        &InstructionFragment::from((Elevation::Superscript, Unsigned36Bit::from(0o36_u32))),
+        &InstructionFragment::from((Script::Super, Unsigned36Bit::from(0o36_u32))),
     );
 }
 
@@ -115,10 +118,10 @@ fn test_assemble_octal_superscript_literal() {
 fn test_assemble_octal_subscript_literal() {
     assemble_literal(
         "₁₃\n", // without sign
-        &InstructionFragment::from((Elevation::Subscript, Unsigned36Bit::from(0o13_u32))),
+        &InstructionFragment::from((Script::Sub, Unsigned36Bit::from(0o13_u32))),
     );
     assemble_literal(
         "₊₁₃\n", // with optional + sign
-        &InstructionFragment::from((Elevation::Subscript, Unsigned36Bit::from(0o13_u32))),
+        &InstructionFragment::from((Script::Sub, Unsigned36Bit::from(0o13_u32))),
     );
 }

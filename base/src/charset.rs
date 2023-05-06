@@ -172,6 +172,16 @@ pub enum Script {
     Sub,
 }
 
+impl Script {
+    pub fn shift(&self) -> u32 {
+        match self {
+            Script::Super => 30, // This is a config value.
+            Script::Sub => 18,   // This is an index value
+            Script::Normal => 0, // e.g. an address value
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum Colour {
     Black,

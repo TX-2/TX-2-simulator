@@ -6,10 +6,10 @@ use std::ops::Shl;
 use chumsky::input::{StrInput, ValueInput};
 use chumsky::prelude::*;
 
-use super::super::ast::{Elevation, HoldBit, LiteralValue};
+use super::super::ast::{HoldBit, LiteralValue};
 use super::helpers;
 use super::Extra;
-use base::Unsigned36Bit;
+use base::{charset::Script, Unsigned36Bit};
 
 pub(super) fn arrow<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
 where
@@ -148,7 +148,7 @@ where
     fn valid_opcode(s: &str) -> Result<LiteralValue, ()> {
         if let super::helpers::DecodedOpcode::Valid(opcode) = helpers::opcode_to_num(s) {
             Ok(LiteralValue::from((
-                Elevation::Normal,
+                Script::Normal,
                 // Bits 24-29 (dec) inclusive in the instruction word
                 // represent the opcode, so shift the opcode's value
                 // left by 24 decimal.

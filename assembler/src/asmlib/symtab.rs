@@ -4,9 +4,12 @@ use std::fmt::{self, Display, Formatter};
 
 use tracing::{event, Level};
 
-use base::prelude::{Address, Unsigned36Bit};
+use base::{
+    charset::Script,
+    prelude::{Address, Unsigned36Bit},
+};
 
-use super::ast::{Elevation, Expression, SymbolName};
+use super::ast::{Expression, SymbolName};
 use super::types::offset_from_origin;
 
 #[derive(Debug, Default, PartialEq, Eq, Copy, Clone)]
@@ -67,12 +70,12 @@ impl SymbolContext {
     }
 }
 
-impl From<&Elevation> for SymbolContext {
-    fn from(elevation: &Elevation) -> SymbolContext {
+impl From<&Script> for SymbolContext {
+    fn from(elevation: &Script) -> SymbolContext {
         let (configuration, index, address) = match elevation {
-            Elevation::Superscript => (true, false, false),
-            Elevation::Subscript => (false, true, false),
-            Elevation::Normal => (false, false, true),
+            Script::Super => (true, false, false),
+            Script::Sub => (false, true, false),
+            Script::Normal => (false, false, true),
         };
         SymbolContext {
             configuration,
@@ -83,8 +86,8 @@ impl From<&Elevation> for SymbolContext {
     }
 }
 
-impl From<Elevation> for SymbolContext {
-    fn from(elevation: Elevation) -> SymbolContext {
+impl From<Script> for SymbolContext {
+    fn from(elevation: Script) -> SymbolContext {
         SymbolContext::from(&elevation)
     }
 }
@@ -247,7 +250,7 @@ impl SymbolTable {
                         // used in.
                         //
                         // TODO: figure out how this should be interpreted.
-                        if elevation != &Elevation::Normal {
+                        if elevation != &Script::Normal {
                             event!(
                                 Level::WARN,
                                 "superscript/subscript inside assignment value may not be correctly handled"
