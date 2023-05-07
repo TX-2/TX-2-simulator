@@ -64,7 +64,7 @@ where
         panic!(
             "{} unexpected parse errors for input '{input}': {:?}",
             errors.len(),
-            &errors_as_string(errors.as_slice())
+            &errors.as_slice()
         );
     }
     match output {
@@ -95,7 +95,7 @@ fn test_normal_literal_oct_defaultmode() {
 fn test_normal_literal_oct_decmode() {
     // Simulate a previous ☛☛DECIMAL, so that the trailing dot selects octal.
     assert_eq!(
-        parse_successfully_with("402·", normal_literal(), set_decimal_mode),
+        parse_successfully_with("402@dot@", normal_literal(), set_decimal_mode),
         LiteralValue::from((
             Script::Normal,
             Unsigned36Bit::from(0o402_u32), // note: octal
@@ -109,6 +109,10 @@ fn test_normal_literal_dec_defaultmode() {
     // was a previous ☛☛DECIMAL).
     assert_eq!(
         parse_successfully_with("402·", normal_literal(), no_state_setup),
+        LiteralValue::from((Script::Normal, Unsigned36Bit::from(402_u32),))
+    );
+    assert_eq!(
+        parse_successfully_with("402@dot@", normal_literal(), no_state_setup),
         LiteralValue::from((Script::Normal, Unsigned36Bit::from(402_u32),))
     );
 }
@@ -197,7 +201,7 @@ fn test_subscript_literal_oct_defaultmode_plus() {
 fn test_subscript_literal_oct_decmode() {
     // Simulate a previous ☛☛DECIMAL, so that the trailing dot selects octal.
     assert_eq!(
-        parse_successfully_with("₃₁.", subscript_literal(), set_decimal_mode),
+        parse_successfully_with("₃₁@sub_dot@", subscript_literal(), set_decimal_mode),
         LiteralValue::from((Script::Sub, Unsigned36Bit::from(0o31_u32),))
     );
 }
@@ -207,7 +211,7 @@ fn test_subscript_literal_dec() {
     // A trailing dot on a number indicates decimal base (unless there
     // was a previous ☛☛DECIMAL).
     assert_eq!(
-        parse_successfully_with("₃₁.", subscript_literal(), no_state_setup),
+        parse_successfully_with("₃₁@sub_dot@", subscript_literal(), no_state_setup),
         LiteralValue::from((Script::Sub, Unsigned36Bit::from(31_u32),))
     );
 }

@@ -1,4 +1,3 @@
-use std::fmt::Write;
 use std::num::IntErrorKind;
 
 use base::prelude::*;
@@ -16,8 +15,16 @@ pub(super) fn make_u36(s: &str, radix: u32) -> Result<Unsigned36Bit, StringConve
     match u64::from_str_radix(s, radix) {
         Ok(n) => n.try_into().map_err(StringConversionFailed::Range),
         Err(e) => match e.kind() {
-            IntErrorKind::Empty | IntErrorKind::InvalidDigit => {
-                Err(StringConversionFailed::NotOctal)
+            IntErrorKind::Empty => Err(StringConversionFailed::EmptyInput),
+            IntErrorKind::InvalidDigit => {
+                match s.chars().find(|ch| ch.to_digit(radix).is_none()) {
+                    Some(ch) => {
+                        return Err(StringConversionFailed::NotOctal(ch));
+                    }
+                    None => {
+                        panic!("at least one character of '{s}' is known to be invalid in base {radix}");
+                    }
+                }
             }
             IntErrorKind::PosOverflow => {
                 Err(StringConversionFailed::Range(ConversionFailed::TooLarge))
@@ -25,6 +32,20 @@ pub(super) fn make_u36(s: &str, radix: u32) -> Result<Unsigned36Bit, StringConve
             _ => unreachable!(),
         },
     }
+}
+
+#[test]
+fn test_make_u36() {
+    assert_eq!(Ok(u36!(0)), make_u36("0", 8));
+    assert_eq!(Ok(u36!(0)), make_u36("+0", 8));
+    assert_eq!(Ok(u36!(1)), make_u36("1", 8));
+    assert_eq!(Ok(u36!(1)), make_u36("1", 10));
+    assert_eq!(Ok(u36!(1)), make_u36("+1", 8));
+    assert_eq!(Ok(u36!(1)), make_u36("+1", 8));
+    assert!(make_u36("+1+1", 8).is_err());
+    assert!(make_u36("18", 8).is_err());
+    assert!(make_u36("19", 8).is_err());
+    assert_eq!(Ok(u36!(19)), make_u36("19", 10));
 }
 
 pub(super) fn make_num(
@@ -47,74 +68,6 @@ pub(super) fn make_num(
 //// //) -> Result<Unsigned36Bit, StringConversionFailed> {
 //// //    make_num((sign, &digits, digits.extra.radix(dot.is_some())))
 //// //}
-
-pub(super) fn superscript_oct_digit_to_value(ch: char) -> Option<u8> {
-    match ch {
-        '\u{2070}' => Some(0),
-        '\u{00B9}' => Some(1),
-        '\u{00B2}' => Some(2),
-        '\u{00B3}' => Some(3),
-        '\u{2074}' => Some(4),
-        '\u{2075}' => Some(5),
-        '\u{2076}' => Some(6),
-        '\u{2077}' => Some(7),
-        _ => None,
-    }
-}
-
-pub(super) fn subscript_oct_digit_to_value(ch: char) -> Option<u8> {
-    match ch {
-        '\u{2080}' => Some(0),
-        '\u{2081}' => Some(1),
-        '\u{2082}' => Some(2),
-        '\u{2083}' => Some(3),
-        '\u{2084}' => Some(4),
-        '\u{2085}' => Some(5),
-        '\u{2086}' => Some(6),
-        '\u{2087}' => Some(7),
-        _ => None,
-    }
-}
-
-pub(super) fn make_superscript_num(
-    sign: Option<Sign>,
-    superscript_digits: &str,
-    hasdot: bool,
-    state: &mut NumeralMode,
-) -> Result<Unsigned36Bit, StringConversionFailed> {
-    let mut normal_digits: String = String::new();
-    for digit in superscript_digits.chars() {
-        if let Some(n) = superscript_oct_digit_to_value(digit) {
-            if write!(&mut normal_digits, "{}", n).is_err() {
-                // writes to strings always succeed
-                unreachable!()
-            }
-        } else {
-            return Err(StringConversionFailed::NotOctal);
-        }
-    }
-    make_num(sign, &normal_digits, hasdot, state)
-}
-
-pub(super) fn make_subscript_num(
-    sign: Option<Sign>,
-    subscript_digits: &str,
-    hasdot: bool,
-    state: &mut NumeralMode,
-) -> Result<Unsigned36Bit, StringConversionFailed> {
-    let mut normal_digits: String = String::new();
-    for digit in subscript_digits.chars() {
-        if let Some(n) = subscript_oct_digit_to_value(digit) {
-            if write!(&mut normal_digits, "{}", n).is_err() {
-                // writes to strings always succeed
-                unreachable!()
-            }
-        } else {
-            return Err(StringConversionFailed::NotOctal);
-        }
-    }
-    make_num(sign, &normal_digits, hasdot, state)
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum DecodedOpcode {

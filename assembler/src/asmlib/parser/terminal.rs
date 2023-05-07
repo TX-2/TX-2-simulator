@@ -6,8 +6,10 @@ use std::ops::Shl;
 use chumsky::input::{StrInput, ValueInput};
 use chumsky::prelude::*;
 
-use super::super::ast::{HoldBit, LiteralValue};
-use super::helpers;
+use super::super::ast::{
+    elevate, elevate_normal, elevate_sub, elevate_super, Elevated, HoldBit, LiteralValue,
+};
+use super::helpers::{self, Sign};
 use super::Extra;
 use base::{charset::Script, Unsigned36Bit};
 
@@ -16,20 +18,6 @@ where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
 {
     choice((just("->"), just("\u{2192}"))).ignored()
-}
-
-pub(super) fn plus<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
-where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
-{
-    just('+').ignored()
-}
-
-pub(super) fn minus<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
-where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
-{
-    just('-').ignored()
 }
 
 pub(super) fn inline_whitespace<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
@@ -46,87 +34,175 @@ where
     chumsky::text::digits(10).at_least(1).collect::<String>()
 }
 
-pub(super) fn dot<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
+pub(super) fn at_glyph<'a, I>(
+    script: Script,
+    name: &'static str,
+) -> impl Parser<'a, I, Elevated<char>, Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
 {
-    one_of("\u{22C5}\u{00B7}").ignored()
+    let prefix = match script {
+        Script::Normal => "",
+        Script::Sub => "sub_",
+        Script::Super => "super_",
+    };
+    let output: Elevated<char> = elevate(
+        script,
+        match name {
+            "dot" => '.',
+            _ => {
+                // I think this panic is OK because it takes place at the
+                // time we construct the parser, so it doesn't depend on
+                // user input.
+                panic!("unknown glyph name {name}");
+            }
+        },
+    );
+    let fullname = format!("@{prefix}{name}@");
+    just(fullname).to(output)
 }
 
-pub(super) fn superscript_digit1<'srcbody, I>(
-) -> impl Parser<'srcbody, I, String, Extra<'srcbody, char>>
+pub(super) fn dot<'a, I>(script_required: Script) -> impl Parser<'a, I, char, Extra<'a, char>>
 where
-    I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
 {
-    fn superscript_oct_digit<'srcbody, I>() -> impl Parser<'srcbody, I, char, Extra<'srcbody, char>>
+    fn unicode_dot<'a, I>(script_required: Script) -> impl Parser<'a, I, (), Extra<'a, char>>
     where
-        I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
+        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
     {
-        any().filter(|ch| super::helpers::superscript_oct_digit_to_value(*ch).is_some())
+        match script_required {
+            Script::Normal => choice((just('\u{22C5}'), just('\u{00B7}')))
+                .ignored()
+                .boxed(),
+            Script::Super => {
+                // Unicode Combining Dot Above ̇followed by space ("̇ ")
+                just("\u{0307} ").ignored().boxed()
+            }
+            Script::Sub => {
+                // We avoid using '.' as subscript dot, it's too confusing.
+                one_of("\u{22C5}\u{00B7}").ignored().boxed()
+            }
+        }
     }
-
-    superscript_oct_digit()
-        .repeated()
-        .at_least(1)
-        .collect::<String>()
-        .labelled("superscript digits")
+    at_glyph(script_required, "dot")
+        .ignored()
+        .or(unicode_dot(script_required))
+        .to('.')
+        .labelled(match script_required {
+            Script::Super => "superscript dot",
+            Script::Sub => "subscript dot",
+            Script::Normal => "dot",
+        })
 }
 
-pub(super) fn superscript_dot<'srcbody, I>() -> impl Parser<'srcbody, I, (), Extra<'srcbody, char>>
-where
-    I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
-{
-    just(
-        "\u{0307} ", // Unicode Combining Dot Above ̇followed by space ("̇ ")
-    )
-    .ignored()
-}
-
-pub(super) fn superscript_minus<'srcbody, I>() -> impl Parser<'srcbody, I, (), Extra<'srcbody, char>>
-where
-    I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
-{
-    just('\u{207B}').ignored() // U+207B: superscript minus
-}
-
-pub(super) fn superscript_plus<'srcbody, I>() -> impl Parser<'srcbody, I, (), Extra<'srcbody, char>>
-where
-    I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
-{
-    just('\u{207A}').ignored() // U+207A: superscript plus
-}
-
-pub(super) fn subscript_plus<'srcbody, I>() -> impl Parser<'srcbody, I, (), Extra<'srcbody, char>>
-where
-    I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
-{
-    just('\u{208A}').ignored() // U+208A: subscript plus
-}
-
-pub(super) fn subscript_minus<'srcbody, I>() -> impl Parser<'srcbody, I, (), Extra<'srcbody, char>>
-where
-    I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
-{
-    just('\u{208B}').ignored() // u+208B: subscript minus
-}
-
-pub(super) fn subscript_oct_digit<'srcbody, I>(
+fn digit<'srcbody, I>(
+    script_required: Script,
 ) -> impl Parser<'srcbody, I, char, Extra<'srcbody, char>>
 where
     I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
 {
-    fn is_subscript_oct_digit(ch: &char) -> bool {
-        super::helpers::subscript_oct_digit_to_value(*ch).is_some()
+    fn superscript_digit<'srcbody, I>() -> impl Parser<'srcbody, I, char, Extra<'srcbody, char>>
+    where
+        I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
+    {
+        choice((
+            just('\u{2070}').to('0'),
+            just('\u{00B9}').to('1'),
+            just('\u{00B2}').to('2'),
+            just('\u{00B3}').to('3'),
+            just('\u{2074}').to('4'),
+            just('\u{2075}').to('5'),
+            just('\u{2076}').to('6'),
+            just('\u{2077}').to('7'),
+            just('\u{2078}').to('8'),
+            just('\u{2079}').to('9'),
+        ))
     }
 
-    any().filter(is_subscript_oct_digit)
+    fn subscript_digit<'srcbody, I>() -> impl Parser<'srcbody, I, char, Extra<'srcbody, char>>
+    where
+        I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
+    {
+        choice((
+            just('\u{2080}').to('0'),
+            just('\u{2081}').to('1'),
+            just('\u{2082}').to('2'),
+            just('\u{2083}').to('3'),
+            just('\u{2084}').to('4'),
+            just('\u{2085}').to('5'),
+            just('\u{2086}').to('6'),
+            just('\u{2087}').to('7'),
+            just('\u{2088}').to('8'),
+            just('\u{2089}').to('9'),
+        ))
+    }
+
+    fn normal_digit<'srcbody, I>() -> impl Parser<'srcbody, I, char, Extra<'srcbody, char>>
+    where
+        I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
+    {
+        choice((
+            just('0'),
+            just('1'),
+            just('2'),
+            just('3'),
+            just('4'),
+            just('5'),
+            just('6'),
+            just('7'),
+            just('8'),
+            just('9'),
+        ))
+    }
+
+    match script_required {
+        Script::Super => superscript_digit().boxed(),
+        Script::Sub => subscript_digit().boxed(),
+        Script::Normal => normal_digit().boxed(),
+    }
 }
 
-pub(super) fn subscript_dot<'srcbody, I>() -> impl Parser<'srcbody, I, char, Extra<'srcbody, char>>
+pub(super) fn digit1<'srcbody, I>(
+    script_required: Script,
+) -> impl Parser<'srcbody, I, String, Extra<'srcbody, char>>
 where
     I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
 {
-    just('.')
+    digit(script_required)
+        .repeated()
+        .at_least(1)
+        .collect::<String>()
+        .labelled(match script_required {
+            Script::Super => "superscript digits",
+            Script::Sub => "subscript digits",
+            Script::Normal => "digits",
+        })
+}
+
+pub(super) fn plus<'a, I>(
+    script_required: Script,
+) -> impl Parser<'a, I, Elevated<Sign>, Extra<'a, char>>
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+{
+    match script_required {
+        Script::Normal => just('+').to(elevate_normal(Sign::Plus)).boxed(),
+        Script::Sub => just('\u{208A}').to(elevate_sub(Sign::Plus)).boxed(),
+        Script::Super => just('\u{207A}').to(elevate_super(Sign::Plus)).boxed(),
+    }
+}
+
+pub(super) fn minus<'srcbody, I>(
+    script_required: Script,
+) -> impl Parser<'srcbody, I, Elevated<Sign>, Extra<'srcbody, char>>
+where
+    I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
+{
+    match script_required {
+        Script::Normal => just('-').to(elevate_normal(Sign::Minus)).boxed(),
+        Script::Sub => just('-').to(elevate_sub(Sign::Minus)).boxed(),
+        Script::Super => just('-').to(elevate_super(Sign::Minus)).boxed(),
+    }
 }
 
 pub(super) fn nonblank_simple_symex_chars<'a, I>() -> impl Parser<'a, I, String, Extra<'a, char>>

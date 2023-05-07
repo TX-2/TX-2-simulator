@@ -9,6 +9,47 @@ use base::prelude::*;
 use super::state::NumeralMode;
 use super::symtab::{SymbolContext, SymbolDefinition, SymbolLookupFailure, SymbolTable};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct Elevated<T> {
+    inner: T,
+    script: Script,
+}
+
+//impl<T> Elevated<T> {
+//    fn change_script(self, script: Script) -> Elevated<T> {
+//        Elevated {
+//            inner: self.inner,
+//            script,
+//        }
+//    }
+//}
+
+impl<T> From<(Script, T)> for Elevated<T> {
+    fn from((script, inner): (Script, T)) -> Elevated<T> {
+        Elevated { inner, script }
+    }
+}
+
+pub(crate) fn elevate<T>(script: Script, inner: T) -> Elevated<T> {
+    Elevated { script, inner }
+}
+
+pub(crate) fn elevate_super<T>(inner: T) -> Elevated<T> {
+    elevate(Script::Super, inner)
+}
+
+pub(crate) fn elevate_sub<T>(inner: T) -> Elevated<T> {
+    elevate(Script::Sub, inner)
+}
+
+pub(crate) fn elevate_normal<T>(inner: T) -> Elevated<T> {
+    elevate(Script::Normal, inner)
+}
+
+pub(crate) fn strip_script<T>(elevated: Elevated<T>) -> T {
+    elevated.inner
+}
+
 /// Eventually we will support symbolic expressions.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct LiteralValue {

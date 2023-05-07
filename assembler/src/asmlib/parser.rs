@@ -22,12 +22,12 @@ where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
 {
     let opt_sign = choice((
-        terminal::plus().to(Sign::Plus),
-        terminal::minus().to(Sign::Minus),
+        terminal::plus(Script::Normal).to(Sign::Plus),
+        terminal::minus(Script::Normal).to(Sign::Minus),
     ))
     .or_not()
     .labelled("sign");
-    let maybe_dot = terminal::dot().or_not().map(|x| x.is_some());
+    let maybe_dot = terminal::dot(Script::Normal).or_not().map(|x| x.is_some());
 
     opt_sign
         .then(terminal::digits1())
@@ -45,7 +45,7 @@ fn maybe_superscript_dot<'srcbody, I>() -> impl Parser<'srcbody, I, bool, Extra<
 where
     I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
 {
-    terminal::superscript_dot()
+    terminal::dot(Script::Super)
         .or_not()
         .map(|x| x.is_some())
         .labelled("superscript dot")
@@ -56,17 +56,16 @@ fn superscript_literal<'srcbody, I>(
 where
     I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
 {
-    let superscript_sign = choice((
-        terminal::superscript_plus().to(Sign::Plus),
-        terminal::superscript_minus().to(Sign::Minus),
-    ));
+    let superscript_sign = terminal::minus(Script::Super)
+        .or(terminal::plus(Script::Super))
+        .map(strip_script);
 
     superscript_sign
         .or_not()
-        .then(terminal::superscript_digit1())
+        .then(terminal::digit1(Script::Super))
         .then(maybe_superscript_dot())
         .try_map_with_state(|((maybe_sign, digits), hasdot), span, state| {
-            match helpers::make_superscript_num(maybe_sign, &digits, hasdot, state) {
+            match helpers::make_num(maybe_sign, &digits, hasdot, state) {
                 Ok(value) => Ok(LiteralValue::from((Script::Super, value))),
                 Err(e) => Err(Rich::custom(span, e.to_string())),
             }
@@ -78,27 +77,14 @@ fn subscript_literal<'srcbody, I>() -> impl Parser<'srcbody, I, LiteralValue, Ex
 where
     I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
 {
-    let subscript_sign = choice((
-        terminal::subscript_minus().to(Sign::Minus),
-        terminal::subscript_plus().to(Sign::Plus),
-    ));
+    let sign = terminal::minus(Script::Sub).or(terminal::plus(Script::Sub));
+    let maybe_dot = terminal::dot(Script::Sub).or_not().map(|x| x.is_some());
 
-    let subscript_oct_digit1 = terminal::subscript_oct_digit()
-        .repeated()
-        .at_least(1)
-        .collect::<String>();
-
-    // Recognise a subscript dot.  On the Linconln Writer, the dot
-    // is raised above the line, like the dot customarily used for
-    // the dot-product.  Hence for subscripts we use the regular
-    // ascii dot (full stop, period) which is on the line.
-    let maybe_subscript_dot = terminal::subscript_dot().or_not().map(|x| x.is_some());
-
-    (subscript_sign.or_not())
-        .then(subscript_oct_digit1)
-        .then(maybe_subscript_dot)
+    (sign.or_not())
+        .then(terminal::digit1(Script::Sub))
+        .then(maybe_dot)
         .try_map_with_state(|((maybe_sign, digits), hasdot), span, state| {
-            match helpers::make_subscript_num(maybe_sign, &digits, hasdot, state) {
+            match helpers::make_num(maybe_sign.map(strip_script), &digits, hasdot, state) {
                 Ok(value) => Ok(LiteralValue::from((Script::Sub, value))),
                 Err(e) => Err(Rich::custom(span, e.to_string())),
             }
