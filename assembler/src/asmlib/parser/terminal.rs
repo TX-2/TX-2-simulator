@@ -27,13 +27,6 @@ where
     chumsky::text::inline_whitespace()
 }
 
-pub(super) fn digits1<'a, I>() -> impl Parser<'a, I, String, Extra<'a, char>>
-where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
-{
-    chumsky::text::digits(10).at_least(1).collect::<String>()
-}
-
 pub(super) fn at_glyph<'a, I>(
     script: Script,
     name: &'static str,
@@ -117,6 +110,7 @@ where
             just('\u{2078}').to('8'),
             just('\u{2079}').to('9'),
         ))
+        .labelled("superscript digit")
     }
 
     fn subscript_digit<'srcbody, I>() -> impl Parser<'srcbody, I, char, Extra<'srcbody, char>>
@@ -135,6 +129,7 @@ where
             just('\u{2088}').to('8'),
             just('\u{2089}').to('9'),
         ))
+        .labelled("subscript digit")
     }
 
     fn normal_digit<'srcbody, I>() -> impl Parser<'srcbody, I, char, Extra<'srcbody, char>>
@@ -153,6 +148,7 @@ where
             just('8'),
             just('9'),
         ))
+        .labelled("digit")
     }
 
     match script_required {

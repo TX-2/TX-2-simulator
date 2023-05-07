@@ -17,75 +17,24 @@ use helpers::Sign;
 
 pub(crate) type Extra<'a, T> = Full<Rich<'a, T>, NumeralMode, ()>;
 
-fn normal_literal<'a, I>() -> impl Parser<'a, I, LiteralValue, Extra<'a, char>>
+fn literal<'a, I>(script_required: Script) -> impl Parser<'a, I, LiteralValue, Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
 {
     let opt_sign = choice((
-        terminal::plus(Script::Normal).to(Sign::Plus),
-        terminal::minus(Script::Normal).to(Sign::Minus),
+        terminal::plus(script_required).to(Sign::Plus),
+        terminal::minus(script_required).to(Sign::Minus),
     ))
     .or_not()
     .labelled("sign");
-    let maybe_dot = terminal::dot(Script::Normal).or_not().map(|x| x.is_some());
+    let maybe_dot = terminal::dot(script_required).or_not().map(|x| x.is_some());
 
     opt_sign
-        .then(terminal::digits1())
+        .then(terminal::digit1(script_required))
         .then(maybe_dot)
-        .try_map_with_state(|((maybe_sign, digits), hasdot), span, state| {
+        .try_map_with_state(move |((maybe_sign, digits), hasdot), span, state| {
             match helpers::make_num(maybe_sign, &digits, hasdot, state) {
-                Ok(value) => Ok(LiteralValue::from((Script::Normal, value))),
-                Err(e) => Err(Rich::custom(span, e.to_string())),
-            }
-        })
-        .labelled("numeric literal")
-}
-
-fn maybe_superscript_dot<'srcbody, I>() -> impl Parser<'srcbody, I, bool, Extra<'srcbody, char>>
-where
-    I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
-{
-    terminal::dot(Script::Super)
-        .or_not()
-        .map(|x| x.is_some())
-        .labelled("superscript dot")
-}
-
-fn superscript_literal<'srcbody, I>(
-) -> impl Parser<'srcbody, I, LiteralValue, Extra<'srcbody, char>>
-where
-    I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
-{
-    let superscript_sign = terminal::minus(Script::Super)
-        .or(terminal::plus(Script::Super))
-        .map(strip_script);
-
-    superscript_sign
-        .or_not()
-        .then(terminal::digit1(Script::Super))
-        .then(maybe_superscript_dot())
-        .try_map_with_state(|((maybe_sign, digits), hasdot), span, state| {
-            match helpers::make_num(maybe_sign, &digits, hasdot, state) {
-                Ok(value) => Ok(LiteralValue::from((Script::Super, value))),
-                Err(e) => Err(Rich::custom(span, e.to_string())),
-            }
-        })
-        .labelled("numeric literal")
-}
-
-fn subscript_literal<'srcbody, I>() -> impl Parser<'srcbody, I, LiteralValue, Extra<'srcbody, char>>
-where
-    I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
-{
-    let sign = terminal::minus(Script::Sub).or(terminal::plus(Script::Sub));
-    let maybe_dot = terminal::dot(Script::Sub).or_not().map(|x| x.is_some());
-
-    (sign.or_not())
-        .then(terminal::digit1(Script::Sub))
-        .then(maybe_dot)
-        .try_map_with_state(|((maybe_sign, digits), hasdot), span, state| {
-            match helpers::make_num(maybe_sign.map(strip_script), &digits, hasdot, state) {
-                Ok(value) => Ok(LiteralValue::from((Script::Sub, value))),
+                Ok(value) => Ok(LiteralValue::from((script_required, value))),
                 Err(e) => Err(Rich::custom(span, e.to_string())),
             }
         })
@@ -203,14 +152,6 @@ mod symex {
     }
 }
 
-fn literal<'a, I>() -> impl Parser<'a, I, LiteralValue, Extra<'a, char>>
-where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
-{
-    choice((normal_literal(), superscript_literal(), subscript_literal()))
-        .labelled("numeric literal")
-}
-
 /// Parse an expression; these can currently only take the form of a literal.
 /// TX-2's M4 assembler allows arithmetic expressions also, but these are not
 /// currently implemented.
@@ -236,7 +177,14 @@ where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
 {
     choice((
-        choice((literal(), terminal::opcode())).map(Expression::from),
+        choice((
+            literal(Script::Super),
+            literal(Script::Sub),
+            literal(Script::Normal),
+            terminal::opcode(),
+        ))
+        .map(Expression::from),
+        // TODO: support superscript/subscript symbols.
         symbol().map(|name| Expression::Symbol(Script::Normal, name)),
     ))
 }
@@ -250,7 +198,7 @@ where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
 {
     // We should eventually support symexes here.
-    literal()
+    literal(Script::Normal)
         .try_map(|lit, span| match Address::try_from(lit.value()) {
             Ok(addr) => Ok(addr),
             Err(e) => Err(Rich::custom(span, format!("not a valid address: {e}"))),
@@ -298,7 +246,7 @@ where
         // states that this should be an honest tag.  We currently
         // accept only numeric literals.
         named_metacommand("PUNCH")
-            .ignore_then(literal().or_not())
+            .ignore_then(literal(Script::Normal).or_not())
             .try_map(|aa, span| match helpers::punch_address(aa) {
                 Ok(punch) => Ok(ManuscriptMetaCommand::Punch(punch)),
                 Err(msg) => Err(Rich::custom(span, msg)),

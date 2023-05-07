@@ -86,7 +86,7 @@ fn test_normal_literal_oct_defaultmode() {
     // No trailing dot on a number indicates octal base (unless there
     // was a previous ☛☛DECIMAL).
     assert_eq!(
-        parse_successfully_with("402", normal_literal(), no_state_setup),
+        parse_successfully_with("402", literal(Script::Normal), no_state_setup),
         LiteralValue::from((Script::Normal, u36!(0o402),))
     );
 }
@@ -95,7 +95,7 @@ fn test_normal_literal_oct_defaultmode() {
 fn test_normal_literal_oct_decmode() {
     // Simulate a previous ☛☛DECIMAL, so that the trailing dot selects octal.
     assert_eq!(
-        parse_successfully_with("402@dot@", normal_literal(), set_decimal_mode),
+        parse_successfully_with("402@dot@", literal(Script::Normal), set_decimal_mode),
         LiteralValue::from((
             Script::Normal,
             Unsigned36Bit::from(0o402_u32), // note: octal
@@ -108,11 +108,11 @@ fn test_normal_literal_dec_defaultmode() {
     // A trailing dot on a number indicates decimal base (unless there
     // was a previous ☛☛DECIMAL).
     assert_eq!(
-        parse_successfully_with("402·", normal_literal(), no_state_setup),
+        parse_successfully_with("402·", literal(Script::Normal), no_state_setup),
         LiteralValue::from((Script::Normal, Unsigned36Bit::from(402_u32),))
     );
     assert_eq!(
-        parse_successfully_with("402@dot@", normal_literal(), no_state_setup),
+        parse_successfully_with("402@dot@", literal(Script::Normal), no_state_setup),
         LiteralValue::from((Script::Normal, Unsigned36Bit::from(402_u32),))
     );
 }
@@ -121,7 +121,7 @@ fn test_normal_literal_dec_defaultmode() {
 fn test_normal_literald_ec_decmode() {
     assert_eq!(
         // Decimal is the default if there was a previous ☛☛DECIMAL
-        parse_successfully_with("402", normal_literal(), set_decimal_mode),
+        parse_successfully_with("402", literal(Script::Normal), set_decimal_mode),
         LiteralValue::from((Script::Normal, Unsigned36Bit::from(402_u32),))
     );
 }
@@ -131,12 +131,12 @@ fn test_superscript_literal_oct() {
     // No trailing dot on a number indicates octal base (unless there
     // was a previous ☛☛DECIMAL).
     assert_eq!(
-        parse_successfully_with("³⁶", superscript_literal(), no_state_setup),
+        parse_successfully_with("³⁶", literal(Script::Super), no_state_setup),
         LiteralValue::from((Script::Super, Unsigned36Bit::from(0o36_u32),))
     );
     assert_eq!(
         // U+207A: superscript plus
-        parse_successfully_with("\u{207A}³⁶", superscript_literal(), no_state_setup),
+        parse_successfully_with("\u{207A}³⁶", literal(Script::Super), no_state_setup),
         LiteralValue::from((Script::Super, Unsigned36Bit::from(0o36_u32),))
     );
 }
@@ -146,7 +146,7 @@ fn test_superscript_literal_dec_defaultmode() {
     // A trailing dot on a number indicates decimal base (unless there
     // was a previous ☛☛DECIMAL).
     assert_eq!(
-        parse_successfully_with("³⁶̇ ", superscript_literal(), no_state_setup),
+        parse_successfully_with("³⁶̇ ", literal(Script::Super), no_state_setup),
         LiteralValue::from((
             Script::Super,
             Unsigned36Bit::from(36_u32), // decimal
@@ -159,7 +159,7 @@ fn test_superscript_literal_oct_defaultmode() {
     // No trailing dot on a number indicates octal base (unless there
     // was a previous ☛☛DECIMAL).
     assert_eq!(
-        parse_successfully_with("³⁶", superscript_literal(), no_state_setup),
+        parse_successfully_with("³⁶", literal(Script::Super), no_state_setup),
         LiteralValue::from((
             Script::Super,
             Unsigned36Bit::from(0o36_u32), // octal
@@ -171,7 +171,7 @@ fn test_superscript_literal_oct_defaultmode() {
 fn test_superscript_literal_dec_decmode() {
     // Simulate a previous ☛☛DECIMAL.
     assert_eq!(
-        parse_successfully_with("³⁶", superscript_literal(), set_decimal_mode),
+        parse_successfully_with("³⁶", literal(Script::Super), set_decimal_mode),
         LiteralValue::from((
             Script::Super,
             Unsigned36Bit::from(36_u32), // decimal
@@ -184,7 +184,7 @@ fn test_subscript_literal_oct_defaultmode_nosign() {
     // No trailing dot on a number indicates octal base (unless there
     // was a previous ☛☛DECIMAL).
     assert_eq!(
-        parse_successfully_with("₃₁", subscript_literal(), no_state_setup),
+        parse_successfully_with("₃₁", literal(Script::Sub), no_state_setup),
         LiteralValue::from((Script::Sub, Unsigned36Bit::from(0o31_u32),))
     );
 }
@@ -192,7 +192,7 @@ fn test_subscript_literal_oct_defaultmode_nosign() {
 #[test]
 fn test_subscript_literal_oct_defaultmode_plus() {
     assert_eq!(
-        parse_successfully_with("₊₁₃", subscript_literal(), no_state_setup),
+        parse_successfully_with("₊₁₃", literal(Script::Sub), no_state_setup),
         LiteralValue::from((Script::Sub, Unsigned36Bit::from(0o13_u32),))
     );
 }
@@ -201,7 +201,7 @@ fn test_subscript_literal_oct_defaultmode_plus() {
 fn test_subscript_literal_oct_decmode() {
     // Simulate a previous ☛☛DECIMAL, so that the trailing dot selects octal.
     assert_eq!(
-        parse_successfully_with("₃₁@sub_dot@", subscript_literal(), set_decimal_mode),
+        parse_successfully_with("₃₁@sub_dot@", literal(Script::Sub), set_decimal_mode),
         LiteralValue::from((Script::Sub, Unsigned36Bit::from(0o31_u32),))
     );
 }
@@ -211,7 +211,7 @@ fn test_subscript_literal_dec() {
     // A trailing dot on a number indicates decimal base (unless there
     // was a previous ☛☛DECIMAL).
     assert_eq!(
-        parse_successfully_with("₃₁@sub_dot@", subscript_literal(), no_state_setup),
+        parse_successfully_with("₃₁@sub_dot@", literal(Script::Sub), no_state_setup),
         LiteralValue::from((Script::Sub, Unsigned36Bit::from(31_u32),))
     );
 }
