@@ -17,7 +17,12 @@ pub(super) fn arrow<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
 {
-    choice((just("->"), just("\u{2192}"))).ignored()
+    choice((
+        just("->").ignored().boxed(),
+        just("\u{2192}").ignored().boxed(),
+        at_glyph(Script::Normal, "arr").ignored().boxed(),
+    ))
+    .labelled("arrow")
 }
 
 pub(super) fn inline_whitespace<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
@@ -88,9 +93,30 @@ where
         "delta" => 'Δ',
         "lambda" => 'λ',
         "apostrophe" => '\'',
+        "0" => '0',
+        "1" => '1',
+        "2" => '2',
+        "3" => '3',
+        "4" => '4',
+        "5" => '5',
+        "6" => '6',
+        "7" => '7',
+        "8" => '8',
+        "9" => '9',
+        "?" => '?', // usually denotes a trasncription problem.
+        "+" => '+',
+        "hamb" => '≡', // "identical to" but perhaps we should also accept (on input) ☰ (U+2630, Trigram For Heaven).
+        "times" => '×',
+        "arr" => '\u{2192}',
+        "minus" => '-',
+        "hand" => '☛',
+        "pipe" => '|',
+        "rect_dash" => '\u{25A3}',
+        "circled_v" => '\u{24CB}',
+        "sup" => '\u{2283}',
         _ => {
             // I think this panic is OK because it takes place at the
-            // time we construct the parser, so it doesn't depend on
+            // time we construct the parser, so it doesn't depend on,
             // user input.
             panic!("unknown glyph name {name}");
         }
@@ -168,11 +194,35 @@ where
         one_of("0123456789").labelled("digit")
     }
 
-    match script_required {
-        Script::Super => superscript_digit().boxed(),
-        Script::Sub => subscript_digit().boxed(),
-        Script::Normal => normal_digit().boxed(),
+    fn digit_glyph<'srcbody, I>(
+        script_required: Script,
+    ) -> impl Parser<'srcbody, I, char, Extra<'srcbody, char>>
+    where
+        I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
+    {
+        choice((
+            at_glyph(script_required, "0"),
+            at_glyph(script_required, "1"),
+            at_glyph(script_required, "2"),
+            at_glyph(script_required, "3"),
+            at_glyph(script_required, "4"),
+            at_glyph(script_required, "5"),
+            at_glyph(script_required, "6"),
+            at_glyph(script_required, "7"),
+            at_glyph(script_required, "8"),
+            at_glyph(script_required, "9"),
+        ))
     }
+
+    choice((
+        digit_glyph(script_required),
+        match script_required {
+            Script::Super => superscript_digit().boxed(),
+            Script::Sub => subscript_digit().boxed(),
+            Script::Normal => normal_digit().boxed(),
+        },
+    ))
+    .labelled("digit")
 }
 
 pub(super) fn digit1<'srcbody, I>(
@@ -200,22 +250,29 @@ where
 {
     match script_required {
         Script::Normal => just('+').to(elevate_normal(Sign::Plus)).boxed(),
-        Script::Sub => just('\u{208A}').to(elevate_sub(Sign::Plus)).boxed(),
-        Script::Super => just('\u{207A}').to(elevate_super(Sign::Plus)).boxed(),
+        Script::Sub => at_glyph(Script::Sub, "+")
+            .or(just('\u{208A}'))
+            .to(elevate_sub(Sign::Plus))
+            .boxed(),
+        Script::Super => at_glyph(Script::Super, "+")
+            .or(just('\u{207A}'))
+            .to(elevate_super(Sign::Plus))
+            .boxed(),
     }
 }
 
 pub(super) fn minus<'srcbody, I>(
     script_required: Script,
-) -> impl Parser<'srcbody, I, Elevated<Sign>, Extra<'srcbody, char>>
+) -> impl Parser<'srcbody, I, Sign, Extra<'srcbody, char>>
 where
     I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
 {
+    let glyph = at_glyph(script_required, "minus");
     match script_required {
-        Script::Normal => just('-').to(elevate_normal(Sign::Minus)).boxed(),
-        Script::Sub => just('-').to(elevate_sub(Sign::Minus)).boxed(),
-        Script::Super => just('-').to(elevate_super(Sign::Minus)).boxed(),
+        Script::Normal => just('-').or(glyph).boxed(),
+        Script::Sub | Script::Super => glyph.boxed(),
     }
+    .to(Sign::Minus)
 }
 
 fn lw_lowercase_letter_except_h<'a, I>(
@@ -521,7 +578,21 @@ pub(super) fn metacommand_name<'a, I>() -> impl Parser<'a, I, String, Extra<'a, 
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
 {
-    just("☛☛").ignore_then(
+    pub(super) fn hand<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
+    where
+        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    {
+        at_glyph(Script::Normal, "hand").or(just('☛')).ignored()
+    }
+
+    pub(super) fn doublehand<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
+    where
+        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    {
+        hand().then(hand()).ignored()
+    }
+
+    doublehand().ignore_then(
         uppercase_letter(Script::Normal)
             .repeated()
             .at_least(2)
