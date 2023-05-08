@@ -46,10 +46,6 @@ pub(crate) fn elevate_normal<T>(inner: T) -> Elevated<T> {
     elevate(Script::Normal, inner)
 }
 
-pub(crate) fn strip_script<T>(elevated: Elevated<T>) -> T {
-    elevated.inner
-}
-
 /// Eventually we will support symbolic expressions.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct LiteralValue {

@@ -1,3 +1,5 @@
+use std::error::Error;
+use std::fmt::{self, Display};
 use std::num::IntErrorKind;
 
 use base::prelude::*;
@@ -18,9 +20,7 @@ pub(super) fn make_u36(s: &str, radix: u32) -> Result<Unsigned36Bit, StringConve
             IntErrorKind::Empty => Err(StringConversionFailed::EmptyInput),
             IntErrorKind::InvalidDigit => {
                 match s.chars().find(|ch| ch.to_digit(radix).is_none()) {
-                    Some(ch) => {
-                        return Err(StringConversionFailed::NotOctal(ch));
-                    }
+                    Some(ch) => Err(StringConversionFailed::NotOctal(ch)),
                     None => {
                         panic!("at least one character of '{s}' is known to be invalid in base {radix}");
                     }
@@ -247,17 +247,51 @@ pub(super) fn opcode_auto_hold_bit(opcode: Unsigned6Bit) -> u64 {
     }
 }
 
-pub(super) fn is_nonblank_simple_symex_char(c: char) -> bool {
-    c.is_ascii_digit()
-        || c.is_ascii_uppercase()
-        || matches!(
-            c,
-            'i' | 'j' | 'k' | 'n' | 'p' | 'q' | 't' | 'w' | 'x' | 'y' | 'z' |
-            '.' | '\'' | '_' |
-            '\u{203E}' | // Unicode non-combining overline
-            '\u{25A1}' | // Unicode white square
-            '\u{25CB}' // Unicode white circle
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub(crate) struct InvalidSymexChar(char);
+
+impl Error for InvalidSymexChar {}
+
+impl Display for InvalidSymexChar {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "'{}' is not valid at this point in a symbol name",
+            self.0
         )
+    }
+}
+
+pub(crate) fn convert_superscript_digit(ch: char) -> Result<char, ()> {
+    match ch {
+        '\u{2070}' => Ok('0'),
+        '\u{00B9}' => Ok('1'),
+        '\u{00B2}' => Ok('2'),
+        '\u{00B3}' => Ok('3'),
+        '\u{2074}' => Ok('4'),
+        '\u{2075}' => Ok('5'),
+        '\u{2076}' => Ok('6'),
+        '\u{2077}' => Ok('7'),
+        '\u{2078}' => Ok('8'),
+        '\u{2079}' => Ok('9'),
+        _ => Err(()),
+    }
+}
+
+pub(crate) fn convert_subcript_digit(ch: char) -> Result<char, ()> {
+    match ch {
+        '\u{2080}' => Ok('0'),
+        '\u{2081}' => Ok('1'),
+        '\u{2082}' => Ok('2'),
+        '\u{2083}' => Ok('3'),
+        '\u{2084}' => Ok('4'),
+        '\u{2085}' => Ok('5'),
+        '\u{2086}' => Ok('6'),
+        '\u{2087}' => Ok('7'),
+        '\u{2088}' => Ok('8'),
+        '\u{2089}' => Ok('9'),
+        _ => Err(()),
+    }
 }
 
 pub(super) fn is_register_name(name: &str) -> bool {

@@ -275,13 +275,14 @@ fn test_parse_symex() {
         // Some lower case letters are supported
         ("j2", "j2"),
         // Dot, underscore
-        (".q", ".q"),
-        ("._q", "._q"),
+        ("@dot@q", ".q"),
+        ("@dot@_q", "._q"),
         // Single quotes are allowed too
         ("SCRATCH 'N' SNIFF", "SCRATCH'N'SNIFF"),
         ("F '", "F'"),
     ] {
-        let got: SymbolName = parse_successfully_with(input, parse_symex(), no_state_setup);
+        let got: SymbolName =
+            parse_successfully_with(input, parse_symex(Script::Normal), no_state_setup);
         assert_eq!(got.canonical, expected);
     }
 }
@@ -423,7 +424,7 @@ fn test_manuscript_without_tag() {
 #[test]
 fn test_symbol_name_one_syllable() {
     assert_eq!(
-        parse_successfully_with("START4", symbol(), no_state_setup),
+        parse_successfully_with("START4", symbol(Script::Normal), no_state_setup),
         SymbolName {
             canonical: "START4".to_string(),
             //as_used: "START4".to_string(),
@@ -434,7 +435,7 @@ fn test_symbol_name_one_syllable() {
 #[test]
 fn test_symbol_name_two_syllables() {
     assert_eq!(
-        parse_successfully_with("TWO WORDS", symbol(), no_state_setup),
+        parse_successfully_with("TWO WORDS", symbol(Script::Normal), no_state_setup),
         SymbolName {
             canonical: "TWOWORDS".to_string(),
             //as_used: "TWO WORDS".to_string(),
@@ -798,15 +799,27 @@ fn test_opcode() {
 #[test]
 fn test_multi_syllable_symex() {
     assert_eq!(
-        parse_successfully_with("FOO", parse_multi_syllable_symex(), no_state_setup),
+        parse_successfully_with(
+            "FOO",
+            parse_multi_syllable_symex(Script::Normal),
+            no_state_setup
+        ),
         "FOO"
     );
     assert_eq!(
-        parse_successfully_with("FOO BAR", parse_multi_syllable_symex(), no_state_setup),
+        parse_successfully_with(
+            "FOO BAR",
+            parse_multi_syllable_symex(Script::Normal),
+            no_state_setup
+        ),
         "FOOBAR"
     );
     assert_eq!(
-        parse_successfully_with("FOO  BAR", parse_multi_syllable_symex(), no_state_setup),
+        parse_successfully_with(
+            "FOO  BAR",
+            parse_multi_syllable_symex(Script::Normal),
+            no_state_setup
+        ),
         "FOOBAR"
     );
 }

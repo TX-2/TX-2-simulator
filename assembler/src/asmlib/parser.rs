@@ -52,6 +52,7 @@ where
 }
 
 mod symex {
+    use base::charset::Script;
     use chumsky::input::ValueInput;
     use chumsky::prelude::*;
     use chumsky::Parser;
@@ -81,24 +82,25 @@ mod symex {
     }
 
     // Compound chars are not supported at the moment, see docs/assembler/index.md.
-    fn symex_syllable<'a, I>() -> impl Parser<'a, I, String, Extra<'a, char>>
+    fn symex_syllable<'a, I>(script_required: Script) -> impl Parser<'a, I, String, Extra<'a, char>>
     where
         I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
     {
-        terminal::nonblank_simple_symex_chars()
+        terminal::nonblank_simple_symex_chars(script_required)
             .foldl(
-                terminal::nonblank_simple_symex_chars().repeated(),
+                terminal::nonblank_simple_symex_chars(script_required).repeated(),
                 concat_strings,
             )
             .labelled("symex syllable")
     }
 
     pub(super) fn parse_symex_reserved_syllable<'a, I>(
+        script_required: Script,
     ) -> impl Parser<'a, I, String, Extra<'a, char>>
     where
         I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
     {
-        symex_syllable()
+        symex_syllable(script_required)
             .try_map(|syllable, span| {
                 if is_reserved_identifier(&syllable) {
                     Ok(syllable)
@@ -109,11 +111,13 @@ mod symex {
             .labelled("reserved symex")
     }
 
-    fn parse_symex_non_reserved_syllable<'a, I>() -> impl Parser<'a, I, String, Extra<'a, char>>
+    fn parse_symex_non_reserved_syllable<'a, I>(
+        script_required: Script,
+    ) -> impl Parser<'a, I, String, Extra<'a, char>>
     where
         I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
     {
-        symex_syllable().try_map(|syllable, span| {
+        symex_syllable(script_required).try_map(|syllable, span| {
             if is_reserved_identifier(&syllable) {
                 Err(Rich::custom(
                     span,
@@ -125,13 +129,15 @@ mod symex {
         })
     }
 
-    pub(super) fn parse_multi_syllable_symex<'a, I>() -> impl Parser<'a, I, String, Extra<'a, char>>
+    pub(super) fn parse_multi_syllable_symex<'a, I>(
+        script_required: Script,
+    ) -> impl Parser<'a, I, String, Extra<'a, char>>
     where
         I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
     {
-        parse_symex_non_reserved_syllable()
+        parse_symex_non_reserved_syllable(script_required)
             .foldl(
-                symex_syllable()
+                symex_syllable(script_required)
                     .padded_by(opt_horizontal_whitespace())
                     .repeated(),
                 concat_strings,
@@ -139,13 +145,15 @@ mod symex {
             .labelled("multi-syllable symex")
     }
 
-    pub(super) fn parse_symex<'a, I>() -> impl Parser<'a, I, SymbolName, Extra<'a, char>>
+    pub(super) fn parse_symex<'a, I>(
+        script_required: Script,
+    ) -> impl Parser<'a, I, SymbolName, Extra<'a, char>>
     where
         I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
     {
         choice((
-            parse_multi_syllable_symex(),
-            parse_symex_reserved_syllable(),
+            parse_multi_syllable_symex(script_required),
+            parse_symex_reserved_syllable(script_required),
         ))
         .map(|s| canonical_symbol_name(&s))
         .labelled("symbol name")
@@ -184,8 +192,9 @@ where
             terminal::opcode(),
         ))
         .map(Expression::from),
-        // TODO: support superscript/subscript symbols.
-        symbol().map(|name| Expression::Symbol(Script::Normal, name)),
+        symbol(Script::Normal).map(|name| Expression::Symbol(Script::Normal, name)),
+        symbol(Script::Sub).map(|name| Expression::Symbol(Script::Sub, name)),
+        symbol(Script::Super).map(|name| Expression::Symbol(Script::Super, name)),
     ))
 }
 
@@ -206,11 +215,11 @@ where
         .labelled("address expression")
 }
 
-fn symbol<'a, I>() -> impl Parser<'a, I, SymbolName, Extra<'a, char>>
+fn symbol<'a, I>(script_required: Script) -> impl Parser<'a, I, SymbolName, Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
 {
-    symex::parse_symex()
+    symex::parse_symex(script_required)
         .map(SymbolName::from)
         .labelled("symex (symbol) name")
 }
@@ -220,7 +229,9 @@ where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
 {
     let arrow = terminal::arrow().padded_by(opt_horizontal_whitespace());
-    symbol().then_ignore(arrow).labelled("tag definition")
+    symbol(Script::Normal)
+        .then_ignore(arrow)
+        .labelled("tag definition")
 }
 
 fn metacommand<'a, I>() -> impl Parser<'a, I, ManuscriptMetaCommand, Extra<'a, char>>
@@ -317,7 +328,7 @@ where
     where
         I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
     {
-        symex::parse_symex()
+        symex::parse_symex(Script::Normal)
             .then_ignore(terminal::equals().padded_by(opt_horizontal_whitespace()))
             .then(expression())
             .padded_by(opt_horizontal_whitespace())
