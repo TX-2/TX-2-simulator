@@ -150,7 +150,7 @@ where
     at_glyph(script_required, "dot")
         .ignored()
         .or(unicode_dot(script_required))
-        .to('.')
+        .to('\u{00B7}') // centre dot, not "."
         .labelled(match script_required {
             Script::Super => "superscript dot",
             Script::Sub => "subscript dot",

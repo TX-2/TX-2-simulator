@@ -279,8 +279,8 @@ fn test_parse_symex() {
         // Some lower case letters are supported
         ("j2", "j2"),
         // Dot, underscore
-        ("@dot@q", ".q"),
-        ("@dot@_q", "._q"),
+        ("@dot@q", "\u{00B7}q"),
+        ("@dot@_q", "\u{00B7}_q"),
         // Single quotes are allowed too
         ("SCRATCH 'N' SNIFF", "SCRATCH'N'SNIFF"),
         ("SCRATCH @apostrophe@N@apostrophe@ SNIFF", "SCRATCH'N'SNIFF"),
