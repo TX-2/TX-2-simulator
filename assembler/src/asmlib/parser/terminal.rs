@@ -393,7 +393,8 @@ where
     }
 
     match script_required {
-        Script::Normal => one_of("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+        Script::Normal => uppercase_letter_glyph(Script::Normal)
+            .or(one_of("ABCDEFGHIJKLMNOPQRSTUVWXYZ"))
             .boxed()
             .labelled("uppercase letter"),
         Script::Super => {

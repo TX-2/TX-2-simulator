@@ -86,12 +86,7 @@ mod symex {
     where
         I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
     {
-        terminal::nonblank_simple_symex_chars(script_required)
-            .foldl(
-                terminal::nonblank_simple_symex_chars(script_required).repeated(),
-                concat_strings,
-            )
-            .labelled("symex syllable")
+        terminal::nonblank_simple_symex_chars(script_required).labelled("symex syllable")
     }
 
     pub(super) fn parse_symex_reserved_syllable<'a, I>(

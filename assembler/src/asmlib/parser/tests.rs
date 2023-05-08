@@ -261,6 +261,8 @@ fn test_parse_symex() {
     for (input, expected) in [
         ("SOMENAME", "SOMENAME"),
         ("SOME NAME", "SOMENAME"),
+        ("Q", "Q"),
+        ("@Q@", "Q"),
         // OK to use a reserved identifier if it is not the first
         // syllable in the symex.
         ("TEST A", "TESTA"),
@@ -268,9 +270,11 @@ fn test_parse_symex() {
         ("ATEST", "ATEST"),
         // Otherwise, the reserved identifier is the whole of it.
         ("B", "B"),
+        ("@B@", "B"),
         // A symex can contain digits and can even start with one.
         ("HOP2IT", "HOP2IT"),
         ("HOP 2 IT", "HOP2IT"),
+        ("HOP @2@ IT", "HOP2IT"),
         ("4REAL", "4REAL"),
         // Some lower case letters are supported
         ("j2", "j2"),
@@ -279,6 +283,7 @@ fn test_parse_symex() {
         ("@dot@_q", "._q"),
         // Single quotes are allowed too
         ("SCRATCH 'N' SNIFF", "SCRATCH'N'SNIFF"),
+        ("SCRATCH @apostrophe@N@apostrophe@ SNIFF", "SCRATCH'N'SNIFF"),
         ("F '", "F'"),
     ] {
         let got: SymbolName =
