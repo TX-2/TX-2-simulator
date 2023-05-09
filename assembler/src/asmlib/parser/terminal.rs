@@ -86,11 +86,11 @@ where
         "X" => 'X',
         "Y" => 'Y',
         "Z" => 'Z',
-        // eps should be here, see https://github.com/TX-2/TX-2-simulator/issues/112
         "alpha" => 'α',
         "beta" => 'β',
         "gamma" => 'γ',
         "delta" => 'Δ',
+        "eps" => 'ε', // epsilon
         "lambda" => 'λ',
         "apostrophe" => '\'',
         "0" => '0',
@@ -332,7 +332,7 @@ where
             at_glyph(script_required, "beta"),
             at_glyph(script_required, "gamma"),
             at_glyph(script_required, "delta"),
-            // eps should be here, see https://github.com/TX-2/TX-2-simulator/issues/112
+            at_glyph(script_required, "eps"),
             at_glyph(script_required, "lambda"),
         ))
     }
@@ -345,8 +345,8 @@ where
                 "β", // Greek beta symbol, U+03B2
                 "γ", // Greek small letter gamma (U+03B3)
                 "Δ", // Greek capital delta, U+0394
+                "ε", // Greek small letter epsilon, U+03B5
                 "λ", // Greek small letter lambda, U+03BB
-                     // Epsilon should be here, see https://github.com/TX-2/TX-2-simulator/issues/112
             )))
             .boxed(),
     }

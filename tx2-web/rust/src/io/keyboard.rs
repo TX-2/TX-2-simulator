@@ -1018,13 +1018,13 @@ fn row1() -> &'static [Key] {
             },
             code: Code::Far(0o37),
         },
-        Key /* ∈ */ {
+        Key /* ε */ {
             left: HPOS_ARROW + 9.0 * KEY_AND_GAP_WIDTH,
             top: VPOS_ARROW,
             shape: KeyShape::Square,
             colour: KeyColour::Orange,
             label: KeyLabel {
-                text: &["\u{2208}"], // ∈, Element of
+                text: &["\u{03B5}"], // Epsilon (not ∈, Element of)
             },
             code: Code::Far(0o43),
         },

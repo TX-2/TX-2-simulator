@@ -415,7 +415,11 @@ pub fn lincoln_char_to_described_char(
         0o40 => by_case('Q', 'α'), // Greek small letter alpha, U+03B1
         0o41 => by_case('R', 'Δ'), // Greek capital delta, U+0394
         0o42 => by_case('S', 'p'),
-        0o43 => by_case('T', '∈'), // Element of, U+2208
+        // Previously we thought that the right-hand character was ∈
+        // (Element of, U+2208), but seeing the greek letters grouped
+        // in section 6-2.3 ("RULES FOR SYMEX FORMATION") shows that
+        // this is a greek letter, epsilon.
+        0o43 => by_case('T', 'ε'), // Epsilon
         0o44 => by_case('U', 'h'),
         0o45 => by_case('V', '⊃'), // Superset of, U+2283
         0o46 => by_case('W', 'β'), // Greek beta symbol, U+03B2

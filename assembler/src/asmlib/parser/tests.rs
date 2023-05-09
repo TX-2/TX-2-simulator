@@ -899,7 +899,7 @@ fn test_subs() {
     check("@gamma@", "γ");
     check("@alpha@", "α");
     check("@delta@", "Δ");
-    // TODO: eps should be here
+    check("@eps@", "ε");
     check("@lambda@", "λ");
     for ch in "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".chars() {
         // We use a leading X here to avoid collisions with register
@@ -911,4 +911,24 @@ fn test_subs() {
     // @dot@ expands to a center dot, not a full stop as in Jurij's script.
     check("@dot@", "·");
     // untested: @+@, @hamb@, @times@, @arr@, @hand@, @pipe@, @rect_dash@, @circled_v@, @sup@, @minus@
+}
+
+#[test]
+fn test_greek_letters() {
+    fn check(input: &str) {
+        let got = parse_successfully_with(
+            input,
+            parse_multi_syllable_symex(Script::Normal),
+            no_state_setup,
+        );
+        if got != input {
+            panic!("Parsing '{input}' with parse_multi_syllable_symex, expected '{input}', got '{got}'");
+        }
+    }
+    check("β");
+    check("γ");
+    check("α");
+    check("Δ");
+    check("ε");
+    check("λ");
 }
