@@ -879,3 +879,36 @@ fn test_end_of_line() {
     good(" **COMMENT1 \n**COMMENT2\n");
     good(" **COMMENT1 \n**COMMENT2\n\n");
 }
+
+/// Verify that the substitutions in Jurij's assembler -> HTML
+/// converter are correctly understood.
+#[test]
+fn test_subs() {
+    fn check(input: &str, expected: &str) {
+        let got = parse_successfully_with(
+            input,
+            parse_multi_syllable_symex(Script::Normal),
+            no_state_setup,
+        );
+        if got != expected {
+            panic!("Parsing '{input}' with parse_multi_syllable_symex, expected '{expected}', got '{got}'");
+        }
+    }
+
+    check("@beta@", "β");
+    check("@gamma@", "γ");
+    check("@alpha@", "α");
+    check("@delta@", "Δ");
+    // TODO: eps should be here
+    check("@lambda@", "λ");
+    for ch in "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".chars() {
+        // We use a leading X here to avoid collisions with register
+        // names.
+        let s = format!("X{ch}");
+        check(&s, &s);
+    }
+    check("@y@", "y");
+    // @dot@ expands to a center dot, not a full stop as in Jurij's script.
+    check("@dot@", "·");
+    // untested: @+@, @hamb@, @times@, @arr@, @hand@, @pipe@, @rect_dash@, @circled_v@, @sup@, @minus@
+}
