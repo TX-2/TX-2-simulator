@@ -4,12 +4,16 @@
 ** The syntax of this assembly language program follows that of the
 ** TX-2 assembler, M4, except in the fact that the Lincoln Writer only
 ** supported 13 lower-case letters.
-**
+
+    STOP        = 000000    ** An invalid instruction; terminates simulation
+    LWCONNECT   =  30000    ** IOS command to connect a Lincoln Writer
+    DISCONNECT  =  20000    ** IOS command to disconnect a unit
+
 ** The first Lincoln Writer is output unit 66.  We will put the code
 ** for its sequence at 200, so the program counter for sequence 66
 ** (which is X₆₆) should start at 200.
-100|      REX₆₆   200     ** Set X₆₆ to 200.
-        ²¹IOS₆₆ 30000     ** Connect Lincoln Writer output 1 (unit 66).
+100|      REX₆₆ OUTPUT      ** Set X₆₆ to the address of the printing code.
+        ²¹IOS₆₆ LWCONNECT   ** Connect Lincoln Writer output 1 (unit 66).
 
 ** The IOS instruction connecting unit 66 has the side effect of
 ** making sequence 66 runnable. Because bit 020 of the configuration
@@ -24,8 +28,7 @@
 ** X₁ is just a regular index register.  Arithmetic on the TX-2 is
 ** one's complement. The X registers are 18 bits wide.  Bit 17 is the
 ** sign bit.
-200|
-          REX₁ 777760     ** Set X₁ to -15 (decimal)
+OUTPUT->   REX₁ 777760  ** Set X₁ to -15 (decimal)
 
 ** TX-2 consisders words to be composed of four quarters (Q4..Q1) with
 ** Q1 as least significant.  Most instructions can operate on just
@@ -39,22 +42,22 @@
 ** Whether this is input or output depends on whether the relevant
 ** unit is an input or an output unit.  Unit 66 is the output half of
 ** the first of the system's two Lincoln Writers.
-201|     ⁶TSD 300  ** Print Q4 of the word at 300
-         ⁵TSD 300  ** Print Q3 of the word at 300
-         ⁴TSD 300  ** Print Q2 of the word at 300
-         ³TSD 300  ** Print Q1 of the word at 300
-         ⁶TSD 301  ** Print Q4 of the word at 301
-         ⁵TSD 301  ** Print Q3 of the word at 301
-         ⁴TSD 301  ** Print Q2 of the word at 301
-         ³TSD 301  ** Print Q1 of the word at 301
-         ⁶TSD 302  ** Print Q4 of the word at 302
-         ⁵TSD 302  ** Print Q3 of the word at 302
-         ⁴TSD 302  ** Print Q2 of the word at 302
-         ³TSD 302  ** Print Q1 of the word at 302
-         ⁶TSD 303  ** Print Q4 of the word at 303
-         ¹JNX₁ 201 ** Loop to 201 if X₁<0, increment X₁
-          IOS₆₆ 20000 ** Disconnect the Lincoln Writer (unit 66).
-          000000      ** An invalid instruction; terminates simulation
+LOOP->     ⁶TSD   W0    ** Print Q4 of the word at W0
+           ⁵TSD   W0    ** Print Q3 of the word at W0
+           ⁴TSD   W0    ** Print Q2 of the word at W0
+           ³TSD   W0    ** Print Q1 of the word at W0
+           ⁶TSD   W1    ** Print Q4 of the word at W1
+           ⁵TSD   W1    ** Print Q3 of the word at W1
+           ⁴TSD   W1    ** Print Q2 of the word at W1
+           ³TSD   W1    ** Print Q1 of the word at W1
+           ⁶TSD   W2    ** Print Q4 of the word at W2
+           ⁵TSD   W2    ** Print Q3 of the word at W2
+           ⁴TSD   W2    ** Print Q2 of the word at W2
+           ³TSD   W2    ** Print Q1 of the word at W2
+           ⁶TSD   W3    ** Print Q4 of the word at W3
+           ¹JNX₁ LOOP   ** Loop if X₁<0, increment X₁
+            IOS₆₆ DISCONNECT ** Disconnect the Lincoln Writer (unit 66).
+            STOP
 
 ** The text we want to print follows.  The Lincoln Writer doesn't use
 ** ASCII (it predates the invention of ASCII).  Lincoln Writer
@@ -71,10 +74,11 @@
 ** 056 Space
 ** 060 Newline
 ** 070 Comma
-300| 027024033033
-301| 036056070046
-302| 036041033023
-303|FOUR-> 060000000000
+W0-> 027024033033
+W1-> 036056070046
+W2-> 036041033023
+W3-> 060000000000
+
 ** Indicate to the assembler that it should generate a punched tape
 ** output (with the standard header) and that the header should begin
 ** the program by juming to location 100.
