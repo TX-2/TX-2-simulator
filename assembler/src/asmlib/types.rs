@@ -14,6 +14,7 @@ pub(crate) type LineNumber = u32;
 
 #[derive(Debug)]
 pub enum AssemblerFailure {
+    InternalError(String),
     BadTapeBlock(String),
     IoErrorOnStdout {
         error: IoError,
@@ -63,6 +64,9 @@ fn write_os_string(f: &mut Formatter<'_>, s: &OsStr) -> Result<(), fmt::Error> {
 impl Display for AssemblerFailure {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         match self {
+            AssemblerFailure::InternalError(msg) => {
+                write!(f, "internal error: {msg}")
+            }
             AssemblerFailure::SymbolError(symbol, e) => {
                 write!(f, "symbol lookup failure for {symbol}: {e}")
             }

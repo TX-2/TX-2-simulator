@@ -488,7 +488,7 @@ fn test_manuscript_with_origin() {
         SourceFile {
             punch: None,
             blocks: vec![ManuscriptBlock {
-                origin: Some(Origin(Address::new(u18!(0o100)))),
+                origin: Some(Origin::Literal(Address::new(u18!(0o100)))),
                 statements: vec![Statement::Instruction(ProgramInstruction {
                     tag: None,
                     holdbit: HoldBit::Unspecified,
@@ -743,7 +743,7 @@ fn test_assignment_origin() {
                     ),]
                 },
                 ManuscriptBlock {
-                    origin: Some(Origin(Address::new(u18!(0o1000)))),
+                    origin: Some(Origin::Literal(Address::new(u18!(0o1000)))),
                     statements: vec![Statement::Instruction(ProgramInstruction {
                         tag: None,
                         holdbit: HoldBit::Unspecified,

@@ -19,6 +19,7 @@ use super::symbol::SymbolName;
 use super::symtab::*;
 use super::types::*;
 use base::prelude::{Address, Unsigned36Bit, Unsigned6Bit};
+use base::subword;
 
 #[cfg(test)]
 use base::charset::Script;
@@ -44,29 +45,25 @@ struct OutputOptions {
 
 fn convert_source_file_to_directive(source_file: &SourceFile) -> Directive {
     let mut directive: Directive = Directive::default();
-    for mblock in source_file.blocks.iter() {
-        if mblock.instruction_count() == 0 {
-            // This block contains only things that don't generate
-            // code (e.g. assignments), so don't emit it.
-            continue;
-        }
-        let effective_origin = match mblock.origin {
+    for (block_number, mblock) in source_file.blocks.iter().enumerate() {
+        // We still include zero-word blocks in the directive output
+        // so that we don't change the block numbering.
+        let len = mblock.instruction_count();
+        let effective_origin = match mblock.origin.as_ref() {
             None => {
                 let address = Origin::default();
                 event!(
                     Level::DEBUG,
-                    "Locating a block at default address {:o}",
-                    address
+                    "Locating directive block {block_number} having {len} words at default origin {address:o}",
                 );
                 address
             }
             Some(address) => {
                 event!(
                     Level::DEBUG,
-                    "Locating a block at specified address {:o}",
-                    address
+                    "Locating directive block {block_number} having {len} words at origin {address:o}",
                 );
-                address
+                address.clone()
             }
         };
         let mut block = Block {
@@ -217,23 +214,52 @@ impl Binary {
     }
 }
 
+fn origin_as_address(
+    origin: &Origin,
+    block_number: usize,
+    symtab: &SymbolTable,
+    next_address: Option<Address>,
+) -> (Option<SymbolName>, Address) {
+    match origin {
+        Origin::Literal(addr) => (None, *addr),
+        Origin::Symbolic(name) => {
+            match symtab.lookup_final(name, &SymbolContext::origin(block_number)) {
+                Ok(address) => (Some(name.clone()), subword::right_half(address).into()),
+                Err(e) => match next_address {
+                    Some(addr) => {
+                        event!(
+                            Level::WARN,
+                            "unable to evaluate origin {name} ({e}), using next free address {addr:o}"
+                        );
+                        (Some(name.clone()), addr)
+                    }
+                    None => {
+                        let addr = Origin::default_address();
+                        event!(
+                            Level::WARN,
+                            "unable to evaluate origin {name} ({e}), using default {addr:o}"
+                        );
+                        (Some(name.clone()), addr)
+                    }
+                },
+            }
+        }
+    }
+}
+
 fn calculate_block_origins(
     source_file: &SourceFile,
-    _symtab: &SymbolTable,
-) -> Result<Vec<Address>, AddressOverflow> {
+    symtab: &mut SymbolTable,
+) -> Result<(Vec<(Option<SymbolName>, Address)>, Option<Address>), AddressOverflow> {
     let mut result = Vec::new();
     let mut next_address: Option<Address> = None;
-    for block in source_file.blocks.iter() {
-        let base = match block.origin {
-            // When symbolic origins become supported we will need to use
-            // the symbol table.
-            Some(Origin(address)) => address,
-            None => match next_address {
-                Some(a) => a,
-                None => Origin::default().into(),
-            },
+
+    for (block_number, block) in source_file.blocks.iter().enumerate() {
+        let (maybe_name, base): (Option<SymbolName>, Address) = match block.origin.as_ref() {
+            Some(origin) => origin_as_address(&origin, block_number, symtab, next_address),
+            None => (None, next_address.unwrap_or_else(Origin::default_address)),
         };
-        result.push(base);
+        result.push((maybe_name, base));
         let next = offset_from_origin(&base, block.instruction_count())?;
         next_address = Some(if let Some(n) = next_address {
             max(n, next)
@@ -241,7 +267,7 @@ fn calculate_block_origins(
             next
         });
     }
-    Ok(result)
+    Ok((result, next_address))
 }
 
 fn unique_symbols_in_order<'a, I>(items: I) -> Vec<SymbolName>
@@ -283,14 +309,15 @@ fn assemble_pass2(
             }
         }
     }
-    let mut next_free_address: Option<Address> = None;
-    let origins: Vec<Address> = match calculate_block_origins(source_file, &symtab) {
-        Ok(origins) => origins,
-        Err(e) => {
-            return Err(e.into());
-        }
-    };
-    for (block_number, address) in origins.iter().enumerate() {
+    let (origins, mut next_free_address): (Vec<(Option<SymbolName>, Address)>, Option<Address>) =
+        match calculate_block_origins(source_file, &mut symtab) {
+            Ok((origins, next)) => (origins, next),
+            Err(e) => {
+                return Err(e.into());
+            }
+        };
+    dbg!(&origins);
+    for (block_number, (_maybe_name, address)) in origins.iter().enumerate() {
         symtab.record_block_origin(block_number, *address);
         let size = source_file.blocks[block_number].instruction_count();
         let after_end = offset_from_origin(address, size)?;
@@ -304,8 +331,13 @@ fn assemble_pass2(
             let mut rc_block: Vec<Unsigned36Bit> = Vec::new();
             let symbol_refs_in_program_order: Vec<SymbolName> = unique_symbols_in_order(
                 source_file
-                    .global_symbol_references()
-                    .map(|(symbol, _)| symbol),
+                    .global_symbol_definitions()
+                    .map(|(symbol, _)| symbol)
+                    .chain(
+                        source_file
+                            .global_symbol_references()
+                            .map(|(symbol, _)| symbol),
+                    ),
             );
             match finalise_symbol_table(
                 symtab,
@@ -339,10 +371,10 @@ fn assemble_pass2(
 }
 
 /// Pass 3 generates binary code.
-fn assemble_pass3<S: SymbolLookup>(
+fn assemble_pass3(
     directive: Directive,
-    symtab: &mut S,
-) -> Result<Binary, S::Error> {
+    final_symtab: &mut FinalSymbolTable,
+) -> Result<Binary, AssemblerFailure> {
     let span = span!(Level::ERROR, "assembly pass 3");
     let _enter = span.enter();
 
@@ -351,16 +383,39 @@ fn assemble_pass3<S: SymbolLookup>(
         binary.set_entry_point(address);
     }
 
-    for block in directive.blocks.iter() {
+    for (block_number, block) in directive.blocks.iter().enumerate() {
         let words: Vec<Unsigned36Bit> = block
             .items
             .iter()
-            .map(|inst| inst.value(symtab))
-            .collect::<Result<Vec<_>, S::Error>>()?;
-        binary.add_chunk(BinaryChunk {
-            address: block.origin.into(),
-            words,
-        });
+            .map(|inst| {
+                inst.value(final_symtab)
+                    .expect("lookup on FinalSymbolTable is infallible")
+            })
+            .collect::<Vec<_>>();
+        let address: Address = match final_symtab.get_block_origin(&block_number) {
+            Some(a) => {
+                event!(
+                    Level::DEBUG,
+                    "Block {block_number} of output has address {:o} and length {}",
+                    *a,
+                    words.len()
+                );
+                *a
+            }
+            None => {
+                return Err(AssemblerFailure::InternalError(
+                    format!("starting address for block {block_number} was not calculated by calculate_block_origins")
+                ));
+            }
+        };
+        if words.is_empty() {
+            event!(
+                Level::DEBUG,
+                "block {block_number} will not be included in the output because it is empty"
+            );
+        } else {
+            binary.add_chunk(BinaryChunk { address, words });
+        }
     }
     Ok(binary)
 }
@@ -421,18 +476,12 @@ pub(crate) fn assemble_source(
         if options.list {
             // List the symbols.
             for (name, definition) in final_symbols.list() {
-                println!("{name} = {definition}");
+                println!("{name:>20} = {definition:12o}");
             }
         }
 
         // Pass 3 generates the binary output
-        let result: Result<Binary, Infallible> = assemble_pass3(directive, &mut final_symbols);
-        match result {
-            Ok(binary) => binary,
-            Err(_) => {
-                unreachable!("instances of Infallible cannot be created");
-            }
-        }
+        assemble_pass3(directive, &mut final_symbols)?
     };
 
     // The count here also doesn't include the size of the RC-block as

@@ -81,23 +81,6 @@ where
     ))
 }
 
-/// An address expression is a literal value or a symex.  That is I
-/// think it's not required that an arithmetic expression
-/// (e.g. "5+BAR") be accepted in an origin notation (such as
-/// "<something>|").
-fn address_expression<'a, I>() -> impl Parser<'a, I, Address, Extra<'a, char>>
-where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
-{
-    // We should eventually support symexes here.
-    literal(Script::Normal)
-        .try_map(|lit, span| match Address::try_from(lit.value()) {
-            Ok(addr) => Ok(addr),
-            Err(e) => Err(Rich::custom(span, format!("not a valid address: {e}"))),
-        })
-        .labelled("address expression")
-}
-
 fn symbol<'a, I>(script_required: Script) -> impl Parser<'a, I, SymbolName, Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
@@ -266,20 +249,44 @@ where
             .labelled("metacommand")
     }
 
-    fn build_code_line(parts: (Option<Address>, Statement)) -> ManuscriptLine {
-        let maybe_origin: Option<Origin> = parts.0.map(Origin);
-        ManuscriptLine::Code(maybe_origin, parts.1)
+    fn build_code_line(parts: (Option<Origin>, Statement)) -> ManuscriptLine {
+        ManuscriptLine::Code(parts.0, parts.1)
     }
 
     fn line<'a, I>() -> impl Parser<'a, I, ManuscriptLine, Extra<'a, char>>
     where
         I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
     {
-        fn origin<'a, I>() -> impl Parser<'a, I, Address, Extra<'a, char>>
+        fn origin<'a, I>() -> impl Parser<'a, I, Origin, Extra<'a, char>>
         where
             I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
         {
-            address_expression()
+            /// An address expression is a literal value or a symex.  That is I
+            /// think it's not required that an arithmetic expression
+            /// (e.g. "5+BAR") be accepted in an origin notation (such as
+            /// "<something>|").
+            fn literal_address_expression<'a, I>() -> impl Parser<'a, I, Origin, Extra<'a, char>>
+            where
+                I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+            {
+                // We should eventually support symexes here.
+                literal(Script::Normal)
+                    .try_map(|lit, span| match Address::try_from(lit.value()) {
+                        Ok(addr) => Ok(Origin::Literal(addr)),
+                        Err(e) => Err(Rich::custom(span, format!("not a valid address: {e}"))),
+                    })
+                    .labelled("literal address expression")
+            }
+
+            fn symbolic_address_expression<'a, I>() -> impl Parser<'a, I, Origin, Extra<'a, char>>
+            where
+                I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+            {
+                symbol(Script::Normal)
+                    .map(Origin::Symbolic)
+                    .labelled("symbolic address expression")
+            }
+            choice((literal_address_expression(), symbolic_address_expression()))
                 .padded_by(terminal::opt_horizontal_whitespace())
                 .then_ignore(terminal::pipe())
         }
@@ -291,7 +298,7 @@ where
             .labelled("statement with origin");
 
         let origin_only = origin()
-            .map(|address| ManuscriptLine::JustOrigin(Origin(address)))
+            .map(|origin| ManuscriptLine::JustOrigin(origin))
             .labelled("origin");
 
         choice((

@@ -4,15 +4,15 @@
 ** The syntax of this assembly language program follows that of the
 ** TX-2 assembler, M4, except in the fact that the Lincoln Writer only
 ** supported 13 lower-case letters.
-
     STOP        = 000000    ** An invalid instruction; terminates simulation
     LWCONNECT   =  30000    ** IOS command to connect a Lincoln Writer
     DISCONNECT  =  20000    ** IOS command to disconnect a unit
+    BEGIN       =    100
 
 ** The first Lincoln Writer is output unit 66.  We will put the code
 ** for its sequence at 200, so the program counter for sequence 66
 ** (which is X₆₆) should start at 200.
-100|      REX₆₆ OUTPUT      ** Set X₆₆ to the address of the printing code.
+BEGIN|      REX₆₆ OUTPUT      ** Set X₆₆ to the address of the printing code.
         ²¹IOS₆₆ LWCONNECT   ** Connect Lincoln Writer output 1 (unit 66).
 
 ** The IOS instruction connecting unit 66 has the side effect of

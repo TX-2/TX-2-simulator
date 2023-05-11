@@ -58,6 +58,7 @@ impl std::error::Error for SymbolLookupFailure {}
 /// Instances of Infallible cannot be created as it has no variants.
 /// When the never type (`!`) is stabilised, we should use that
 /// instead.
+#[derive(Debug)]
 pub(crate) enum Infallible {}
 
 pub(crate) trait SymbolLookup {
@@ -69,61 +70,15 @@ pub(crate) trait SymbolLookup {
     ) -> Result<Unsigned36Bit, Self::Error>;
 }
 
-//#[derive(Debug, PartialEq, Eq, Hash)]
-//pub(crate) enum SymexContext {
-//    Configuration = 1,
-//    Index = 2,
-//    Address = 4,
-//    Origin = 8,
-//    Tag = 16,
-//}
-//
-//impl From<Script> for SymexContext {
-//    fn from(script: Script) -> SymexContext {
-//        match script {
-//            Script::Super => SymexContext::Configuration,
-//            Script::Sub => SymexContext::Index,
-//            Script::Normal => SymexContext::Address,
-//        }
-//    }
-//}
-//
-//#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
-//struct SymexContexts(u8);
-//
-//impl SymexContexts {
-//    fn bitmask(c: SymexContext) -> u8 {
-//        c as u8
-//    }
-//
-//    fn add(&mut self, c: SymexContext) {
-//        self.0 |= SymexContexts::bitmask(c)
-//    }
-//
-//    fn contains(&self, c: SymexContext) -> bool {
-//        if self.0 & SymexContexts::bitmask(c) == 0 {
-//            false
-//        } else {
-//            true
-//        }
-//    }
-//
-//    fn contains_only(&self, c: SymexContext) -> bool {
-//        let mask = SymexContexts::bitmask(c);
-//        (self.0 & mask) == mask
-//    }
-//}
-//
-//impl From<SymexContext> for SymexContexts {
-//    fn from(c: SymexContext) -> SymexContexts {
-//        SymexContexts(c as u8)
-//    }
-//}
+pub(crate) trait Evaluate {
+    fn evaluate<S: SymbolLookup>(&self, symtab: &mut S) -> Result<Unsigned36Bit, S::Error>;
+}
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub(crate) enum SymbolUse {
     Reference(SymbolContext),
     Definition(SymbolDefinition),
+    Origin(SymbolName, usize),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -157,6 +112,13 @@ impl SymbolContext {
 
     pub(crate) fn is_origin_only(&self) -> bool {
         self.is_origin() && !(self.configuration || self.index || self.address)
+    }
+
+    pub(crate) fn origin(block_number: usize) -> SymbolContext {
+        SymbolContext {
+            origin_of_block: Some(block_number),
+            ..Default::default()
+        }
     }
 
     fn includes(&self, other: &SymbolContext) -> bool {
@@ -385,6 +347,7 @@ impl SymbolDefinition {
 #[derive(Debug, Default)]
 pub(crate) struct FinalSymbolTable {
     entries: HashMap<SymbolName, Unsigned36Bit>,
+    block_origins: BTreeMap<usize, Address>,
 }
 
 impl FinalSymbolTable {
@@ -402,6 +365,10 @@ impl FinalSymbolTable {
     pub(crate) fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
+
+    pub(crate) fn get_block_origin(&self, block_number: &usize) -> Option<&Address> {
+        self.block_origins.get(block_number)
+    }
 }
 
 impl SymbolLookup for FinalSymbolTable {
@@ -412,7 +379,12 @@ impl SymbolLookup for FinalSymbolTable {
         name: &SymbolName,
         _: &SymbolContext,
     ) -> Result<Unsigned36Bit, Self::Error> {
-        Ok(self.entries[name])
+        match self.entries.get(name) {
+            Some(value) => Ok(*value),
+            None => {
+                panic!("no value was found in the final symbol table for symbol {name}");
+            }
+        }
     }
 }
 
@@ -493,6 +465,7 @@ pub(crate) fn finalise_symbol_table<'a, I>(
 where
     I: Iterator<Item = &'a SymbolName>,
 {
+    let mut expected_but_misssing: HashSet<SymbolName> = t.definitions.keys().cloned().collect();
     let mut assigner = DefaultValueAssigner {
         program_words,
         rc_block,
@@ -500,6 +473,7 @@ where
     };
     let mut finalized_entries: HashMap<SymbolName, Unsigned36Bit> = HashMap::new();
     for symbol_name in symbols_in_program_order {
+        expected_but_misssing.remove(&symbol_name);
         match resolve(symbol_name, &mut t, &mut assigner, &mut finalized_entries) {
             Err(e) => {
                 return Err(e);
@@ -507,8 +481,14 @@ where
             Ok(_) => (),
         }
     }
+    dbg!(&finalized_entries);
+    dbg!(&t.block_origins);
+    if !expected_but_misssing.is_empty() {
+        panic!("final symbol table lacks entries for known symbols {expected_but_misssing:?}");
+    }
     Ok(FinalSymbolTable {
         entries: finalized_entries,
+        block_origins: t.block_origins.clone(),
     })
 }
 
@@ -586,7 +566,12 @@ impl SymbolTable {
         new_definition: SymbolDefinition,
     ) -> Result<(), BadSymbolDefinition> {
         if let Some(existing) = self.definitions.get_mut(&name) {
-            existing.override_with(new_definition)
+            if matches!(&new_definition, SymbolDefinition::Undefined(_)) {
+                event!(Level::DEBUG, "skipping redefinition of symbol {name} with undefined value because it already has a definition, {existing}");
+                Ok(())
+            } else {
+                existing.override_with(new_definition)
+            }
         } else {
             self.definitions.insert(name, new_definition);
             Ok(())
@@ -684,7 +669,7 @@ impl SymbolTable {
                 },
                 SymbolDefinition::Undefined(context_union) => {
                     if context_union.includes(&op.context) {
-                        panic!("SymbolTable::final_lookup_helper: final value for symbol {name} should have been assigned");
+                        return Err(SymbolLookupFailure::Undefined(name.clone()));
                     } else {
                         should_have_seen(&op)
                     }

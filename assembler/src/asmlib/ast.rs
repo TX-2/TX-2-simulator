@@ -2,28 +2,20 @@
 use std::borrow::Cow;
 use std::fmt::{self, Display, Formatter, Octal, Write};
 use std::hash::Hash;
+use std::ops::Shl;
 
 use base::charset::{subscript_char, superscript_char, Script};
 use base::prelude::*;
 
 use super::state::NumeralMode;
 use super::symbol::SymbolName;
-use super::symtab::{SymbolContext, SymbolDefinition, SymbolLookup, SymbolUse};
+use super::symtab::{Evaluate, SymbolContext, SymbolDefinition, SymbolLookup, SymbolUse};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct Elevated<T> {
     inner: T,
     script: Script,
 }
-
-//impl<T> Elevated<T> {
-//    fn change_script(self, script: Script) -> Elevated<T> {
-//        Elevated {
-//            inner: self.inner,
-//            script,
-//        }
-//    }
-//}
 
 impl<T> From<(Script, T)> for Elevated<T> {
     fn from((script, inner): (Script, T)) -> Elevated<T> {
@@ -57,6 +49,12 @@ pub(crate) struct LiteralValue {
 impl LiteralValue {
     pub(crate) fn value(&self) -> Unsigned36Bit {
         self.value << self.elevation.shift()
+    }
+}
+
+impl Evaluate for LiteralValue {
+    fn evaluate<S: SymbolLookup>(&self, _: &mut S) -> Result<Unsigned36Bit, S::Error> {
+        Ok(self.value())
     }
 }
 
@@ -117,15 +115,6 @@ pub(crate) enum Expression {
 }
 
 impl Expression {
-    fn value<S: SymbolLookup>(&self, symtab: &mut S) -> Result<Unsigned36Bit, S::Error> {
-        match self {
-            Expression::Literal(literal) => Ok(literal.value()),
-            Expression::Symbol(elevation, name) => {
-                symtab.lookup(name, &SymbolContext::from(elevation))
-            }
-        }
-    }
-
     pub(crate) fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, SymbolUse)> {
         let mut result = Vec::with_capacity(1);
         match self {
@@ -138,6 +127,20 @@ impl Expression {
             }
         }
         result.into_iter()
+    }
+}
+
+impl Evaluate for Expression {
+    fn evaluate<S: SymbolLookup>(&self, symtab: &mut S) -> Result<Unsigned36Bit, S::Error> {
+        match self {
+            Expression::Literal(literal) => Ok(literal.value()),
+            Expression::Symbol(elevation, name) => {
+                let context = SymbolContext::from(elevation);
+                symtab
+                    .lookup(name, &context)
+                    .map(|value| value.shl(elevation.shift()))
+            }
+        }
     }
 }
 
@@ -186,12 +189,14 @@ pub(crate) struct InstructionFragment {
 }
 
 impl InstructionFragment {
-    pub(crate) fn value<S: SymbolLookup>(&self, symtab: &mut S) -> Result<Unsigned36Bit, S::Error> {
-        self.value.value(symtab)
-    }
-
     pub(crate) fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, SymbolUse)> {
         self.value.symbol_uses()
+    }
+}
+
+impl Evaluate for InstructionFragment {
+    fn evaluate<S: SymbolLookup>(&self, symtab: &mut S) -> Result<Unsigned36Bit, S::Error> {
+        self.value.evaluate(symtab)
     }
 }
 
@@ -211,46 +216,59 @@ impl From<Expression> for InstructionFragment {
 
 // Once we support symbolic origins we should update
 // ManuscriptBlock::global_symbol_definitions() to expose them.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Hash)]
-pub struct Origin(pub Address);
-
-impl From<Origin> for Address {
-    fn from(orig: Origin) -> Address {
-        orig.0
-    }
-}
-
-impl From<Origin> for Unsigned18Bit {
-    fn from(orig: Origin) -> Unsigned18Bit {
-        Unsigned18Bit::from(Address::from(orig))
-    }
+#[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash)]
+pub(crate) enum Origin {
+    Literal(Address),
+    Symbolic(SymbolName),
 }
 
 impl Default for Origin {
     fn default() -> Origin {
-        // Section 6-2.5 of the User Manual states that if the
-        // manuscript contains no origin specification (no vertical
-        // bar) the whole program is located (correctly) at 200_000
-        // octal.
-        Origin(Address::new(u18!(0o200_000)))
+        Origin::Literal(Origin::default_address())
     }
 }
 
 impl Display for Origin {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        fmt::Display::fmt(&self.0, f)
+        match self {
+            Origin::Literal(addr) => fmt::Display::fmt(&addr, f),
+            Origin::Symbolic(sym) => fmt::Display::fmt(&sym, f),
+        }
+    }
+}
+
+impl Origin {
+    pub(crate) fn default_address() -> Address {
+        // Section 6-2.5 of the User Manual states that if the
+        // manuscript contains no origin specification (no vertical
+        // bar) the whole program is located (correctly) at 200_000
+        // octal.
+        Address::new(u18!(0o200_000))
     }
 }
 
 impl Octal for Origin {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        fmt::Octal::fmt(&self.0, f)
+        match self {
+            Origin::Literal(address) => fmt::Octal::fmt(&address, f),
+            Origin::Symbolic(name) => fmt::Display::fmt(&name, f),
+        }
     }
 }
 
 impl Origin {
-    pub(crate) fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, SymbolUse)> {
-        Vec::new().into_iter()
+    pub(crate) fn symbol_uses(
+        &self,
+        block: usize,
+    ) -> impl Iterator<Item = (SymbolName, SymbolUse)> {
+        let mut result = Vec::with_capacity(1);
+        match self {
+            Origin::Literal(_) => (),
+            Origin::Symbolic(name) => {
+                result.push((name.clone(), SymbolUse::Origin(name.clone(), block)))
+            }
+        }
+        result.into_iter()
     }
 }
 
@@ -277,7 +295,7 @@ impl ProgramInstruction {
             frag: &InstructionFragment,
             symtab: &mut S,
         ) -> Result<Unsigned36Bit, S::Error> {
-            accumulator.and_then(|acc| Ok(acc | frag.value(symtab)?))
+            accumulator.and_then(|acc| Ok(acc | frag.value.evaluate(symtab)?))
         }
 
         self.parts
@@ -331,6 +349,8 @@ impl SourceFile {
             .filter_map(|(name, sym_use)| match sym_use {
                 SymbolUse::Reference(context) => Some((name, context)),
                 SymbolUse::Definition(_) => None,
+                // An origin specification is either a reference or a definition, depending on how it is used.
+                SymbolUse::Origin(name, block) => Some((name, SymbolContext::origin(block))),
             })
     }
 
@@ -341,6 +361,11 @@ impl SourceFile {
             .filter_map(|(name, sym_use)| match sym_use {
                 SymbolUse::Reference(_context) => None,
                 SymbolUse::Definition(def) => Some((name, def)),
+                // An origin specification is either a reference or a definition, depending on how it is used.
+                SymbolUse::Origin(name, block) => Some((
+                    name,
+                    SymbolDefinition::Undefined(SymbolContext::origin(block)),
+                )),
             })
     }
 }
@@ -416,7 +441,7 @@ impl ManuscriptBlock {
     ) -> impl Iterator<Item = (SymbolName, SymbolUse)> {
         let mut result: Vec<(SymbolName, SymbolUse)> = Vec::new();
         if let Some(origin) = self.origin.as_ref() {
-            result.extend(origin.symbol_uses());
+            result.extend(origin.symbol_uses(block_number));
         }
         for (offset, statement) in self.statements.iter().enumerate() {
             result.extend(statement.symbol_uses(block_number, offset));
