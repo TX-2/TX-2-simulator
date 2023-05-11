@@ -232,7 +232,9 @@ where
         // We have to parse an assignment first here, in order to
         // accept "FOO=2" as an assignment rather than the instruction
         // fragment "FOO" followed by a syntax error.
-        assignment().map(|(sym, val)| Statement::Assignment(sym, val)),
+        assignment().map(|(sym, val)| {
+            Statement::Assignment(sym, val)
+        }),
         program_instruction().map(Statement::Instruction),
     ))
 }

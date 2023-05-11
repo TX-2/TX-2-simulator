@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::ops::Shl;
 
 use base::prelude::*;
 use std::collections::BTreeMap;
@@ -167,7 +168,6 @@ impl SymbolContext {
     }
 
     fn merge(&mut self, other: SymbolContext) -> Result<SymbolContext, SymbolContextMergeError> {
-        let previous = self.clone();
         let origin = match (self.origin_of_block, other.origin_of_block) {
             (None, None) => None,
             (Some(x), None) | (None, Some(x)) => Some(x),
@@ -185,68 +185,81 @@ impl SymbolContext {
             address: self.address || other.address,
             origin_of_block: origin,
         };
-        println!("merged {previous:?} with {other:?} yielding {result:?}");
         *self = result;
         Ok(result)
     }
 }
 
-/// Assign a default value for a symbol, using the rules from
-/// section 6-2.2 of the Users Handbook ("SYMEX DEFINITON - TAGS -
-/// EQUALITIES - AUTOMATIC ASSIGNMENT").
-fn get_default_symbol_value(
-    name: &SymbolName,
-    contexts_used: SymbolContext,
+struct DefaultValueAssigner<'a> {
     program_words: Unsigned18Bit,
-    rc_block: &mut Vec<Unsigned36Bit>,
-    index_registers_used: &mut Unsigned6Bit,
-) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-    if contexts_used.origin_of_block.is_some() {
-        if contexts_used.is_origin_only() {
-            Ok(program_words.into())
+    rc_block: &'a mut Vec<Unsigned36Bit>,
+    index_registers_used: &'a mut Unsigned6Bit,
+}
+
+impl<'a> DefaultValueAssigner<'a> {
+    /// Assign a default value for a symbol, using the rules from
+    /// section 6-2.2 of the Users Handbook ("SYMEX DEFINITON - TAGS -
+    /// EQUALITIES - AUTOMATIC ASSIGNMENT").
+    pub(crate) fn get_default_symbol_value(
+        &mut self,
+        name: &SymbolName,
+        contexts_used: SymbolContext,
+    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+        event!(
+            Level::DEBUG,
+            "assigning default value for {name} used in contexts {contexts_used:?}"
+        );
+        if contexts_used.origin_of_block.is_some() {
+            if contexts_used.is_origin_only() {
+                // TODO: this really isn't correct, since assigning an
+                // origin for this block should extend
+                // self.program_words by the size of the block we just
+                // chose a location for.
+                Ok(self.program_words.into())
+            } else {
+                Err(SymbolLookupFailure::Inconsistent {
+                    symbol: name.clone(),
+                    msg: format!(
+                        "symbol '{}' was used in both origin and also other contexts",
+                        name
+                    ),
+                })
+            }
         } else {
-            Err(SymbolLookupFailure::Inconsistent {
-                symbol: name.clone(),
-                msg: format!(
-                    "symbol '{}' was used in both origin and also other contexts",
-                    name
-                ),
-            })
-        }
-    } else {
-        match (
-            contexts_used.configuration,
-            contexts_used.index,
-            contexts_used.address,
-        ) {
-            (false, false, false) => unreachable!(),
-            (true, _, _) => Ok(Unsigned36Bit::ZERO), // configuration (perhaps in combo with others)
-            (false, true, _) => {
-                // Index but not also configuration. Assign the next
-                // index register.  This count start at 0, but we
-                // Can't assign X0, so we increment first (as X0 is
-                // always 0 and we can't assign it).
-                match index_registers_used.checked_add(u6!(1)) {
-                    Some(n) => {
-                        *index_registers_used = n;
-                        return Ok(n.into());
-                    }
-                    None => {
-                        return Err(SymbolLookupFailure::RanOutOfIndexRegisters(name.clone()));
+            match (
+                contexts_used.configuration,
+                contexts_used.index,
+                contexts_used.address,
+            ) {
+                (false, false, false) => unreachable!(),
+                (true, _, _) => Ok(Unsigned36Bit::ZERO), // configuration (perhaps in combo with others)
+                (false, true, _) => {
+                    // Index but not also configuration. Assign the next
+                    // index register.  This count start at 0, but we
+                    // Can't assign X0, so we increment first (as X0 is
+                    // always 0 and we can't assign it).
+                    match self.index_registers_used.checked_add(u6!(1)) {
+                        Some(n) => {
+                            *self.index_registers_used = n;
+                            return Ok(n.into());
+                        }
+                        None => {
+                            return Err(SymbolLookupFailure::RanOutOfIndexRegisters(name.clone()));
+                        }
                     }
                 }
-            }
-            (false, false, true) => {
-                // address only, assign the next RC word.
-                Unsigned18Bit::try_from(rc_block.len())
-                    .ok()
-                    .map(|len| program_words.checked_add(len))
-                    .flatten()
-                    .map(|rc_word_addr| {
-                        rc_block.push(Unsigned36Bit::ZERO);
-                        Ok(rc_word_addr.into())
-                    })
-                    .unwrap_or(Err(SymbolLookupFailure::RcBlockTooLarge))
+                (false, false, true) => {
+                    // address only, assign the next RC word.
+                    Unsigned18Bit::try_from(self.rc_block.len())
+                        .ok()
+                        .map(|len| self.program_words.checked_add(len))
+                        .flatten()
+                        .map(|rc_word_addr| {
+                            self.rc_block.push(Unsigned36Bit::ZERO);
+                            Ok(rc_word_addr.into())
+                        })
+                        .unwrap_or(Err(SymbolLookupFailure::RcBlockTooLarge))
+                }
             }
         }
     }
@@ -279,11 +292,15 @@ pub(crate) enum SymbolDefinition {
     Tag { block: usize, offset: usize },
     Equality(Expression),
     Undefined(SymbolContext),
+    DefaultAssigned(Unsigned36Bit),
 }
 
 impl Debug for SymbolDefinition {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            SymbolDefinition::DefaultAssigned(value) => {
+                write!(f, "DefaultAssigned({value:o})")
+            }
             SymbolDefinition::Tag { block, offset } => {
                 write!(f, "Tag {{block:{block}, offset:{offset}}}")
             }
@@ -298,6 +315,9 @@ impl Debug for SymbolDefinition {
 impl Display for SymbolDefinition {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            SymbolDefinition::DefaultAssigned(value) => {
+                write!(f, "default-assigned as {value}")
+            }
             SymbolDefinition::Tag { block, offset } => {
                 write!(f, "tag at offset {offset} in block {block}")
             }
@@ -354,8 +374,6 @@ impl SymbolDefinition {
                 if current == &new {
                     Ok(()) // nothing to do.
                 } else {
-                    dbg!(&current);
-                    dbg!(&new);
                     Err(BadSymbolDefinition::Incompatible(current.clone(), new))
                 }
             }
@@ -398,81 +416,95 @@ impl SymbolLookup for FinalSymbolTable {
     }
 }
 
+fn resolve(
+    symbol_name: &SymbolName,
+    t: &mut SymbolTable,
+    assigner: &mut DefaultValueAssigner,
+    finalized_entries: &mut HashMap<SymbolName, Unsigned36Bit>,
+) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+    if let Some(value) = finalized_entries.get(symbol_name) {
+        return Ok(*value);
+    }
+    let result = match t.get(symbol_name).cloned() {
+        Some(SymbolDefinition::DefaultAssigned(value)) => Ok(value),
+        Some(SymbolDefinition::Equality(Expression::Literal(value))) => Ok(value.value()),
+        Some(SymbolDefinition::Equality(Expression::Symbol(script, fwd_symbol_name))) => {
+            // TODO: this logic should probably be delegated to
+            // Expression::value, not done here.
+            let value = resolve(&fwd_symbol_name, t, assigner, finalized_entries)?;
+            Ok(value.shl(script.shift()))
+        }
+        Some(SymbolDefinition::Tag {
+            block,
+            offset: block_offset,
+        }) => match t.block_origins.get(&block) {
+            Some(block_address) => {
+                // TODO: factor this out.
+                let (physical_block_start, _) = block_address.split();
+                match Unsigned18Bit::try_from(block_offset) {
+                    Ok(offset) => match physical_block_start.checked_add(offset) {
+                        Some(physical) => Ok(physical.into()),
+                        None => Err(SymbolLookupFailure::BlockTooLarge {
+                            block_number: block,
+                            block_origin: *block_address,
+                            offset: block_offset,
+                        }),
+                    },
+                    Err(_) => Err(SymbolLookupFailure::BlockTooLarge {
+                        block_number: block,
+                        block_origin: *block_address,
+                        offset: block_offset,
+                    }),
+                }
+            }
+            None => {
+                panic!("symbol name {symbol_name:?} refers to offset {block_offset} in block {block} but there is no block {block}.");
+            }
+        },
+        Some(SymbolDefinition::Undefined(use_contexts)) => {
+            // Not already defined, so we need to assign a default.
+            assigner.get_default_symbol_value(symbol_name, use_contexts)
+        }
+        None => {
+            unreachable!()
+        }
+    };
+    match result {
+        Ok(value) => match finalized_entries.insert(symbol_name.clone(), value) {
+            None => {
+                t.define_if_undefined(symbol_name.clone(), value);
+                Ok(value)
+            }
+            Some(_previous) => {
+                panic!("symbol {symbol_name} occurs twice in symbols_in_program_order");
+            }
+        },
+        Err(e) => Err(e),
+    }
+}
+
 pub(crate) fn finalise_symbol_table<'a, I>(
-    t: SymbolTable,
+    mut t: SymbolTable,
     symbols_in_program_order: I,
     program_words: Unsigned18Bit,
     rc_block: &mut Vec<Unsigned36Bit>,
-    index_registers_used: &mut Unsigned6Bit,
+    mut index_registers_used: Unsigned6Bit,
 ) -> Result<FinalSymbolTable, SymbolLookupFailure>
 where
     I: Iterator<Item = &'a SymbolName>,
 {
+    let mut assigner = DefaultValueAssigner {
+        program_words,
+        rc_block,
+        index_registers_used: &mut index_registers_used,
+    };
     let mut finalized_entries: HashMap<SymbolName, Unsigned36Bit> = HashMap::new();
     for symbol_name in symbols_in_program_order {
-        if finalized_entries.contains_key(symbol_name) {
-            panic!("symbol {symbol_name} occurs twice in symbols_in_program_order");
-        }
-        match t.get(symbol_name) {
-            Some(SymbolDefinition::Equality(Expression::Literal(value))) => {
-                finalized_entries.insert(symbol_name.clone(), value.value());
+        match resolve(symbol_name, &mut t, &mut assigner, &mut finalized_entries) {
+            Err(e) => {
+                return Err(e);
             }
-            Some(SymbolDefinition::Equality(expression)) => {
-                unimplemented!("need to evaluate expression {expression:?}")
-            }
-            Some(SymbolDefinition::Tag {
-                block,
-                offset: block_offset,
-            }) => match t.block_origins.get(&*block) {
-                Some(block_address) => {
-                    // TODO: factor this out.
-                    let (physical_block_start, _) = block_address.split();
-                    match Unsigned18Bit::try_from(*block_offset) {
-                        Ok(offset) => match physical_block_start.checked_add(offset) {
-                            Some(physical) => {
-                                finalized_entries.insert(symbol_name.clone(), physical.into());
-                            }
-                            None => {
-                                return Err(SymbolLookupFailure::BlockTooLarge {
-                                    block_number: *block,
-                                    block_origin: *block_address,
-                                    offset: *block_offset,
-                                });
-                            }
-                        },
-                        Err(_) => {
-                            return Err(SymbolLookupFailure::BlockTooLarge {
-                                block_number: *block,
-                                block_origin: *block_address,
-                                offset: *block_offset,
-                            });
-                        }
-                    }
-                }
-                None => {
-                    panic!("symbol name {symbol_name:?} refers to offset {block_offset} in block {block} but there is no block {block}.");
-                }
-            },
-            Some(SymbolDefinition::Undefined(use_contexts)) => {
-                // Not already defined, so we need to assign a default.
-                match get_default_symbol_value(
-                    symbol_name,
-                    *use_contexts,
-                    program_words,
-                    rc_block,
-                    index_registers_used,
-                ) {
-                    Ok(assigned) => {
-                        finalized_entries.insert(symbol_name.clone(), assigned);
-                    }
-                    Err(e) => {
-                        return Err(e);
-                    }
-                }
-            }
-            None => {
-                unreachable!()
-            }
+            Ok(_) => (),
         }
     }
     Ok(FinalSymbolTable {
@@ -561,6 +593,18 @@ impl SymbolTable {
         }
     }
 
+    pub(crate) fn define_if_undefined(&mut self, name: SymbolName, value: Unsigned36Bit) {
+        self.definitions
+            .entry(name)
+            .and_modify(|def| match def {
+                SymbolDefinition::Undefined(_) => {
+                    *def = SymbolDefinition::DefaultAssigned(value);
+                }
+                _ => (),
+            })
+            .or_insert(SymbolDefinition::DefaultAssigned(value));
+    }
+
     pub(crate) fn record_block_origin(&mut self, block_number: usize, address: Address) {
         self.block_origins.insert(block_number, address);
     }
@@ -593,6 +637,7 @@ impl SymbolTable {
         };
         match self.definitions.get(name) {
             Some(def) => match def {
+                SymbolDefinition::DefaultAssigned(value) => Ok(*value),
                 SymbolDefinition::Tag { block, offset } => match self.block_origins.get(block) {
                     Some(address) => Ok(offset_from_origin(address, *offset)
                         .expect("program is too long")

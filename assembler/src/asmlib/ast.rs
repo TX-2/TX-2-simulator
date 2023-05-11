@@ -418,18 +418,7 @@ impl ManuscriptBlock {
         if let Some(origin) = self.origin.as_ref() {
             result.extend(origin.symbol_uses());
         }
-        for (offset, statement) in self
-            .statements
-            .iter()
-            .filter(|stmt| {
-                // Filter out the statements that don't occupy memory
-                // in the assembled output (e.g. assignments) so that
-                // the enumerate() below gives us the memory offset
-                // within the block.
-                stmt.memory_size() > 0
-            })
-            .enumerate()
-        {
+        for (offset, statement) in self.statements.iter().enumerate() {
             result.extend(statement.symbol_uses(block_number, offset));
         }
         result.into_iter()

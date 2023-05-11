@@ -269,11 +269,9 @@ fn assemble_pass2(
     let _enter = span.enter();
 
     for (symbol, context) in source_file.global_symbol_references() {
-        eprintln!("recording use of {} with {:?}", symbol, context);
         symtab.record_usage_context(symbol.clone(), context)
     }
     for (symbol, definition) in source_file.global_symbol_definitions() {
-        eprintln!("recording definition of {} as {:?}", symbol, definition);
         match symtab.define(symbol.clone(), definition.clone()) {
             Ok(_) => (),
             Err(e) => {
@@ -304,7 +302,6 @@ fn assemble_pass2(
     let final_symbols = match next_free_address {
         Some(next_free) => {
             let mut rc_block: Vec<Unsigned36Bit> = Vec::new();
-            let mut index_registers_used: Unsigned6Bit = Unsigned6Bit::ZERO;
             let symbol_refs_in_program_order: Vec<SymbolName> = unique_symbols_in_order(
                 source_file
                     .global_symbol_references()
@@ -315,7 +312,7 @@ fn assemble_pass2(
                 symbol_refs_in_program_order.iter(),
                 next_free.into(),
                 &mut rc_block,
-                &mut index_registers_used,
+                Unsigned6Bit::ZERO,
             ) {
                 Ok(fs) => fs,
                 Err(e) => {
