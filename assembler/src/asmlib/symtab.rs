@@ -260,13 +260,13 @@ pub(crate) enum SymbolDefinition {
 impl Debug for SymbolDefinition {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            SymbolDefinition::DefaultAssigned(value) => {
-                write!(f, "DefaultAssigned({value:o})")
-            }
             SymbolDefinition::Tag { block, offset } => {
                 write!(f, "Tag {{block:{block}, offset:{offset}}}")
             }
             SymbolDefinition::Equality(expr) => f.debug_tuple("Equality").field(expr).finish(),
+            SymbolDefinition::DefaultAssigned(value) => {
+                write!(f, "DefaultAssigned({value:o})")
+            }
             SymbolDefinition::Undefined(context) => {
                 f.debug_tuple("Undefined").field(context).finish()
             }

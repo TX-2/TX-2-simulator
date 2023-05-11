@@ -1,7 +1,7 @@
-use std::fmt::{self, Display, Formatter};
+use std::fmt::{self, Debug, Display, Formatter};
 use std::hash::{Hash, Hasher};
 
-#[derive(Debug, Clone, Eq, PartialOrd, Ord)]
+#[derive(Clone, Eq, PartialOrd, Ord)]
 pub struct SymbolName {
     pub(crate) canonical: String,
     // pub(crate) as_used: String,
@@ -15,7 +15,13 @@ impl From<String> for SymbolName {
 
 impl Display for SymbolName {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        self.canonical.fmt(f)
+        fmt::Display::fmt(&self.canonical, f)
+    }
+}
+
+impl Debug for SymbolName {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "SymbolName {{ canonical: \"{}\" }}", self.canonical)
     }
 }
 
