@@ -35,7 +35,7 @@ where
         .then(terminal::digit1(script_required))
         .then(maybe_dot)
         .try_map_with_state(move |((maybe_sign, digits), hasdot), span, state| {
-            match helpers::make_num(maybe_sign, &digits, hasdot, &state) {
+            match helpers::make_num(maybe_sign, &digits, hasdot, state) {
                 Ok(value) => Ok(LiteralValue::from((script_required, value))),
                 Err(e) => Err(Rich::custom(span, e.to_string())),
             }
@@ -215,9 +215,7 @@ where
         // We have to parse an assignment first here, in order to
         // accept "FOO=2" as an assignment rather than the instruction
         // fragment "FOO" followed by a syntax error.
-        assignment().map(|(sym, val)| {
-            Statement::Assignment(sym, val)
-        }),
+        assignment().map(|(sym, val)| Statement::Assignment(sym, val)),
         program_instruction().map(Statement::Instruction),
     ))
 }
@@ -297,9 +295,7 @@ where
             .map(build_code_line)
             .labelled("statement with origin");
 
-        let origin_only = origin()
-            .map(|origin| ManuscriptLine::JustOrigin(origin))
-            .labelled("origin");
+        let origin_only = origin().map(ManuscriptLine::JustOrigin).labelled("origin");
 
         choice((
             // Ignore whitespace after the metacommand but not before it.

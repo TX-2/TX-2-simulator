@@ -256,7 +256,7 @@ fn calculate_block_origins(
 
     for (block_number, block) in source_file.blocks.iter().enumerate() {
         let (maybe_name, base): (Option<SymbolName>, Address) = match block.origin.as_ref() {
-            Some(origin) => origin_as_address(&origin, block_number, symtab, next_address),
+            Some(origin) => origin_as_address(origin, block_number, symtab, next_address),
             None => (None, next_address.unwrap_or_else(Origin::default_address)),
         };
         result.push((maybe_name, base));
@@ -270,7 +270,7 @@ fn calculate_block_origins(
     Ok((result, next_address))
 }
 
-fn unique_symbols_in_order<'a, I>(items: I) -> Vec<SymbolName>
+fn unique_symbols_in_order<I>(items: I) -> Vec<SymbolName>
 where
     I: IntoIterator<Item = SymbolName>,
 {

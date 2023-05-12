@@ -316,12 +316,9 @@ impl ProgramInstruction {
         offset: usize,
     ) -> impl Iterator<Item = (SymbolName, SymbolUse)> {
         let mut result = Vec::with_capacity(self.parts.len() + 1);
-        match self.tag.as_ref() {
-            Some(name) => {
-                let tagdef = SymbolDefinition::Tag { block, offset };
-                result.push((name.clone(), SymbolUse::Definition(tagdef)));
-            }
-            None => (),
+        if let Some(name) = self.tag.as_ref() {
+            let tagdef = SymbolDefinition::Tag { block, offset };
+            result.push((name.clone(), SymbolUse::Definition(tagdef)));
         }
         result.extend(self.parts.iter().flat_map(|frag| frag.symbol_uses()));
         result.into_iter()
@@ -409,22 +406,19 @@ impl Statement {
         block: usize,
         offset: usize,
     ) -> impl Iterator<Item = (SymbolName, SymbolUse)> {
-        let result: Vec<(SymbolName, SymbolUse)>;
         match self {
             Statement::Assignment(symbol, expression) => {
-                result = vec![(
+                vec![(
                     symbol.clone(),
                     SymbolUse::Definition(
                         // TODO: the expression.clone() on the next line is expensive.
                         SymbolDefinition::Equality(expression.clone()),
                     ),
-                )];
+                )]
             }
-            Statement::Instruction(inst) => {
-                result = inst.symbol_uses(block, offset).collect();
-            }
+            Statement::Instruction(inst) => inst.symbol_uses(block, offset).collect(),
         }
-        result.into_iter()
+        .into_iter()
     }
 }
 

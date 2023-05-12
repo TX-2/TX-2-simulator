@@ -203,19 +203,16 @@ impl<'a> DefaultValueAssigner<'a> {
                     match self.index_registers_used.checked_add(u6!(1)) {
                         Some(n) => {
                             *self.index_registers_used = n;
-                            return Ok(n.into());
+                            Ok(n.into())
                         }
-                        None => {
-                            return Err(SymbolLookupFailure::RanOutOfIndexRegisters(name.clone()));
-                        }
+                        None => Err(SymbolLookupFailure::RanOutOfIndexRegisters(name.clone())),
                     }
                 }
                 (false, false, true) => {
                     // address only, assign the next RC word.
                     Unsigned18Bit::try_from(self.rc_block.len())
                         .ok()
-                        .map(|len| self.program_words.checked_add(len))
-                        .flatten()
+                        .and_then(|len| self.program_words.checked_add(len))
                         .map(|rc_word_addr| {
                             self.rc_block.push(Unsigned36Bit::ZERO);
                             Ok(rc_word_addr.into())
@@ -473,13 +470,8 @@ where
     };
     let mut finalized_entries: HashMap<SymbolName, Unsigned36Bit> = HashMap::new();
     for symbol_name in symbols_in_program_order {
-        expected_but_misssing.remove(&symbol_name);
-        match resolve(symbol_name, &mut t, &mut assigner, &mut finalized_entries) {
-            Err(e) => {
-                return Err(e);
-            }
-            Ok(_) => (),
-        }
+        expected_but_misssing.remove(symbol_name);
+        resolve(symbol_name, &mut t, &mut assigner, &mut finalized_entries)?;
     }
     dbg!(&finalized_entries);
     dbg!(&t.block_origins);
@@ -581,11 +573,10 @@ impl SymbolTable {
     pub(crate) fn define_if_undefined(&mut self, name: SymbolName, value: Unsigned36Bit) {
         self.definitions
             .entry(name)
-            .and_modify(|def| match def {
-                SymbolDefinition::Undefined(_) => {
+            .and_modify(|def| {
+                if let SymbolDefinition::Undefined(_) = def {
                     *def = SymbolDefinition::DefaultAssigned(value);
                 }
-                _ => (),
             })
             .or_insert(SymbolDefinition::DefaultAssigned(value));
     }
@@ -669,13 +660,13 @@ impl SymbolTable {
                 },
                 SymbolDefinition::Undefined(context_union) => {
                     if context_union.includes(&op.context) {
-                        return Err(SymbolLookupFailure::Undefined(name.clone()));
+                        Err(SymbolLookupFailure::Undefined(name.clone()))
                     } else {
-                        should_have_seen(&op)
+                        should_have_seen(op)
                     }
                 }
             },
-            None => should_have_seen(&op),
+            None => should_have_seen(op),
         }
     }
 
