@@ -35,7 +35,7 @@ where
         .then(terminal::digit1(script_required))
         .then(maybe_dot)
         .try_map_with_state(move |((maybe_sign, digits), hasdot), span, state| {
-            match helpers::make_num(maybe_sign, &digits, hasdot, state) {
+            match helpers::make_num(maybe_sign, &digits, hasdot, &state) {
                 Ok(value) => Ok(LiteralValue::from((script_required, value))),
                 Err(e) => Err(Rich::custom(span, e.to_string())),
             }

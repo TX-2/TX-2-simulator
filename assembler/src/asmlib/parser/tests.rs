@@ -32,7 +32,7 @@ where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
     P: Parser<'a, I, O, Extra<'a, char>>,
 {
-    let mut state = NumeralMode::default();
+    let mut state = Default::default();
     let (output, errors) = parser
         .parse_with_state(input_text, &mut state)
         .into_output_errors();
@@ -55,7 +55,7 @@ where
     O: Debug,
 {
     dbg!(&input);
-    let mut state = NumeralMode::default();
+    let mut state = Default::default();
     state_setup(&mut state);
     let (output, errors) = parser
         .parse_with_state(input.clone(), &mut state)

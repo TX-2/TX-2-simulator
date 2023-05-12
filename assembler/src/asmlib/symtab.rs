@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use base::prelude::*;
 use std::collections::BTreeMap;
 use std::collections::HashSet;
-use std::fmt::{self, Display, Formatter};
+use std::fmt::{self, Debug, Display, Formatter};
 
 use tracing::{event, Level};
 
@@ -34,6 +34,22 @@ pub enum SymbolLookupFailure {
         block_origin: Address,
         offset: usize,
     },
+}
+
+impl SymbolLookupFailure {
+    pub(crate) fn symbol_name(&self) -> &SymbolName {
+        match self {
+            SymbolLookupFailure::Undefined(n) => n,
+            SymbolLookupFailure::Inconsistent { symbol, msg: _ } => symbol,
+            SymbolLookupFailure::Loop {
+                target,
+                deps_in_order: _,
+            } => target,
+            SymbolLookupFailure::RanOutOfIndexRegisters(n) => n,
+            SymbolLookupFailure::RcBlockTooLarge => todo!(),
+            SymbolLookupFailure::BlockTooLarge { .. } => todo!(),
+        }
+    }
 }
 
 impl std::error::Error for SymbolLookupFailure {}
@@ -103,6 +119,17 @@ pub(crate) trait SymbolLookup {
 //    }
 //}
 
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub(crate) enum SymbolUse {
+    Reference(SymbolContext),
+    Definition(SymbolDefinition),
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+enum SymbolContextMergeError {
+    ConflictingOrigin(usize, usize),
+}
+
 #[derive(Debug, Default, PartialEq, Eq, Copy, Clone)]
 pub(crate) struct SymbolContext {
     // The "All members are false" context is the one in which we list
@@ -110,16 +137,25 @@ pub(crate) struct SymbolContext {
     configuration: bool,
     index: bool,
     address: bool,
-    origin: bool,
+    origin_of_block: Option<usize>,
 }
 
 impl SymbolContext {
     fn bits(&self) -> [bool; 4] {
-        [self.configuration, self.index, self.address, self.origin]
+        [
+            self.configuration,
+            self.index,
+            self.address,
+            self.origin_of_block.is_some(),
+        ]
     }
 
-    fn is_origin_only(&self) -> bool {
-        self.origin && !(self.configuration || self.index || self.address)
+    pub(crate) fn is_origin(&self) -> bool {
+        self.origin_of_block.is_some()
+    }
+
+    pub(crate) fn is_origin_only(&self) -> bool {
+        self.is_origin() && !(self.configuration || self.index || self.address)
     }
 
     fn includes(&self, other: &SymbolContext) -> bool {
@@ -130,13 +166,28 @@ impl SymbolContext {
             .all(|(otherbit, selfbit)| selfbit || !otherbit)
     }
 
-    fn merge(&mut self, other: SymbolContext) -> SymbolContext {
-        SymbolContext {
+    fn merge(&mut self, other: SymbolContext) -> Result<SymbolContext, SymbolContextMergeError> {
+        let previous = self.clone();
+        let origin = match (self.origin_of_block, other.origin_of_block) {
+            (None, None) => None,
+            (Some(x), None) | (None, Some(x)) => Some(x),
+            (Some(x), Some(y)) => {
+                if x == y {
+                    Some(x)
+                } else {
+                    return Err(SymbolContextMergeError::ConflictingOrigin(x, y));
+                }
+            }
+        };
+        let result = SymbolContext {
             configuration: self.configuration || other.configuration,
             index: self.index || other.index,
             address: self.address || other.address,
-            origin: self.origin || other.origin,
-        }
+            origin_of_block: origin,
+        };
+        println!("merged {previous:?} with {other:?} yielding {result:?}");
+        *self = result;
+        Ok(result)
     }
 }
 
@@ -150,7 +201,7 @@ fn get_default_symbol_value(
     rc_block: &mut Vec<Unsigned36Bit>,
     index_registers_used: &mut Unsigned6Bit,
 ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-    if contexts_used.origin {
+    if contexts_used.origin_of_block.is_some() {
         if contexts_used.is_origin_only() {
             Ok(program_words.into())
         } else {
@@ -212,7 +263,7 @@ impl From<&Script> for SymbolContext {
             configuration,
             index,
             address,
-            origin: false,
+            origin_of_block: None,
         }
     }
 }
@@ -223,19 +274,91 @@ impl From<Script> for SymbolContext {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(PartialEq, Eq, Clone)]
 pub(crate) enum SymbolDefinition {
     Tag { block: usize, offset: usize },
-    Origin(Address),
     Equality(Expression),
-    DefaultAssigned(Unsigned36Bit),
     Undefined(SymbolContext),
 }
+
+impl Debug for SymbolDefinition {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            SymbolDefinition::Tag { block, offset } => {
+                write!(f, "Tag {{block:{block}, offset:{offset}}}")
+            }
+            SymbolDefinition::Equality(expr) => f.debug_tuple("Equality").field(expr).finish(),
+            SymbolDefinition::Undefined(context) => {
+                f.debug_tuple("Undefined").field(context).finish()
+            }
+        }
+    }
+}
+
+impl Display for SymbolDefinition {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            SymbolDefinition::Tag { block, offset } => {
+                write!(f, "tag at offset {offset} in block {block}")
+            }
+            SymbolDefinition::Equality(expression) => {
+                write!(f, "assignment with value {expression}")
+            }
+            SymbolDefinition::Undefined(_context) => f.write_str("undefined"),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub(crate) enum BadSymbolDefinition {
+    Incompatible(SymbolDefinition, SymbolDefinition),
+}
+
+impl Display for BadSymbolDefinition {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            BadSymbolDefinition::Incompatible(previous, new) => {
+                write!(f, "it is not allowed to override symbol definition {previous} with a new definition {new}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for BadSymbolDefinition {}
 
 impl SymbolDefinition {
     fn merge_context(&mut self, context: SymbolContext) {
         if let SymbolDefinition::Undefined(current) = self {
-            current.merge(context);
+            match current.merge(context) {
+                Ok(_) => (),
+                Err(e) => {
+                    panic!("cannot have an origin block number conflict if one of the merge sides has no block number: {e:?}")
+                }
+            }
+        }
+    }
+
+    fn override_with(&mut self, update: SymbolDefinition) -> Result<(), BadSymbolDefinition> {
+        match (self, update) {
+            (current @ SymbolDefinition::Equality(_), new @ SymbolDefinition::Equality(_)) => {
+                // This is always OK.
+                *current = new;
+                Ok(())
+            }
+            (current @ SymbolDefinition::Undefined(_), new) => {
+                // This is always OK.
+                *current = new;
+                Ok(())
+            }
+            (current, new) => {
+                if current == &new {
+                    Ok(()) // nothing to do.
+                } else {
+                    dbg!(&current);
+                    dbg!(&new);
+                    Err(BadSymbolDefinition::Incompatible(current.clone(), new))
+                }
+            }
         }
     }
 }
@@ -257,6 +380,7 @@ impl FinalSymbolTable {
         result
     }
 
+    #[cfg(test)]
     pub(crate) fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
@@ -290,13 +414,6 @@ where
             panic!("symbol {symbol_name} occurs twice in symbols_in_program_order");
         }
         match t.get(symbol_name) {
-            Some(SymbolDefinition::DefaultAssigned(value)) => {
-                finalized_entries.insert(symbol_name.clone(), value.clone());
-            }
-            Some(SymbolDefinition::Origin(address)) => {
-                let (physical, _) = address.split();
-                finalized_entries.insert(symbol_name.clone(), physical.into());
-            }
             Some(SymbolDefinition::Equality(Expression::Literal(value))) => {
                 finalized_entries.insert(symbol_name.clone(), value.value());
             }
@@ -402,9 +519,13 @@ impl Display for SymbolLookupFailure {
                 write!(f, "there are not enough index registers to assign one as the default for the symbol {name}")
             }
             SymbolLookupFailure::RcBlockTooLarge => f.write_str("RC block is too large"),
-            SymbolLookupFailure::BlockTooLarge { block_number, block_origin, offset } => {
-                f.write_str("program block {block_number} is too large; offset {offset} from block start {block_origin} does not fit in physical memory")
-            },
+            SymbolLookupFailure::BlockTooLarge {
+                block_number,
+                block_origin,
+                offset,
+            } => {
+                write!(f, "program block {block_number} is too large; offset {offset} from block start {block_origin} does not fit in physical memory")
+            }
             SymbolLookupFailure::Inconsistent { symbol: _, msg } => f.write_str(msg.as_str()),
             SymbolLookupFailure::Loop {
                 target,
@@ -423,21 +544,21 @@ impl Display for SymbolLookupFailure {
 }
 
 impl SymbolTable {
-    #[cfg(test)]
-    pub(crate) fn is_empty(&self) -> bool {
-        self.definitions.is_empty()
-    }
-
-    fn get_mut(&mut self, name: &SymbolName) -> Option<&mut SymbolDefinition> {
-        self.definitions.get_mut(name)
-    }
-
-    fn get(&self, name: &SymbolName) -> Option<&SymbolDefinition> {
+    pub(crate) fn get(&self, name: &SymbolName) -> Option<&SymbolDefinition> {
         self.definitions.get(name)
     }
 
-    pub(crate) fn define(&mut self, name: SymbolName, definition: SymbolDefinition) {
-        self.definitions.insert(name, definition);
+    pub(crate) fn define(
+        &mut self,
+        name: SymbolName,
+        new_definition: SymbolDefinition,
+    ) -> Result<(), BadSymbolDefinition> {
+        if let Some(existing) = self.definitions.get_mut(&name) {
+            existing.override_with(new_definition)
+        } else {
+            self.definitions.insert(name, new_definition);
+            Ok(())
+        }
     }
 
     pub(crate) fn record_block_origin(&mut self, block_number: usize, address: Address) {
@@ -467,12 +588,11 @@ impl SymbolTable {
                 deps_in_order: op.deps_in_order.to_vec(),
             });
         }
-        let should_have_seen = |name: &SymbolName| {
-            panic!("final symbol lookup of symbol '{name}' happened in an evaluation context which was not previously returned by SourceFile::global_symbol_references()");
+        let should_have_seen = |op: &FinalLookupOperation| {
+            panic!("final symbol lookup of symbol '{}' happened in an evaluation context which was not previously returned by SourceFile::global_symbol_references(): {:?}", op.target, op);
         };
         match self.definitions.get(name) {
             Some(def) => match def {
-                SymbolDefinition::DefaultAssigned(value) => Ok(*value),
                 SymbolDefinition::Tag { block, offset } => match self.block_origins.get(block) {
                     Some(address) => Ok(offset_from_origin(address, *offset)
                         .expect("program is too long")
@@ -481,13 +601,6 @@ impl SymbolTable {
                         panic!("definition of tag {name} references block {block} but there is no such block");
                     }
                 },
-                SymbolDefinition::Origin(address) => {
-                    let (physical, mark) = address.split();
-                    if mark {
-                        panic!("origin addresses should not be indirect, this should have been rejected");
-                    }
-                    Ok(physical.into())
-                }
                 SymbolDefinition::Equality(expression) => match expression {
                     Expression::Literal(literal) => Ok(literal.value()),
                     Expression::Symbol(elevation, symbol_name) => {
@@ -528,11 +641,11 @@ impl SymbolTable {
                     if context_union.includes(&op.context) {
                         panic!("SymbolTable::final_lookup_helper: final value for symbol {name} should have been assigned");
                     } else {
-                        should_have_seen(&op.target)
+                        should_have_seen(&op)
                     }
                 }
             },
-            None => should_have_seen(&op.target),
+            None => should_have_seen(&op),
         }
     }
 
@@ -543,18 +656,6 @@ impl SymbolTable {
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         let mut op = FinalLookupOperation::new(name.clone(), *context);
         self.final_lookup_helper(name, &mut op)
-    }
-
-    pub(crate) fn list(&self) -> Vec<(SymbolName, Unsigned36Bit)> {
-        self.definitions
-            .iter()
-            .filter_map(|(name, def)| match def {
-                SymbolDefinition::Equality(Expression::Literal(literal)) => {
-                    Some((name.clone(), literal.value()))
-                }
-                _ => None, // only equalities are listed.
-            })
-            .collect()
     }
 }
 

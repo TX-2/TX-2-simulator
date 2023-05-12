@@ -8,7 +8,7 @@ use base::prelude::*;
 
 use super::state::NumeralMode;
 use super::symbol::SymbolName;
-use super::symtab::{SymbolContext, SymbolDefinition, SymbolLookup};
+use super::symtab::{SymbolContext, SymbolDefinition, SymbolLookup, SymbolUse};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct Elevated<T> {
@@ -126,25 +126,15 @@ impl Expression {
         }
     }
 
-    fn symbols_in_program_order(&self) -> impl Iterator<Item = &SymbolName> {
-        let mut result = Vec::with_capacity(1);
-        match self {
-            Expression::Literal(_) => (),
-            Expression::Symbol(_script, symbol_name) => {
-                result.push(symbol_name);
-            }
-        }
-        result.into_iter()
-    }
-
-    pub(crate) fn global_symbol_references(
-        &self,
-    ) -> impl Iterator<Item = (SymbolName, SymbolContext)> {
+    pub(crate) fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, SymbolUse)> {
         let mut result = Vec::with_capacity(1);
         match self {
             Expression::Literal(_value) => (),
             Expression::Symbol(script, symbol_name) => {
-                result.push((symbol_name.clone(), SymbolContext::from(script)))
+                result.push((
+                    symbol_name.clone(),
+                    SymbolUse::Reference(SymbolContext::from(script)),
+                ));
             }
         }
         result.into_iter()
@@ -200,14 +190,8 @@ impl InstructionFragment {
         self.value.value(symtab)
     }
 
-    fn symbols_in_program_order(&self) -> impl Iterator<Item = &SymbolName> {
-        self.value.symbols_in_program_order()
-    }
-
-    pub(crate) fn global_symbol_references(
-        &self,
-    ) -> impl Iterator<Item = (SymbolName, SymbolContext)> {
-        self.value.global_symbol_references()
+    pub(crate) fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, SymbolUse)> {
+        self.value.symbol_uses()
     }
 }
 
@@ -260,7 +244,13 @@ impl Display for Origin {
 
 impl Octal for Origin {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{:o}", self.0)
+        fmt::Octal::fmt(&self.0, f)
+    }
+}
+
+impl Origin {
+    pub(crate) fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, SymbolUse)> {
+        Vec::new().into_iter()
     }
 }
 
@@ -302,26 +292,21 @@ impl ProgramInstruction {
             })
     }
 
-    pub(crate) fn global_symbol_definitions(
+    pub(crate) fn symbol_uses(
         &self,
         block: usize,
         offset: usize,
-    ) -> impl Iterator<Item = (SymbolName, SymbolDefinition)> {
+    ) -> impl Iterator<Item = (SymbolName, SymbolUse)> {
+        let mut result = Vec::with_capacity(self.parts.len() + 1);
         match self.tag.as_ref() {
             Some(name) => {
-                let def = SymbolDefinition::Tag { block, offset };
-                Some((name.clone(), def)).into_iter()
+                let tagdef = SymbolDefinition::Tag { block, offset };
+                result.push((name.clone(), SymbolUse::Definition(tagdef)));
             }
-            None => None.into_iter(),
+            None => (),
         }
-    }
-
-    pub(crate) fn global_symbol_references(
-        &self,
-    ) -> impl Iterator<Item = (SymbolName, SymbolContext)> + '_ {
-        self.parts
-            .iter()
-            .flat_map(|frag| frag.global_symbol_references())
+        result.extend(self.parts.iter().flat_map(|frag| frag.symbol_uses()));
+        result.into_iter()
     }
 }
 
@@ -332,27 +317,31 @@ pub(crate) struct SourceFile {
 }
 
 impl SourceFile {
-    pub(crate) fn global_symbol_definitions(
-        &self,
-    ) -> impl Iterator<Item = (SymbolName, SymbolDefinition)> {
-        let result: Vec<(SymbolName, SymbolDefinition)> = self
-            .blocks
+    pub(crate) fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, SymbolUse)> + '_ {
+        self.blocks
             .iter()
             .enumerate()
-            .flat_map(|(block_number, block)| block.global_symbol_definitions(block_number))
-            .collect();
-        result.into_iter()
+            .flat_map(|(block_number, block)| block.symbol_uses(block_number))
     }
 
     pub(crate) fn global_symbol_references(
         &self,
-    ) -> impl Iterator<Item = (SymbolName, SymbolContext)> {
-        let result: Vec<_> = self
-            .blocks
-            .iter()
-            .flat_map(|block| block.global_symbol_references())
-            .collect();
-        result.into_iter()
+    ) -> impl Iterator<Item = (SymbolName, SymbolContext)> + '_ {
+        self.symbol_uses()
+            .filter_map(|(name, sym_use)| match sym_use {
+                SymbolUse::Reference(context) => Some((name, context)),
+                SymbolUse::Definition(_) => None,
+            })
+    }
+
+    pub(crate) fn global_symbol_definitions(
+        &self,
+    ) -> impl Iterator<Item = (SymbolName, SymbolDefinition)> + '_ {
+        self.symbol_uses()
+            .filter_map(|(name, sym_use)| match sym_use {
+                SymbolUse::Reference(_context) => None,
+                SymbolUse::Definition(def) => Some((name, def)),
+            })
     }
 }
 
@@ -378,7 +367,7 @@ pub(crate) enum ManuscriptLine {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Statement {
-    Assignment(SymbolName, Expression), // User Guide calles these "equalities".
+    Assignment(SymbolName, Expression), // User Guide calls these "equalities".
     Instruction(ProgramInstruction),
 }
 
@@ -390,37 +379,24 @@ impl Statement {
         }
     }
 
-    pub(crate) fn global_symbol_definitions(
+    pub(crate) fn symbol_uses(
         &self,
         block: usize,
         offset: usize,
-    ) -> impl Iterator<Item = (SymbolName, SymbolDefinition)> {
-        let mut result: Vec<(SymbolName, SymbolDefinition)> = Vec::new();
+    ) -> impl Iterator<Item = (SymbolName, SymbolUse)> {
+        let result: Vec<(SymbolName, SymbolUse)>;
         match self {
             Statement::Assignment(symbol, expression) => {
-                result.push((
+                result = vec![(
                     symbol.clone(),
-                    // TODO: the expression.clone() on the next line is expensive.
-                    SymbolDefinition::Equality(expression.clone()),
-                ));
+                    SymbolUse::Definition(
+                        // TODO: the expression.clone() on the next line is expensive.
+                        SymbolDefinition::Equality(expression.clone()),
+                    ),
+                )];
             }
             Statement::Instruction(inst) => {
-                result.extend(inst.global_symbol_definitions(block, offset))
-            }
-        }
-        result.into_iter()
-    }
-
-    pub(crate) fn global_symbol_references(
-        &self,
-    ) -> impl Iterator<Item = (SymbolName, SymbolContext)> {
-        let mut result = Vec::new();
-        match self {
-            Statement::Assignment(_name, expression) => {
-                result.extend(expression.global_symbol_references());
-            }
-            Statement::Instruction(inst) => {
-                result.extend(inst.global_symbol_references());
+                result = inst.symbol_uses(block, offset).collect();
             }
         }
         result.into_iter()
@@ -434,50 +410,29 @@ pub(crate) struct ManuscriptBlock {
 }
 
 impl ManuscriptBlock {
-    pub(crate) fn global_symbol_definitions(
+    pub(crate) fn symbol_uses(
         &self,
         block_number: usize,
-    ) -> impl Iterator<Item = (SymbolName, SymbolDefinition)> {
-        let mut offset = 0;
-        let mut result: Vec<(SymbolName, SymbolDefinition)> = Vec::new();
-        if let Some(_origin) = self.origin.as_ref() {
-            // When we support symbolic origins, push the definition here.
+    ) -> impl Iterator<Item = (SymbolName, SymbolUse)> {
+        let mut result: Vec<(SymbolName, SymbolUse)> = Vec::new();
+        if let Some(origin) = self.origin.as_ref() {
+            result.extend(origin.symbol_uses());
         }
-        for statement in self.statements.iter() {
-            match statement {
-                Statement::Assignment(symbol_name, expression) => {
-                    result.push((
-                        symbol_name.clone(),
-                        SymbolDefinition::Equality(expression.clone()),
-                    ));
-                }
-                Statement::Instruction(ProgramInstruction {
-                    tag,
-                    holdbit: _,
-                    parts: _,
-                }) => {
-                    if let Some(name) = tag {
-                        result.push((
-                            name.clone(),
-                            SymbolDefinition::Tag {
-                                block: block_number,
-                                offset,
-                            },
-                        ));
-                    }
-                    offset += 1;
-                }
-            }
+        for (offset, statement) in self
+            .statements
+            .iter()
+            .filter(|stmt| {
+                // Filter out the statements that don't occupy memory
+                // in the assembled output (e.g. assignments) so that
+                // the enumerate() below gives us the memory offset
+                // within the block.
+                stmt.memory_size() > 0
+            })
+            .enumerate()
+        {
+            result.extend(statement.symbol_uses(block_number, offset));
         }
         result.into_iter()
-    }
-
-    pub(crate) fn global_symbol_references(
-        &self,
-    ) -> impl Iterator<Item = (SymbolName, SymbolContext)> + '_ {
-        self.statements
-            .iter()
-            .flat_map(|stmt| stmt.global_symbol_references())
     }
 
     pub(crate) fn instruction_count(&self) -> usize {
@@ -513,7 +468,7 @@ impl Directive {
     }
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Block {
     pub(crate) origin: Origin,
     pub(crate) items: Vec<ProgramInstruction>,
@@ -526,16 +481,5 @@ impl Block {
 
     pub(crate) fn instruction_count(&self) -> usize {
         self.items.len()
-    }
-
-    pub(crate) fn symbols_in_program_order(&self) -> impl Iterator<Item = &SymbolName> {
-        self.items.iter().flat_map(|instruction| {
-            instruction.tag.iter().chain(
-                instruction
-                    .parts
-                    .iter()
-                    .flat_map(|part| part.symbols_in_program_order()),
-            )
-        })
     }
 }

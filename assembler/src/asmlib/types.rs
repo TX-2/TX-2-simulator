@@ -4,6 +4,7 @@ use std::fmt::{self, Display, Formatter};
 use std::io::Error as IoError;
 use std::path::PathBuf;
 
+use super::symbol::SymbolName;
 use super::symtab::SymbolLookupFailure;
 use base::prelude::{Address, Unsigned18Bit};
 
@@ -32,12 +33,13 @@ pub enum AssemblerFailure {
         msg: String,
     },
     ProgramTooBig(Address, usize),
-    SymbolError(SymbolLookupFailure),
+    SymbolError(SymbolName, SymbolLookupFailure),
 }
 
 impl From<SymbolLookupFailure> for AssemblerFailure {
     fn from(f: SymbolLookupFailure) -> AssemblerFailure {
-        AssemblerFailure::SymbolError(f)
+        let symbol = f.symbol_name();
+        AssemblerFailure::SymbolError(symbol.clone(), f)
     }
 }
 
@@ -61,8 +63,8 @@ fn write_os_string(f: &mut Formatter<'_>, s: &OsStr) -> Result<(), fmt::Error> {
 impl Display for AssemblerFailure {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         match self {
-            AssemblerFailure::SymbolError(e) => {
-                write!(f, "symbol lookup failure: {e}")
+            AssemblerFailure::SymbolError(symbol, e) => {
+                write!(f, "symbol lookup failure for {symbol}: {e}")
             }
             AssemblerFailure::BadTapeBlock(explanation) => {
                 write!(f, "bad tape block: {}", explanation)

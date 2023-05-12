@@ -149,7 +149,7 @@ fn assemble_pass1<'a>(
 /// assemble_pass1, assemble_pass2.
 #[cfg(test)]
 pub(crate) fn assemble_nonempty_valid_input<'a>(input: &'a str) -> (Directive, FinalSymbolTable) {
-    let mut symtab = SymbolTable::default();
+    let symtab = SymbolTable::default();
     let mut errors: Vec<Rich<'_, char>> = Vec::new();
     let result: Result<(Option<SourceFile>, OutputOptions), AssemblerFailure> =
         assemble_pass1(input, &mut errors);
@@ -220,7 +220,7 @@ impl Binary {
 fn calculate_block_origins(
     source_file: &SourceFile,
     _symtab: &SymbolTable,
-) -> Result<Vec<(Option<SymbolName>, Address)>, AddressOverflow> {
+) -> Result<Vec<Address>, AddressOverflow> {
     let mut result = Vec::new();
     let mut next_address: Option<Address> = None;
     for block in source_file.blocks.iter() {
@@ -233,7 +233,7 @@ fn calculate_block_origins(
                 None => Origin::default().into(),
             },
         };
-        result.push((None, base));
+        result.push(base);
         let next = offset_from_origin(&base, block.instruction_count())?;
         next_address = Some(if let Some(n) = next_address {
             max(n, next)
@@ -269,24 +269,30 @@ fn assemble_pass2(
     let _enter = span.enter();
 
     for (symbol, context) in source_file.global_symbol_references() {
+        eprintln!("recording use of {} with {:?}", symbol, context);
         symtab.record_usage_context(symbol.clone(), context)
     }
     for (symbol, definition) in source_file.global_symbol_definitions() {
-        symtab.define(symbol.clone(), definition.clone())
-    }
-
-    let mut next_free_address: Option<Address> = None;
-    let origins: Vec<(Option<SymbolName>, Address)> =
-        match calculate_block_origins(source_file, &symtab) {
-            Ok(origins) => origins,
+        eprintln!("recording definition of {} as {:?}", symbol, definition);
+        match symtab.define(symbol.clone(), definition.clone()) {
+            Ok(_) => (),
             Err(e) => {
-                return Err(e.into());
+                let msg = format!("bad symbol definition: {e}");
+                return Err(AssemblerFailure::SymbolError(
+                    symbol.clone(),
+                    SymbolLookupFailure::Inconsistent { symbol, msg },
+                ));
             }
-        };
-    for (block_number, (maybe_sym, address)) in origins.iter().enumerate() {
-        if let Some(sym) = maybe_sym {
-            symtab.define(sym.clone(), SymbolDefinition::Origin(*address));
         }
+    }
+    let mut next_free_address: Option<Address> = None;
+    let origins: Vec<Address> = match calculate_block_origins(source_file, &symtab) {
+        Ok(origins) => origins,
+        Err(e) => {
+            return Err(e.into());
+        }
+    };
+    for (block_number, address) in origins.iter().enumerate() {
         symtab.record_block_origin(block_number, *address);
         let size = source_file.blocks[block_number].instruction_count();
         let after_end = offset_from_origin(address, size)?;
