@@ -473,8 +473,6 @@ where
         expected_but_misssing.remove(symbol_name);
         resolve(symbol_name, &mut t, &mut assigner, &mut finalized_entries)?;
     }
-    dbg!(&finalized_entries);
-    dbg!(&t.block_origins);
     if !expected_but_misssing.is_empty() {
         panic!("final symbol table lacks entries for known symbols {expected_but_misssing:?}");
     }

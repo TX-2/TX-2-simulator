@@ -294,8 +294,6 @@ fn assemble_pass2(
     let span = span!(Level::ERROR, "assembly pass 2");
     let _enter = span.enter();
 
-    dbg!(&symtab);
-
     for (symbol, context) in source_file.global_symbol_references() {
         symtab.record_usage_context(symbol.clone(), context)
     }
@@ -318,7 +316,6 @@ fn assemble_pass2(
                 return Err(e.into());
             }
         };
-    dbg!(&origins);
     for (block_number, (_maybe_name, address)) in origins.iter().enumerate() {
         symtab.record_block_origin(block_number, *address);
         let size = source_file.blocks[block_number].instruction_count();
@@ -362,7 +359,6 @@ fn assemble_pass2(
             return Ok((Directive::default(), FinalSymbolTable::default()));
         }
     };
-    dbg!(&final_symbols);
 
     let directive = convert_source_file_to_directive(source_file);
     event!(
