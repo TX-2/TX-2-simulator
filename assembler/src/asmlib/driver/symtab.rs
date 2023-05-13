@@ -13,144 +13,17 @@ use base::{
     prelude::{Address, Unsigned36Bit},
 };
 
-use super::ast::Expression;
-use super::symbol::SymbolName;
-use super::types::offset_from_origin;
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum SymbolLookupFailure {
-    Undefined(SymbolName),
-    Inconsistent {
-        symbol: SymbolName,
-        msg: String,
-    },
-    Loop {
-        target: SymbolName,
-        deps_in_order: Vec<SymbolName>,
-    },
-    RanOutOfIndexRegisters(SymbolName),
-    RcBlockTooLarge,
-    BlockTooLarge {
-        block_number: usize,
-        block_origin: Address,
-        offset: usize,
-    },
-}
-
-impl SymbolLookupFailure {
-    pub(crate) fn symbol_name(&self) -> &SymbolName {
-        match self {
-            SymbolLookupFailure::Undefined(n) => n,
-            SymbolLookupFailure::Inconsistent { symbol, msg: _ } => symbol,
-            SymbolLookupFailure::Loop {
-                target,
-                deps_in_order: _,
-            } => target,
-            SymbolLookupFailure::RanOutOfIndexRegisters(n) => n,
-            SymbolLookupFailure::RcBlockTooLarge => todo!(),
-            SymbolLookupFailure::BlockTooLarge { .. } => todo!(),
-        }
-    }
-}
-
-impl std::error::Error for SymbolLookupFailure {}
+use super::super::ast::Expression;
+use super::super::eval::{BadSymbolDefinition, SymbolContext, SymbolDefinition, SymbolLookup};
+use super::super::symbol::SymbolName;
+use super::super::types::offset_from_origin;
+use super::SymbolLookupFailure;
 
 /// Instances of Infallible cannot be created as it has no variants.
 /// When the never type (`!`) is stabilised, we should use that
 /// instead.
 #[derive(Debug)]
 pub(crate) enum Infallible {}
-
-pub(crate) trait SymbolLookup {
-    type Error;
-    fn lookup(
-        &mut self,
-        name: &SymbolName,
-        context: &SymbolContext,
-    ) -> Result<Unsigned36Bit, Self::Error>;
-}
-
-pub(crate) trait Evaluate {
-    fn evaluate<S: SymbolLookup>(&self, symtab: &mut S) -> Result<Unsigned36Bit, S::Error>;
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub(crate) enum SymbolUse {
-    Reference(SymbolContext),
-    Definition(SymbolDefinition),
-    Origin(SymbolName, usize),
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-enum SymbolContextMergeError {
-    ConflictingOrigin(usize, usize),
-}
-
-#[derive(Debug, Default, PartialEq, Eq, Copy, Clone)]
-pub(crate) struct SymbolContext {
-    // The "All members are false" context is the one in which we list
-    // the values of symbols in the program listing.
-    configuration: bool,
-    index: bool,
-    address: bool,
-    origin_of_block: Option<usize>,
-}
-
-impl SymbolContext {
-    fn bits(&self) -> [bool; 4] {
-        [
-            self.configuration,
-            self.index,
-            self.address,
-            self.origin_of_block.is_some(),
-        ]
-    }
-
-    pub(crate) fn is_origin(&self) -> bool {
-        self.origin_of_block.is_some()
-    }
-
-    pub(crate) fn is_origin_only(&self) -> bool {
-        self.is_origin() && !(self.configuration || self.index || self.address)
-    }
-
-    pub(crate) fn origin(block_number: usize) -> SymbolContext {
-        SymbolContext {
-            origin_of_block: Some(block_number),
-            ..Default::default()
-        }
-    }
-
-    fn includes(&self, other: &SymbolContext) -> bool {
-        other
-            .bits()
-            .into_iter()
-            .zip(self.bits().into_iter())
-            .all(|(otherbit, selfbit)| selfbit || !otherbit)
-    }
-
-    fn merge(&mut self, other: SymbolContext) -> Result<SymbolContext, SymbolContextMergeError> {
-        let origin = match (self.origin_of_block, other.origin_of_block) {
-            (None, None) => None,
-            (Some(x), None) | (None, Some(x)) => Some(x),
-            (Some(x), Some(y)) => {
-                if x == y {
-                    Some(x)
-                } else {
-                    return Err(SymbolContextMergeError::ConflictingOrigin(x, y));
-                }
-            }
-        };
-        let result = SymbolContext {
-            configuration: self.configuration || other.configuration,
-            index: self.index || other.index,
-            address: self.address || other.address,
-            origin_of_block: origin,
-        };
-        *self = result;
-        Ok(result)
-    }
-}
 
 struct DefaultValueAssigner<'a> {
     program_words: Unsigned18Bit,
@@ -171,14 +44,17 @@ impl<'a> DefaultValueAssigner<'a> {
             Level::DEBUG,
             "assigning default value for {name} used in contexts {contexts_used:?}"
         );
-        if contexts_used.origin_of_block.is_some() {
-            if contexts_used.is_origin_only() {
+        match contexts_used.bits() {
+            [false, false, _, true] => {
+                // origin only or address and origin
                 // TODO: this really isn't correct, since assigning an
                 // origin for this block should extend
                 // self.program_words by the size of the block we just
                 // chose a location for.
                 Ok(self.program_words.into())
-            } else {
+            }
+            [true, _, _, true] | [_, true, _, true] => {
+                // origin and either config or index
                 Err(SymbolLookupFailure::Inconsistent {
                     symbol: name.clone(),
                     msg: format!(
@@ -187,154 +63,31 @@ impl<'a> DefaultValueAssigner<'a> {
                     ),
                 })
             }
-        } else {
-            match (
-                contexts_used.configuration,
-                contexts_used.index,
-                contexts_used.address,
-            ) {
-                (false, false, false) => unreachable!(),
-                (true, _, _) => Ok(Unsigned36Bit::ZERO), // configuration (perhaps in combo with others)
-                (false, true, _) => {
-                    // Index but not also configuration. Assign the next
-                    // index register.  This count start at 0, but we
-                    // Can't assign X0, so we increment first (as X0 is
-                    // always 0 and we can't assign it).
-                    match self.index_registers_used.checked_add(u6!(1)) {
-                        Some(n) => {
-                            *self.index_registers_used = n;
-                            Ok(n.into())
-                        }
-                        None => Err(SymbolLookupFailure::RanOutOfIndexRegisters(name.clone())),
+            [false, false, false, false] => unreachable!(), // apparently no usage at all
+            [true, _, _, false] => Ok(Unsigned36Bit::ZERO), // configuration (perhaps in combo with others)
+            [false, true, _, false] => {
+                // Index but not also configuration. Assign the next
+                // index register.  This count start at 0, but we
+                // Can't assign X0, so we increment first (as X0 is
+                // always 0 and we can't assign it).
+                match self.index_registers_used.checked_add(u6!(1)) {
+                    Some(n) => {
+                        *self.index_registers_used = n;
+                        Ok(n.into())
                     }
-                }
-                (false, false, true) => {
-                    // address only, assign the next RC word.
-                    Unsigned18Bit::try_from(self.rc_block.len())
-                        .ok()
-                        .and_then(|len| self.program_words.checked_add(len))
-                        .map(|rc_word_addr| {
-                            self.rc_block.push(Unsigned36Bit::ZERO);
-                            Ok(rc_word_addr.into())
-                        })
-                        .unwrap_or(Err(SymbolLookupFailure::RcBlockTooLarge))
+                    None => Err(SymbolLookupFailure::RanOutOfIndexRegisters(name.clone())),
                 }
             }
-        }
-    }
-}
-
-impl From<&Script> for SymbolContext {
-    fn from(elevation: &Script) -> SymbolContext {
-        let (configuration, index, address) = match elevation {
-            Script::Super => (true, false, false),
-            Script::Sub => (false, true, false),
-            Script::Normal => (false, false, true),
-        };
-        SymbolContext {
-            configuration,
-            index,
-            address,
-            origin_of_block: None,
-        }
-    }
-}
-
-impl From<Script> for SymbolContext {
-    fn from(elevation: Script) -> SymbolContext {
-        SymbolContext::from(&elevation)
-    }
-}
-
-#[derive(PartialEq, Eq, Clone)]
-pub(crate) enum SymbolDefinition {
-    Tag { block: usize, offset: usize },
-    Equality(Expression),
-    Undefined(SymbolContext),
-    DefaultAssigned(Unsigned36Bit),
-}
-
-impl Debug for SymbolDefinition {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            SymbolDefinition::Tag { block, offset } => {
-                write!(f, "Tag {{block:{block}, offset:{offset}}}")
-            }
-            SymbolDefinition::Equality(expr) => f.debug_tuple("Equality").field(expr).finish(),
-            SymbolDefinition::DefaultAssigned(value) => {
-                write!(f, "DefaultAssigned({value:o})")
-            }
-            SymbolDefinition::Undefined(context) => {
-                f.debug_tuple("Undefined").field(context).finish()
-            }
-        }
-    }
-}
-
-impl Display for SymbolDefinition {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            SymbolDefinition::DefaultAssigned(value) => {
-                write!(f, "default-assigned as {value}")
-            }
-            SymbolDefinition::Tag { block, offset } => {
-                write!(f, "tag at offset {offset} in block {block}")
-            }
-            SymbolDefinition::Equality(expression) => {
-                write!(f, "assignment with value {expression}")
-            }
-            SymbolDefinition::Undefined(_context) => f.write_str("undefined"),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub(crate) enum BadSymbolDefinition {
-    Incompatible(SymbolDefinition, SymbolDefinition),
-}
-
-impl Display for BadSymbolDefinition {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            BadSymbolDefinition::Incompatible(previous, new) => {
-                write!(f, "it is not allowed to override symbol definition {previous} with a new definition {new}")
-            }
-        }
-    }
-}
-
-impl std::error::Error for BadSymbolDefinition {}
-
-impl SymbolDefinition {
-    fn merge_context(&mut self, context: SymbolContext) {
-        if let SymbolDefinition::Undefined(current) = self {
-            match current.merge(context) {
-                Ok(_) => (),
-                Err(e) => {
-                    panic!("cannot have an origin block number conflict if one of the merge sides has no block number: {e:?}")
-                }
-            }
-        }
-    }
-
-    fn override_with(&mut self, update: SymbolDefinition) -> Result<(), BadSymbolDefinition> {
-        match (self, update) {
-            (current @ SymbolDefinition::Equality(_), new @ SymbolDefinition::Equality(_)) => {
-                // This is always OK.
-                *current = new;
-                Ok(())
-            }
-            (current @ SymbolDefinition::Undefined(_), new) => {
-                // This is always OK.
-                *current = new;
-                Ok(())
-            }
-            (current, new) => {
-                if current == &new {
-                    Ok(()) // nothing to do.
-                } else {
-                    Err(BadSymbolDefinition::Incompatible(current.clone(), new))
-                }
+            [false, false, true, false] => {
+                // address only, assign the next RC word.
+                Unsigned18Bit::try_from(self.rc_block.len())
+                    .ok()
+                    .and_then(|len| self.program_words.checked_add(len))
+                    .map(|rc_word_addr| {
+                        self.rc_block.push(Unsigned36Bit::ZERO);
+                        Ok(rc_word_addr.into())
+                    })
+                    .unwrap_or(Err(SymbolLookupFailure::RcBlockTooLarge))
             }
         }
     }
@@ -452,7 +205,7 @@ fn resolve(
     }
 }
 
-pub(crate) fn finalise_symbol_table<'a, I>(
+pub(super) fn finalise_symbol_table<'a, I>(
     mut t: SymbolTable,
     symbols_in_program_order: I,
     program_words: Unsigned18Bit,
@@ -487,7 +240,7 @@ where
 /// such symbols are assigned values are indicated in "Unassigned
 /// Symexes" in section 6-2.2 of the User Handbook.
 #[derive(Debug, Default)]
-pub(crate) struct SymbolTable {
+pub(super) struct SymbolTable {
     definitions: BTreeMap<SymbolName, SymbolDefinition>,
     block_origins: BTreeMap<usize, Address>,
 }

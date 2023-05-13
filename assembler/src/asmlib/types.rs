@@ -4,8 +4,8 @@ use std::fmt::{self, Display, Formatter};
 use std::io::Error as IoError;
 use std::path::PathBuf;
 
+use super::driver::SymbolLookupFailure;
 use super::symbol::SymbolName;
-use super::symtab::SymbolLookupFailure;
 use base::prelude::{Address, Unsigned18Bit};
 
 /// LineNumber values are usually derived from

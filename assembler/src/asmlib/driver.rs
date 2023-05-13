@@ -1,4 +1,5 @@
 mod output;
+mod symtab;
 #[cfg(test)]
 mod tests;
 
@@ -13,13 +14,15 @@ use chumsky::error::Rich;
 use tracing::{event, span, Level};
 
 use super::ast::*;
+use super::eval::SymbolContext;
 use super::parser::parse_source_file;
 use super::state::NumeralMode;
 use super::symbol::SymbolName;
-use super::symtab::*;
 use super::types::*;
 use base::prelude::{Address, Unsigned36Bit, Unsigned6Bit};
 use base::subword;
+use symtab::SymbolTable;
+use symtab::*;
 
 #[cfg(test)]
 use base::charset::Script;
@@ -42,6 +45,44 @@ struct OutputOptions {
     // metacommands.
     list: bool,
 }
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum SymbolLookupFailure {
+    Undefined(SymbolName),
+    Inconsistent {
+        symbol: SymbolName,
+        msg: String,
+    },
+    Loop {
+        target: SymbolName,
+        deps_in_order: Vec<SymbolName>,
+    },
+    RanOutOfIndexRegisters(SymbolName),
+    RcBlockTooLarge,
+    BlockTooLarge {
+        block_number: usize,
+        block_origin: Address,
+        offset: usize,
+    },
+}
+
+impl SymbolLookupFailure {
+    pub(crate) fn symbol_name(&self) -> &SymbolName {
+        match self {
+            SymbolLookupFailure::Undefined(n) => n,
+            SymbolLookupFailure::Inconsistent { symbol, msg: _ } => symbol,
+            SymbolLookupFailure::Loop {
+                target,
+                deps_in_order: _,
+            } => target,
+            SymbolLookupFailure::RanOutOfIndexRegisters(n) => n,
+            SymbolLookupFailure::RcBlockTooLarge => todo!(),
+            SymbolLookupFailure::BlockTooLarge { .. } => todo!(),
+        }
+    }
+}
+
+impl std::error::Error for SymbolLookupFailure {}
 
 fn convert_source_file_to_directive(source_file: &SourceFile) -> Directive {
     let mut directive: Directive = Directive::default();
@@ -146,7 +187,6 @@ fn assemble_pass1<'a>(
 /// assemble_pass1, assemble_pass2.
 #[cfg(test)]
 pub(crate) fn assemble_nonempty_valid_input<'a>(input: &'a str) -> (Directive, FinalSymbolTable) {
-    let symtab = SymbolTable::default();
     let mut errors: Vec<Rich<'_, char>> = Vec::new();
     let result: Result<(Option<SourceFile>, OutputOptions), AssemblerFailure> =
         assemble_pass1(input, &mut errors);
@@ -156,7 +196,7 @@ pub(crate) fn assemble_nonempty_valid_input<'a>(input: &'a str) -> (Directive, F
     match result {
         Ok((None, _)) => unreachable!("parser should generate output if there are no errors"),
         Ok((Some(source_file), _options)) => {
-            let (directive, final_symbols) = assemble_pass2(&source_file, symtab)
+            let (directive, final_symbols) = assemble_pass2(&source_file)
                 .expect("test program should not extend beyong physical memory");
             (directive, final_symbols)
         }
@@ -289,11 +329,11 @@ where
 /// `Directive`, which is closer to binary code.
 fn assemble_pass2(
     source_file: &SourceFile,
-    mut symtab: SymbolTable,
 ) -> Result<(Directive, FinalSymbolTable), AssemblerFailure> {
     let span = span!(Level::ERROR, "assembly pass 2");
     let _enter = span.enter();
 
+    let mut symtab = SymbolTable::default();
     for (symbol, context) in source_file.global_symbol_references() {
         symtab.record_usage_context(symbol.clone(), context)
     }
@@ -439,10 +479,7 @@ fn pos_line_column(s: &str, pos: usize) -> Result<(usize, usize), ()> {
     Err(())
 }
 
-pub(crate) fn assemble_source(
-    source_file_body: &str,
-    symbols: SymbolTable,
-) -> Result<Binary, AssemblerFailure> {
+pub(crate) fn assemble_source(source_file_body: &str) -> Result<Binary, AssemblerFailure> {
     let mut errors = Vec::new();
     let (source_file, options) = assemble_pass1(source_file_body, &mut errors)?;
     match errors.as_slice() {
@@ -465,7 +502,7 @@ pub(crate) fn assemble_source(
 
     // Now we do passes 2 and 3.
     let binary = {
-        let (directive, mut final_symbols) = assemble_pass2(&source_file, symbols)?;
+        let (directive, mut final_symbols) = assemble_pass2(&source_file)?;
         event!(
             Level::INFO,
             "assembly pass 2 generated {} instructions",
@@ -535,7 +572,6 @@ pub fn assemble_file(
             line_number: None,
         })?;
 
-    let symbols = SymbolTable::default();
     let source_file_body = {
         let mut body = String::new();
         match BufReader::new(input_file).read_to_string(&mut body) {
@@ -550,7 +586,7 @@ pub fn assemble_file(
         }
     };
 
-    let user_program: Binary = assemble_source(&source_file_body, symbols)?;
+    let user_program: Binary = assemble_source(&source_file_body)?;
 
     // The Users Guide explains on page 6-23 how the punched binary
     // is created (and read back in).

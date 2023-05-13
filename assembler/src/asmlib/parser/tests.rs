@@ -10,9 +10,10 @@ use super::super::ast::{
     Expression, HoldBit, InstructionFragment, LiteralValue, ManuscriptBlock, ManuscriptMetaCommand,
     Origin, ProgramInstruction, SourceFile, Statement,
 };
+
+use super::super::eval::SymbolLookup;
 use super::super::state::NumeralMode;
 use super::super::symbol::SymbolName;
-use super::super::symtab::SymbolTable;
 use super::symex::{parse_multi_syllable_symex, parse_symex};
 use super::*;
 
@@ -830,9 +831,27 @@ fn test_multi_syllable_symex() {
     );
 }
 
+#[derive(Default, Debug, PartialEq, Eq)]
+struct UnexpectedLookup {}
+
+#[derive(Default, PartialEq, Eq)]
+struct NoSymbols {}
+
+impl SymbolLookup for NoSymbols {
+    type Error = UnexpectedLookup;
+
+    fn lookup(
+        &mut self,
+        _name: &SymbolName,
+        _context: &crate::eval::SymbolContext,
+    ) -> Result<Unsigned36Bit, Self::Error> {
+        Err(UnexpectedLookup {})
+    }
+}
+
 #[test]
 fn program_instruction_with_opcode() {
-    let mut nosyms = SymbolTable::default();
+    let mut nosyms = NoSymbols::default();
     assert_eq!(
         parse_successfully_with("²¹IOS₅₂ 30106", program_instruction(), no_state_setup)
             .value(&mut nosyms),

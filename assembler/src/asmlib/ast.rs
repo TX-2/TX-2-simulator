@@ -7,9 +7,9 @@ use std::ops::Shl;
 use base::charset::{subscript_char, superscript_char, Script};
 use base::prelude::*;
 
+use super::eval::{Evaluate, SymbolContext, SymbolDefinition, SymbolLookup, SymbolUse};
 use super::state::NumeralMode;
 use super::symbol::SymbolName;
-use super::symtab::{Evaluate, SymbolContext, SymbolDefinition, SymbolLookup, SymbolUse};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct Elevated<T> {
