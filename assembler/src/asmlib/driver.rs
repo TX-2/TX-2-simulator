@@ -8,6 +8,8 @@ use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::fs::OpenOptions;
 use std::io::{BufReader, BufWriter, Read};
+#[cfg(test)]
+use std::ops::Range;
 use std::path::Path;
 
 use chumsky::error::Rich;
@@ -16,6 +18,8 @@ use tracing::{event, span, Level};
 use super::ast::*;
 use super::eval::SymbolContext;
 use super::parser::parse_source_file;
+#[cfg(test)]
+use super::parser::Span;
 use super::state::NumeralMode;
 use super::symbol::SymbolName;
 use super::types::*;
@@ -90,33 +94,41 @@ fn convert_source_file_to_directive(source_file: &SourceFile) -> Directive {
         // We still include zero-word blocks in the directive output
         // so that we don't change the block numbering.
         let len = mblock.instruction_count();
-        let effective_origin = match mblock.origin.as_ref() {
+        let location: Option<Address> = match mblock.origin.as_ref() {
             None => {
-                let address = Origin::default();
+                let address = Origin::default_address();
                 event!(
                     Level::DEBUG,
                     "Locating directive block {block_number} having {len} words at default origin {address:o}",
                 );
-                address
+                Some(address)
             }
-            Some(address) => {
+            Some(Origin::Literal(_, address)) => {
                 event!(
                     Level::DEBUG,
                     "Locating directive block {block_number} having {len} words at origin {address:o}",
                 );
-                address.clone()
+                Some(*address)
+            }
+            Some(Origin::Symbolic(_, name)) => {
+                event!(
+                    Level::DEBUG,
+                    "Locating directive block {block_number} having {len} words at symbolic location {name}, which is not resolved yet",
+                );
+                None
             }
         };
         let mut block = Block {
-            origin: effective_origin,
-            items: Vec::new(),
+            origin: mblock.origin.clone(),
+            location,
+            items: Vec::with_capacity(mblock.statements.len()),
         };
         for statement in mblock.statements.iter() {
             match statement {
                 Statement::Instruction(inst) => {
                     block.push(inst.clone());
                 }
-                Statement::Assignment(_, _) => (),
+                Statement::Assignment(_, _, _) => (),
             }
         }
         directive.push(block);
@@ -261,8 +273,8 @@ fn origin_as_address(
     next_address: Option<Address>,
 ) -> (Option<SymbolName>, Address) {
     match origin {
-        Origin::Literal(addr) => (None, *addr),
-        Origin::Symbolic(name) => {
+        Origin::Literal(_span, addr) => (None, *addr),
+        Origin::Symbolic(_span, name) => {
             match symtab.lookup_final(name, &SymbolContext::origin(block_number)) {
                 Ok(address) => (Some(name.clone()), subword::right_half(address).into()),
                 Err(e) => match next_address {
@@ -530,6 +542,11 @@ pub(crate) fn assemble_source(source_file_body: &str) -> Result<Binary, Assemble
     Ok(binary)
 }
 
+#[cfg(test)]
+fn span(range: Range<usize>) -> Span {
+    Span::from(range)
+}
+
 #[test]
 fn test_assemble_pass1() {
     let input = concat!("14\n", "☛☛PUNCH 26\n");
@@ -537,10 +554,15 @@ fn test_assemble_pass1() {
     let expected_block = ManuscriptBlock {
         origin: None,
         statements: vec![Statement::Instruction(ProgramInstruction {
+            span: span(0..2),
             tag: None,
             holdbit: HoldBit::Unspecified,
             parts: vec![InstructionFragment {
-                value: Expression::Literal(LiteralValue::from((Script::Normal, u36!(0o14)))),
+                value: Expression::Literal(LiteralValue::from((
+                    span(0..2),
+                    Script::Normal,
+                    u36!(0o14),
+                ))),
             }],
         })],
     };

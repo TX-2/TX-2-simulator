@@ -150,7 +150,7 @@ fn resolve(
     let result = match t.get(symbol_name).cloned() {
         Some(SymbolDefinition::DefaultAssigned(value)) => Ok(value),
         Some(SymbolDefinition::Equality(Expression::Literal(value))) => Ok(value.value()),
-        Some(SymbolDefinition::Equality(Expression::Symbol(script, fwd_symbol_name))) => {
+        Some(SymbolDefinition::Equality(Expression::Symbol(_span, script, fwd_symbol_name))) => {
             // TODO: this logic should probably be delegated to
             // Expression::value, not done here.
             let value = resolve(&fwd_symbol_name, t, assigner, finalized_entries)?;
@@ -375,7 +375,7 @@ impl SymbolTable {
                 },
                 SymbolDefinition::Equality(expression) => match expression {
                     Expression::Literal(literal) => Ok(literal.value()),
-                    Expression::Symbol(elevation, symbol_name) => {
+                    Expression::Symbol(_span, elevation, symbol_name) => {
                         // We re-use the existing op object (1) to
                         // detect cycles.  I'm not yet clear on how
                         // precisely to make use of the elevation.

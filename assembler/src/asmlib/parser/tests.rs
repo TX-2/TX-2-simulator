@@ -1,4 +1,6 @@
 use std::fmt::{Debug, Display};
+#[cfg(test)]
+use std::ops::Range;
 
 use base::prelude::*;
 use base::u36;
@@ -10,6 +12,8 @@ use super::super::ast::{
     Expression, HoldBit, InstructionFragment, LiteralValue, ManuscriptBlock, ManuscriptMetaCommand,
     Origin, ProgramInstruction, SourceFile, Statement,
 };
+#[cfg(test)]
+use super::Span;
 
 use super::super::eval::SymbolLookup;
 use super::super::state::NumeralMode;
@@ -83,13 +87,18 @@ fn set_decimal_mode(state: &mut NumeralMode) {
     state.set_numeral_mode(NumeralMode::Decimal);
 }
 
+#[cfg(test)]
+fn span(range: Range<usize>) -> Span {
+    Span::from(range)
+}
+
 #[test]
 fn test_normal_literal_oct_defaultmode() {
     // No trailing dot on a number indicates octal base (unless there
     // was a previous ☛☛DECIMAL).
     assert_eq!(
         parse_successfully_with("402", literal(Script::Normal), no_state_setup),
-        LiteralValue::from((Script::Normal, u36!(0o402),))
+        LiteralValue::from((span(0..3), Script::Normal, u36!(0o402),))
     );
 }
 
@@ -99,6 +108,7 @@ fn test_normal_literal_oct_decmode() {
     assert_eq!(
         parse_successfully_with("402@dot@", literal(Script::Normal), set_decimal_mode),
         LiteralValue::from((
+            span(0..8),
             Script::Normal,
             Unsigned36Bit::from(0o402_u32), // note: octal
         ))
@@ -111,11 +121,11 @@ fn test_normal_literal_dec_defaultmode() {
     // was a previous ☛☛DECIMAL).
     assert_eq!(
         parse_successfully_with("402·", literal(Script::Normal), no_state_setup),
-        LiteralValue::from((Script::Normal, Unsigned36Bit::from(402_u32),))
+        LiteralValue::from((span(0..5), Script::Normal, Unsigned36Bit::from(402_u32),))
     );
     assert_eq!(
         parse_successfully_with("402@dot@", literal(Script::Normal), no_state_setup),
-        LiteralValue::from((Script::Normal, Unsigned36Bit::from(402_u32),))
+        LiteralValue::from((span(0..8), Script::Normal, Unsigned36Bit::from(402_u32),))
     );
 }
 
@@ -124,7 +134,7 @@ fn test_normal_literald_ec_decmode() {
     assert_eq!(
         // Decimal is the default if there was a previous ☛☛DECIMAL
         parse_successfully_with("402", literal(Script::Normal), set_decimal_mode),
-        LiteralValue::from((Script::Normal, Unsigned36Bit::from(402_u32),))
+        LiteralValue::from((span(0..3), Script::Normal, Unsigned36Bit::from(402_u32),))
     );
 }
 
@@ -134,12 +144,12 @@ fn test_superscript_literal_oct() {
     // was a previous ☛☛DECIMAL).
     assert_eq!(
         parse_successfully_with("³⁶", literal(Script::Super), no_state_setup),
-        LiteralValue::from((Script::Super, Unsigned36Bit::from(0o36_u32),))
+        LiteralValue::from((span(0..5), Script::Super, Unsigned36Bit::from(0o36_u32),))
     );
     assert_eq!(
         // U+207A: superscript plus
         parse_successfully_with("\u{207A}³⁶", literal(Script::Super), no_state_setup),
-        LiteralValue::from((Script::Super, Unsigned36Bit::from(0o36_u32),))
+        LiteralValue::from((span(0..8), Script::Super, Unsigned36Bit::from(0o36_u32),))
     );
 }
 
@@ -150,6 +160,7 @@ fn test_superscript_literal_dec_defaultmode() {
     assert_eq!(
         parse_successfully_with("³⁶̇ ", literal(Script::Super), no_state_setup),
         LiteralValue::from((
+            span(0..8),
             Script::Super,
             Unsigned36Bit::from(36_u32), // decimal
         ))
@@ -163,6 +174,7 @@ fn test_superscript_literal_oct_defaultmode() {
     assert_eq!(
         parse_successfully_with("³⁶", literal(Script::Super), no_state_setup),
         LiteralValue::from((
+            span(0..5),
             Script::Super,
             Unsigned36Bit::from(0o36_u32), // octal
         ))
@@ -175,6 +187,7 @@ fn test_superscript_literal_dec_decmode() {
     assert_eq!(
         parse_successfully_with("³⁶", literal(Script::Super), set_decimal_mode),
         LiteralValue::from((
+            span(0..5),
             Script::Super,
             Unsigned36Bit::from(36_u32), // decimal
         ))
@@ -187,7 +200,7 @@ fn test_subscript_literal_oct_defaultmode_nosign() {
     // was a previous ☛☛DECIMAL).
     assert_eq!(
         parse_successfully_with("₃₁", literal(Script::Sub), no_state_setup),
-        LiteralValue::from((Script::Sub, Unsigned36Bit::from(0o31_u32),))
+        LiteralValue::from((span(0..6), Script::Sub, Unsigned36Bit::from(0o31_u32),))
     );
 }
 
@@ -195,7 +208,7 @@ fn test_subscript_literal_oct_defaultmode_nosign() {
 fn test_subscript_literal_oct_defaultmode_plus() {
     assert_eq!(
         parse_successfully_with("₊₁₃", literal(Script::Sub), no_state_setup),
-        LiteralValue::from((Script::Sub, Unsigned36Bit::from(0o13_u32),))
+        LiteralValue::from((span(0..9), Script::Sub, Unsigned36Bit::from(0o13_u32),))
     );
 }
 
@@ -204,7 +217,7 @@ fn test_subscript_literal_oct_decmode() {
     // Simulate a previous ☛☛DECIMAL, so that the trailing dot selects octal.
     assert_eq!(
         parse_successfully_with("₃₁@sub_dot@", literal(Script::Sub), set_decimal_mode),
-        LiteralValue::from((Script::Sub, Unsigned36Bit::from(0o31_u32),))
+        LiteralValue::from((span(0..15), Script::Sub, Unsigned36Bit::from(0o31_u32),))
     );
 }
 
@@ -214,7 +227,7 @@ fn test_subscript_literal_dec() {
     // was a previous ☛☛DECIMAL).
     assert_eq!(
         parse_successfully_with("₃₁@sub_dot@", literal(Script::Sub), no_state_setup),
-        LiteralValue::from((Script::Sub, Unsigned36Bit::from(31_u32),))
+        LiteralValue::from((span(0..15), Script::Sub, Unsigned36Bit::from(31_u32),))
     );
 }
 
@@ -222,15 +235,15 @@ fn test_subscript_literal_dec() {
 fn test_program_instruction_fragment() {
     assert_eq!(
         parse_successfully_with("₃₁", program_instruction_fragment(), no_state_setup),
-        InstructionFragment::from((Script::Sub, Unsigned36Bit::from(0o31_u32),))
+        InstructionFragment::from((span(0..6), Script::Sub, Unsigned36Bit::from(0o31_u32),))
     );
     assert_eq!(
         parse_successfully_with("⁶³", program_instruction_fragment(), no_state_setup),
-        InstructionFragment::from((Script::Super, Unsigned36Bit::from(0o63_u32),))
+        InstructionFragment::from((span(0..5), Script::Super, Unsigned36Bit::from(0o63_u32),))
     );
     assert_eq!(
         parse_successfully_with("6510", program_instruction_fragment(), no_state_setup),
-        InstructionFragment::from((Script::Normal, Unsigned36Bit::from(0o6510_u32),))
+        InstructionFragment::from((span(0..4), Script::Normal, Unsigned36Bit::from(0o6510_u32),))
     );
 }
 
@@ -238,7 +251,11 @@ fn test_program_instruction_fragment() {
 fn test_assemble_octal_literal() {
     assert_eq!(
         parse_successfully_with(" 177777 ", program_instruction_fragment(), no_state_setup),
-        InstructionFragment::from((Script::Normal, Unsigned36Bit::from(0o177777_u32))),
+        InstructionFragment::from((
+            span(1..7),
+            Script::Normal,
+            Unsigned36Bit::from(0o177777_u32)
+        )),
     );
 }
 
@@ -247,12 +264,25 @@ fn test_program_instruction() {
     assert_eq!(
         parse_successfully_with("⁶673₃₁", program_instruction(), no_state_setup),
         ProgramInstruction {
+            span: span(0..12),
             tag: None,
             holdbit: HoldBit::Unspecified,
             parts: vec![
-                InstructionFragment::from((Script::Super, Unsigned36Bit::from(0o6_u32),)),
-                InstructionFragment::from((Script::Normal, Unsigned36Bit::from(0o673_u32),)),
-                InstructionFragment::from((Script::Sub, Unsigned36Bit::from(0o31_u32),)),
+                InstructionFragment::from((
+                    span(0..3),
+                    Script::Super,
+                    Unsigned36Bit::from(0o6_u32),
+                )),
+                InstructionFragment::from((
+                    span(3..6),
+                    Script::Normal,
+                    Unsigned36Bit::from(0o673_u32),
+                )),
+                InstructionFragment::from((
+                    span(6..12),
+                    Script::Sub,
+                    Unsigned36Bit::from(0o31_u32),
+                )),
             ]
         }
     );
@@ -333,9 +363,11 @@ fn test_manuscript_line_with_bare_literal() {
         ManuscriptLine::Code(
             None,
             Statement::Instruction(ProgramInstruction {
+                span: span(0..1),
                 tag: None,
                 holdbit: HoldBit::Unspecified,
                 parts: vec![InstructionFragment::from((
+                    span(0..1),
                     Script::Normal,
                     Unsigned36Bit::from(1_u32),
                 ))]
@@ -353,9 +385,11 @@ fn test_manuscript_with_bare_literal() {
             blocks: vec![ManuscriptBlock {
                 origin: None,
                 statements: vec![Statement::Instruction(ProgramInstruction {
+                    span: span(0..1),
                     tag: None,
                     holdbit: HoldBit::Unspecified,
                     parts: vec![InstructionFragment::from((
+                        span(0..1),
                         Script::Normal,
                         Unsigned36Bit::from(1_u32),
                     ))],
@@ -370,9 +404,11 @@ fn test_terminated_manuscript_line_with_bare_literal() {
     let expected_line = ManuscriptLine::Code(
         None,
         Statement::Instruction(ProgramInstruction {
+            span: span(0..1),
             tag: None,
             holdbit: HoldBit::Unspecified,
             parts: vec![InstructionFragment::from((
+                span(0..1),
                 Script::Normal,
                 Unsigned36Bit::from(1_u32),
             ))],
@@ -406,17 +442,21 @@ fn test_manuscript_without_tag() {
                 origin: None,
                 statements: vec![
                     Statement::Instruction(ProgramInstruction {
+                        span: span(0..4),
                         tag: None,
                         holdbit: HoldBit::Unspecified,
                         parts: vec![InstructionFragment::from((
+                            span(0..3),
                             Script::Normal,
                             Unsigned36Bit::from(0o673_u32),
                         ))],
                     }),
                     Statement::Instruction(ProgramInstruction {
+                        span: span(25..27),
                         tag: None,
                         holdbit: HoldBit::Unspecified,
                         parts: vec![InstructionFragment::from((
+                            span(25..27),
                             Script::Normal,
                             Unsigned36Bit::from(0o71_u32),
                         ))],
@@ -462,12 +502,14 @@ fn test_manuscript_with_single_syllable_tag() {
             blocks: vec![ManuscriptBlock {
                 origin: None,
                 statements: vec![Statement::Instruction(ProgramInstruction {
+                    span: span(0..16),
                     tag: Some(SymbolName {
                         canonical: "START4".to_string(),
                         //as_used: "START4".to_string(),
                     }),
                     holdbit: HoldBit::Unspecified,
                     parts: vec![InstructionFragment::from((
+                        span(12..15),
                         Script::Normal,
                         Unsigned36Bit::from(0o205_u32),
                     )),]
@@ -489,11 +531,13 @@ fn test_manuscript_with_origin() {
         SourceFile {
             punch: None,
             blocks: vec![ManuscriptBlock {
-                origin: Some(Origin::Literal(Address::new(u18!(0o100)))),
+                origin: Some(Origin::Literal(span(0..3), Address::new(u18!(0o100)))),
                 statements: vec![Statement::Instruction(ProgramInstruction {
+                    span: span(5..10),
                     tag: None,
                     holdbit: HoldBit::Unspecified,
                     parts: vec![InstructionFragment::from((
+                        span(6..9),
                         Script::Normal,
                         Unsigned36Bit::from(0o202_u32),
                     ))]
@@ -525,13 +569,18 @@ fn test_multi_syllable_tag() {
     assert_eq!(
         inst,
         ProgramInstruction {
+            span: span(0..15),
             tag: Some(SymbolName {
                 canonical: "CODEHERE".to_string(),
                 //as_used: "CODE HERE".to_string(),
             }),
             holdbit: HoldBit::Unspecified,
             parts: vec![InstructionFragment {
-                value: Expression::from(LiteralValue::from((Script::Normal, u36!(0o205)))),
+                value: Expression::from(LiteralValue::from((
+                    span(11..14),
+                    Script::Normal,
+                    u36!(0o205)
+                ))),
             }]
         }
     );
@@ -550,11 +599,13 @@ fn test_manuscript_with_multi_syllable_tag() {
             blocks: vec![ManuscriptBlock {
                 origin: None,
                 statements: vec![Statement::Instruction(ProgramInstruction {
+                    span: span(0..15),
                     tag: Some(SymbolName {
                         canonical: "CODEHERE".to_string(),
                     }),
                     holdbit: HoldBit::Unspecified,
                     parts: vec![InstructionFragment::from((
+                        span(11..14),
                         Script::Normal,
                         Unsigned36Bit::from(0o205_u32),
                     ))]
@@ -572,12 +623,13 @@ fn test_manuscript_line_with_real_arrow_tag() {
         ManuscriptLine::Code(
             None,
             Statement::Instruction(ProgramInstruction {
+                span: span(0..10),
                 tag: Some(SymbolName {
                     canonical: "HERE".to_string(),
                 }),
                 holdbit: HoldBit::Unspecified,
                 parts: vec![InstructionFragment {
-                    value: Expression::from((Script::Normal, u36!(0o207)))
+                    value: Expression::from((span(7..10), Script::Normal, u36!(0o207)))
                 }],
             })
         )
@@ -594,12 +646,14 @@ fn test_manuscript_with_real_arrow_tag() {
             blocks: vec![ManuscriptBlock {
                 origin: None,
                 statements: vec![Statement::Instruction(ProgramInstruction {
+                    span: span(0..10),
                     tag: Some(SymbolName {
                         canonical: "HERE".to_string(),
                         //as_used: "HERE".to_string(),
                     }),
                     holdbit: HoldBit::Unspecified,
                     parts: vec![InstructionFragment::from((
+                        span(7..10),
                         Script::Normal,
                         Unsigned36Bit::from(0o207_u32),
                     ))]
@@ -611,20 +665,26 @@ fn test_manuscript_with_real_arrow_tag() {
 
 #[test]
 fn test_assignment_literal() {
-    const INPUTS: &[&'static str] = &[
-        "FOO=2",
-        "FOO =2",
-        "F O O = 2", // spaces are also allowed inside symexes.
+    const INPUTS: &[(&'static str, usize)] = &[
+        ("FOO=2", 4),
+        ("FOO =2", 5),
+        ("F O O = 2", 8), // spaces are also allowed inside symexes.
     ];
-    for input in INPUTS {
+    for (input, begin) in INPUTS {
         dbg!(&input);
+        dbg!(&begin);
         assert_eq!(
             parse_successfully_with(*input, statement(), no_state_setup),
             Statement::Assignment(
+                span(0..(*begin + 1)),
                 SymbolName {
                     canonical: "FOO".to_string(),
                 },
-                Expression::Literal(LiteralValue::from((Script::Normal, u36!(2))))
+                Expression::Literal(LiteralValue::from((
+                    span(*begin..(*begin + 1)),
+                    Script::Normal,
+                    u36!(2)
+                )))
             )
         )
     }
@@ -632,21 +692,26 @@ fn test_assignment_literal() {
 
 #[test]
 fn test_assignment_superscript() {
-    const INPUTS: &[&'static str] = &[
+    const INPUTS: &[(&'static str, usize, usize)] = &[
         // Unicode code point B2 is a superscript 2.
-        "FOO=\u{00B2}",
-        "FOO =\u{00B2}",
-        "F O O = \u{00B2}", // spaces are also allowed inside symexes.
+        ("FOO=\u{00B2}", 4, 6),
+        ("FOO =\u{00B2}", 5, 7),
+        ("F O O = \u{00B2}", 8, 10), // spaces are also allowed inside symexes.
     ];
-    for input in INPUTS {
+    for (input, val_begin, val_end) in INPUTS {
         dbg!(input);
         assert_eq!(
             parse_successfully_with(*input, statement(), no_state_setup),
             Statement::Assignment(
+                span(0..*val_end),
                 SymbolName {
                     canonical: "FOO".to_string(),
                 },
-                Expression::Literal(LiteralValue::from((Script::Super, u36!(2))))
+                Expression::Literal(LiteralValue::from((
+                    span(*val_begin..*val_end),
+                    Script::Super,
+                    u36!(2)
+                )))
             )
         )
     }
@@ -654,21 +719,28 @@ fn test_assignment_superscript() {
 
 #[test]
 fn test_assignment_subscript() {
-    const INPUTS: &[&'static str] = &[
+    const INPUTS: &[(&'static str, usize, usize)] = &[
         // Unicode code point 2083 is a subscript 3.
-        "FOO=\u{2083}",
-        "FOO =\u{2083}",
-        "F O O = \u{2083}", // spaces are also allowed inside symexes.
+        ("FOO=\u{2083}", 4, 7),
+        ("FOO =\u{2083}", 5, 8),
+        ("F O O = \u{2083}", 8, 11), // spaces are also allowed inside symexes.
     ];
-    for input in INPUTS {
+    for (input, val_begin, val_end) in INPUTS {
         dbg!(&input);
+        dbg!(&val_begin);
+        dbg!(&val_end);
         assert_eq!(
             parse_successfully_with(*input, statement(), no_state_setup),
             Statement::Assignment(
+                span(0..*val_end),
                 SymbolName {
                     canonical: "FOO".to_string(),
                 },
-                Expression::Literal(LiteralValue::from((Script::Sub, u36!(3))))
+                Expression::Literal(LiteralValue::from((
+                    span(*val_begin..*val_end),
+                    Script::Sub,
+                    u36!(3)
+                )))
             )
         )
     }
@@ -698,22 +770,34 @@ fn test_assignment_lines() {
                 origin: None,
                 statements: vec![
                     Statement::Assignment(
+                        span(0..5),
                         SymbolName {
                             canonical: "FOO".to_string(),
                         },
-                        Expression::Literal(LiteralValue::from((Script::Normal, u36!(2))))
+                        Expression::Literal(LiteralValue::from((
+                            span(4..5),
+                            Script::Normal,
+                            u36!(2)
+                        )))
                     ),
                     Statement::Assignment(
+                        span(6..17),
                         SymbolName {
                             canonical: "BAR".to_string(),
                         },
-                        Expression::Literal(LiteralValue::from((Script::Normal, u36!(1))))
+                        Expression::Literal(LiteralValue::from((
+                            span(16..17),
+                            Script::Normal,
+                            u36!(1)
+                        )))
                     ),
                     Statement::Instruction(ProgramInstruction {
+                        span: span(19..21),
                         tag: None,
                         holdbit: HoldBit::Unspecified,
                         parts: vec![InstructionFragment {
                             value: Expression::Literal(LiteralValue::from((
+                                span(19..20),
                                 Script::Normal,
                                 u36!(6)
                             )))
@@ -737,18 +821,28 @@ fn test_assignment_origin() {
                 ManuscriptBlock {
                     origin: None,
                     statements: vec![Statement::Assignment(
+                        span(0..8),
                         SymbolName {
                             canonical: "FOO".to_string()
                         },
-                        Expression::Literal(LiteralValue::from((Script::Normal, u36!(0o1000))))
+                        Expression::Literal(LiteralValue::from((
+                            span(4..8),
+                            Script::Normal,
+                            u36!(0o1000)
+                        )))
                     ),]
                 },
                 ManuscriptBlock {
-                    origin: Some(Origin::Literal(Address::new(u18!(0o1000)))),
+                    origin: Some(Origin::Literal(span(9..13), Address::new(u18!(0o1000)))),
                     statements: vec![Statement::Instruction(ProgramInstruction {
+                        span: span(14..15),
                         tag: None,
                         holdbit: HoldBit::Unspecified,
-                        parts: vec![InstructionFragment::from((Script::Normal, u36!(4),))]
+                        parts: vec![InstructionFragment::from((
+                            span(14..15),
+                            Script::Normal,
+                            u36!(4),
+                        ))]
                     })]
                 }
             ]
@@ -799,7 +893,7 @@ fn test_opcode() {
     });
     assert_eq!(
         parse_successfully_with("AUX", super::terminal::opcode(), no_state_setup),
-        LiteralValue::from((Script::Normal, expected_instruction.bits(),))
+        LiteralValue::from((span(0..3), Script::Normal, expected_instruction.bits(),))
     );
 }
 

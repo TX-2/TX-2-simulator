@@ -10,7 +10,7 @@ use super::super::ast::{
     elevate_normal, elevate_sub, elevate_super, Elevated, HoldBit, LiteralValue,
 };
 use super::helpers::{self, Sign};
-use super::Extra;
+use super::{Extra, Span};
 use base::{charset::Script, Unsigned36Bit};
 
 pub(super) fn arrow<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
@@ -546,9 +546,10 @@ pub(super) fn opcode<'a, I>() -> impl Parser<'a, I, LiteralValue, Extra<'a, char
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
 {
-    fn valid_opcode(s: &str) -> Result<LiteralValue, ()> {
+    fn valid_opcode(span: Span, s: &str) -> Result<LiteralValue, ()> {
         if let super::helpers::DecodedOpcode::Valid(opcode) = helpers::opcode_to_num(s) {
             Ok(LiteralValue::from((
+                span,
                 Script::Normal,
                 // Bits 24-29 (dec) inclusive in the instruction word
                 // represent the opcode, so shift the opcode's value
@@ -569,7 +570,7 @@ where
         .exactly(3)
         .collect::<String>()
         .try_map(|text, span| {
-            valid_opcode(&text)
+            valid_opcode(span, &text)
                 .map_err(|_| Rich::custom(span, format!("{text} is not a valid opcode")))
         })
         .labelled("opcode")

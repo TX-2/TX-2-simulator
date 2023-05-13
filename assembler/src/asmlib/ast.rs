@@ -1,5 +1,6 @@
 ///! Abstract syntax representation.   It's mostly not actually a tree.
 use std::borrow::Cow;
+use std::cmp::Ordering;
 use std::fmt::{self, Display, Formatter, Octal, Write};
 use std::hash::Hash;
 use std::ops::Shl;
@@ -8,6 +9,7 @@ use base::charset::{subscript_char, superscript_char, Script};
 use base::prelude::*;
 
 use super::eval::{Evaluate, SymbolContext, SymbolDefinition, SymbolLookup, SymbolUse};
+use super::parser::Span;
 use super::state::NumeralMode;
 use super::symbol::SymbolName;
 
@@ -42,6 +44,7 @@ pub(crate) fn elevate_normal<T>(inner: T) -> Elevated<T> {
 /// Eventually we will support symbolic expressions.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct LiteralValue {
+    span: Span,
     elevation: Script,
     value: Unsigned36Bit,
 }
@@ -58,9 +61,13 @@ impl Evaluate for LiteralValue {
     }
 }
 
-impl From<(Script, Unsigned36Bit)> for LiteralValue {
-    fn from((elevation, value): (Script, Unsigned36Bit)) -> LiteralValue {
-        LiteralValue { elevation, value }
+impl From<(Span, Script, Unsigned36Bit)> for LiteralValue {
+    fn from((span, elevation, value): (Span, Script, Unsigned36Bit)) -> LiteralValue {
+        LiteralValue {
+            span,
+            elevation,
+            value,
+        }
     }
 }
 
@@ -111,17 +118,18 @@ fn format_elevated_chars(f: &mut Formatter<'_>, elevation: &Script, s: &str) -> 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Expression {
     Literal(LiteralValue),
-    Symbol(Script, SymbolName),
+    Symbol(Span, Script, SymbolName),
 }
 
 impl Expression {
-    pub(crate) fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, SymbolUse)> {
+    pub(crate) fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
         let mut result = Vec::with_capacity(1);
         match self {
             Expression::Literal(_value) => (),
-            Expression::Symbol(script, symbol_name) => {
+            Expression::Symbol(span, script, symbol_name) => {
                 result.push((
                     symbol_name.clone(),
+                    *span,
                     SymbolUse::Reference(SymbolContext::from(script)),
                 ));
             }
@@ -134,7 +142,7 @@ impl Evaluate for Expression {
     fn evaluate<S: SymbolLookup>(&self, symtab: &mut S) -> Result<Unsigned36Bit, S::Error> {
         match self {
             Expression::Literal(literal) => Ok(literal.value()),
-            Expression::Symbol(elevation, name) => {
+            Expression::Symbol(_span, elevation, name) => {
                 let context = SymbolContext::from(elevation);
                 symtab
                     .lookup(name, &context)
@@ -150,9 +158,9 @@ impl From<LiteralValue> for Expression {
     }
 }
 
-impl From<(Script, Unsigned36Bit)> for Expression {
-    fn from((e, v): (Script, Unsigned36Bit)) -> Expression {
-        Expression::from(LiteralValue::from((e, v)))
+impl From<(Span, Script, Unsigned36Bit)> for Expression {
+    fn from((span, script, v): (Span, Script, Unsigned36Bit)) -> Expression {
+        Expression::from(LiteralValue::from((span, script, v)))
     }
 }
 
@@ -176,7 +184,7 @@ impl std::fmt::Display for Expression {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Expression::Literal(value) => value.fmt(f),
-            Expression::Symbol(elevation, name) => {
+            Expression::Symbol(_span, elevation, name) => {
                 elevated_string(&name.to_string(), elevation).fmt(f)
             }
         }
@@ -189,7 +197,7 @@ pub(crate) struct InstructionFragment {
 }
 
 impl InstructionFragment {
-    pub(crate) fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, SymbolUse)> {
+    pub(crate) fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
         self.value.symbol_uses()
     }
 }
@@ -200,10 +208,10 @@ impl Evaluate for InstructionFragment {
     }
 }
 
-impl From<(Script, Unsigned36Bit)> for InstructionFragment {
-    fn from((e, v): (Script, Unsigned36Bit)) -> InstructionFragment {
+impl From<(Span, Script, Unsigned36Bit)> for InstructionFragment {
+    fn from((span, script, v): (Span, Script, Unsigned36Bit)) -> InstructionFragment {
         InstructionFragment {
-            value: Expression::from((e, v)),
+            value: Expression::from((span, script, v)),
         }
     }
 }
@@ -216,23 +224,53 @@ impl From<Expression> for InstructionFragment {
 
 // Once we support symbolic origins we should update
 // ManuscriptBlock::global_symbol_definitions() to expose them.
-#[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash)]
+#[derive(Debug, Clone)]
 pub(crate) enum Origin {
-    Literal(Address),
-    Symbolic(SymbolName),
+    Literal(Span, Address),
+    Symbolic(Span, SymbolName),
 }
 
-impl Default for Origin {
-    fn default() -> Origin {
-        Origin::Literal(Origin::default_address())
+impl Ord for Origin {
+    fn cmp(&self, other: &Origin) -> Ordering {
+        match (self, other) {
+            (Origin::Literal(_, selfaddr), Origin::Literal(_, otheraddr)) => {
+                selfaddr.cmp(otheraddr)
+            }
+            (Origin::Symbolic(_, selfsym), Origin::Symbolic(_, othersym)) => selfsym.cmp(othersym),
+            (Origin::Literal(_, _), Origin::Symbolic(_, _)) => Ordering::Less,
+            (Origin::Symbolic(_, _), Origin::Literal(_, _)) => Ordering::Greater,
+        }
+    }
+}
+
+impl Eq for Origin {}
+
+impl PartialEq for Origin {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other) == Ordering::Equal
+    }
+}
+
+impl PartialOrd for Origin {
+    fn partial_cmp(&self, other: &Origin) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Hash for Origin {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            Origin::Literal(_, addr) => addr.hash(state),
+            Origin::Symbolic(_, name) => name.hash(state),
+        }
     }
 }
 
 impl Display for Origin {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         match self {
-            Origin::Literal(addr) => fmt::Display::fmt(&addr, f),
-            Origin::Symbolic(sym) => fmt::Display::fmt(&sym, f),
+            Origin::Literal(_span, addr) => fmt::Display::fmt(&addr, f),
+            Origin::Symbolic(_span, sym) => fmt::Display::fmt(&sym, f),
         }
     }
 }
@@ -250,8 +288,8 @@ impl Origin {
 impl Octal for Origin {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Origin::Literal(address) => fmt::Octal::fmt(&address, f),
-            Origin::Symbolic(name) => fmt::Display::fmt(&name, f),
+            Origin::Literal(_span, address) => fmt::Octal::fmt(&address, f),
+            Origin::Symbolic(_span, name) => fmt::Display::fmt(&name, f),
         }
     }
 }
@@ -260,12 +298,12 @@ impl Origin {
     pub(crate) fn symbol_uses(
         &self,
         block: usize,
-    ) -> impl Iterator<Item = (SymbolName, SymbolUse)> {
+    ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
         let mut result = Vec::with_capacity(1);
         match self {
-            Origin::Literal(_) => (),
-            Origin::Symbolic(name) => {
-                result.push((name.clone(), SymbolUse::Origin(name.clone(), block)))
+            Origin::Literal(_span, _) => (),
+            Origin::Symbolic(span, name) => {
+                result.push((name.clone(), *span, SymbolUse::Origin(name.clone(), block)))
             }
         }
         result.into_iter()
@@ -281,6 +319,7 @@ pub(crate) enum HoldBit {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ProgramInstruction {
+    pub(crate) span: Span,
     pub(crate) tag: Option<SymbolName>,
     pub(crate) holdbit: HoldBit,
     pub(crate) parts: Vec<InstructionFragment>,
@@ -314,11 +353,11 @@ impl ProgramInstruction {
         &self,
         block: usize,
         offset: usize,
-    ) -> impl Iterator<Item = (SymbolName, SymbolUse)> {
+    ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
         let mut result = Vec::with_capacity(self.parts.len() + 1);
         if let Some(name) = self.tag.as_ref() {
             let tagdef = SymbolDefinition::Tag { block, offset };
-            result.push((name.clone(), SymbolUse::Definition(tagdef)));
+            result.push((name.clone(), self.span, SymbolUse::Definition(tagdef)));
         }
         result.extend(self.parts.iter().flat_map(|frag| frag.symbol_uses()));
         result.into_iter()
@@ -332,7 +371,7 @@ pub(crate) struct SourceFile {
 }
 
 impl SourceFile {
-    pub(crate) fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, SymbolUse)> + '_ {
+    pub(crate) fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> + '_ {
         self.blocks
             .iter()
             .enumerate()
@@ -343,7 +382,7 @@ impl SourceFile {
         &self,
     ) -> impl Iterator<Item = (SymbolName, SymbolContext)> + '_ {
         self.symbol_uses()
-            .filter_map(|(name, sym_use)| match sym_use {
+            .filter_map(|(name, _span, sym_use)| match sym_use {
                 SymbolUse::Reference(context) => Some((name, context)),
                 SymbolUse::Definition(_) => None,
                 // An origin specification is either a reference or a definition, depending on how it is used.
@@ -355,7 +394,7 @@ impl SourceFile {
         &self,
     ) -> impl Iterator<Item = (SymbolName, SymbolDefinition)> + '_ {
         self.symbol_uses()
-            .filter_map(|(name, sym_use)| match sym_use {
+            .filter_map(|(name, _span, sym_use)| match sym_use {
                 SymbolUse::Reference(_context) => None,
                 SymbolUse::Definition(def) => Some((name, def)),
                 // An origin specification is either a reference or a definition, depending on how it is used.
@@ -389,14 +428,14 @@ pub(crate) enum ManuscriptLine {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Statement {
-    Assignment(SymbolName, Expression), // User Guide calls these "equalities".
+    Assignment(Span, SymbolName, Expression), // User Guide calls these "equalities".
     Instruction(ProgramInstruction),
 }
 
 impl Statement {
     fn memory_size(&self) -> usize {
         match self {
-            Statement::Assignment(_, _) => 0,
+            Statement::Assignment(_, _, _) => 0,
             Statement::Instruction(_) => 1,
         }
     }
@@ -405,11 +444,12 @@ impl Statement {
         &self,
         block: usize,
         offset: usize,
-    ) -> impl Iterator<Item = (SymbolName, SymbolUse)> {
+    ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
         match self {
-            Statement::Assignment(symbol, expression) => {
+            Statement::Assignment(span, symbol, expression) => {
                 vec![(
                     symbol.clone(),
+                    *span,
                     SymbolUse::Definition(
                         // TODO: the expression.clone() on the next line is expensive.
                         SymbolDefinition::Equality(expression.clone()),
@@ -432,8 +472,8 @@ impl ManuscriptBlock {
     pub(crate) fn symbol_uses(
         &self,
         block_number: usize,
-    ) -> impl Iterator<Item = (SymbolName, SymbolUse)> {
-        let mut result: Vec<(SymbolName, SymbolUse)> = Vec::new();
+    ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
+        let mut result: Vec<(SymbolName, Span, SymbolUse)> = Vec::new();
         if let Some(origin) = self.origin.as_ref() {
             result.extend(origin.symbol_uses(block_number));
         }
@@ -478,7 +518,8 @@ impl Directive {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Block {
-    pub(crate) origin: Origin,
+    pub(crate) origin: Option<Origin>,
+    pub(crate) location: Option<Address>,
     pub(crate) items: Vec<ProgramInstruction>,
 }
 

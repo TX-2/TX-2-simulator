@@ -17,11 +17,12 @@ use base::charset::Script;
 use base::prelude::*;
 use helpers::Sign;
 
+pub(crate) type Span = SimpleSpan;
 pub(crate) type Extra<'a, T> = Full<Rich<'a, T>, NumeralMode, ()>;
 
 fn literal<'a, I>(script_required: Script) -> impl Parser<'a, I, LiteralValue, Extra<'a, char>>
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    I: Input<'a, Token = char, Span = Span> + ValueInput<'a>,
 {
     let opt_sign = choice((
         terminal::plus(script_required).to(Sign::Plus),
@@ -36,7 +37,7 @@ where
         .then(maybe_dot)
         .try_map_with_state(move |((maybe_sign, digits), hasdot), span, state| {
             match helpers::make_num(maybe_sign, &digits, hasdot, state) {
-                Ok(value) => Ok(LiteralValue::from((script_required, value))),
+                Ok(value) => Ok(LiteralValue::from((span, script_required, value))),
                 Err(e) => Err(Rich::custom(span, e.to_string())),
             }
         })
@@ -65,7 +66,7 @@ where
 /// "expression" or "instruction fragment".
 fn expression<'a, I>() -> impl Parser<'a, I, Expression, Extra<'a, char>>
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+    I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char>,
 {
     choice((
         choice((
@@ -75,15 +76,17 @@ where
             terminal::opcode(),
         ))
         .map(Expression::from),
-        symbol(Script::Normal).map(|name| Expression::Symbol(Script::Normal, name)),
-        symbol(Script::Sub).map(|name| Expression::Symbol(Script::Sub, name)),
-        symbol(Script::Super).map(|name| Expression::Symbol(Script::Super, name)),
+        symbol(Script::Normal)
+            .map_with_span(|name, span| Expression::Symbol(span, Script::Normal, name)),
+        symbol(Script::Sub).map_with_span(|name, span| Expression::Symbol(span, Script::Sub, name)),
+        symbol(Script::Super)
+            .map_with_span(|name, span| Expression::Symbol(span, Script::Super, name)),
     ))
 }
 
 fn symbol<'a, I>(script_required: Script) -> impl Parser<'a, I, SymbolName, Extra<'a, char>>
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+    I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char>,
 {
     symex::parse_symex(script_required)
         .map(SymbolName::from)
@@ -92,7 +95,7 @@ where
 
 fn tag_definition<'a, I>() -> impl Parser<'a, I, SymbolName, Extra<'a, char>>
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+    I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char>,
 {
     let arrow = terminal::arrow().padded_by(terminal::opt_horizontal_whitespace());
     symbol(Script::Normal)
@@ -104,7 +107,7 @@ where
 fn program_instruction_fragment<'srcbody, I>(
 ) -> impl Parser<'srcbody, I, InstructionFragment, Extra<'srcbody, char>>
 where
-    I: Input<'srcbody, Token = char, Span = SimpleSpan> + StrInput<'srcbody, char>,
+    I: Input<'srcbody, Token = char, Span = Span> + StrInput<'srcbody, char>,
 {
     expression()
         .padded_by(terminal::opt_horizontal_whitespace())
@@ -113,11 +116,11 @@ where
 
 fn metacommand<'a, I>() -> impl Parser<'a, I, ManuscriptMetaCommand, Extra<'a, char>>
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+    I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char>,
 {
     fn named_metacommand<'a, I>(name: &'static str) -> impl Parser<'a, I, (), Extra<'a, char>>
     where
-        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+        I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char>,
     {
         terminal::metacommand_name()
             .filter(move |n| n == name)
@@ -127,7 +130,7 @@ where
 
     fn punch<'a, I>() -> impl Parser<'a, I, ManuscriptMetaCommand, Extra<'a, char>>
     where
-        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+        I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char>,
     {
         // We currently have a limitation in the interpretation of
         // "AA" in the PUNCH metacommand.  The documentation clearly
@@ -144,7 +147,7 @@ where
 
     fn base_change<'a, I>() -> impl Parser<'a, I, ManuscriptMetaCommand, Extra<'a, char>>
     where
-        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+        I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char>,
     {
         choice((
             choice((named_metacommand("DECIMAL"), named_metacommand("DEC")))
@@ -160,16 +163,18 @@ where
 
 fn program_instruction<'a, I>() -> impl Parser<'a, I, ProgramInstruction, Extra<'a, char>>
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+    I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char>,
 {
     fn build_inst(
         parts: (
             Option<SymbolName>,
             (Option<HoldBit>, Vec<InstructionFragment>),
         ),
+        span: Span,
     ) -> ProgramInstruction {
         let (maybe_tag, (holdbit, fragments)) = parts;
         ProgramInstruction {
+            span,
             tag: maybe_tag,
             holdbit: holdbit.unwrap_or(HoldBit::Unspecified),
             parts: fragments,
@@ -190,20 +195,20 @@ where
     tag_definition()
         .or_not()
         .then(maybe_hold.then(program_instruction_fragments))
-        .map(build_inst)
+        .map_with_span(build_inst)
         .labelled("optional tag definition followed by a program instruction")
 }
 
 fn statement<'a, I>() -> impl Parser<'a, I, Statement, Extra<'a, char>>
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+    I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char>,
 {
     /// Assginments are called "equalities" in the TX-2 Users Handbook.
     /// See section 6-2.2, "SYMEX DEFINITON - TAGS - EQUALITIES -
     /// AUTOMATIC ASSIGNMENT".
     fn assignment<'a, I>() -> impl Parser<'a, I, (SymbolName, Expression), Extra<'a, char>>
     where
-        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+        I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char>,
     {
         terminal::opt_horizontal_whitespace()
             .ignore_then(symex::parse_symex(Script::Normal))
@@ -215,14 +220,14 @@ where
         // We have to parse an assignment first here, in order to
         // accept "FOO=2" as an assignment rather than the instruction
         // fragment "FOO" followed by a syntax error.
-        assignment().map(|(sym, val)| Statement::Assignment(sym, val)),
+        assignment().map_with_span(|(sym, val), span| Statement::Assignment(span, sym, val)),
         program_instruction().map(Statement::Instruction),
     ))
 }
 
 fn manuscript_line<'a, I>() -> impl Parser<'a, I, ManuscriptLine, Extra<'a, char>>
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+    I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char>,
 {
     fn execute_metacommand(state: &mut NumeralMode, cmd: &ManuscriptMetaCommand) {
         match cmd {
@@ -237,7 +242,7 @@ where
 
     fn parse_and_execute_metacommand<'a, I>() -> impl Parser<'a, I, ManuscriptLine, Extra<'a, char>>
     where
-        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+        I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char>,
     {
         metacommand()
             .map_with_state(|cmd, _span, state| {
@@ -253,11 +258,11 @@ where
 
     fn line<'a, I>() -> impl Parser<'a, I, ManuscriptLine, Extra<'a, char>>
     where
-        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+        I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char>,
     {
         fn origin<'a, I>() -> impl Parser<'a, I, Origin, Extra<'a, char>>
         where
-            I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+            I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char>,
         {
             /// An address expression is a literal value or a symex.  That is I
             /// think it's not required that an arithmetic expression
@@ -265,12 +270,12 @@ where
             /// "<something>|").
             fn literal_address_expression<'a, I>() -> impl Parser<'a, I, Origin, Extra<'a, char>>
             where
-                I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+                I: Input<'a, Token = char, Span = Span> + ValueInput<'a>,
             {
                 // We should eventually support symexes here.
                 literal(Script::Normal)
                     .try_map(|lit, span| match Address::try_from(lit.value()) {
-                        Ok(addr) => Ok(Origin::Literal(addr)),
+                        Ok(addr) => Ok(Origin::Literal(span, addr)),
                         Err(e) => Err(Rich::custom(span, format!("not a valid address: {e}"))),
                     })
                     .labelled("literal address expression")
@@ -278,10 +283,10 @@ where
 
             fn symbolic_address_expression<'a, I>() -> impl Parser<'a, I, Origin, Extra<'a, char>>
             where
-                I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+                I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char>,
             {
                 symbol(Script::Normal)
-                    .map(Origin::Symbolic)
+                    .map_with_span(|sym, span| Origin::Symbolic(span, sym))
                     .labelled("symbolic address expression")
             }
             choice((literal_address_expression(), symbolic_address_expression()))
@@ -313,7 +318,7 @@ where
 
 fn end_of_line<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + StrInput<'a, char>,
+    I: Input<'a, Token = char, Span = Span> + StrInput<'a, char>,
 {
     let one_end_of_line = terminal::inline_whitespace()
         .or_not()
@@ -330,7 +335,7 @@ where
 
 fn terminated_manuscript_line<'a, I>() -> impl Parser<'a, I, Option<ManuscriptLine>, Extra<'a, char>>
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+    I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char>,
 {
     // If we support INSERT, DELETE, REPLACE, we will need to
     // separate the processing of the metacommands and the
@@ -340,13 +345,13 @@ where
 
 pub(crate) fn source_file<'a, I>() -> impl Parser<'a, I, SourceFile, Extra<'a, char>>
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+    I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char>,
 {
     // Parse a manuscript (which is a sequence of metacommands, macros
     // and assembly-language instructions).
     fn source_file_as_blocks<'a, I>() -> impl Parser<'a, I, SourceFile, Extra<'a, char>>
     where
-        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+        I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char>,
     {
         terminated_manuscript_line().repeated().collect().map(
             |lines: Vec<Option<ManuscriptLine>>| {
