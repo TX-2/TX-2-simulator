@@ -15,6 +15,35 @@ pub(crate) type LineNumber = u32;
 
 pub(crate) type Span = SimpleSpan;
 
+#[derive(Debug, Clone)]
+pub(crate) struct OrderableSpan(pub(crate) Span);
+
+impl From<Span> for OrderableSpan {
+    fn from(span: Span) -> OrderableSpan {
+        OrderableSpan(span)
+    }
+}
+
+impl Ord for OrderableSpan {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0.start.cmp(&other.0.start)
+    }
+}
+
+impl PartialOrd for OrderableSpan {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.0.start.cmp(&other.0.start))
+    }
+}
+
+impl PartialEq for OrderableSpan {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.start.cmp(&other.0.start).is_eq()
+    }
+}
+
+impl Eq for OrderableSpan {}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum MachineLimitExceededFailure {
     RanOutOfIndexRegisters(SymbolName),

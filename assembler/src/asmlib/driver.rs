@@ -311,7 +311,7 @@ fn origin_as_address(
     match origin {
         Origin::Literal(_span, addr) => (None, *addr),
         Origin::Symbolic(span, name) => {
-            match symtab.lookup_final(name, *span, &SymbolContext::origin(block_number)) {
+            match symtab.lookup_final(name, *span, &SymbolContext::origin(block_number, *span)) {
                 Ok(address) => (Some(name.clone()), subword::right_half(address).into()),
                 Err(e) => match next_address {
                     Some(addr) => {

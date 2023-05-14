@@ -191,7 +191,6 @@ fn resolve(
                         ),
                     ))
                 };
-                // TODO: factor this out.
                 let (physical_block_start, _) = block_address.split();
 
                 match Unsigned18Bit::try_from(block_offset) {
@@ -275,15 +274,15 @@ pub(super) struct SymbolTable {
 }
 
 #[derive(Debug)]
-struct FinalLookupOperation {
+struct FinalLookupOperation<'a> {
     target: SymbolName,
-    context: SymbolContext,
+    context: &'a SymbolContext,
     depends_on: HashSet<SymbolName>,
     deps_in_order: Vec<SymbolName>,
 }
 
-impl FinalLookupOperation {
-    fn new(target: SymbolName, context: SymbolContext) -> FinalLookupOperation {
+impl<'a> FinalLookupOperation<'a> {
+    fn new(target: SymbolName, context: &'a SymbolContext) -> FinalLookupOperation<'a> {
         FinalLookupOperation {
             target,
             context,
@@ -363,13 +362,12 @@ impl SymbolTable {
         _span: Span,
         context: SymbolContext,
     ) {
-        // TODO: record the span.
         self.definitions
             .entry(name)
             .and_modify(|def| {
-                def.merge_context(context);
+                def.merge_context(context.clone());
             })
-            .or_insert(SymbolDefinition::Undefined(context));
+            .or_insert_with(|| SymbolDefinition::Undefined(context.clone()));
     }
 
     fn final_lookup_helper(
@@ -406,7 +404,7 @@ impl SymbolTable {
                 },
                 SymbolDefinition::Equality(expression) => match expression {
                     Expression::Literal(literal) => Ok(literal.value()),
-                    Expression::Symbol(_span, elevation, symbol_name) => {
+                    Expression::Symbol(newspan, elevation, symbol_name) => {
                         // We re-use the existing op object (1) to
                         // detect cycles.  I'm not yet clear on how
                         // precisely to make use of the elevation.
@@ -437,7 +435,11 @@ impl SymbolTable {
                                 "superscript/subscript inside assignment value may not be correctly handled"
                             );
                         }
-                        self.final_lookup_helper(symbol_name, span, op)
+                        // The recursive lookup is performed with the
+                        // span of the symbolic expression, so that
+                        // any error relates to a spot in the input
+                        // where the relevant symbol actually appears.
+                        self.final_lookup_helper(symbol_name, *newspan, op)
                     }
                 },
                 SymbolDefinition::Undefined(context_union) => {
@@ -462,7 +464,7 @@ impl SymbolTable {
         span: Span,
         context: &SymbolContext,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-        let mut op = FinalLookupOperation::new(name.clone(), *context);
+        let mut op = FinalLookupOperation::new(name.clone(), context);
         self.final_lookup_helper(name, span, &mut op)
     }
 }
@@ -476,7 +478,7 @@ impl SymbolLookup for SymbolTable {
         span: Span,
         context: &SymbolContext,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-        let mut op = FinalLookupOperation::new(name.clone(), *context);
+        let mut op = FinalLookupOperation::new(name.clone(), context);
         self.final_lookup_helper(name, span, &mut op)
     }
 }

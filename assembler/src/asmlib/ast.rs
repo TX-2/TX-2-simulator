@@ -130,7 +130,7 @@ impl Expression {
                 result.push((
                     symbol_name.clone(),
                     *span,
-                    SymbolUse::Reference(SymbolContext::from(script)),
+                    SymbolUse::Reference(SymbolContext::from((script, *span))),
                 ));
             }
         }
@@ -143,7 +143,7 @@ impl Evaluate for Expression {
         match self {
             Expression::Literal(literal) => Ok(literal.value()),
             Expression::Symbol(span, elevation, name) => {
-                let context = SymbolContext::from(elevation);
+                let context = SymbolContext::from((elevation, *span));
                 symtab
                     .lookup(name, *span, &context)
                     .map(|value| value.shl(elevation.shift()))
@@ -386,7 +386,9 @@ impl SourceFile {
                 SymbolUse::Reference(context) => Some((name, span, context)),
                 SymbolUse::Definition(_) => None,
                 // An origin specification is either a reference or a definition, depending on how it is used.
-                SymbolUse::Origin(name, block) => Some((name, span, SymbolContext::origin(block))),
+                SymbolUse::Origin(name, block) => {
+                    Some((name, span, SymbolContext::origin(block, span)))
+                }
             })
     }
 
@@ -401,7 +403,7 @@ impl SourceFile {
                 SymbolUse::Origin(name, block) => Some((
                     name,
                     span,
-                    SymbolDefinition::Undefined(SymbolContext::origin(block)),
+                    SymbolDefinition::Undefined(SymbolContext::origin(block, span)),
                 )),
             })
     }
