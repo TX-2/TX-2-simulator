@@ -61,7 +61,7 @@ pub enum AssemblerFailure {
         error: IoError,
     },
     InvalidProgram {
-        span: Option<Span>, // TODO: populate this.
+        span: Span,
         msg: String,
     },
     // TODO: InvalidProgram perhaps should be an enum which includes SyntaxError.

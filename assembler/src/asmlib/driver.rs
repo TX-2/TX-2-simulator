@@ -59,12 +59,14 @@ pub enum SymbolLookupFailureKind {
 #[derive(Debug, PartialEq, Eq)]
 pub struct SymbolLookupFailure {
     symbol_name: SymbolName,
+    location: Span,
     kind: SymbolLookupFailureKind,
 }
 
 impl From<SymbolLookupFailure> for AssemblerFailure {
     fn from(f: SymbolLookupFailure) -> AssemblerFailure {
         let symbol = f.symbol_name;
+        let span = f.location;
         match f.kind {
             SymbolLookupFailureKind::MissingDefault => AssemblerFailure::InternalError(format!(
                 "no default value was assigned for {symbol}"
@@ -79,21 +81,27 @@ impl From<SymbolLookupFailure> for AssemblerFailure {
                     .collect::<Vec<_>>()
                     .join("->");
                 AssemblerFailure::InvalidProgram {
-                    span: None,
+                    span,
                     msg: format!("definition of symbol {symbol} has a dependency loop ({chain})",),
                 }
             }
             SymbolLookupFailureKind::Inconsistent(msg) => AssemblerFailure::InvalidProgram {
-                span: None,
+                span,
                 msg: format!("program is inconsistent: {msg}",),
             },
         }
     }
 }
 
-impl From<(SymbolName, SymbolLookupFailureKind)> for SymbolLookupFailure {
-    fn from((symbol_name, kind): (SymbolName, SymbolLookupFailureKind)) -> SymbolLookupFailure {
-        SymbolLookupFailure { symbol_name, kind }
+impl From<(SymbolName, Span, SymbolLookupFailureKind)> for SymbolLookupFailure {
+    fn from(
+        (symbol_name, span, kind): (SymbolName, Span, SymbolLookupFailureKind),
+    ) -> SymbolLookupFailure {
+        SymbolLookupFailure {
+            symbol_name,
+            location: span,
+            kind,
+        }
     }
 }
 
@@ -302,8 +310,8 @@ fn origin_as_address(
 ) -> (Option<SymbolName>, Address) {
     match origin {
         Origin::Literal(_span, addr) => (None, *addr),
-        Origin::Symbolic(_span, name) => {
-            match symtab.lookup_final(name, &SymbolContext::origin(block_number)) {
+        Origin::Symbolic(span, name) => {
+            match symtab.lookup_final(name, *span, &SymbolContext::origin(block_number)) {
                 Ok(address) => (Some(name.clone()), subword::right_half(address).into()),
                 Err(e) => match next_address {
                     Some(addr) => {
@@ -413,7 +421,7 @@ fn assemble_pass2<'a>(source_file: &SourceFile) -> Result<Pass2Output<'a>, Assem
             Ok(a) => a,
             Err(_) => {
                 return Err(MachineLimitExceededFailure::BlockTooLarge {
-                    block_number: block_number,
+                    block_number,
                     block_origin: *address,
                     offset: size,
                 }

@@ -142,10 +142,10 @@ impl Evaluate for Expression {
     fn evaluate<S: SymbolLookup>(&self, symtab: &mut S) -> Result<Unsigned36Bit, S::Error> {
         match self {
             Expression::Literal(literal) => Ok(literal.value()),
-            Expression::Symbol(_span, elevation, name) => {
+            Expression::Symbol(span, elevation, name) => {
                 let context = SymbolContext::from(elevation);
                 symtab
-                    .lookup(name, &context)
+                    .lookup(name, *span, &context)
                     .map(|value| value.shl(elevation.shift()))
             }
         }

@@ -4,12 +4,14 @@ use base::{charset::Script, prelude::Unsigned36Bit};
 
 use super::ast::Expression;
 use super::symbol::SymbolName;
+use super::types::Span;
 
 pub(crate) trait SymbolLookup {
     type Error;
     fn lookup(
         &mut self,
         name: &SymbolName,
+        span: Span,
         context: &SymbolContext,
     ) -> Result<Unsigned36Bit, Self::Error>;
 }

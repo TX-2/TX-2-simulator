@@ -937,6 +937,7 @@ impl SymbolLookup for NoSymbols {
     fn lookup(
         &mut self,
         _name: &SymbolName,
+        _span: Span,
         _context: &crate::eval::SymbolContext,
     ) -> Result<Unsigned36Bit, Self::Error> {
         Err(UnexpectedLookup {})

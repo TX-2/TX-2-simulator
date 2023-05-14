@@ -39,6 +39,7 @@ impl<'a> DefaultValueAssigner<'a> {
     pub(crate) fn get_default_symbol_value(
         &mut self,
         name: &SymbolName,
+        span: Span,
         contexts_used: SymbolContext,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         event!(
@@ -58,6 +59,7 @@ impl<'a> DefaultValueAssigner<'a> {
                 // origin and either config or index
                 Err(SymbolLookupFailure::from((
                     name.clone(),
+                    span,
                     SymbolLookupFailureKind::Inconsistent(format!(
                         "symbol '{name}' was used in both origin and other contexts"
                     )),
@@ -77,6 +79,7 @@ impl<'a> DefaultValueAssigner<'a> {
                     }
                     None => Err(SymbolLookupFailure::from((
                         name.clone(),
+                        span,
                         SymbolLookupFailureKind::MachineLimitExceeded(
                             MachineLimitExceededFailure::RanOutOfIndexRegisters(name.clone()),
                         ),
@@ -94,6 +97,7 @@ impl<'a> DefaultValueAssigner<'a> {
                     })
                     .unwrap_or(Err(SymbolLookupFailure::from((
                         name.clone(),
+                        span,
                         SymbolLookupFailureKind::MachineLimitExceeded(
                             MachineLimitExceededFailure::RcBlockTooLarge,
                         ),
@@ -137,6 +141,7 @@ impl SymbolLookup for FinalSymbolTable {
     fn lookup(
         &mut self,
         name: &SymbolName,
+        _span: Span,
         _: &SymbolContext,
     ) -> Result<Unsigned36Bit, Self::Error> {
         match self.entries.get(name) {
@@ -176,6 +181,7 @@ fn resolve(
                 let block_too_large = || -> SymbolLookupFailure {
                     SymbolLookupFailure::from((
                         symbol_name.clone(),
+                        *span,
                         SymbolLookupFailureKind::MachineLimitExceeded(
                             MachineLimitExceededFailure::BlockTooLarge {
                                 block_number: block,
@@ -202,7 +208,7 @@ fn resolve(
         },
         Some(SymbolDefinition::Undefined(use_contexts)) => {
             // Not already defined, so we need to assign a default.
-            assigner.get_default_symbol_value(symbol_name, use_contexts)
+            assigner.get_default_symbol_value(symbol_name, *span, use_contexts)
         }
         None => {
             unreachable!()
@@ -369,6 +375,7 @@ impl SymbolTable {
     fn final_lookup_helper(
         &self,
         name: &SymbolName,
+        span: Span,
         op: &mut FinalLookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         op.deps_in_order.push(name.clone());
@@ -377,6 +384,7 @@ impl SymbolTable {
             // we have a loop.
             return Err(SymbolLookupFailure::from((
                 name.clone(),
+                span,
                 SymbolLookupFailureKind::Loop {
                     deps_in_order: op.deps_in_order.to_vec(),
                 },
@@ -429,13 +437,14 @@ impl SymbolTable {
                                 "superscript/subscript inside assignment value may not be correctly handled"
                             );
                         }
-                        self.final_lookup_helper(symbol_name, op)
+                        self.final_lookup_helper(symbol_name, span, op)
                     }
                 },
                 SymbolDefinition::Undefined(context_union) => {
                     if context_union.includes(&op.context) {
                         Err(SymbolLookupFailure::from((
                             name.clone(),
+                            span,
                             SymbolLookupFailureKind::MissingDefault,
                         )))
                     } else {
@@ -450,10 +459,11 @@ impl SymbolTable {
     pub(crate) fn lookup_final(
         &self,
         name: &SymbolName,
+        span: Span,
         context: &SymbolContext,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         let mut op = FinalLookupOperation::new(name.clone(), *context);
-        self.final_lookup_helper(name, &mut op)
+        self.final_lookup_helper(name, span, &mut op)
     }
 }
 
@@ -463,9 +473,10 @@ impl SymbolLookup for SymbolTable {
     fn lookup(
         &mut self,
         name: &SymbolName,
+        span: Span,
         context: &SymbolContext,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         let mut op = FinalLookupOperation::new(name.clone(), *context);
-        self.final_lookup_helper(name, &mut op)
+        self.final_lookup_helper(name, span, &mut op)
     }
 }
