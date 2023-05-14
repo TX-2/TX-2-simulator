@@ -563,11 +563,11 @@ fn fail_with_diagnostics(source_file_body: &str, errors: Vec<Rich<char>>) -> Ass
             }
             let (line, column) = pos_line_column(source_file_body, first.span().start)
                 .expect("span for error message should be inside the file");
-            return AssemblerFailure::SyntaxError {
+            AssemblerFailure::SyntaxError {
                 line: line as u32,
                 column: Some(column),
                 msg: first.to_string(),
-            };
+            }
         }
         [] => {
             unreachable!("should not be called if errors is empty")
@@ -642,17 +642,19 @@ fn test_assemble_pass1() {
     let expected_directive_entry_point = Some(Address::new(Unsigned18Bit::from(0o26_u8)));
     let expected_block = ManuscriptBlock {
         origin: None,
-        statements: vec![Statement::Instruction(ProgramInstruction {
-            span: span(0..2),
+        statements: vec![Statement::Instruction(TaggedProgramInstruction {
             tag: None,
-            holdbit: HoldBit::Unspecified,
-            parts: vec![InstructionFragment {
-                value: Expression::Literal(LiteralValue::from((
-                    span(0..2),
-                    Script::Normal,
-                    u36!(0o14),
-                ))),
-            }],
+            instruction: UntaggedProgramInstruction {
+                span: span(0..2),
+                holdbit: HoldBit::Unspecified,
+                parts: vec![InstructionFragment {
+                    value: Expression::Literal(LiteralValue::from((
+                        span(0..2),
+                        Script::Normal,
+                        u36!(0o14),
+                    ))),
+                }],
+            },
         })],
     };
 

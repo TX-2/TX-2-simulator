@@ -318,16 +318,13 @@ pub(crate) enum HoldBit {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ProgramInstruction {
+pub(crate) struct UntaggedProgramInstruction {
     pub(crate) span: Span,
-    pub(crate) tag: Option<SymbolName>,
     pub(crate) holdbit: HoldBit,
     pub(crate) parts: Vec<InstructionFragment>,
 }
 
-const HELD_MASK: Unsigned36Bit = u36!(1 << 35);
-
-impl ProgramInstruction {
+impl UntaggedProgramInstruction {
     pub(crate) fn value<S: SymbolLookup>(&self, symtab: &mut S) -> Result<Unsigned36Bit, S::Error> {
         fn or_looked_up_value<S: SymbolLookup>(
             accumulator: Result<Unsigned36Bit, S::Error>,
@@ -349,20 +346,58 @@ impl ProgramInstruction {
             })
     }
 
+    pub(crate) fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> + '_ {
+        self.parts.iter().flat_map(InstructionFragment::symbol_uses)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Tag {
+    pub(crate) name: SymbolName,
+    pub(crate) span: Span,
+}
+
+impl Tag {
     pub(crate) fn symbol_uses(
         &self,
         block: usize,
         offset: usize,
     ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
-        let mut result = Vec::with_capacity(self.parts.len() + 1);
-        if let Some(name) = self.tag.as_ref() {
-            let tagdef = SymbolDefinition::Tag { block, offset };
-            result.push((name.clone(), self.span, SymbolUse::Definition(tagdef)));
+        [(
+            self.name.clone(),
+            self.span,
+            SymbolUse::Definition(SymbolDefinition::Tag { block, offset }),
+        )]
+        .into_iter()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TaggedProgramInstruction {
+    pub(crate) tag: Option<Tag>,
+    pub(crate) instruction: UntaggedProgramInstruction,
+}
+
+impl TaggedProgramInstruction {
+    pub(crate) fn value<S: SymbolLookup>(&self, symtab: &mut S) -> Result<Unsigned36Bit, S::Error> {
+        self.instruction.value(symtab)
+    }
+
+    pub(crate) fn symbol_uses(
+        &self,
+        block: usize,
+        offset: usize,
+    ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
+        let mut result = Vec::new();
+        if let Some(tag) = self.tag.as_ref() {
+            result.extend(tag.symbol_uses(block, offset));
         }
-        result.extend(self.parts.iter().flat_map(|frag| frag.symbol_uses()));
+        result.extend(self.instruction.symbol_uses());
         result.into_iter()
     }
 }
+
+const HELD_MASK: Unsigned36Bit = u36!(1 << 35);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SourceFile {
@@ -432,7 +467,7 @@ pub(crate) enum ManuscriptLine {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Statement {
     Assignment(Span, SymbolName, Expression), // User Guide calls these "equalities".
-    Instruction(ProgramInstruction),
+    Instruction(TaggedProgramInstruction),
 }
 
 impl Statement {
@@ -523,11 +558,11 @@ impl Directive {
 pub(crate) struct Block {
     pub(crate) origin: Option<Origin>,
     pub(crate) location: Option<Address>,
-    pub(crate) items: Vec<ProgramInstruction>,
+    pub(crate) items: Vec<TaggedProgramInstruction>,
 }
 
 impl Block {
-    pub(crate) fn push(&mut self, inst: ProgramInstruction) {
+    pub(crate) fn push(&mut self, inst: TaggedProgramInstruction) {
         self.items.push(inst);
     }
 

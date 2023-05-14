@@ -443,7 +443,7 @@ impl SymbolTable {
                     }
                 },
                 SymbolDefinition::Undefined(context_union) => {
-                    if context_union.includes(&op.context) {
+                    if context_union.includes(op.context) {
                         Err(SymbolLookupFailure::from((
                             name.clone(),
                             span,

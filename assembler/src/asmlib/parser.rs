@@ -93,12 +93,13 @@ where
         .labelled("symex (symbol) name")
 }
 
-fn tag_definition<'a, I>() -> impl Parser<'a, I, SymbolName, Extra<'a, char>>
+fn tag_definition<'a, I>() -> impl Parser<'a, I, Tag, Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char>,
 {
     let arrow = terminal::arrow().padded_by(terminal::opt_horizontal_whitespace());
     symbol(Script::Normal)
+        .map_with_span(|name, span| Tag { name, span })
         .then_ignore(arrow)
         .then_ignore(terminal::opt_horizontal_whitespace())
         .labelled("tag definition")
@@ -112,6 +113,18 @@ where
     expression()
         .padded_by(terminal::opt_horizontal_whitespace())
         .map(InstructionFragment::from)
+}
+
+fn program_instruction_fragments<'srcbody, I>(
+) -> impl Parser<'srcbody, I, Vec<InstructionFragment>, Extra<'srcbody, char>>
+where
+    I: Input<'srcbody, Token = char, Span = Span> + StrInput<'srcbody, char>,
+{
+    program_instruction_fragment()
+        .repeated()
+        .at_least(1)
+        .collect()
+        .labelled("program instruction")
 }
 
 fn metacommand<'a, I>() -> impl Parser<'a, I, ManuscriptMetaCommand, Extra<'a, char>>
@@ -161,41 +174,41 @@ where
     choice((base_change(), punch())).labelled("metacommand")
 }
 
-fn program_instruction<'a, I>() -> impl Parser<'a, I, ProgramInstruction, Extra<'a, char>>
+fn untagged_program_instruction<'a, I>(
+) -> impl Parser<'a, I, UntaggedProgramInstruction, Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char>,
 {
-    fn build_inst(
-        parts: (
-            Option<SymbolName>,
-            (Option<HoldBit>, Vec<InstructionFragment>),
-        ),
-        span: Span,
-    ) -> ProgramInstruction {
-        let (maybe_tag, (holdbit, fragments)) = parts;
-        ProgramInstruction {
-            span,
-            tag: maybe_tag,
-            holdbit: holdbit.unwrap_or(HoldBit::Unspecified),
-            parts: fragments,
-        }
-    }
-
     let maybe_hold = terminal::hold()
         .or_not()
         .padded_by(terminal::opt_horizontal_whitespace())
         .labelled("instruction hold bit");
+    maybe_hold
+        .then(program_instruction_fragments())
+        .map_with_span(
+            |(maybe_hold, parts): (Option<HoldBit>, Vec<InstructionFragment>), span| {
+                UntaggedProgramInstruction {
+                    span,
+                    holdbit: maybe_hold.unwrap_or(HoldBit::Unspecified),
+                    parts,
+                }
+            },
+        )
+}
 
-    let program_instruction_fragments = program_instruction_fragment()
-        .repeated()
-        .at_least(1)
-        .collect()
-        .labelled("program instruction");
-
+fn tagged_program_instruction<'a, I>(
+) -> impl Parser<'a, I, TaggedProgramInstruction, Extra<'a, char>>
+where
+    I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char>,
+{
     tag_definition()
         .or_not()
-        .then(maybe_hold.then(program_instruction_fragments))
-        .map_with_span(build_inst)
+        .then(untagged_program_instruction())
+        .map(
+            |(tag, instruction): (Option<Tag>, UntaggedProgramInstruction)| {
+                TaggedProgramInstruction { tag, instruction }
+            },
+        )
         .labelled("optional tag definition followed by a program instruction")
 }
 
@@ -221,7 +234,7 @@ where
         // accept "FOO=2" as an assignment rather than the instruction
         // fragment "FOO" followed by a syntax error.
         assignment().map_with_span(|(sym, val), span| Statement::Assignment(span, sym, val)),
-        program_instruction().map(Statement::Instruction),
+        tagged_program_instruction().map(Statement::Instruction),
     ))
 }
 

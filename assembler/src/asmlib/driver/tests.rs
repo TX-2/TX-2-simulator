@@ -1,8 +1,8 @@
 use std::ops::Range;
 
 use super::super::ast::{
-    Block, Expression, HoldBit, InstructionFragment, LiteralValue, ManuscriptBlock,
-    ProgramInstruction, PunchCommand, SourceFile, Statement,
+    Block, Expression, HoldBit, InstructionFragment, LiteralValue, ManuscriptBlock, PunchCommand,
+    SourceFile, Statement, TaggedProgramInstruction, UntaggedProgramInstruction,
 };
 use super::super::types::Span;
 use super::assemble_nonempty_valid_input;
@@ -24,11 +24,14 @@ fn assemble_literal(input: &str, expected: &InstructionFragment) {
             location: _,
             items,
         }] => match items.as_slice() {
-            [ProgramInstruction {
-                span: _,
+            [TaggedProgramInstruction {
                 tag: None,
-                holdbit: HoldBit::Unspecified,
-                parts,
+                instruction:
+                    UntaggedProgramInstruction {
+                        holdbit: HoldBit::Unspecified,
+                        parts,
+                        span: _,
+                    },
             }] => match parts.as_slice() {
                 [only_frag] => {
                     if only_frag == expected {
@@ -60,17 +63,19 @@ fn test_assemble_pass1() {
             punch: Some(PunchCommand(Some(Address::from(u18!(0o26))))),
             blocks: vec![ManuscriptBlock {
                 origin: None,
-                statements: vec![Statement::Instruction(ProgramInstruction {
-                    span: Span::from(0..2),
+                statements: vec![Statement::Instruction(TaggedProgramInstruction {
                     tag: None,
-                    holdbit: HoldBit::Unspecified,
-                    parts: vec![InstructionFragment {
-                        value: Expression::Literal(LiteralValue::from((
-                            Span::from(0..2),
-                            Script::Normal,
-                            u36!(0o14)
-                        )))
-                    }]
+                    instruction: UntaggedProgramInstruction {
+                        span: Span::from(0..2),
+                        holdbit: HoldBit::Unspecified,
+                        parts: vec![InstructionFragment {
+                            value: Expression::Literal(LiteralValue::from((
+                                Span::from(0..2),
+                                Script::Normal,
+                                u36!(0o14)
+                            )))
+                        }]
+                    }
                 })]
             }]
         })
@@ -91,16 +96,22 @@ fn test_metacommand_dec_changes_default_base() {
         items,
     }] = directive.blocks.as_slice()
     {
-        if let [ProgramInstruction {
-            span: _,
+        if let [TaggedProgramInstruction {
             tag: None,
-            holdbit: HoldBit::Unspecified,
-            parts: first_parts,
-        }, ProgramInstruction {
-            span: _,
+            instruction:
+                UntaggedProgramInstruction {
+                    span: _,
+                    holdbit: HoldBit::Unspecified,
+                    parts: first_parts,
+                },
+        }, TaggedProgramInstruction {
             tag: None,
-            holdbit: HoldBit::Unspecified,
-            parts: second_parts,
+            instruction:
+                UntaggedProgramInstruction {
+                    span: _,
+                    holdbit: HoldBit::Unspecified,
+                    parts: second_parts,
+                },
         }] = items.as_slice()
         {
             assert_eq!(
