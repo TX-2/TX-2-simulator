@@ -18,8 +18,6 @@ use tracing::{event, span, Level};
 use super::ast::*;
 use super::eval::SymbolContext;
 use super::parser::parse_source_file;
-#[cfg(test)]
-use super::parser::Span;
 use super::state::NumeralMode;
 use super::symbol::SymbolName;
 use super::types::*;
@@ -51,38 +49,60 @@ struct OutputOptions {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum SymbolLookupFailure {
-    Undefined(SymbolName),
-    Inconsistent {
-        symbol: SymbolName,
-        msg: String,
-    },
-    Loop {
-        target: SymbolName,
-        deps_in_order: Vec<SymbolName>,
-    },
-    RanOutOfIndexRegisters(SymbolName),
-    RcBlockTooLarge,
-    BlockTooLarge {
-        block_number: usize,
-        block_origin: Address,
-        offset: usize,
-    },
+pub enum SymbolLookupFailureKind {
+    MissingDefault,
+    Inconsistent(String),
+    Loop { deps_in_order: Vec<SymbolName> },
+    MachineLimitExceeded(MachineLimitExceededFailure),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct SymbolLookupFailure {
+    symbol_name: SymbolName,
+    kind: SymbolLookupFailureKind,
+}
+
+impl From<SymbolLookupFailure> for AssemblerFailure {
+    fn from(f: SymbolLookupFailure) -> AssemblerFailure {
+        let symbol = f.symbol_name;
+        match f.kind {
+            SymbolLookupFailureKind::MissingDefault => AssemblerFailure::InternalError(format!(
+                "no default value was assigned for {symbol}"
+            )),
+            SymbolLookupFailureKind::MachineLimitExceeded(limit_exceeded) => {
+                AssemblerFailure::MachineLimitExceeded(limit_exceeded)
+            }
+            SymbolLookupFailureKind::Loop { deps_in_order } => {
+                let chain: String = deps_in_order
+                    .iter()
+                    .map(|dep| dep.to_string())
+                    .collect::<Vec<_>>()
+                    .join("->");
+                AssemblerFailure::InvalidProgram {
+                    span: None,
+                    msg: format!("definition of symbol {symbol} has a dependency loop ({chain})",),
+                }
+            }
+            SymbolLookupFailureKind::Inconsistent(msg) => AssemblerFailure::InvalidProgram {
+                span: None,
+                msg: format!("program is inconsistent: {msg}",),
+            },
+        }
+    }
+}
+
+impl From<(SymbolName, SymbolLookupFailureKind)> for SymbolLookupFailure {
+    fn from((symbol_name, kind): (SymbolName, SymbolLookupFailureKind)) -> SymbolLookupFailure {
+        SymbolLookupFailure { symbol_name, kind }
+    }
 }
 
 impl SymbolLookupFailure {
     pub(crate) fn symbol_name(&self) -> &SymbolName {
-        match self {
-            SymbolLookupFailure::Undefined(n) => n,
-            SymbolLookupFailure::Inconsistent { symbol, msg: _ } => symbol,
-            SymbolLookupFailure::Loop {
-                target,
-                deps_in_order: _,
-            } => target,
-            SymbolLookupFailure::RanOutOfIndexRegisters(n) => n,
-            SymbolLookupFailure::RcBlockTooLarge => todo!(),
-            SymbolLookupFailure::BlockTooLarge { .. } => todo!(),
-        }
+        &self.symbol_name
+    }
+    pub(crate) fn kind(&self) -> &SymbolLookupFailureKind {
+        &self.kind
     }
 }
 
@@ -208,9 +228,17 @@ pub(crate) fn assemble_nonempty_valid_input<'a>(input: &'a str) -> (Directive, F
     match result {
         Ok((None, _)) => unreachable!("parser should generate output if there are no errors"),
         Ok((Some(source_file), _options)) => {
-            let (directive, final_symbols) = assemble_pass2(&source_file)
+            let p2output = assemble_pass2(&source_file)
                 .expect("test program should not extend beyong physical memory");
-            (directive, final_symbols)
+            if !p2output.errors.is_empty() {
+                panic!("input should be valid: {:?}", &p2output.errors);
+            }
+            match p2output.directive {
+                Some(directive) => (directive, p2output.symbols),
+                None => {
+                    panic!("assembly pass 2 generated no errors but also no output");
+                }
+            }
         }
         Err(e) => {
             panic!("input should be valid: {}", e);
@@ -302,7 +330,7 @@ fn origin_as_address(
 fn calculate_block_origins(
     source_file: &SourceFile,
     symtab: &mut SymbolTable,
-) -> Result<(Vec<(Option<SymbolName>, Address)>, Option<Address>), AddressOverflow> {
+) -> Result<(Vec<(Option<SymbolName>, Address)>, Option<Address>), MachineLimitExceededFailure> {
     let mut result = Vec::new();
     let mut next_address: Option<Address> = None;
 
@@ -312,7 +340,16 @@ fn calculate_block_origins(
             None => (None, next_address.unwrap_or_else(Origin::default_address)),
         };
         result.push((maybe_name, base));
-        let next = offset_from_origin(&base, block.instruction_count())?;
+        let next = match offset_from_origin(&base, block.instruction_count()) {
+            Ok(a) => a,
+            Err(_) => {
+                return Err(MachineLimitExceededFailure::BlockTooLarge {
+                    block_number,
+                    block_origin: base,
+                    offset: block.instruction_count(),
+                });
+            }
+        };
         next_address = Some(if let Some(n) = next_address {
             max(n, next)
         } else {
@@ -322,42 +359,43 @@ fn calculate_block_origins(
     Ok((result, next_address))
 }
 
-fn unique_symbols_in_order<I>(items: I) -> Vec<SymbolName>
+fn unique_symbols_in_order<I>(items: I) -> Vec<(SymbolName, Span)>
 where
-    I: IntoIterator<Item = SymbolName>,
+    I: IntoIterator<Item = (SymbolName, Span)>,
 {
     let mut seen = HashSet::new();
     let mut result = Vec::new();
-    for sym in items {
+    for (sym, span) in items {
         if !seen.contains(&sym) {
             seen.insert(sym.clone());
-            result.push(sym);
+            result.push((sym, span));
         }
     }
     result
 }
 
+struct Pass2Output<'a> {
+    directive: Option<Directive>,
+    symbols: FinalSymbolTable,
+    errors: Vec<Rich<'a, char>>,
+}
+
 /// Pass 2 converts the abstract syntax representation into a
 /// `Directive`, which is closer to binary code.
-fn assemble_pass2(
-    source_file: &SourceFile,
-) -> Result<(Directive, FinalSymbolTable), AssemblerFailure> {
+fn assemble_pass2<'a>(source_file: &SourceFile) -> Result<Pass2Output<'a>, AssemblerFailure> {
     let span = span!(Level::ERROR, "assembly pass 2");
     let _enter = span.enter();
 
+    let mut errors = Vec::new();
     let mut symtab = SymbolTable::default();
-    for (symbol, context) in source_file.global_symbol_references() {
-        symtab.record_usage_context(symbol.clone(), context)
+    for (symbol, span, context) in source_file.global_symbol_references() {
+        symtab.record_usage_context(symbol.clone(), span, context)
     }
-    for (symbol, definition) in source_file.global_symbol_definitions() {
+    for (symbol, span, definition) in source_file.global_symbol_definitions() {
         match symtab.define(symbol.clone(), definition.clone()) {
             Ok(_) => (),
             Err(e) => {
-                let msg = format!("bad symbol definition: {e}");
-                return Err(AssemblerFailure::SymbolError(
-                    symbol.clone(),
-                    SymbolLookupFailure::Inconsistent { symbol, msg },
-                ));
+                errors.push(Rich::custom(span, format!("bad symbol definition: {e}")));
             }
         }
     }
@@ -371,7 +409,17 @@ fn assemble_pass2(
     for (block_number, (_maybe_name, address)) in origins.iter().enumerate() {
         symtab.record_block_origin(block_number, *address);
         let size = source_file.blocks[block_number].instruction_count();
-        let after_end = offset_from_origin(address, size)?;
+        let after_end = match offset_from_origin(address, size) {
+            Ok(a) => a,
+            Err(_) => {
+                return Err(MachineLimitExceededFailure::BlockTooLarge {
+                    block_number: block_number,
+                    block_origin: *address,
+                    offset: size,
+                }
+                .into());
+            }
+        };
         next_free_address = next_free_address
             .map(|current| max(current, after_end))
             .or(Some(after_end));
@@ -380,14 +428,14 @@ fn assemble_pass2(
     let final_symbols = match next_free_address {
         Some(next_free) => {
             let mut rc_block: Vec<Unsigned36Bit> = Vec::new();
-            let symbol_refs_in_program_order: Vec<SymbolName> = unique_symbols_in_order(
+            let symbol_refs_in_program_order: Vec<(SymbolName, Span)> = unique_symbols_in_order(
                 source_file
                     .global_symbol_definitions()
-                    .map(|(symbol, _)| symbol)
+                    .map(|(symbol, span, _)| (symbol, span))
                     .chain(
                         source_file
                             .global_symbol_references()
-                            .map(|(symbol, _)| symbol),
+                            .map(|(symbol, span, _)| (symbol, span)),
                     ),
             );
             match finalise_symbol_table(
@@ -408,7 +456,11 @@ fn assemble_pass2(
                 Level::WARN,
                 "the program appears to be empty; generating 0 instructions"
             );
-            return Ok((Directive::default(), FinalSymbolTable::default()));
+            return Ok(Pass2Output {
+                directive: None,
+                symbols: FinalSymbolTable::default(),
+                errors,
+            });
         }
     };
 
@@ -418,7 +470,11 @@ fn assemble_pass2(
         "assembly generated {} instructions",
         directive.instruction_count()
     );
-    Ok((directive, final_symbols))
+    Ok(Pass2Output {
+        directive: Some(directive),
+        symbols: final_symbols,
+        errors,
+    })
 }
 
 /// Pass 3 generates binary code.
@@ -491,9 +547,7 @@ fn pos_line_column(s: &str, pos: usize) -> Result<(usize, usize), ()> {
     Err(())
 }
 
-pub(crate) fn assemble_source(source_file_body: &str) -> Result<Binary, AssemblerFailure> {
-    let mut errors = Vec::new();
-    let (source_file, options) = assemble_pass1(source_file_body, &mut errors)?;
+fn fail_with_diagnostics(source_file_body: &str, errors: Vec<Rich<char>>) -> AssemblerFailure {
     match errors.as_slice() {
         [first, ..] => {
             for e in errors.iter() {
@@ -501,20 +555,47 @@ pub(crate) fn assemble_source(source_file_body: &str) -> Result<Binary, Assemble
             }
             let (line, column) = pos_line_column(source_file_body, first.span().start)
                 .expect("span for error message should be inside the file");
-            return Err(AssemblerFailure::SyntaxError {
+            return AssemblerFailure::SyntaxError {
                 line: line as u32,
                 column: Some(column),
                 msg: first.to_string(),
-            });
+            };
         }
-        [] => (),
+        [] => {
+            unreachable!("should not be called if errors is empty")
+        }
+    }
+}
+
+pub(crate) fn assemble_source(source_file_body: &str) -> Result<Binary, AssemblerFailure> {
+    let mut errors = Vec::new();
+    let (source_file, options) = assemble_pass1(source_file_body, &mut errors)?;
+    if !errors.is_empty() {
+        return Err(fail_with_diagnostics(source_file_body, errors));
     }
     let source_file =
         source_file.expect("assembly pass1 generated no errors, an AST should have been returned");
 
-    // Now we do passes 2 and 3.
+    // Now we do pass 2.
+    let Pass2Output {
+        directive,
+        mut symbols,
+        errors,
+    } = assemble_pass2(&source_file)?;
+    if !errors.is_empty() {
+        return Err(fail_with_diagnostics(source_file_body, errors));
+    }
+    let directive = match directive {
+        None => {
+            return Err(AssemblerFailure::InternalError(
+                "assembly pass 2 generated no errors, so it should have generated ouptut code (even if empty)".to_string()
+            ));
+        }
+        Some(d) => d,
+    };
+
+    // Now we do pass 3.
     let binary = {
-        let (directive, mut final_symbols) = assemble_pass2(&source_file)?;
         event!(
             Level::INFO,
             "assembly pass 2 generated {} instructions",
@@ -523,13 +604,13 @@ pub(crate) fn assemble_source(source_file_body: &str) -> Result<Binary, Assemble
 
         if options.list {
             // List the symbols.
-            for (name, definition) in final_symbols.list() {
+            for (name, definition) in symbols.list() {
                 println!("{name:>20} = {definition:12o}");
             }
         }
 
         // Pass 3 generates the binary output
-        assemble_pass3(directive, &mut final_symbols)?
+        assemble_pass3(directive, &mut symbols)?
     };
 
     // The count here also doesn't include the size of the RC-block as

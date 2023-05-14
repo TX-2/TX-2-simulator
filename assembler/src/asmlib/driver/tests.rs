@@ -4,7 +4,7 @@ use super::super::ast::{
     Block, Expression, HoldBit, InstructionFragment, LiteralValue, ManuscriptBlock,
     ProgramInstruction, PunchCommand, SourceFile, Statement,
 };
-use super::super::parser::Span;
+use super::super::types::Span;
 use super::assemble_nonempty_valid_input;
 use super::assemble_pass1;
 use base::{

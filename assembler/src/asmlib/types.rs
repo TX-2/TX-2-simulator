@@ -4,13 +4,45 @@ use std::fmt::{self, Display, Formatter};
 use std::io::Error as IoError;
 use std::path::PathBuf;
 
-use super::driver::SymbolLookupFailure;
+use chumsky::prelude::SimpleSpan;
+
 use super::symbol::SymbolName;
 use base::prelude::{Address, Unsigned18Bit};
 
 /// LineNumber values are usually derived from
 /// LocatedSpan::line_location() which returns a u32.
 pub(crate) type LineNumber = u32;
+
+pub(crate) type Span = SimpleSpan;
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum MachineLimitExceededFailure {
+    RanOutOfIndexRegisters(SymbolName),
+    RcBlockTooLarge,
+    BlockTooLarge {
+        block_number: usize,
+        block_origin: Address,
+        offset: usize,
+    },
+}
+
+impl Display for MachineLimitExceededFailure {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        match self {
+            MachineLimitExceededFailure::RanOutOfIndexRegisters(name) => {
+                write!(f, "there are not enough index registers to assign one as the default for the symbol {name}")
+            }
+            MachineLimitExceededFailure::RcBlockTooLarge => f.write_str("RC block is too large"),
+            MachineLimitExceededFailure::BlockTooLarge {
+                block_number,
+                block_origin,
+                offset,
+            } => {
+                write!(f, "program block {block_number} is too large; offset {offset} from block start {block_origin} does not fit in physical memory")
+            }
+        }
+    }
+}
 
 #[derive(Debug)]
 pub enum AssemblerFailure {
@@ -28,25 +60,22 @@ pub enum AssemblerFailure {
         filename: PathBuf,
         error: IoError,
     },
+    InvalidProgram {
+        span: Option<Span>, // TODO: populate this.
+        msg: String,
+    },
+    // TODO: InvalidProgram perhaps should be an enum which includes SyntaxError.
     SyntaxError {
         line: LineNumber,
         column: Option<usize>,
         msg: String,
     },
-    ProgramTooBig(Address, usize),
-    SymbolError(SymbolName, SymbolLookupFailure),
+    MachineLimitExceeded(MachineLimitExceededFailure),
 }
 
-impl From<SymbolLookupFailure> for AssemblerFailure {
-    fn from(f: SymbolLookupFailure) -> AssemblerFailure {
-        let symbol = f.symbol_name();
-        AssemblerFailure::SymbolError(symbol.clone(), f)
-    }
-}
-
-impl From<AddressOverflow> for AssemblerFailure {
-    fn from(e: AddressOverflow) -> AssemblerFailure {
-        AssemblerFailure::ProgramTooBig(e.0, e.1)
+impl From<MachineLimitExceededFailure> for AssemblerFailure {
+    fn from(f: MachineLimitExceededFailure) -> AssemblerFailure {
+        AssemblerFailure::MachineLimitExceeded(f)
     }
 }
 
@@ -66,9 +95,6 @@ impl Display for AssemblerFailure {
         match self {
             AssemblerFailure::InternalError(msg) => {
                 write!(f, "internal error: {msg}")
-            }
-            AssemblerFailure::SymbolError(symbol, e) => {
-                write!(f, "symbol lookup failure for {symbol}: {e}")
             }
             AssemblerFailure::BadTapeBlock(explanation) => {
                 write!(f, "bad tape block: {}", explanation)
@@ -105,11 +131,19 @@ impl Display for AssemblerFailure {
                     write!(f, "line {}: {}", line, msg)
                 }
             },
-            AssemblerFailure::ProgramTooBig(base, block_size) => {
-                write!(
-                    f,
-                    "Program goes not fit into TX-2 memory; a block has origin {base:o} and size {block_size:o} but the largest possible address is {:o}", Address::MAX
-                )
+            AssemblerFailure::InvalidProgram { span: _, msg } => {
+                // TODO: converting a span into line and column
+                // numbers requires access to the text of the input.
+                // While we could include a str reference here for
+                // this, we'd be inconsistent with the way that
+                // SyntaxError is handled (which is that the line
+                // numbers are already resolved).
+                //
+                // Perhaps we can do better by integrating Ariadne.
+                write!(f, "error: {msg}")
+            }
+            AssemblerFailure::MachineLimitExceeded(fail) => {
+                write!(f, "machine limit exceeded: {fail}")
             }
         }
     }

@@ -7,17 +7,17 @@ mod tests;
 use chumsky::error::Rich;
 use chumsky::extra::Full;
 use chumsky::input::{StrInput, ValueInput};
-use chumsky::prelude::{choice, Input, IterParser, SimpleSpan};
+use chumsky::prelude::{choice, Input, IterParser};
 use chumsky::Parser;
 
 use super::ast::*;
 use super::state::NumeralMode;
 use super::symbol::SymbolName;
+use super::types::*;
 use base::charset::Script;
 use base::prelude::*;
 use helpers::Sign;
 
-pub(crate) type Span = SimpleSpan;
 pub(crate) type Extra<'a, T> = Full<Rich<'a, T>, NumeralMode, ()>;
 
 fn literal<'a, I>(script_required: Script) -> impl Parser<'a, I, LiteralValue, Extra<'a, char>>

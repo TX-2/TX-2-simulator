@@ -16,8 +16,9 @@ use base::{
 use super::super::ast::Expression;
 use super::super::eval::{BadSymbolDefinition, SymbolContext, SymbolDefinition, SymbolLookup};
 use super::super::symbol::SymbolName;
-use super::super::types::offset_from_origin;
-use super::SymbolLookupFailure;
+use super::super::types::Span;
+use super::super::types::{offset_from_origin, MachineLimitExceededFailure};
+use super::{SymbolLookupFailure, SymbolLookupFailureKind};
 
 /// Instances of Infallible cannot be created as it has no variants.
 /// When the never type (`!`) is stabilised, we should use that
@@ -55,13 +56,12 @@ impl<'a> DefaultValueAssigner<'a> {
             }
             [true, _, _, true] | [_, true, _, true] => {
                 // origin and either config or index
-                Err(SymbolLookupFailure::Inconsistent {
-                    symbol: name.clone(),
-                    msg: format!(
-                        "symbol '{}' was used in both origin and also other contexts",
-                        name
-                    ),
-                })
+                Err(SymbolLookupFailure::from((
+                    name.clone(),
+                    SymbolLookupFailureKind::Inconsistent(format!(
+                        "symbol '{name}' was used in both origin and other contexts"
+                    )),
+                )))
             }
             [false, false, false, false] => unreachable!(), // apparently no usage at all
             [true, _, _, false] => Ok(Unsigned36Bit::ZERO), // configuration (perhaps in combo with others)
@@ -75,7 +75,12 @@ impl<'a> DefaultValueAssigner<'a> {
                         *self.index_registers_used = n;
                         Ok(n.into())
                     }
-                    None => Err(SymbolLookupFailure::RanOutOfIndexRegisters(name.clone())),
+                    None => Err(SymbolLookupFailure::from((
+                        name.clone(),
+                        SymbolLookupFailureKind::MachineLimitExceeded(
+                            MachineLimitExceededFailure::RanOutOfIndexRegisters(name.clone()),
+                        ),
+                    ))),
                 }
             }
             [false, false, true, false] => {
@@ -87,7 +92,12 @@ impl<'a> DefaultValueAssigner<'a> {
                         self.rc_block.push(Unsigned36Bit::ZERO);
                         Ok(rc_word_addr.into())
                     })
-                    .unwrap_or(Err(SymbolLookupFailure::RcBlockTooLarge))
+                    .unwrap_or(Err(SymbolLookupFailure::from((
+                        name.clone(),
+                        SymbolLookupFailureKind::MachineLimitExceeded(
+                            MachineLimitExceededFailure::RcBlockTooLarge,
+                        ),
+                    ))))
             }
         }
     }
@@ -140,6 +150,7 @@ impl SymbolLookup for FinalSymbolTable {
 
 fn resolve(
     symbol_name: &SymbolName,
+    span: &Span,
     t: &mut SymbolTable,
     assigner: &mut DefaultValueAssigner,
     finalized_entries: &mut HashMap<SymbolName, Unsigned36Bit>,
@@ -147,13 +158,14 @@ fn resolve(
     if let Some(value) = finalized_entries.get(symbol_name) {
         return Ok(*value);
     }
+
     let result = match t.get(symbol_name).cloned() {
         Some(SymbolDefinition::DefaultAssigned(value)) => Ok(value),
         Some(SymbolDefinition::Equality(Expression::Literal(value))) => Ok(value.value()),
         Some(SymbolDefinition::Equality(Expression::Symbol(_span, script, fwd_symbol_name))) => {
             // TODO: this logic should probably be delegated to
             // Expression::value, not done here.
-            let value = resolve(&fwd_symbol_name, t, assigner, finalized_entries)?;
+            let value = resolve(&fwd_symbol_name, span, t, assigner, finalized_entries)?;
             Ok(value.shl(script.shift()))
         }
         Some(SymbolDefinition::Tag {
@@ -161,22 +173,27 @@ fn resolve(
             offset: block_offset,
         }) => match t.block_origins.get(&block) {
             Some(block_address) => {
+                let block_too_large = || -> SymbolLookupFailure {
+                    SymbolLookupFailure::from((
+                        symbol_name.clone(),
+                        SymbolLookupFailureKind::MachineLimitExceeded(
+                            MachineLimitExceededFailure::BlockTooLarge {
+                                block_number: block,
+                                block_origin: *block_address,
+                                offset: block_offset,
+                            },
+                        ),
+                    ))
+                };
                 // TODO: factor this out.
                 let (physical_block_start, _) = block_address.split();
+
                 match Unsigned18Bit::try_from(block_offset) {
                     Ok(offset) => match physical_block_start.checked_add(offset) {
                         Some(physical) => Ok(physical.into()),
-                        None => Err(SymbolLookupFailure::BlockTooLarge {
-                            block_number: block,
-                            block_origin: *block_address,
-                            offset: block_offset,
-                        }),
+                        None => Err(block_too_large()),
                     },
-                    Err(_) => Err(SymbolLookupFailure::BlockTooLarge {
-                        block_number: block,
-                        block_origin: *block_address,
-                        offset: block_offset,
-                    }),
+                    Err(_) => Err(block_too_large()),
                 }
             }
             None => {
@@ -213,7 +230,7 @@ pub(super) fn finalise_symbol_table<'a, I>(
     mut index_registers_used: Unsigned6Bit,
 ) -> Result<FinalSymbolTable, SymbolLookupFailure>
 where
-    I: Iterator<Item = &'a SymbolName>,
+    I: Iterator<Item = &'a (SymbolName, Span)>,
 {
     let mut expected_but_misssing: HashSet<SymbolName> = t.definitions.keys().cloned().collect();
     let mut assigner = DefaultValueAssigner {
@@ -222,9 +239,15 @@ where
         index_registers_used: &mut index_registers_used,
     };
     let mut finalized_entries: HashMap<SymbolName, Unsigned36Bit> = HashMap::new();
-    for symbol_name in symbols_in_program_order {
+    for (symbol_name, span) in symbols_in_program_order {
         expected_but_misssing.remove(symbol_name);
-        resolve(symbol_name, &mut t, &mut assigner, &mut finalized_entries)?;
+        resolve(
+            symbol_name,
+            span,
+            &mut t,
+            &mut assigner,
+            &mut finalized_entries,
+        )?;
     }
     if !expected_but_misssing.is_empty() {
         panic!("final symbol table lacks entries for known symbols {expected_but_misssing:?}");
@@ -266,33 +289,25 @@ impl FinalLookupOperation {
 
 impl Display for SymbolLookupFailure {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        match self {
-            SymbolLookupFailure::Undefined(name) => {
-                write!(f, "symbol {name} is not defined")
+        let name = self.symbol_name();
+        match self.kind() {
+            SymbolLookupFailureKind::MissingDefault => {
+                write!(
+                    f,
+                    "symbol {name} is not defined and no default value was applied"
+                )
             }
-            SymbolLookupFailure::RanOutOfIndexRegisters(name) => {
-                write!(f, "there are not enough index registers to assign one as the default for the symbol {name}")
-            }
-            SymbolLookupFailure::RcBlockTooLarge => f.write_str("RC block is too large"),
-            SymbolLookupFailure::BlockTooLarge {
-                block_number,
-                block_origin,
-                offset,
-            } => {
-                write!(f, "program block {block_number} is too large; offset {offset} from block start {block_origin} does not fit in physical memory")
-            }
-            SymbolLookupFailure::Inconsistent { symbol: _, msg } => f.write_str(msg.as_str()),
-            SymbolLookupFailure::Loop {
-                target,
-                deps_in_order,
-            } => {
+            SymbolLookupFailureKind::Inconsistent(msg) => f.write_str(msg.as_str()),
+            SymbolLookupFailureKind::Loop { deps_in_order } => {
                 let names: Vec<String> = deps_in_order.iter().map(|dep| dep.to_string()).collect();
                 write!(
                     f,
-                    "definition of symbol {} has a dependency loop ({})",
-                    target,
+                    "definition of symbol {name} has a dependency loop ({})",
                     names.join("->")
                 )
+            }
+            SymbolLookupFailureKind::MachineLimitExceeded(fail) => {
+                write!(f, "machine limit exceeded: {fail}")
             }
         }
     }
@@ -336,7 +351,13 @@ impl SymbolTable {
         self.block_origins.insert(block_number, address);
     }
 
-    pub(crate) fn record_usage_context(&mut self, name: SymbolName, context: SymbolContext) {
+    pub(crate) fn record_usage_context(
+        &mut self,
+        name: SymbolName,
+        _span: Span,
+        context: SymbolContext,
+    ) {
+        // TODO: record the span.
         self.definitions
             .entry(name)
             .and_modify(|def| {
@@ -354,10 +375,12 @@ impl SymbolTable {
         if !op.depends_on.insert(name.clone()) {
             // `name` was already in `depends_on`; in other words,
             // we have a loop.
-            return Err(SymbolLookupFailure::Loop {
-                target: op.target.clone(),
-                deps_in_order: op.deps_in_order.to_vec(),
-            });
+            return Err(SymbolLookupFailure::from((
+                name.clone(),
+                SymbolLookupFailureKind::Loop {
+                    deps_in_order: op.deps_in_order.to_vec(),
+                },
+            )));
         }
         let should_have_seen = |op: &FinalLookupOperation| {
             panic!("final symbol lookup of symbol '{}' happened in an evaluation context which was not previously returned by SourceFile::global_symbol_references(): {:?}", op.target, op);
@@ -411,7 +434,10 @@ impl SymbolTable {
                 },
                 SymbolDefinition::Undefined(context_union) => {
                     if context_union.includes(&op.context) {
-                        Err(SymbolLookupFailure::Undefined(name.clone()))
+                        Err(SymbolLookupFailure::from((
+                            name.clone(),
+                            SymbolLookupFailureKind::MissingDefault,
+                        )))
                     } else {
                         should_have_seen(op)
                     }

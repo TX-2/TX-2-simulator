@@ -9,9 +9,9 @@ use base::charset::{subscript_char, superscript_char, Script};
 use base::prelude::*;
 
 use super::eval::{Evaluate, SymbolContext, SymbolDefinition, SymbolLookup, SymbolUse};
-use super::parser::Span;
 use super::state::NumeralMode;
 use super::symbol::SymbolName;
+use super::types::Span;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct Elevated<T> {
@@ -380,26 +380,27 @@ impl SourceFile {
 
     pub(crate) fn global_symbol_references(
         &self,
-    ) -> impl Iterator<Item = (SymbolName, SymbolContext)> + '_ {
+    ) -> impl Iterator<Item = (SymbolName, Span, SymbolContext)> + '_ {
         self.symbol_uses()
-            .filter_map(|(name, _span, sym_use)| match sym_use {
-                SymbolUse::Reference(context) => Some((name, context)),
+            .filter_map(|(name, span, sym_use)| match sym_use {
+                SymbolUse::Reference(context) => Some((name, span, context)),
                 SymbolUse::Definition(_) => None,
                 // An origin specification is either a reference or a definition, depending on how it is used.
-                SymbolUse::Origin(name, block) => Some((name, SymbolContext::origin(block))),
+                SymbolUse::Origin(name, block) => Some((name, span, SymbolContext::origin(block))),
             })
     }
 
     pub(crate) fn global_symbol_definitions(
         &self,
-    ) -> impl Iterator<Item = (SymbolName, SymbolDefinition)> + '_ {
+    ) -> impl Iterator<Item = (SymbolName, Span, SymbolDefinition)> + '_ {
         self.symbol_uses()
-            .filter_map(|(name, _span, sym_use)| match sym_use {
+            .filter_map(|(name, span, sym_use)| match sym_use {
                 SymbolUse::Reference(_context) => None,
-                SymbolUse::Definition(def) => Some((name, def)),
+                SymbolUse::Definition(def) => Some((name, span, def)),
                 // An origin specification is either a reference or a definition, depending on how it is used.
                 SymbolUse::Origin(name, block) => Some((
                     name,
+                    span,
                     SymbolDefinition::Undefined(SymbolContext::origin(block)),
                 )),
             })
