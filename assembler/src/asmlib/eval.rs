@@ -58,6 +58,16 @@ pub(crate) struct SymbolContext {
 }
 
 impl SymbolContext {
+    pub(crate) fn for_script(script: &Script, span: &Span) -> SymbolContext {
+        SymbolContext {
+            configuration: script == &Script::Super,
+            index: script == &Script::Sub,
+            address: script == &Script::Normal,
+            origin_of_block: None,
+            uses: SymbolContext::uses(*span),
+        }
+    }
+
     pub(crate) fn bits(&self) -> [bool; 4] {
         [
             self.configuration,
@@ -76,6 +86,16 @@ impl SymbolContext {
             origin_of_block: Some(block_number),
             uses: SymbolContext::uses(span),
             ..Default::default()
+        }
+    }
+
+    pub(crate) fn tag(span: Span) -> SymbolContext {
+        SymbolContext {
+            configuration: false,
+            index: false,
+            address: true,
+            origin_of_block: None,
+            uses: SymbolContext::uses(span),
         }
     }
 
@@ -144,7 +164,7 @@ pub(crate) enum SymbolDefinition {
     Tag { block: usize, offset: usize },
     Equality(Expression),
     Undefined(SymbolContext),
-    DefaultAssigned(Unsigned36Bit),
+    DefaultAssigned(Unsigned36Bit, SymbolContext),
 }
 
 impl Debug for SymbolDefinition {
@@ -154,7 +174,7 @@ impl Debug for SymbolDefinition {
                 write!(f, "Tag {{block:{block}, offset:{offset}}}")
             }
             SymbolDefinition::Equality(expr) => f.debug_tuple("Equality").field(expr).finish(),
-            SymbolDefinition::DefaultAssigned(value) => {
+            SymbolDefinition::DefaultAssigned(value, _) => {
                 write!(f, "DefaultAssigned({value:o})")
             }
             SymbolDefinition::Undefined(context) => {
@@ -167,7 +187,7 @@ impl Debug for SymbolDefinition {
 impl Display for SymbolDefinition {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            SymbolDefinition::DefaultAssigned(value) => {
+            SymbolDefinition::DefaultAssigned(value, _) => {
                 write!(f, "default-assigned as {value}")
             }
             SymbolDefinition::Tag { block, offset } => {
@@ -177,6 +197,17 @@ impl Display for SymbolDefinition {
                 write!(f, "assignment with value {expression}")
             }
             SymbolDefinition::Undefined(_context) => f.write_str("undefined"),
+        }
+    }
+}
+
+impl From<(&SymbolDefinition, &Span)> for SymbolContext {
+    fn from((definition, span): (&SymbolDefinition, &Span)) -> SymbolContext {
+        match definition {
+            SymbolDefinition::Tag { .. } => SymbolContext::tag(*span),
+            SymbolDefinition::Equality(expression) => expression.context(),
+            SymbolDefinition::Undefined(context) => context.clone(),
+            SymbolDefinition::DefaultAssigned(_val, context) => context.clone(),
         }
     }
 }

@@ -53,6 +53,10 @@ impl LiteralValue {
     pub(crate) fn value(&self) -> Unsigned36Bit {
         self.value << self.elevation.shift()
     }
+
+    pub(crate) fn context(&self) -> SymbolContext {
+        SymbolContext::for_script(&self.elevation, &self.span)
+    }
 }
 
 impl Evaluate for LiteralValue {
@@ -139,6 +143,13 @@ impl Expression {
             }
         }
         result.into_iter()
+    }
+
+    pub(crate) fn context(&self) -> SymbolContext {
+        match self {
+            Expression::Literal(value) => value.context(),
+            Expression::Symbol(span, script, _) => SymbolContext::for_script(script, span),
+        }
     }
 }
 

@@ -305,7 +305,7 @@ impl Binary {
 fn origin_as_address(
     origin: &Origin,
     block_number: usize,
-    symtab: &SymbolTable,
+    symtab: &mut SymbolTable,
     next_address: Option<Address>,
 ) -> (Option<SymbolName>, Address) {
     match origin {
@@ -367,16 +367,16 @@ fn calculate_block_origins(
     Ok((result, next_address))
 }
 
-fn unique_symbols_in_order<I>(items: I) -> Vec<(SymbolName, Span)>
+fn unique_symbols_in_order<I>(items: I) -> Vec<(SymbolName, Span, SymbolContext)>
 where
-    I: IntoIterator<Item = (SymbolName, Span)>,
+    I: IntoIterator<Item = (SymbolName, Span, SymbolContext)>,
 {
     let mut seen = HashSet::new();
     let mut result = Vec::new();
-    for (sym, span) in items {
+    for (sym, span, context) in items {
         if !seen.contains(&sym) {
             seen.insert(sym.clone());
-            result.push((sym, span));
+            result.push((sym, span, context));
         }
     }
     result
@@ -436,16 +436,19 @@ fn assemble_pass2<'a>(source_file: &SourceFile) -> Result<Pass2Output<'a>, Assem
     let final_symbols = match next_free_address {
         Some(next_free) => {
             let mut rc_block: Vec<Unsigned36Bit> = Vec::new();
-            let symbol_refs_in_program_order: Vec<(SymbolName, Span)> = unique_symbols_in_order(
-                source_file
-                    .global_symbol_definitions()
-                    .map(|(symbol, span, _)| (symbol, span))
-                    .chain(
-                        source_file
-                            .global_symbol_references()
-                            .map(|(symbol, span, _)| (symbol, span)),
-                    ),
-            );
+            let symbol_refs_in_program_order: Vec<(SymbolName, Span, SymbolContext)> =
+                unique_symbols_in_order(
+                    source_file
+                        .global_symbol_definitions()
+                        .map(|(symbol, span, definition)| {
+                            (symbol, span, SymbolContext::from((&definition, &span)))
+                        })
+                        .chain(
+                            source_file
+                                .global_symbol_references()
+                                .map(|(symbol, span, context)| (symbol, span, context)),
+                        ),
+                );
             match finalise_symbol_table(
                 symtab,
                 symbol_refs_in_program_order.iter(),

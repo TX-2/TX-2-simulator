@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::ops::Shl;
 
 use base::prelude::*;
 use std::collections::BTreeMap;
@@ -10,8 +9,9 @@ use tracing::{event, Level};
 
 use base::prelude::{Address, Unsigned36Bit};
 
-use super::super::ast::Expression;
-use super::super::eval::{BadSymbolDefinition, SymbolContext, SymbolDefinition, SymbolLookup};
+use super::super::eval::{
+    BadSymbolDefinition, Evaluate, SymbolContext, SymbolDefinition, SymbolLookup,
+};
 use super::super::symbol::SymbolName;
 use super::super::types::Span;
 use super::super::types::{offset_from_origin, MachineLimitExceededFailure};
@@ -165,6 +165,7 @@ fn resolve(
     symbol_name: &SymbolName,
     span: &Span,
     t: &mut SymbolTable,
+    op: &mut FinalLookupOperation,
     assigner: &mut DefaultValueAssigner,
     finalized_entries: &mut HashMap<SymbolName, Unsigned36Bit>,
 ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
@@ -173,18 +174,13 @@ fn resolve(
     }
 
     let result = match t.get(symbol_name).cloned() {
-        Some(SymbolDefinition::DefaultAssigned(value)) => Ok(value),
-        Some(SymbolDefinition::Equality(Expression::Literal(value))) => Ok(value.value()),
-        Some(SymbolDefinition::Equality(Expression::Symbol(_span, script, fwd_symbol_name))) => {
-            // TODO: this logic should probably be delegated to
-            // Expression::value, not done here.
-            let value = resolve(&fwd_symbol_name, span, t, assigner, finalized_entries)?;
-            Ok(value.shl(script.shift()))
-        }
+        Some(SymbolDefinition::DefaultAssigned(value, _)) => Ok(value),
+        Some(SymbolDefinition::Equality(expression)) => expression.evaluate(t, op),
         Some(SymbolDefinition::Tag {
             block,
             offset: block_offset,
         }) => match t.block_origins.get(&block) {
+            // TODO: implement evaluate for Tag?
             Some(block_address) => {
                 let block_too_large = || -> SymbolLookupFailure {
                     SymbolLookupFailure::from((
@@ -224,7 +220,7 @@ fn resolve(
     match result {
         Ok(value) => match finalized_entries.insert(symbol_name.clone(), value) {
             None => {
-                t.define_if_undefined(symbol_name.clone(), value);
+                t.define_if_undefined(symbol_name.clone(), value, op.context);
                 Ok(value)
             }
             Some(_previous) => {
@@ -243,7 +239,7 @@ pub(super) fn finalise_symbol_table<'a, I>(
     mut index_registers_used: Unsigned6Bit,
 ) -> Result<FinalSymbolTable, SymbolLookupFailure>
 where
-    I: Iterator<Item = &'a (SymbolName, Span)>,
+    I: Iterator<Item = &'a (SymbolName, Span, SymbolContext)>,
 {
     let mut expected_but_misssing: HashSet<SymbolName> = t.definitions.keys().cloned().collect();
     let mut assigner = DefaultValueAssigner {
@@ -252,12 +248,14 @@ where
         index_registers_used: &mut index_registers_used,
     };
     let mut finalized_entries: HashMap<SymbolName, Unsigned36Bit> = HashMap::new();
-    for (symbol_name, span) in symbols_in_program_order {
+    for (symbol_name, span, context) in symbols_in_program_order {
         expected_but_misssing.remove(symbol_name);
+        let mut op = FinalLookupOperation::new(symbol_name.clone(), context);
         resolve(
             symbol_name,
             span,
             &mut t,
+            &mut op,
             &mut assigner,
             &mut finalized_entries,
         )?;
@@ -283,16 +281,14 @@ pub(super) struct SymbolTable {
 
 #[derive(Debug)]
 pub(crate) struct FinalLookupOperation<'a> {
-    target: SymbolName,
     context: &'a SymbolContext,
     depends_on: HashSet<SymbolName>,
     deps_in_order: Vec<SymbolName>,
 }
 
 impl<'a> FinalLookupOperation<'a> {
-    fn new(target: SymbolName, context: &'a SymbolContext) -> FinalLookupOperation<'a> {
+    fn new(_target: SymbolName, context: &'a SymbolContext) -> FinalLookupOperation<'a> {
         FinalLookupOperation {
-            target,
             context,
             depends_on: Default::default(),
             deps_in_order: Default::default(),
@@ -331,6 +327,13 @@ impl SymbolTable {
         self.definitions.get(name)
     }
 
+    pub(crate) fn get_clone(&self, name: &SymbolName) -> Option<SymbolDefinition> {
+        match self.definitions.get(name) {
+            Some(def) => Some(def.clone()),
+            None => None,
+        }
+    }
+
     pub(crate) fn define(
         &mut self,
         name: SymbolName,
@@ -349,15 +352,20 @@ impl SymbolTable {
         }
     }
 
-    pub(crate) fn define_if_undefined(&mut self, name: SymbolName, value: Unsigned36Bit) {
+    pub(crate) fn define_if_undefined(
+        &mut self,
+        name: SymbolName,
+        value: Unsigned36Bit,
+        context: &SymbolContext,
+    ) {
         self.definitions
             .entry(name)
             .and_modify(|def| {
                 if let SymbolDefinition::Undefined(_) = def {
-                    *def = SymbolDefinition::DefaultAssigned(value);
+                    *def = SymbolDefinition::DefaultAssigned(value, context.clone());
                 }
             })
-            .or_insert(SymbolDefinition::DefaultAssigned(value));
+            .or_insert(SymbolDefinition::DefaultAssigned(value, context.clone()));
     }
 
     pub(crate) fn record_block_origin(&mut self, block_number: usize, address: Address) {
@@ -379,7 +387,7 @@ impl SymbolTable {
     }
 
     fn final_lookup_helper(
-        &self,
+        &mut self,
         name: &SymbolName,
         span: Span,
         _context: &SymbolContext,
@@ -397,54 +405,21 @@ impl SymbolTable {
                 },
             )));
         }
-        let should_have_seen = |op: &FinalLookupOperation| {
-            panic!("final symbol lookup of symbol '{}' happened in an evaluation context which was not previously returned by SourceFile::global_symbol_references(): {:?}", op.target, op);
+        let should_have_seen = |name: &SymbolName, op: &FinalLookupOperation| {
+            panic!("final symbol lookup of symbol '{name}' happened in an evaluation context which was not previously returned by SourceFile::global_symbol_references(): {op:?}");
         };
-        match self.definitions.get(name) {
-            Some(def) => match def {
-                SymbolDefinition::DefaultAssigned(value) => Ok(*value),
-                SymbolDefinition::Tag { block, offset } => match self.block_origins.get(block) {
-                    Some(address) => Ok(offset_from_origin(address, *offset)
+        if let Some(def) = self.get_clone(name) {
+            match def {
+                SymbolDefinition::DefaultAssigned(value, _) => Ok(value),
+                SymbolDefinition::Tag { block, offset } => match self.block_origins.get(&block) {
+                    Some(address) => Ok(offset_from_origin(address, offset)
                         .expect("program is too long")
                         .into()),
                     None => {
                         panic!("definition of tag {name} references block {block} but there is no such block");
                     }
                 },
-                SymbolDefinition::Equality(expression) => match expression {
-                    Expression::Literal(literal) => Ok(literal.value()),
-                    Expression::Symbol(newspan, elevation, symbol_name) => {
-                        // We re-use the existing op object (1) to
-                        // detect cycles.  I'm not yet clear on how
-                        // precisely to make use of the elevation.
-                        //
-                        // For example, imagine B=² and we are
-                        // assembling this program:
-                        //
-                        //  X-> B TSD ...
-                        //  Y->  ᴮTSD ...
-                        //
-                        // What configuration value is to be used?
-                        // For the first insruction (at X), the
-                        // configuration value is clearly 2.  But for
-                        // the second (at Y), the value of B is
-                        // (2<<30), which is out of range for a
-                        // configuration value.
-                        //
-                        // Similarly, what if B is defined B=(4ᴰ) and D=1?
-                        //
-                        // Related questions arise around how we
-                        // establish what contexts a symbol has been
-                        // used in.
-                        //
-                        // The recursive lookup is performed with the
-                        // span of the symbolic expression, so that
-                        // any error relates to a spot in the input
-                        // where the relevant symbol actually appears.
-                        let context = SymbolContext::from((*elevation, *newspan));
-                        self.final_lookup_helper(symbol_name, *newspan, &context, op)
-                    }
-                },
+                SymbolDefinition::Equality(expression) => expression.evaluate(self, op),
                 SymbolDefinition::Undefined(context_union) => {
                     if context_union.includes(op.context) {
                         Err(SymbolLookupFailure::from((
@@ -453,16 +428,17 @@ impl SymbolTable {
                             SymbolLookupFailureKind::MissingDefault,
                         )))
                     } else {
-                        should_have_seen(op)
+                        should_have_seen(name, op)
                     }
                 }
-            },
-            None => should_have_seen(op),
+            }
+        } else {
+            should_have_seen(name, op)
         }
     }
 
     pub(crate) fn lookup_final(
-        &self,
+        &mut self,
         name: &SymbolName,
         span: Span,
         context: &SymbolContext,
