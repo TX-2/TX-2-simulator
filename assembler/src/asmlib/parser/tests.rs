@@ -709,6 +709,24 @@ fn test_manuscript_with_real_arrow_tag() {
     );
 }
 
+#[cfg(test)]
+fn assignment_of_literal(name: &str, assignment_span: Span, literal: LiteralValue) -> Statement {
+    let symbol = SymbolName {
+        canonical: name.to_string(),
+    };
+    Statement::Assignment(
+        assignment_span,
+        symbol,
+        UntaggedProgramInstruction {
+            span: span((literal.span().start)..(assignment_span.end)),
+            holdbit: HoldBit::Unspecified,
+            parts: vec![InstructionFragment {
+                value: Expression::Literal(literal),
+            }],
+        },
+    )
+}
+
 #[test]
 fn test_assignment_literal() {
     const INPUTS: &[(&'static str, usize)] = &[
@@ -721,16 +739,10 @@ fn test_assignment_literal() {
         dbg!(&begin);
         assert_eq!(
             parse_successfully_with(*input, statement(), no_state_setup),
-            Statement::Assignment(
+            assignment_of_literal(
+                "FOO",
                 span(0..(*begin + 1)),
-                SymbolName {
-                    canonical: "FOO".to_string(),
-                },
-                Expression::Literal(LiteralValue::from((
-                    span(*begin..(*begin + 1)),
-                    Script::Normal,
-                    u36!(2)
-                )))
+                LiteralValue::from((span(*begin..(*begin + 1)), Script::Normal, u36!(2))),
             )
         )
     }
@@ -748,18 +760,12 @@ fn test_assignment_superscript() {
         dbg!(input);
         assert_eq!(
             parse_successfully_with(*input, statement(), no_state_setup),
-            Statement::Assignment(
+            assignment_of_literal(
+                "FOO",
                 span(0..*val_end),
-                SymbolName {
-                    canonical: "FOO".to_string(),
-                },
-                Expression::Literal(LiteralValue::from((
-                    span(*val_begin..*val_end),
-                    Script::Super,
-                    u36!(2)
-                )))
+                LiteralValue::from((span(*val_begin..*val_end), Script::Super, u36!(2))),
             )
-        )
+        );
     }
 }
 
@@ -777,16 +783,10 @@ fn test_assignment_subscript() {
         dbg!(&val_end);
         assert_eq!(
             parse_successfully_with(*input, statement(), no_state_setup),
-            Statement::Assignment(
+            assignment_of_literal(
+                "FOO",
                 span(0..*val_end),
-                SymbolName {
-                    canonical: "FOO".to_string(),
-                },
-                Expression::Literal(LiteralValue::from((
-                    span(*val_begin..*val_end),
-                    Script::Sub,
-                    u36!(3)
-                )))
+                LiteralValue::from((span(*val_begin..*val_end), Script::Sub, u36!(3))),
             )
         )
     }
@@ -815,27 +815,15 @@ fn test_assignment_lines() {
             blocks: vec![ManuscriptBlock {
                 origin: None,
                 statements: vec![
-                    Statement::Assignment(
+                    assignment_of_literal(
+                        "FOO",
                         span(0..5),
-                        SymbolName {
-                            canonical: "FOO".to_string(),
-                        },
-                        Expression::Literal(LiteralValue::from((
-                            span(4..5),
-                            Script::Normal,
-                            u36!(2)
-                        )))
+                        LiteralValue::from((span(4..5), Script::Normal, u36!(2))),
                     ),
-                    Statement::Assignment(
-                        span(6..17),
-                        SymbolName {
-                            canonical: "BAR".to_string(),
-                        },
-                        Expression::Literal(LiteralValue::from((
-                            span(16..17),
-                            Script::Normal,
-                            u36!(1)
-                        )))
+                    assignment_of_literal(
+                        "BAR",
+                        span(6..18),
+                        LiteralValue::from((span(16..17), Script::Normal, u36!(1))),
                     ),
                     Statement::Instruction(TaggedProgramInstruction {
                         tag: None,
@@ -868,16 +856,10 @@ fn test_assignment_origin() {
             blocks: vec![
                 ManuscriptBlock {
                     origin: None,
-                    statements: vec![Statement::Assignment(
+                    statements: vec![assignment_of_literal(
+                        "FOO",
                         span(0..8),
-                        SymbolName {
-                            canonical: "FOO".to_string()
-                        },
-                        Expression::Literal(LiteralValue::from((
-                            span(4..8),
-                            Script::Normal,
-                            u36!(0o1000)
-                        )))
+                        LiteralValue::from((span(4..8), Script::Normal, u36!(0o1000))),
                     ),]
                 },
                 ManuscriptBlock {

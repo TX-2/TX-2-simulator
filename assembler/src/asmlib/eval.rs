@@ -3,7 +3,7 @@ use std::fmt::{self, Debug, Display, Formatter};
 
 use base::{charset::Script, prelude::Unsigned36Bit};
 
-use super::ast::Expression;
+use super::ast::UntaggedProgramInstruction;
 use super::symbol::SymbolName;
 use super::types::{OrderableSpan, Span};
 
@@ -58,16 +58,6 @@ pub(crate) struct SymbolContext {
 }
 
 impl SymbolContext {
-    pub(crate) fn for_script(script: &Script, span: &Span) -> SymbolContext {
-        SymbolContext {
-            configuration: script == &Script::Super,
-            index: script == &Script::Sub,
-            address: script == &Script::Normal,
-            origin_of_block: None,
-            uses: SymbolContext::uses(*span),
-        }
-    }
-
     pub(crate) fn bits(&self) -> [bool; 4] {
         [
             self.configuration,
@@ -86,16 +76,6 @@ impl SymbolContext {
             origin_of_block: Some(block_number),
             uses: SymbolContext::uses(span),
             ..Default::default()
-        }
-    }
-
-    pub(crate) fn tag(span: Span) -> SymbolContext {
-        SymbolContext {
-            configuration: false,
-            index: false,
-            address: true,
-            origin_of_block: None,
-            uses: SymbolContext::uses(span),
         }
     }
 
@@ -162,7 +142,7 @@ impl From<(Script, Span)> for SymbolContext {
 #[derive(PartialEq, Eq, Clone)]
 pub(crate) enum SymbolDefinition {
     Tag { block: usize, offset: usize },
-    Equality(Expression),
+    Equality(UntaggedProgramInstruction),
     Undefined(SymbolContext),
     DefaultAssigned(Unsigned36Bit, SymbolContext),
 }
@@ -193,24 +173,25 @@ impl Display for SymbolDefinition {
             SymbolDefinition::Tag { block, offset } => {
                 write!(f, "tag at offset {offset} in block {block}")
             }
-            SymbolDefinition::Equality(expression) => {
-                write!(f, "assignment with value {expression}")
+            SymbolDefinition::Equality(_inst) => {
+                // TODO: print the assigned value, too?
+                write!(f, "assignment with value")
             }
             SymbolDefinition::Undefined(_context) => f.write_str("undefined"),
         }
     }
 }
 
-impl From<(&SymbolDefinition, &Span)> for SymbolContext {
-    fn from((definition, span): (&SymbolDefinition, &Span)) -> SymbolContext {
-        match definition {
-            SymbolDefinition::Tag { .. } => SymbolContext::tag(*span),
-            SymbolDefinition::Equality(expression) => expression.context(),
-            SymbolDefinition::Undefined(context) => context.clone(),
-            SymbolDefinition::DefaultAssigned(_val, context) => context.clone(),
-        }
-    }
-}
+//impl From<(&SymbolDefinition, &Span)> for SymbolContext {
+//    fn from((definition, span): (&SymbolDefinition, &Span)) -> SymbolContext {
+//        match definition {
+//            SymbolDefinition::Tag { .. } => SymbolContext::tag(*span),
+//            SymbolDefinition::Equality(expression) => expression.context(),
+//            SymbolDefinition::Undefined(context) => context.clone(),
+//            SymbolDefinition::DefaultAssigned(_val, context) => context.clone(),
+//        }
+//    }
+//}
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub(crate) enum BadSymbolDefinition {

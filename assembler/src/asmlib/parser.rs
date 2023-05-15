@@ -219,21 +219,22 @@ where
     /// Assginments are called "equalities" in the TX-2 Users Handbook.
     /// See section 6-2.2, "SYMEX DEFINITON - TAGS - EQUALITIES -
     /// AUTOMATIC ASSIGNMENT".
-    fn assignment<'a, I>() -> impl Parser<'a, I, (SymbolName, Expression), Extra<'a, char>>
+    fn assignment<'a, I>(
+    ) -> impl Parser<'a, I, (SymbolName, UntaggedProgramInstruction), Extra<'a, char>>
     where
         I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char>,
     {
         terminal::opt_horizontal_whitespace()
             .ignore_then(symex::parse_symex(Script::Normal))
             .then_ignore(terminal::equals().padded_by(terminal::opt_horizontal_whitespace()))
-            .then(expression())
+            .then(untagged_program_instruction())
     }
 
     choice((
         // We have to parse an assignment first here, in order to
         // accept "FOO=2" as an assignment rather than the instruction
         // fragment "FOO" followed by a syntax error.
-        assignment().map_with_span(|(sym, val), span| Statement::Assignment(span, sym, val)),
+        assignment().map_with_span(|(sym, inst), span| Statement::Assignment(span, sym, inst)),
         tagged_program_instruction().map(Statement::Instruction),
     ))
 }

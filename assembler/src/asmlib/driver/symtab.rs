@@ -156,8 +156,7 @@ impl SymbolLookup for FinalSymbolTable {
         span: Span,
         context: &SymbolContext,
     ) -> Result<Unsigned36Bit, Self::Error> {
-        let mut op = ();
-        self.lookup_with_op(name, span, context, &mut op)
+        self.lookup_with_op(name, span, context, &mut ())
     }
 }
 
@@ -233,7 +232,7 @@ fn resolve(
 
 pub(super) fn finalise_symbol_table<'a, I>(
     mut t: SymbolTable,
-    symbols_in_program_order: I,
+    symbol_refs_in_program_order: I,
     program_words: Unsigned18Bit,
     rc_block: &mut Vec<Unsigned36Bit>,
     mut index_registers_used: Unsigned6Bit,
@@ -241,15 +240,15 @@ pub(super) fn finalise_symbol_table<'a, I>(
 where
     I: Iterator<Item = &'a (SymbolName, Span, SymbolContext)>,
 {
-    let mut expected_but_misssing: HashSet<SymbolName> = t.definitions.keys().cloned().collect();
+    let mut defined_but_not_used: HashSet<SymbolName> = t.definitions.keys().cloned().collect();
     let mut assigner = DefaultValueAssigner {
         program_words,
         rc_block,
         index_registers_used: &mut index_registers_used,
     };
     let mut finalized_entries: HashMap<SymbolName, Unsigned36Bit> = HashMap::new();
-    for (symbol_name, span, context) in symbols_in_program_order {
-        expected_but_misssing.remove(symbol_name);
+    for (symbol_name, span, context) in symbol_refs_in_program_order {
+        defined_but_not_used.remove(symbol_name);
         let mut op = FinalLookupOperation::new(symbol_name.clone(), context);
         resolve(
             symbol_name,
@@ -260,8 +259,8 @@ where
             &mut finalized_entries,
         )?;
     }
-    if !expected_but_misssing.is_empty() {
-        panic!("final symbol table lacks entries for known symbols {expected_but_misssing:?}");
+    for symbol_name in defined_but_not_used.iter() {
+        event!(Level::DEBUG, "Symcol {symbol_name} is defined but not used");
     }
     Ok(FinalSymbolTable {
         entries: finalized_entries,
@@ -328,10 +327,7 @@ impl SymbolTable {
     }
 
     pub(crate) fn get_clone(&self, name: &SymbolName) -> Option<SymbolDefinition> {
-        match self.definitions.get(name) {
-            Some(def) => Some(def.clone()),
-            None => None,
-        }
+        self.definitions.get(name).cloned()
     }
 
     pub(crate) fn define(

@@ -4,6 +4,8 @@ use super::super::ast::{
     Block, Expression, HoldBit, InstructionFragment, LiteralValue, ManuscriptBlock, PunchCommand,
     SourceFile, Statement, TaggedProgramInstruction, UntaggedProgramInstruction,
 };
+use super::super::eval::{SymbolContext, SymbolLookup};
+use super::super::symbol::SymbolName;
 use super::super::types::Span;
 use super::assemble_nonempty_valid_input;
 use super::assemble_pass1;
@@ -48,6 +50,28 @@ fn assemble_literal(input: &str, expected: &InstructionFragment) {
         "expected one instruction containing {:?}, got {:?}",
         &expected, &directive,
     );
+}
+
+#[cfg(test)]
+fn assemble_check_symbols(input: &str, expected: &[(&str, Unsigned36Bit)]) {
+    let (_directive, mut symtab) = assemble_nonempty_valid_input(input);
+    for (name, expected_value) in expected.into_iter() {
+        let sym = SymbolName {
+            canonical: name.to_string(),
+        };
+        let span = span(0..(name.len()));
+        let context = SymbolContext::from((Script::Normal, span));
+        match symtab.lookup(&sym, span, &context) {
+            Ok(got) => {
+                if got != *expected_value {
+                    panic!("incorrect value for symbol {name}; expected {expected_value:o}, got {got:o}");
+                }
+            }
+            Err(e) => {
+                panic!("unexpected error looking up value for symbol {name}: {e:?}");
+            }
+        }
+    }
 }
 
 #[test]
@@ -160,5 +184,21 @@ fn test_assemble_octal_subscript_literal_plussign() {
     assemble_literal(
         "₊₁₃\n", // with optional + sign
         &InstructionFragment::from((span(0..9), Script::Sub, Unsigned36Bit::from(0o13_u32))),
+    );
+}
+
+#[test]
+fn test_assignment_rhs_is_instruction() {
+    // The RHS of an assignment can be "any 36-bit value" (see TX-2
+    // Users Handbook, section 6-2.2, page 156 = 6-6).  Here we verify
+    // that it can be an instruction.
+    assemble_check_symbols(
+        concat!(
+            "FOO=²¹IOS₅₂ 30106  ** FROM PLUGBOARD A AT ADDRESS 377762\n",
+            "** WE USE FOO TO MAKE SURE THE SYMBOL VALUE IS NEEDED\n",
+            "** (AND HENCE IS RETAINED).\n",
+            "FOO\n"
+        ),
+        &[("FOO", u36!(0o210452_030106))],
     );
 }

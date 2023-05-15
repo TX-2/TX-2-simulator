@@ -54,8 +54,9 @@ impl LiteralValue {
         self.value << self.elevation.shift()
     }
 
-    pub(crate) fn context(&self) -> SymbolContext {
-        SymbolContext::for_script(&self.elevation, &self.span)
+    #[cfg(test)]
+    pub(crate) fn span(&self) -> &Span {
+        &self.span
     }
 }
 
@@ -143,13 +144,6 @@ impl Expression {
             }
         }
         result.into_iter()
-    }
-
-    pub(crate) fn context(&self) -> SymbolContext {
-        match self {
-            Expression::Literal(value) => value.context(),
-            Expression::Symbol(span, script, _) => SymbolContext::for_script(script, span),
-        }
     }
 }
 
@@ -502,7 +496,12 @@ pub(crate) enum ManuscriptLine {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Statement {
-    Assignment(Span, SymbolName, Expression), // User Guide calls these "equalities".
+    // The RHS of an assignment can be "any 36-bit value" (see TX-2
+    // Users Handbook, section 6-2.2, page 156 = 6-6).  Hence if the
+    // RHS of the assignment is symbolic the user needs to be able to
+    // set the hold bit with "h".  However, since we don't allow tags
+    // on the RHS, the value cannot be a TaggedProgramInstruction.
+    Assignment(Span, SymbolName, UntaggedProgramInstruction), // User Guide calls these "equalities".
     Instruction(TaggedProgramInstruction),
 }
 

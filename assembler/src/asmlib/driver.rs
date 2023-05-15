@@ -439,15 +439,8 @@ fn assemble_pass2<'a>(source_file: &SourceFile) -> Result<Pass2Output<'a>, Assem
             let symbol_refs_in_program_order: Vec<(SymbolName, Span, SymbolContext)> =
                 unique_symbols_in_order(
                     source_file
-                        .global_symbol_definitions()
-                        .map(|(symbol, span, definition)| {
-                            (symbol, span, SymbolContext::from((&definition, &span)))
-                        })
-                        .chain(
-                            source_file
-                                .global_symbol_references()
-                                .map(|(symbol, span, context)| (symbol, span, context)),
-                        ),
+                        .global_symbol_references()
+                        .map(|(symbol, span, context)| (symbol, span, context)),
                 );
             match finalise_symbol_table(
                 symtab,
@@ -506,8 +499,7 @@ fn assemble_pass3(
             .items
             .iter()
             .map(|inst| {
-                let mut op = ();
-                inst.evaluate(final_symtab, &mut op)
+                inst.evaluate(final_symtab, &mut ())
                     .expect("lookup on FinalSymbolTable is infallible")
             })
             .collect::<Vec<_>>();
