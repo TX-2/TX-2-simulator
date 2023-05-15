@@ -9,16 +9,29 @@ use super::types::{OrderableSpan, Span};
 
 pub(crate) trait SymbolLookup {
     type Error;
+    type Operation<'a>;
+
     fn lookup(
         &mut self,
         name: &SymbolName,
         span: Span,
         context: &SymbolContext,
     ) -> Result<Unsigned36Bit, Self::Error>;
+    fn lookup_with_op(
+        &mut self,
+        name: &SymbolName,
+        span: Span,
+        context: &SymbolContext,
+        op: &mut Self::Operation<'_>,
+    ) -> Result<Unsigned36Bit, Self::Error>;
 }
 
 pub(crate) trait Evaluate {
-    fn evaluate<S: SymbolLookup>(&self, symtab: &mut S) -> Result<Unsigned36Bit, S::Error>;
+    fn evaluate<S: SymbolLookup>(
+        &self,
+        symtab: &mut S,
+        op: &mut S::Operation<'_>,
+    ) -> Result<Unsigned36Bit, S::Error>;
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

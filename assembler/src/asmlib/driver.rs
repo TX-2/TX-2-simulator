@@ -16,7 +16,7 @@ use chumsky::error::Rich;
 use tracing::{event, span, Level};
 
 use super::ast::*;
-use super::eval::SymbolContext;
+use super::eval::{Evaluate, SymbolContext};
 use super::parser::parse_source_file;
 use super::state::NumeralMode;
 use super::symbol::SymbolName;
@@ -503,7 +503,8 @@ fn assemble_pass3(
             .items
             .iter()
             .map(|inst| {
-                inst.value(final_symtab)
+                let mut op = ();
+                inst.evaluate(final_symtab, &mut op)
                     .expect("lookup on FinalSymbolTable is infallible")
             })
             .collect::<Vec<_>>();

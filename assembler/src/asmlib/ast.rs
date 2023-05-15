@@ -56,7 +56,11 @@ impl LiteralValue {
 }
 
 impl Evaluate for LiteralValue {
-    fn evaluate<S: SymbolLookup>(&self, _: &mut S) -> Result<Unsigned36Bit, S::Error> {
+    fn evaluate<S: SymbolLookup>(
+        &self,
+        _symtab: &mut S,
+        _op: &mut S::Operation<'_>,
+    ) -> Result<Unsigned36Bit, S::Error> {
         Ok(self.value())
     }
 }
@@ -139,13 +143,17 @@ impl Expression {
 }
 
 impl Evaluate for Expression {
-    fn evaluate<S: SymbolLookup>(&self, symtab: &mut S) -> Result<Unsigned36Bit, S::Error> {
+    fn evaluate<S: SymbolLookup>(
+        &self,
+        symtab: &mut S,
+        op: &mut S::Operation<'_>,
+    ) -> Result<Unsigned36Bit, S::Error> {
         match self {
             Expression::Literal(literal) => Ok(literal.value()),
             Expression::Symbol(span, elevation, name) => {
                 let context = SymbolContext::from((elevation, *span));
                 symtab
-                    .lookup(name, *span, &context)
+                    .lookup_with_op(name, *span, &context, op)
                     .map(|value| value.shl(elevation.shift()))
             }
         }
@@ -203,8 +211,12 @@ impl InstructionFragment {
 }
 
 impl Evaluate for InstructionFragment {
-    fn evaluate<S: SymbolLookup>(&self, symtab: &mut S) -> Result<Unsigned36Bit, S::Error> {
-        self.value.evaluate(symtab)
+    fn evaluate<S: SymbolLookup>(
+        &self,
+        symtab: &mut S,
+        op: &mut S::Operation<'_>,
+    ) -> Result<Unsigned36Bit, S::Error> {
+        self.value.evaluate(symtab, op)
     }
 }
 
@@ -325,29 +337,36 @@ pub(crate) struct UntaggedProgramInstruction {
 }
 
 impl UntaggedProgramInstruction {
-    pub(crate) fn value<S: SymbolLookup>(&self, symtab: &mut S) -> Result<Unsigned36Bit, S::Error> {
+    pub(crate) fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> + '_ {
+        self.parts.iter().flat_map(InstructionFragment::symbol_uses)
+    }
+}
+
+impl Evaluate for UntaggedProgramInstruction {
+    fn evaluate<S: SymbolLookup>(
+        &self,
+        symtab: &mut S,
+        op: &mut S::Operation<'_>,
+    ) -> Result<Unsigned36Bit, S::Error> {
         fn or_looked_up_value<S: SymbolLookup>(
             accumulator: Result<Unsigned36Bit, S::Error>,
             frag: &InstructionFragment,
             symtab: &mut S,
+            op: &mut S::Operation<'_>,
         ) -> Result<Unsigned36Bit, S::Error> {
-            accumulator.and_then(|acc| Ok(acc | frag.value.evaluate(symtab)?))
+            accumulator.and_then(|acc| Ok(acc | frag.value.evaluate(symtab, op)?))
         }
 
         self.parts
             .iter()
             .fold(Ok(Unsigned36Bit::ZERO), |acc, curr| {
-                or_looked_up_value(acc, curr, symtab)
+                or_looked_up_value(acc, curr, symtab, op)
             })
             .map(|word| match self.holdbit {
                 HoldBit::Hold => word | HELD_MASK,
                 HoldBit::NotHold => word & !HELD_MASK,
                 HoldBit::Unspecified => word,
             })
-    }
-
-    pub(crate) fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> + '_ {
-        self.parts.iter().flat_map(InstructionFragment::symbol_uses)
     }
 }
 
@@ -379,10 +398,6 @@ pub(crate) struct TaggedProgramInstruction {
 }
 
 impl TaggedProgramInstruction {
-    pub(crate) fn value<S: SymbolLookup>(&self, symtab: &mut S) -> Result<Unsigned36Bit, S::Error> {
-        self.instruction.value(symtab)
-    }
-
     pub(crate) fn symbol_uses(
         &self,
         block: usize,
@@ -394,6 +409,16 @@ impl TaggedProgramInstruction {
         }
         result.extend(self.instruction.symbol_uses());
         result.into_iter()
+    }
+}
+
+impl Evaluate for TaggedProgramInstruction {
+    fn evaluate<S: SymbolLookup>(
+        &self,
+        symtab: &mut S,
+        op: &mut S::Operation<'_>,
+    ) -> Result<Unsigned36Bit, S::Error> {
+        self.instruction.evaluate(symtab, op)
     }
 }
 

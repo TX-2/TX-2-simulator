@@ -8,10 +8,7 @@ use std::fmt::{self, Debug, Display, Formatter};
 
 use tracing::{event, Level};
 
-use base::{
-    charset::Script,
-    prelude::{Address, Unsigned36Bit},
-};
+use base::prelude::{Address, Unsigned36Bit};
 
 use super::super::ast::Expression;
 use super::super::eval::{BadSymbolDefinition, SymbolContext, SymbolDefinition, SymbolLookup};
@@ -137,12 +134,14 @@ impl FinalSymbolTable {
 
 impl SymbolLookup for FinalSymbolTable {
     type Error = Infallible;
+    type Operation<'a> = ();
 
-    fn lookup(
+    fn lookup_with_op(
         &mut self,
         name: &SymbolName,
         _span: Span,
         _: &SymbolContext,
+        _op: &mut Self::Operation<'_>,
     ) -> Result<Unsigned36Bit, Self::Error> {
         match self.entries.get(name) {
             Some(value) => Ok(*value),
@@ -150,6 +149,15 @@ impl SymbolLookup for FinalSymbolTable {
                 panic!("no value was found in the final symbol table for symbol {name}");
             }
         }
+    }
+    fn lookup(
+        &mut self,
+        name: &SymbolName,
+        span: Span,
+        context: &SymbolContext,
+    ) -> Result<Unsigned36Bit, Self::Error> {
+        let mut op = ();
+        self.lookup_with_op(name, span, context, &mut op)
     }
 }
 
@@ -274,7 +282,7 @@ pub(super) struct SymbolTable {
 }
 
 #[derive(Debug)]
-struct FinalLookupOperation<'a> {
+pub(crate) struct FinalLookupOperation<'a> {
     target: SymbolName,
     context: &'a SymbolContext,
     depends_on: HashSet<SymbolName>,
@@ -374,6 +382,7 @@ impl SymbolTable {
         &self,
         name: &SymbolName,
         span: Span,
+        _context: &SymbolContext,
         op: &mut FinalLookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         op.deps_in_order.push(name.clone());
@@ -428,18 +437,12 @@ impl SymbolTable {
                         // establish what contexts a symbol has been
                         // used in.
                         //
-                        // TODO: figure out how this should be interpreted.
-                        if elevation != &Script::Normal {
-                            event!(
-                                Level::WARN,
-                                "superscript/subscript inside assignment value may not be correctly handled"
-                            );
-                        }
                         // The recursive lookup is performed with the
                         // span of the symbolic expression, so that
                         // any error relates to a spot in the input
                         // where the relevant symbol actually appears.
-                        self.final_lookup_helper(symbol_name, *newspan, op)
+                        let context = SymbolContext::from((*elevation, *newspan));
+                        self.final_lookup_helper(symbol_name, *newspan, &context, op)
                     }
                 },
                 SymbolDefinition::Undefined(context_union) => {
@@ -465,12 +468,23 @@ impl SymbolTable {
         context: &SymbolContext,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         let mut op = FinalLookupOperation::new(name.clone(), context);
-        self.final_lookup_helper(name, span, &mut op)
+        self.final_lookup_helper(name, span, context, &mut op)
     }
 }
 
 impl SymbolLookup for SymbolTable {
     type Error = SymbolLookupFailure;
+    type Operation<'a> = FinalLookupOperation<'a>;
+
+    fn lookup_with_op(
+        &mut self,
+        name: &SymbolName,
+        span: Span,
+        context: &SymbolContext,
+        op: &mut Self::Operation<'_>,
+    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+        self.final_lookup_helper(name, span, context, op)
+    }
 
     fn lookup(
         &mut self,
@@ -479,6 +493,6 @@ impl SymbolLookup for SymbolTable {
         context: &SymbolContext,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         let mut op = FinalLookupOperation::new(name.clone(), context);
-        self.final_lookup_helper(name, span, &mut op)
+        self.lookup_with_op(name, span, context, &mut op)
     }
 }

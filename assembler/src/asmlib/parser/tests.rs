@@ -15,7 +15,7 @@ use super::super::ast::{
 #[cfg(test)]
 use super::Span;
 
-use super::super::eval::SymbolLookup;
+use super::super::eval::{Evaluate, SymbolContext, SymbolLookup};
 use super::super::state::NumeralMode;
 use super::super::symbol::SymbolName;
 use super::symex::{parse_multi_syllable_symex, parse_symex};
@@ -983,6 +983,17 @@ struct NoSymbols {}
 
 impl SymbolLookup for NoSymbols {
     type Error = UnexpectedLookup;
+    type Operation<'a> = ();
+
+    fn lookup_with_op(
+        &mut self,
+        _name: &SymbolName,
+        _span: Span,
+        _context: &SymbolContext,
+        _op: &mut Self::Operation<'_>,
+    ) -> Result<Unsigned36Bit, Self::Error> {
+        Err(UnexpectedLookup {})
+    }
 
     fn lookup(
         &mut self,
@@ -997,13 +1008,14 @@ impl SymbolLookup for NoSymbols {
 #[test]
 fn program_instruction_with_opcode() {
     let mut nosyms = NoSymbols::default();
+    let mut op = ();
     assert_eq!(
         parse_successfully_with(
             "²¹IOS₅₂ 30106",
             tagged_program_instruction(),
             no_state_setup
         )
-        .value(&mut nosyms),
+        .evaluate(&mut nosyms, &mut op),
         Ok(u36!(0o210452_030106))
     );
 }
