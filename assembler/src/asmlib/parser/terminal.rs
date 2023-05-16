@@ -25,13 +25,6 @@ where
     .labelled("arrow")
 }
 
-pub(super) fn inline_whitespace<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
-where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
-{
-    chumsky::text::inline_whitespace()
-}
-
 pub(super) fn at_glyph<'a, I>(
     script: Script,
     name: &'static str,
@@ -636,19 +629,26 @@ where
     just("=").ignored()
 }
 
-pub(super) fn opt_horizontal_whitespace<'srcbody, I>(
+pub(super) fn ws<'srcbody, I>() -> impl Parser<'srcbody, I, (), Extra<'srcbody, char>>
+where
+    I: Input<'srcbody, Token = char, Span = SimpleSpan> + StrInput<'srcbody, char>,
+{
+    one_of("\t ").ignored()
+}
+
+pub(super) fn horizontal_whitespace0<'srcbody, I>(
 ) -> impl Parser<'srcbody, I, (), Extra<'srcbody, char>>
 where
     I: Input<'srcbody, Token = char, Span = SimpleSpan> + StrInput<'srcbody, char>,
 {
-    horizontal_whitespace().or_not().ignored()
+    ws().repeated().ignored()
 }
 
-pub(super) fn horizontal_whitespace<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
+pub(super) fn horizontal_whitespace1<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
 {
-    one_of("\t ").repeated().at_least(1).ignored()
+    ws().repeated().at_least(1).ignored()
 }
 
 pub(super) fn pipe<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>

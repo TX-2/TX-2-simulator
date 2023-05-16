@@ -63,7 +63,7 @@ where
     parse_symex_non_reserved_syllable(script_required)
         .foldl(
             symex_syllable(script_required)
-                .padded_by(terminal::opt_horizontal_whitespace())
+                .padded_by(terminal::horizontal_whitespace0())
                 .repeated(),
             concat_strings,
         )

@@ -97,11 +97,11 @@ fn tag_definition<'a, I>() -> impl Parser<'a, I, Tag, Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char>,
 {
-    let arrow = terminal::arrow().padded_by(terminal::opt_horizontal_whitespace());
+    let arrow = terminal::arrow().padded_by(terminal::horizontal_whitespace0());
     symbol(Script::Normal)
         .map_with_span(|name, span| Tag { name, span })
         .then_ignore(arrow)
-        .then_ignore(terminal::opt_horizontal_whitespace())
+        .then_ignore(terminal::horizontal_whitespace0())
         .labelled("tag definition")
 }
 
@@ -111,7 +111,7 @@ where
     I: Input<'srcbody, Token = char, Span = Span> + StrInput<'srcbody, char>,
 {
     expression()
-        .padded_by(terminal::opt_horizontal_whitespace())
+        .padded_by(terminal::horizontal_whitespace0())
         .map(InstructionFragment::from)
 }
 
@@ -149,7 +149,7 @@ where
         // states that this should be an honest tag.  We currently
         // accept only numeric literals.
         named_metacommand("PUNCH")
-            .then(terminal::horizontal_whitespace())
+            .then(terminal::horizontal_whitespace1())
             .ignore_then(literal(Script::Normal).or_not())
             .try_map(|aa, span| match helpers::punch_address(aa) {
                 Ok(punch) => Ok(ManuscriptMetaCommand::Punch(punch)),
@@ -181,7 +181,7 @@ where
 {
     let maybe_hold = terminal::hold()
         .or_not()
-        .padded_by(terminal::opt_horizontal_whitespace())
+        .padded_by(terminal::horizontal_whitespace0())
         .labelled("instruction hold bit");
     maybe_hold
         .then(program_instruction_fragments())
@@ -224,9 +224,9 @@ where
     where
         I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char>,
     {
-        terminal::opt_horizontal_whitespace()
+        terminal::horizontal_whitespace0()
             .ignore_then(symex::parse_symex(Script::Normal))
-            .then_ignore(terminal::equals().padded_by(terminal::opt_horizontal_whitespace()))
+            .then_ignore(terminal::equals().padded_by(terminal::horizontal_whitespace0()))
             .then(untagged_program_instruction())
     }
 
@@ -304,7 +304,7 @@ where
                     .labelled("symbolic address expression")
             }
             choice((literal_address_expression(), symbolic_address_expression()))
-                .padded_by(terminal::opt_horizontal_whitespace())
+                .padded_by(terminal::horizontal_whitespace0())
                 .then_ignore(terminal::pipe())
         }
 
@@ -334,8 +334,7 @@ fn end_of_line<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = Span> + StrInput<'a, char>,
 {
-    let one_end_of_line = terminal::inline_whitespace()
-        .or_not()
+    let one_end_of_line = terminal::horizontal_whitespace0()
         .then(terminal::comment().or_not())
         .then(chumsky::text::newline())
         .ignored();
