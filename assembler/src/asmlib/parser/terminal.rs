@@ -576,7 +576,7 @@ where
         .labelled("opcode")
 }
 
-pub(super) fn metacommand_name<'a, I>() -> impl Parser<'a, I, String, Extra<'a, char>>
+pub(super) fn metacommand_name<'a, I>() -> impl Parser<'a, I, &'a str, Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
 {
@@ -594,13 +594,26 @@ where
         hand().then(hand()).ignored()
     }
 
-    doublehand().ignore_then(
-        uppercase_letter(Script::Normal)
-            .repeated()
-            .at_least(2)
-            .collect()
-            .labelled("metacommand name"),
-    )
+    pub(super) fn name<'a, I>() -> impl Parser<'a, I, &'a str, Extra<'a, char>>
+    where
+        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    {
+        let decimal = choice((
+            just("DECIMAL"),
+            just("DECIMA"),
+            just("DECIM"),
+            just("DECI"),
+            just("DEC"),
+            just("DE"),
+        ));
+        let octal = choice((just("OCTAL"), just("OCTA"), just("OCT"), just("OC")));
+        let punch = choice((just("PUNCH"), just("PUNC"), just("PUN"), just("PU")));
+        choice((decimal, octal, punch))
+    }
+
+    doublehand()
+        .ignore_then(name())
+        .labelled("metacommand name")
 }
 
 pub(super) fn hold<'a, I>() -> impl Parser<'a, I, HoldBit, Extra<'a, char>>

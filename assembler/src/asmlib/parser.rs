@@ -136,8 +136,7 @@ where
         I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char>,
     {
         terminal::metacommand_name()
-            .filter(move |n| n == name)
-            .then(terminal::inline_whitespace())
+            .filter(move |n| *n == name)
             .ignored()
     }
 
@@ -150,6 +149,7 @@ where
         // states that this should be an honest tag.  We currently
         // accept only numeric literals.
         named_metacommand("PUNCH")
+            .then(terminal::horizontal_whitespace())
             .ignore_then(literal(Script::Normal).or_not())
             .try_map(|aa, span| match helpers::punch_address(aa) {
                 Ok(punch) => Ok(ManuscriptMetaCommand::Punch(punch)),

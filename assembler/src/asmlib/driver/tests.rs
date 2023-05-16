@@ -80,7 +80,7 @@ fn test_assemble_pass1() {
     let mut errors = Vec::new();
     let (source_file, _options) =
         assemble_pass1(input, &mut errors).expect("pass 1 should succeed");
-
+    assert_eq!(errors.as_slice(), &[]);
     assert_eq!(
         source_file,
         Some(SourceFile {
