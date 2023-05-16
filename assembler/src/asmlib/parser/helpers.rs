@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{self, Display};
 use std::num::IntErrorKind;
@@ -75,44 +76,46 @@ pub(crate) enum DecodedOpcode {
     Invalid,
 }
 
-pub(super) fn opcode_to_num(input: &str) -> DecodedOpcode {
-    let val: u8 = match input {
+type MapItem = (&'static str, u8);
+pub(super) fn opcode_mapping() -> [MapItem; 52] {
+    [
         // opcode 1 is unused
         // opcode 2 may be XEQ, but no documentation on this.
         // opcode 3 is unused
-        "IOS" => 0o4, // see also Vol 3 page 16-05-07
-        "JMP" => 0o5,
-        "JPX" => 0o6,
-        "JNX" => 0o7,
-        "AUX" => 0o10,
-        "RSX" => 0o11,
-        "SKX" | "REX" | "SEX" => 0o12,
+        ("IOS", 0o4), // see also Vol 3 page 16-05-07
+        ("JMP", 0o5),
+        ("JPX", 0o6),
+        ("JNX", 0o7),
+        ("AUX", 0o10),
+        ("RSX", 0o11),
+        ("SKX", 0o12),
+        ("REX", 0o12),
+        ("SEX", 0o12),
         // opcode 0o13 = 11 is undefined (unused).
-        "EXX" => 0o14,
-        "ADX" => 0o15,
-        "DPX" => 0o16,
-        "SKM" => 0o17,
-        "LDE" => 0o20,
-        "SPF" => 0o21,
-        "SPG" => 0o22,
+        ("EXX", 0o14),
+        ("ADX", 0o15),
+        ("DPX", 0o16),
+        ("SKM", 0o17),
+        ("LDE", 0o20),
+        ("SPF", 0o21),
+        ("SPG", 0o22),
         // op>code 0o23 = 19 is undefined (unused).
-        "LDA" => 0o24,
-        "LDB" => 0o25,
-        "LDC" => 0o26,
-        "LDD" => 0o27,
-        "STE" => 0o30,
-        "FLF" => 0o31,
-        "FLG" => 0o32,
+        ("LDA", 0o24),
+        ("LDB", 0o25),
+        ("LDC", 0o26),
+        ("LDD", 0o27),
+        ("STE", 0o30),
+        ("FLF", 0o31),
+        ("FLG", 0o32),
         // opcode 033 = 27 is unused.
-        "STA" => 0o34,
-        "STB" => 0o35,
-        "STC" => 0o36,
-        "STD" => 0o37,
-        "ITE" => 0o40,
-        "ITA" => 0o41,
-        "UNA" => 0o42,
-        "SED" => 0o43,
-
+        ("STA", 0o34),
+        ("STB", 0o35),
+        ("STC", 0o36),
+        ("STD", 0o37),
+        ("ITE", 0o40),
+        ("ITA", 0o41),
+        ("UNA", 0o42),
+        ("SED", 0o43),
         // I have two copies of the User Handbook and they differ in
         // their description of opcodes 0o44, 0o45.
         //
@@ -123,39 +126,59 @@ pub(super) fn opcode_to_num(input: &str) -> DecodedOpcode {
         // describes JPA, JNA, JOV) gives JOV as 0o45.  So I assume this
         // is just an error in the index.  This copy does not otherwise
         // describe a JZA opcode.
-        "JOV" => 0o45,
-
-        "JPA" => 0o46,
-        "JNA" => 0o47,
+        ("JOV", 0o45),
+        ("JPA", 0o46),
+        ("JNA", 0o47),
         // opcode 0o50 = 40 is undefined (unused).
         // opcode 0o51 = 41 is undefined (unused).
         // opcode 0o52 = 42 is undefined (unused).
         // opcode 0o53 = 43 is undefined (unused).
-        "EXA" => 0o54,
-        "INS" => 0o55,
-        "COM" => 0o56,
-        "TSD" => 0o57,
-        "CYA" => 0o60,
-        "CYB" => 0o61,
-        "CAB" => 0o62,
+        ("EXA", 0o54),
+        ("INS", 0o55),
+        ("COM", 0o56),
+        ("TSD", 0o57),
+        ("CYA", 0o60),
+        ("CYB", 0o61),
+        ("CAB", 0o62),
         // opcode 0o63 = 51 is unused.
-        "NOA" => 0o64,
-        "DSA" => 0o65,
-        "NAB" => 0o66,
-        "ADD" => 0o67,
-        "SCA" => 0o70,
-        "SCB" => 0o71,
-        "SAB" => 0o72,
-        // opcode 0o71 = 59 is unused.
-        "TLY" => 0o74,
-        "DIV" => 0o75,
-        "MUL" => 0o76,
-        "SUB" => 0o77,
-        _ => {
-            return DecodedOpcode::Invalid;
+        ("NOA", 0o64),
+        ("DSA", 0o65),
+        ("NAB", 0o66),
+        ("ADD", 0o67),
+        ("SCA", 0o70),
+        ("SCB", 0o71),
+        ("SAB", 0o72),
+        // opcode 0o73 is unused.
+        ("TLY", 0o74),
+        ("DIV", 0o75),
+        ("MUL", 0o76),
+        ("SUB", 0o77),
+    ]
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct OpcodeMapper {
+    mapping: HashMap<&'static str, u8>,
+}
+
+impl Default for OpcodeMapper {
+    fn default() -> Self {
+        OpcodeMapper {
+            mapping: HashMap::from(opcode_mapping()),
         }
-    };
-    DecodedOpcode::Valid(Unsigned6Bit::try_from(val).unwrap())
+    }
+}
+
+impl OpcodeMapper {
+    pub(super) fn get(&self, s: &str) -> DecodedOpcode {
+        match self.mapping.get(s) {
+            Some(n) => {
+                let value = Unsigned6Bit::try_from(*n).expect("opcodes should be within range");
+                DecodedOpcode::Valid(value)
+            }
+            None => DecodedOpcode::Invalid,
+        }
+    }
 }
 
 pub(super) fn punch_address(a: Option<LiteralValue>) -> Result<PunchCommand, String> {

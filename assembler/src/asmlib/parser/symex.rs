@@ -18,9 +18,9 @@ fn canonical_symbol_name(s: &str) -> SymbolName {
     }
 }
 
-fn is_reserved_identifier(ident: &str) -> bool {
-    helpers::is_register_name(ident)
-        || matches!(helpers::opcode_to_num(ident), DecodedOpcode::Valid(_))
+fn is_reserved_identifier(ident: &str, mapper: &helpers::OpcodeMapper) -> bool {
+    let is_opcode = move |s: &str| -> bool { matches!(mapper.get(s), DecodedOpcode::Valid(_)) };
+    helpers::is_register_name(ident) || is_opcode(ident)
 }
 
 fn concat_strings(mut s: String, next: String) -> String {
@@ -42,8 +42,9 @@ fn parse_symex_non_reserved_syllable<'a, I>(
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
 {
-    symex_syllable(script_required).try_map(|syllable, span| {
-        if is_reserved_identifier(&syllable) {
+    let opcode_mapper = helpers::OpcodeMapper::default();
+    symex_syllable(script_required).try_map(move |syllable, span| {
+        if is_reserved_identifier(&syllable, &opcode_mapper) {
             Err(Rich::custom(
                 span,
                 format!("'{syllable}' is a reserved identifier"),
@@ -90,9 +91,10 @@ pub(super) fn parse_symex_reserved_syllable<'a, I>(
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
 {
+    let opcode_mapper = helpers::OpcodeMapper::default();
     symex_syllable(script_required)
-        .try_map(|syllable, span| {
-            if is_reserved_identifier(&syllable) {
+        .try_map(move |syllable, span| {
+            if is_reserved_identifier(&syllable, &opcode_mapper) {
                 Ok(syllable)
             } else {
                 Err(Rich::custom(span, "expected reserved syllable".to_string()))

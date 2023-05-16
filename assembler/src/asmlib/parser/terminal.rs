@@ -5,13 +5,14 @@ use std::ops::Shl;
 
 use chumsky::input::{StrInput, ValueInput};
 use chumsky::prelude::*;
+use chumsky::primitive::none_of;
 
 use super::super::ast::{
     elevate_normal, elevate_sub, elevate_super, Elevated, HoldBit, LiteralValue,
 };
 use super::helpers::{self, Sign};
 use super::{Extra, Span};
-use base::{charset::Script, Unsigned36Bit};
+use base::{charset::Script, u6, Unsigned36Bit, Unsigned6Bit};
 
 pub(super) fn arrow<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
 where
@@ -535,37 +536,98 @@ where
         .collect()
 }
 
+pub(super) fn opcode_code<'a, I>() -> impl Parser<'a, I, Unsigned6Bit, Extra<'a, char>>
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+{
+    let group0 = choice((
+        just("IOS").to(u6!(0o4)),
+        just("JMP").to(u6!(0o5)),
+        just("JPX").to(u6!(0o6)),
+        just("JNX").to(u6!(0o7)),
+    ));
+    let group1 = choice((
+        just("AUX").to(u6!(0o10)),
+        just("RSX").to(u6!(0o11)),
+        just("SKX").to(u6!(0o12)),
+        just("REX").to(u6!(0o12)),
+        just("SEX").to(u6!(0o12)),
+        just("EXX").to(u6!(0o14)),
+        just("ADX").to(u6!(0o15)),
+        just("DPX").to(u6!(0o16)),
+        just("SKM").to(u6!(0o17)),
+    ));
+    let group2 = choice((
+        just("LDE").to(u6!(0o20)),
+        just("SPF").to(u6!(0o21)),
+        just("SPG").to(u6!(0o22)),
+        just("LDA").to(u6!(0o24)),
+        just("LDB").to(u6!(0o25)),
+        just("LDC").to(u6!(0o26)),
+        just("LDD").to(u6!(0o27)),
+    ));
+    let group3 = choice((
+        just("STE").to(u6!(0o30)),
+        just("FLF").to(u6!(0o31)),
+        just("FLG").to(u6!(0o32)),
+        just("STA").to(u6!(0o34)),
+        just("STB").to(u6!(0o35)),
+        just("STC").to(u6!(0o36)),
+        just("STD").to(u6!(0o37)),
+    ));
+    let group4 = choice((
+        just("ITE").to(u6!(0o40)),
+        just("ITA").to(u6!(0o41)),
+        just("UNA").to(u6!(0o42)),
+        just("SED").to(u6!(0o43)),
+        just("JOV").to(u6!(0o45)),
+        just("JPA").to(u6!(0o46)),
+        just("JNA").to(u6!(0o47)),
+    ));
+    let group5 = choice((
+        just("EXA").to(u6!(0o54)),
+        just("INS").to(u6!(0o55)),
+        just("COM").to(u6!(0o56)),
+        just("TSD").to(u6!(0o57)),
+    ));
+    let group6 = choice((
+        just("CYA").to(u6!(0o60)),
+        just("CYB").to(u6!(0o61)),
+        just("CAB").to(u6!(0o62)),
+        just("NOA").to(u6!(0o64)),
+        just("DSA").to(u6!(0o65)),
+        just("NAB").to(u6!(0o66)),
+        just("ADD").to(u6!(0o67)),
+    ));
+    let group7 = choice((
+        just("SCA").to(u6!(0o70)),
+        just("SCB").to(u6!(0o71)),
+        just("SAB").to(u6!(0o72)),
+        just("TLY").to(u6!(0o74)),
+        just("DIV").to(u6!(0o75)),
+        just("MUL").to(u6!(0o76)),
+        just("SUB").to(u6!(0o77)),
+    ));
+    choice((
+        group0, group1, group2, group3, group4, group5, group6, group7,
+    ))
+}
+
 pub(super) fn opcode<'a, I>() -> impl Parser<'a, I, LiteralValue, Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
 {
-    fn valid_opcode(span: Span, s: &str) -> Result<LiteralValue, ()> {
-        if let super::helpers::DecodedOpcode::Valid(opcode) = helpers::opcode_to_num(s) {
-            Ok(LiteralValue::from((
-                span,
-                Script::Normal,
-                // Bits 24-29 (dec) inclusive in the instruction word
-                // represent the opcode, so shift the opcode's value
-                // left by 24 decimal.
-                Unsigned36Bit::from(opcode)
-                    .shl(24)
-                    // Some opcodes automatically set the hold
-                    // bit, so do that here.
-                    .bitor(helpers::opcode_auto_hold_bit(opcode)),
-            )))
-        } else {
-            Err(())
-        }
+    fn opcode_to_literal(code: Unsigned6Bit, span: Span) -> LiteralValue {
+        // Some opcodes automatically set the hold bit, so do that
+        // here.
+        let bits = Unsigned36Bit::from(code)
+            .shl(24)
+            .bitor(helpers::opcode_auto_hold_bit(code));
+        LiteralValue::from((span, Script::Normal, bits))
     }
 
-    any()
-        .repeated()
-        .exactly(3)
-        .collect::<String>()
-        .try_map(|text, span| {
-            valid_opcode(span, &text)
-                .map_err(|_| Rich::custom(span, format!("{text} is not a valid opcode")))
-        })
+    opcode_code()
+        .map_with_span(opcode_to_literal)
         .labelled("opcode")
 }
 
