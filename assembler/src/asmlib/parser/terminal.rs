@@ -691,11 +691,22 @@ where
     just("=").ignored()
 }
 
+pub(super) fn annotation<'a, I>() -> impl Parser<'a, I, String, Extra<'a, char>>
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+{
+    none_of("]\n")
+        .repeated()
+        .collect()
+        .delimited_by(just('['), just(']'))
+        .labelled("annotation")
+}
+
 pub(super) fn ws<'srcbody, I>() -> impl Parser<'srcbody, I, (), Extra<'srcbody, char>>
 where
     I: Input<'srcbody, Token = char, Span = SimpleSpan> + StrInput<'srcbody, char>,
 {
-    one_of("\t ").ignored()
+    choice((one_of("\t ").ignored(), annotation().ignored()))
 }
 
 pub(super) fn horizontal_whitespace0<'srcbody, I>(

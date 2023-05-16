@@ -1095,3 +1095,11 @@ fn test_greek_letters() {
     check("ε");
     check("λ");
 }
+
+#[test]
+fn test_annotation() {
+    assert_eq!(
+        parse_successfully_with("[hello]", terminal::annotation(), no_state_setup),
+        "hello".to_string()
+    );
+}
