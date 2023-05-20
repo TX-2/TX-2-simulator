@@ -5,8 +5,12 @@ use std::fmt::{self, Display, Formatter, Octal, Write};
 use std::hash::Hash;
 use std::ops::Shl;
 
+use chumsky::span::Span as _;
+
 use base::charset::{subscript_char, superscript_char, Script};
 use base::prelude::*;
+
+use crate::eval::SymbolValue;
 
 use super::eval::{Evaluate, SymbolContext, SymbolDefinition, SymbolLookup, SymbolUse};
 use super::state::NumeralMode;
@@ -157,9 +161,11 @@ impl Evaluate for Expression {
             Expression::Literal(literal) => Ok(literal.value()),
             Expression::Symbol(span, elevation, name) => {
                 let context = SymbolContext::from((elevation, *span));
-                symtab
-                    .lookup_with_op(name, *span, &context, op)
-                    .map(|value| value.shl(elevation.shift()))
+                match symtab.lookup_with_op(name, *span, &context, op) {
+                    Ok(SymbolValue::Final(value)) => Ok(value),
+                    Err(e) => Err(e),
+                }
+                .map(|value| value.shl(elevation.shift()))
             }
         }
     }
@@ -300,6 +306,12 @@ impl Origin {
         // octal.
         Address::new(u18!(0o200_000))
     }
+
+    pub(crate) fn span(&self) -> &Span {
+        match self {
+            Origin::Literal(span, _) | Origin::Symbolic(span, _) => span,
+        }
+    }
 }
 
 impl Octal for Origin {
@@ -384,13 +396,17 @@ pub(crate) struct Tag {
 impl Tag {
     pub(crate) fn symbol_uses(
         &self,
-        block: usize,
-        offset: usize,
+        block_number: usize,
+        block_offset: usize,
     ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
         [(
             self.name.clone(),
             self.span,
-            SymbolUse::Definition(SymbolDefinition::Tag { block, offset }),
+            SymbolUse::Definition(SymbolDefinition::Tag {
+                block_number,
+                block_offset,
+                span: self.span,
+            }),
         )]
         .into_iter()
     }
@@ -506,6 +522,19 @@ pub(crate) enum Statement {
 }
 
 impl Statement {
+    fn span(&self) -> Span {
+        match self {
+            Statement::Assignment(span, _, _) => *span,
+            Statement::Instruction(TaggedProgramInstruction { tag, instruction }) => {
+                if let Some(t) = tag {
+                    Span::from(t.span.start()..instruction.span.end())
+                } else {
+                    instruction.span
+                }
+            }
+        }
+    }
+
     fn memory_size(&self) -> usize {
         match self {
             Statement::Assignment(_, _, _) => 0,
@@ -558,6 +587,16 @@ impl ManuscriptBlock {
 
     pub(crate) fn instruction_count(&self) -> usize {
         self.statements.iter().map(|st| st.memory_size()).sum()
+    }
+
+    pub(crate) fn origin_span(&self) -> Span {
+        if let Some(origin) = self.origin.as_ref() {
+            *origin.span()
+        } else if let Some(first) = self.statements.first() {
+            first.span()
+        } else {
+            Span::from(0..0)
+        }
     }
 }
 

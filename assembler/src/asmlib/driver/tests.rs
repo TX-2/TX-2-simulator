@@ -4,7 +4,7 @@ use super::super::ast::{
     Block, Expression, HoldBit, InstructionFragment, LiteralValue, ManuscriptBlock, PunchCommand,
     SourceFile, Statement, TaggedProgramInstruction, UntaggedProgramInstruction,
 };
-use super::super::eval::{SymbolContext, SymbolLookup};
+use super::super::eval::{SymbolContext, SymbolLookup, SymbolValue};
 use super::super::symbol::SymbolName;
 use super::super::types::Span;
 use super::assemble_nonempty_valid_input;
@@ -53,7 +53,7 @@ fn assemble_literal(input: &str, expected: &InstructionFragment) {
 }
 
 #[cfg(test)]
-fn assemble_check_symbols(input: &str, expected: &[(&str, Unsigned36Bit)]) {
+fn assemble_check_symbols(input: &str, expected: &[(&str, SymbolValue)]) {
     let (_directive, mut symtab) = assemble_nonempty_valid_input(input);
     for (name, expected_value) in expected.into_iter() {
         let sym = SymbolName {
@@ -64,7 +64,7 @@ fn assemble_check_symbols(input: &str, expected: &[(&str, Unsigned36Bit)]) {
         match symtab.lookup(&sym, span, &context) {
             Ok(got) => {
                 if got != *expected_value {
-                    panic!("incorrect value for symbol {name}; expected {expected_value:o}, got {got:o}");
+                    panic!("incorrect value for symbol {name}; expected {expected_value:?}, got {got:?}");
                 }
             }
             Err(e) => {
@@ -199,6 +199,6 @@ fn test_assignment_rhs_is_instruction() {
             "** (AND HENCE IS RETAINED).\n",
             "FOO\n"
         ),
-        &[("FOO", u36!(0o210452_030106))],
+        &[("FOO", SymbolValue::Final(u36!(0o210452_030106)))],
     );
 }

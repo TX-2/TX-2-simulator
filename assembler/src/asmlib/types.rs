@@ -44,7 +44,7 @@ impl PartialEq for OrderableSpan {
 
 impl Eq for OrderableSpan {}
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum MachineLimitExceededFailure {
     RanOutOfIndexRegisters(SymbolName),
     RcBlockTooLarge,

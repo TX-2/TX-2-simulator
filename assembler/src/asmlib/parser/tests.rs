@@ -12,6 +12,7 @@ use super::super::ast::{
     Expression, HoldBit, InstructionFragment, LiteralValue, ManuscriptBlock, ManuscriptMetaCommand,
     Origin, SourceFile, Statement, TaggedProgramInstruction, UntaggedProgramInstruction,
 };
+use super::super::eval::SymbolValue;
 #[cfg(test)]
 use super::Span;
 
@@ -973,7 +974,7 @@ impl SymbolLookup for NoSymbols {
         _span: Span,
         _context: &SymbolContext,
         _op: &mut Self::Operation<'_>,
-    ) -> Result<Unsigned36Bit, Self::Error> {
+    ) -> Result<SymbolValue, Self::Error> {
         Err(UnexpectedLookup {})
     }
 
@@ -982,7 +983,16 @@ impl SymbolLookup for NoSymbols {
         _name: &SymbolName,
         _span: Span,
         _context: &crate::eval::SymbolContext,
-    ) -> Result<Unsigned36Bit, Self::Error> {
+    ) -> Result<SymbolValue, Self::Error> {
+        Err(UnexpectedLookup {})
+    }
+
+    fn resolve_memory_reference(
+        &mut self,
+        _memref: &crate::eval::MemoryReference,
+        _span: Span, // TODO: use &Span?
+        _op: &mut Self::Operation<'_>,
+    ) -> Result<Address, Self::Error> {
         Err(UnexpectedLookup {})
     }
 }

@@ -3,9 +3,9 @@ mod symtab;
 #[cfg(test)]
 mod tests;
 
-use std::cmp::max;
 use std::collections::HashSet;
 use std::ffi::OsStr;
+use std::fmt::{self, Display, Formatter};
 use std::fs::OpenOptions;
 use std::io::{BufReader, BufWriter, Read};
 #[cfg(test)]
@@ -16,13 +16,12 @@ use chumsky::error::Rich;
 use tracing::{event, span, Level};
 
 use super::ast::*;
-use super::eval::{Evaluate, SymbolContext};
+use super::eval::{Evaluate, MemoryReference, SymbolContext};
 use super::parser::parse_source_file;
 use super::state::NumeralMode;
 use super::symbol::SymbolName;
 use super::types::*;
-use base::prelude::{Address, Unsigned36Bit, Unsigned6Bit};
-use base::subword;
+use base::prelude::{Address, Unsigned36Bit};
 use symtab::SymbolTable;
 use symtab::*;
 
@@ -57,19 +56,63 @@ pub enum SymbolLookupFailureKind {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+pub(crate) enum LookupTarget {
+    Symbol(SymbolName, Span),
+    MemRef(MemoryReference, Span),
+}
+
+impl From<(SymbolName, Span)> for LookupTarget {
+    fn from((sym, span): (SymbolName, Span)) -> LookupTarget {
+        LookupTarget::Symbol(sym, span)
+    }
+}
+
+impl From<(MemoryReference, Span)> for LookupTarget {
+    fn from((r, span): (MemoryReference, Span)) -> LookupTarget {
+        LookupTarget::MemRef(r, span)
+    }
+}
+
+impl LookupTarget {
+    fn span(&self) -> &Span {
+        match self {
+            LookupTarget::Symbol(_, span) | LookupTarget::MemRef(_, span) => span,
+        }
+    }
+}
+
+impl Display for LookupTarget {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        match self {
+            LookupTarget::Symbol(name, _) => {
+                write!(f, "symbol {name}")
+            }
+            LookupTarget::MemRef(
+                MemoryReference {
+                    block_number,
+                    block_offset: _,
+                },
+                _,
+            ) => {
+                write!(f, "memory block {block_number}")
+            }
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub struct SymbolLookupFailure {
-    symbol_name: SymbolName,
-    location: Span,
+    target: LookupTarget,
     kind: SymbolLookupFailureKind,
 }
 
 impl From<SymbolLookupFailure> for AssemblerFailure {
     fn from(f: SymbolLookupFailure) -> AssemblerFailure {
-        let symbol = f.symbol_name;
-        let span = f.location;
+        let symbol_desc: String = f.target.to_string();
+        let span: Span = *f.target.span();
         match f.kind {
             SymbolLookupFailureKind::MissingDefault => AssemblerFailure::InternalError(format!(
-                "no default value was assigned for {symbol}"
+                "no default value was assigned for {symbol_desc}"
             )),
             SymbolLookupFailureKind::MachineLimitExceeded(limit_exceeded) => {
                 AssemblerFailure::MachineLimitExceeded(limit_exceeded)
@@ -82,7 +125,7 @@ impl From<SymbolLookupFailure> for AssemblerFailure {
                     .join("->");
                 AssemblerFailure::InvalidProgram {
                     span,
-                    msg: format!("definition of symbol {symbol} has a dependency loop ({chain})",),
+                    msg: format!("definition of {symbol_desc} has a dependency loop ({chain})",),
                 }
             }
             SymbolLookupFailureKind::Inconsistent(msg) => AssemblerFailure::InvalidProgram {
@@ -98,17 +141,13 @@ impl From<(SymbolName, Span, SymbolLookupFailureKind)> for SymbolLookupFailure {
         (symbol_name, span, kind): (SymbolName, Span, SymbolLookupFailureKind),
     ) -> SymbolLookupFailure {
         SymbolLookupFailure {
-            symbol_name,
-            location: span,
+            target: LookupTarget::Symbol(symbol_name, span),
             kind,
         }
     }
 }
 
 impl SymbolLookupFailure {
-    pub(crate) fn symbol_name(&self) -> &SymbolName {
-        &self.symbol_name
-    }
     pub(crate) fn kind(&self) -> &SymbolLookupFailureKind {
         &self.kind
     }
@@ -236,7 +275,7 @@ pub(crate) fn assemble_nonempty_valid_input<'a>(input: &'a str) -> (Directive, F
     match result {
         Ok((None, _)) => unreachable!("parser should generate output if there are no errors"),
         Ok((Some(source_file), _options)) => {
-            let p2output = assemble_pass2(&source_file)
+            let p2output = assemble_pass2(&source_file, input)
                 .expect("test program should not extend beyong physical memory");
             if !p2output.errors.is_empty() {
                 panic!("input should be valid: {:?}", &p2output.errors);
@@ -302,71 +341,6 @@ impl Binary {
     }
 }
 
-fn origin_as_address(
-    origin: &Origin,
-    block_number: usize,
-    symtab: &mut SymbolTable,
-    next_address: Option<Address>,
-) -> (Option<SymbolName>, Address) {
-    match origin {
-        Origin::Literal(_span, addr) => (None, *addr),
-        Origin::Symbolic(span, name) => {
-            match symtab.lookup_final(name, *span, &SymbolContext::origin(block_number, *span)) {
-                Ok(address) => (Some(name.clone()), subword::right_half(address).into()),
-                Err(e) => match next_address {
-                    Some(addr) => {
-                        event!(
-                            Level::WARN,
-                            "unable to evaluate origin {name} ({e}), using next free address {addr:o}"
-                        );
-                        (Some(name.clone()), addr)
-                    }
-                    None => {
-                        let addr = Origin::default_address();
-                        event!(
-                            Level::WARN,
-                            "unable to evaluate origin {name} ({e}), using default {addr:o}"
-                        );
-                        (Some(name.clone()), addr)
-                    }
-                },
-            }
-        }
-    }
-}
-
-fn calculate_block_origins(
-    source_file: &SourceFile,
-    symtab: &mut SymbolTable,
-) -> Result<(Vec<(Option<SymbolName>, Address)>, Option<Address>), MachineLimitExceededFailure> {
-    let mut result = Vec::new();
-    let mut next_address: Option<Address> = None;
-
-    for (block_number, block) in source_file.blocks.iter().enumerate() {
-        let (maybe_name, base): (Option<SymbolName>, Address) = match block.origin.as_ref() {
-            Some(origin) => origin_as_address(origin, block_number, symtab, next_address),
-            None => (None, next_address.unwrap_or_else(Origin::default_address)),
-        };
-        result.push((maybe_name, base));
-        let next = match offset_from_origin(&base, block.instruction_count()) {
-            Ok(a) => a,
-            Err(_) => {
-                return Err(MachineLimitExceededFailure::BlockTooLarge {
-                    block_number,
-                    block_origin: base,
-                    offset: block.instruction_count(),
-                });
-            }
-        };
-        next_address = Some(if let Some(n) = next_address {
-            max(n, next)
-        } else {
-            next
-        });
-    }
-    Ok((result, next_address))
-}
-
 fn unique_symbols_in_order<I>(items: I) -> Vec<(SymbolName, Span, SymbolContext)>
 where
     I: IntoIterator<Item = (SymbolName, Span, SymbolContext)>,
@@ -388,84 +362,74 @@ struct Pass2Output<'a> {
     errors: Vec<Rich<'a, char>>,
 }
 
-/// Pass 2 converts the abstract syntax representation into a
-/// `Directive`, which is closer to binary code.
-fn assemble_pass2<'a>(source_file: &SourceFile) -> Result<Pass2Output<'a>, AssemblerFailure> {
-    let span = span!(Level::ERROR, "assembly pass 2");
-    let _enter = span.enter();
-
+fn initial_symbol_table<'a>(source_file: &SourceFile) -> Result<SymbolTable, Vec<Rich<'a, char>>> {
     let mut errors = Vec::new();
-    let mut symtab = SymbolTable::default();
+    let mut symtab = SymbolTable::new(source_file.blocks.iter().map(|block| {
+        let span: Span = block.origin_span();
+        (span, block.origin.clone(), block.instruction_count())
+    }));
     for (symbol, span, context) in source_file.global_symbol_references() {
         symtab.record_usage_context(symbol.clone(), span, context)
     }
     for (symbol, span, definition) in source_file.global_symbol_definitions() {
-        match symtab.define(symbol.clone(), definition.clone()) {
+        match symtab.define(span, symbol.clone(), definition.clone()) {
             Ok(_) => (),
             Err(e) => {
-                errors.push(Rich::custom(span, format!("bad symbol definition: {e}")));
+                errors.push(Rich::custom(
+                    span,
+                    format!("bad symbol definition for {symbol}: {e}"),
+                ));
             }
         }
     }
-    let (origins, mut next_free_address): (Vec<(Option<SymbolName>, Address)>, Option<Address>) =
-        match calculate_block_origins(source_file, &mut symtab) {
-            Ok((origins, next)) => (origins, next),
-            Err(e) => {
+    if errors.is_empty() {
+        Ok(symtab)
+    } else {
+        Err(errors)
+    }
+}
+
+/// Pass 2 converts the abstract syntax representation into a
+/// `Directive`, which is closer to binary code.
+fn assemble_pass2<'a>(
+    source_file: &SourceFile,
+    source_file_body: &'a str,
+) -> Result<Pass2Output<'a>, AssemblerFailure> {
+    let span = span!(Level::ERROR, "assembly pass 2");
+    let _enter = span.enter();
+
+    let symtab = match initial_symbol_table(source_file) {
+        Ok(syms) => syms,
+        Err(errors) => {
+            return Err(fail_with_diagnostics(source_file_body, errors));
+        }
+    };
+
+    let symbol_refs_in_program_order: Vec<(SymbolName, Span, SymbolContext)> =
+        unique_symbols_in_order(
+            source_file
+                .global_symbol_references()
+                .map(|(symbol, span, context)| (symbol, span, context)),
+        );
+    let final_symbols = match finalise_symbol_table(symtab, symbol_refs_in_program_order.iter()) {
+        Ok(fs) => fs,
+        Err(e) => match e {
+            SymbolTableFinalisationError::DefaultValueAssignment(
+                DefaultValueAssignmentError::Inconsistency(msg),
+            ) => {
+                return Err(AssemblerFailure::InternalError(format!(
+                    "inconsistency: {msg}"
+                )));
+            }
+            SymbolTableFinalisationError::DefaultValueAssignment(
+                DefaultValueAssignmentError::MachineLimitExceeded(e),
+            ) => {
+                return Err(AssemblerFailure::MachineLimitExceeded(e));
+            }
+            SymbolTableFinalisationError::SymbolLookup(e) => {
                 return Err(e.into());
             }
-        };
-    for (block_number, (_maybe_name, address)) in origins.iter().enumerate() {
-        symtab.record_block_origin(block_number, *address);
-        let size = source_file.blocks[block_number].instruction_count();
-        let after_end = match offset_from_origin(address, size) {
-            Ok(a) => a,
-            Err(_) => {
-                return Err(MachineLimitExceededFailure::BlockTooLarge {
-                    block_number,
-                    block_origin: *address,
-                    offset: size,
-                }
-                .into());
-            }
-        };
-        next_free_address = next_free_address
-            .map(|current| max(current, after_end))
-            .or(Some(after_end));
-    }
-
-    let final_symbols = match next_free_address {
-        Some(next_free) => {
-            let mut rc_block: Vec<Unsigned36Bit> = Vec::new();
-            let symbol_refs_in_program_order: Vec<(SymbolName, Span, SymbolContext)> =
-                unique_symbols_in_order(
-                    source_file
-                        .global_symbol_references()
-                        .map(|(symbol, span, context)| (symbol, span, context)),
-                );
-            match finalise_symbol_table(
-                symtab,
-                symbol_refs_in_program_order.iter(),
-                next_free.into(),
-                &mut rc_block,
-                Unsigned6Bit::ZERO,
-            ) {
-                Ok(fs) => fs,
-                Err(e) => {
-                    return Err(e.into());
-                }
-            }
-        }
-        None => {
-            event!(
-                Level::WARN,
-                "the program appears to be empty; generating 0 instructions"
-            );
-            return Ok(Pass2Output {
-                directive: None,
-                symbols: FinalSymbolTable::default(),
-                errors,
-            });
-        }
+        },
     };
 
     let directive = convert_source_file_to_directive(source_file);
@@ -477,7 +441,7 @@ fn assemble_pass2<'a>(source_file: &SourceFile) -> Result<Pass2Output<'a>, Assem
     Ok(Pass2Output {
         directive: Some(directive),
         symbols: final_symbols,
-        errors,
+        errors: Vec::new(),
     })
 }
 
@@ -585,7 +549,7 @@ pub(crate) fn assemble_source(source_file_body: &str) -> Result<Binary, Assemble
         directive,
         mut symbols,
         errors,
-    } = assemble_pass2(&source_file)?;
+    } = assemble_pass2(&source_file, source_file_body)?;
     if !errors.is_empty() {
         return Err(fail_with_diagnostics(source_file_body, errors));
     }

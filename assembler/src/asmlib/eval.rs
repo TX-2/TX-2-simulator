@@ -1,11 +1,34 @@
 use std::collections::BTreeSet;
 use std::fmt::{self, Debug, Display, Formatter};
 
-use base::{charset::Script, prelude::Unsigned36Bit};
+use base::{
+    charset::Script,
+    prelude::{Address, Unsigned36Bit},
+};
 
 use super::ast::UntaggedProgramInstruction;
 use super::symbol::SymbolName;
 use super::types::{OrderableSpan, Span};
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub(crate) struct MemoryReference {
+    pub(crate) block_number: usize,
+    pub(crate) block_offset: usize,
+}
+
+// SymbolValue is the result of a symbol table lookup.
+//
+// TODO: in some places we want to do further processing of the
+// looked-up result in ways that require us to specify a span.  The
+// span of interest will usually be the span at which the symbol was
+// actually defined, so we should also return that in SymbolValue.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub(crate) enum SymbolValue {
+    Final(Unsigned36Bit),
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub(crate) enum MemoryReferenceResolutionFailure {}
 
 pub(crate) trait SymbolLookup {
     type Error;
@@ -14,16 +37,22 @@ pub(crate) trait SymbolLookup {
     fn lookup(
         &mut self,
         name: &SymbolName,
-        span: Span,
+        span: Span, // TODO: use &Span?
         context: &SymbolContext,
-    ) -> Result<Unsigned36Bit, Self::Error>;
+    ) -> Result<SymbolValue, Self::Error>;
     fn lookup_with_op(
         &mut self,
         name: &SymbolName,
-        span: Span,
+        span: Span, // TODO: use &Span?
         context: &SymbolContext,
         op: &mut Self::Operation<'_>,
-    ) -> Result<Unsigned36Bit, Self::Error>;
+    ) -> Result<SymbolValue, Self::Error>;
+    fn resolve_memory_reference(
+        &mut self,
+        memref: &MemoryReference,
+        span: Span, // TODO: use &Span?
+        op: &mut Self::Operation<'_>,
+    ) -> Result<Address, Self::Error>;
 }
 
 pub(crate) trait Evaluate {
@@ -77,14 +106,6 @@ impl SymbolContext {
             uses: SymbolContext::uses(span),
             ..Default::default()
         }
-    }
-
-    pub(crate) fn includes(&self, other: &SymbolContext) -> bool {
-        other
-            .bits()
-            .into_iter()
-            .zip(self.bits().into_iter())
-            .all(|(otherbit, selfbit)| selfbit || !otherbit)
     }
 
     fn merge(&mut self, mut other: SymbolContext) -> Result<(), SymbolContextMergeError> {
@@ -141,7 +162,11 @@ impl From<(Script, Span)> for SymbolContext {
 
 #[derive(PartialEq, Eq, Clone)]
 pub(crate) enum SymbolDefinition {
-    Tag { block: usize, offset: usize },
+    Tag {
+        block_number: usize,
+        block_offset: usize,
+        span: Span,
+    },
     Equality(UntaggedProgramInstruction),
     Undefined(SymbolContext),
     DefaultAssigned(Unsigned36Bit, SymbolContext),
@@ -150,8 +175,15 @@ pub(crate) enum SymbolDefinition {
 impl Debug for SymbolDefinition {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            SymbolDefinition::Tag { block, offset } => {
-                write!(f, "Tag {{block:{block}, offset:{offset}}}")
+            SymbolDefinition::Tag {
+                block_number,
+                block_offset,
+                span: _,
+            } => {
+                write!(
+                    f,
+                    "Tag {{block_number:{block_number}, block_offset:{block_offset}}}"
+                )
             }
             SymbolDefinition::Equality(expr) => f.debug_tuple("Equality").field(expr).finish(),
             SymbolDefinition::DefaultAssigned(value, _) => {
@@ -170,8 +202,12 @@ impl Display for SymbolDefinition {
             SymbolDefinition::DefaultAssigned(value, _) => {
                 write!(f, "default-assigned as {value}")
             }
-            SymbolDefinition::Tag { block, offset } => {
-                write!(f, "tag at offset {offset} in block {block}")
+            SymbolDefinition::Tag {
+                block_number,
+                block_offset,
+                span: _,
+            } => {
+                write!(f, "tag at offset {block_offset} in block {block_number}")
             }
             SymbolDefinition::Equality(_inst) => {
                 // TODO: print the assigned value, too?
