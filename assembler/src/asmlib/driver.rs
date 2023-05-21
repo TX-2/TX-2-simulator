@@ -459,27 +459,34 @@ fn assemble_pass3(
     }
 
     for (block_number, block) in directive.blocks.iter().enumerate() {
-        let words: Vec<Unsigned36Bit> = block
-            .items
-            .iter()
-            .map(|inst| {
-                inst.evaluate(final_symtab, &mut ())
-                    .expect("lookup on FinalSymbolTable is infallible")
-            })
-            .collect::<Vec<_>>();
         let address: Address = match final_symtab.get_block_origin(&block_number) {
-            Some(a) => {
-                event!(
-                    Level::DEBUG,
-                    "Block {block_number} of output has address {:o} and length {}",
-                    *a,
-                    words.len()
-                );
-                *a
-            }
+            Some(a) => *a,
             None => {
                 return Err(AssemblerFailure::InternalError(
                     format!("starting address for block {block_number} was not calculated by calculate_block_origins")
+                ));
+            }
+        };
+        let words: Result<Vec<Unsigned36Bit>, AddressOverflow> = block
+            .items
+            .iter()
+            .enumerate()
+            .map(|(offset, inst)| -> Result<Unsigned36Bit, AddressOverflow> {
+                let here = offset_from_origin(&address, offset)?;
+                Ok(inst
+                    .evaluate(here, final_symtab, &mut ())
+                    .expect("lookup on FinalSymbolTable is infallible"))
+            })
+            .collect::<Result<Vec<_>, AddressOverflow>>();
+        let words = match words {
+            Ok(w) => w,
+            Err(AddressOverflow(base, offset)) => {
+                return Err(AssemblerFailure::MachineLimitExceeded(
+                    MachineLimitExceededFailure::BlockTooLarge {
+                        block_number,
+                        block_origin: base,
+                        offset,
+                    },
                 ));
             }
         };
@@ -489,6 +496,11 @@ fn assemble_pass3(
                 "block {block_number} will not be included in the output because it is empty"
             );
         } else {
+            event!(
+                Level::DEBUG,
+                "Block {block_number} of output has address {address:o} and length {}",
+                words.len()
+            );
             binary.add_chunk(BinaryChunk { address, words });
         }
     }

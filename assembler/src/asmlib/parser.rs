@@ -44,6 +44,13 @@ where
         .labelled("numeric literal")
 }
 
+fn here<'a, I>() -> impl Parser<'a, I, Expression, Extra<'a, char>>
+where
+    I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char>,
+{
+    terminal::hash().to(Expression::Here)
+}
+
 /// Parse an expression; these can currently only take the form of a literal.
 /// TX-2's M4 assembler allows arithmetic expressions also, but these are not
 /// currently implemented.
@@ -76,6 +83,7 @@ where
             terminal::opcode(),
         ))
         .map(Expression::from),
+        here(), // TODO: support Super and Sub versions.
         symbol(Script::Normal)
             .map_with_span(|name, span| Expression::Symbol(span, Script::Normal, name)),
         symbol(Script::Sub).map_with_span(|name, span| Expression::Symbol(span, Script::Sub, name)),

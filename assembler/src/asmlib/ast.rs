@@ -67,6 +67,7 @@ impl LiteralValue {
 impl Evaluate for LiteralValue {
     fn evaluate<S: SymbolLookup>(
         &self,
+        _target_address: Address,
         _symtab: &mut S,
         _op: &mut S::Operation<'_>,
     ) -> Result<Unsigned36Bit, S::Error> {
@@ -132,13 +133,14 @@ fn format_elevated_chars(f: &mut Formatter<'_>, elevation: &Script, s: &str) -> 
 pub(crate) enum Expression {
     Literal(LiteralValue),
     Symbol(Span, Script, SymbolName),
+    Here, // the special symbol '#'.
 }
 
 impl Expression {
     pub(crate) fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
         let mut result = Vec::with_capacity(1);
         match self {
-            Expression::Literal(_value) => (),
+            Expression::Literal(_) | Expression::Here => (),
             Expression::Symbol(span, script, symbol_name) => {
                 result.push((
                     symbol_name.clone(),
@@ -154,10 +156,12 @@ impl Expression {
 impl Evaluate for Expression {
     fn evaluate<S: SymbolLookup>(
         &self,
+        target_address: Address,
         symtab: &mut S,
         op: &mut S::Operation<'_>,
     ) -> Result<Unsigned36Bit, S::Error> {
         match self {
+            Expression::Here => Ok(target_address.into()),
             Expression::Literal(literal) => Ok(literal.value()),
             Expression::Symbol(span, elevation, name) => {
                 let context = SymbolContext::from((elevation, *span));
@@ -202,6 +206,7 @@ fn elevated_string<'a>(s: &'a str, elevation: &Script) -> Cow<'a, str> {
 impl std::fmt::Display for Expression {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            Expression::Here => f.write_char('#'),
             Expression::Literal(value) => value.fmt(f),
             Expression::Symbol(_span, elevation, name) => {
                 elevated_string(&name.to_string(), elevation).fmt(f)
@@ -224,10 +229,11 @@ impl InstructionFragment {
 impl Evaluate for InstructionFragment {
     fn evaluate<S: SymbolLookup>(
         &self,
+        target_address: Address,
         symtab: &mut S,
         op: &mut S::Operation<'_>,
     ) -> Result<Unsigned36Bit, S::Error> {
-        self.value.evaluate(symtab, op)
+        self.value.evaluate(target_address, symtab, op)
     }
 }
 
@@ -362,22 +368,24 @@ impl UntaggedProgramInstruction {
 impl Evaluate for UntaggedProgramInstruction {
     fn evaluate<S: SymbolLookup>(
         &self,
+        target_address: Address,
         symtab: &mut S,
         op: &mut S::Operation<'_>,
     ) -> Result<Unsigned36Bit, S::Error> {
         fn or_looked_up_value<S: SymbolLookup>(
             accumulator: Result<Unsigned36Bit, S::Error>,
             frag: &InstructionFragment,
+            target_address: Address,
             symtab: &mut S,
             op: &mut S::Operation<'_>,
         ) -> Result<Unsigned36Bit, S::Error> {
-            accumulator.and_then(|acc| Ok(acc | frag.value.evaluate(symtab, op)?))
+            accumulator.and_then(|acc| Ok(acc | frag.value.evaluate(target_address, symtab, op)?))
         }
 
         self.parts
             .iter()
             .fold(Ok(Unsigned36Bit::ZERO), |acc, curr| {
-                or_looked_up_value(acc, curr, symtab, op)
+                or_looked_up_value(acc, curr, target_address, symtab, op)
             })
             .map(|word| match self.holdbit {
                 HoldBit::Hold => word | HELD_MASK,
@@ -436,10 +444,11 @@ impl TaggedProgramInstruction {
 impl Evaluate for TaggedProgramInstruction {
     fn evaluate<S: SymbolLookup>(
         &self,
+        target_address: Address,
         symtab: &mut S,
         op: &mut S::Operation<'_>,
     ) -> Result<Unsigned36Bit, S::Error> {
-        self.instruction.evaluate(symtab, op)
+        self.instruction.evaluate(target_address, symtab, op)
     }
 }
 

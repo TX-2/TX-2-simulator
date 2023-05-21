@@ -1007,7 +1007,7 @@ fn program_instruction_with_opcode() {
             tagged_program_instruction(),
             no_state_setup
         )
-        .evaluate(&mut nosyms, &mut op),
+        .evaluate(Address::ZERO, &mut nosyms, &mut op),
         Ok(u36!(0o210452_030106))
     );
 }

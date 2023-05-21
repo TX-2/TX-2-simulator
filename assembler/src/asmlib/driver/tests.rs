@@ -7,8 +7,8 @@ use super::super::ast::{
 use super::super::eval::{SymbolContext, SymbolLookup, SymbolValue};
 use super::super::symbol::SymbolName;
 use super::super::types::Span;
-use super::assemble_nonempty_valid_input;
 use super::assemble_pass1;
+use super::{assemble_nonempty_valid_input, assemble_source};
 use base::{
     charset::Script,
     prelude::{u18, u36, Address, Unsigned36Bit},
@@ -201,4 +201,12 @@ fn test_assignment_rhs_is_instruction() {
         ),
         &[("FOO", SymbolValue::Final(u36!(0o210452_030106)))],
     );
+}
+
+#[test]
+fn test_normal_hash_value() {
+    let program = assemble_source(concat!("100| 2\n#\n",)).expect("program is valid");
+    assert_eq!(program.chunks[0].address, Address::from(u18!(0o100)));
+    assert_eq!(program.chunks[0].words[0], u36!(2));
+    assert_eq!(program.chunks[0].words[1], u36!(0o101));
 }

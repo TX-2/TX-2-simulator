@@ -26,6 +26,13 @@ where
     .labelled("arrow")
 }
 
+pub(super) fn hash<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+{
+    just('#').ignored()
+}
+
 pub(super) fn at_glyph<'a, I>(
     script: Script,
     name: &'static str,

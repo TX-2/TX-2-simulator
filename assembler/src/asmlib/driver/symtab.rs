@@ -126,6 +126,7 @@ impl SymbolLookup for FinalSymbolTable {
 fn finalise_symbol(
     symbol_name: &SymbolName,
     span: &Span,
+    _target_address: Address,
     context: &SymbolContext,
     t: &mut SymbolTable,
 ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
@@ -152,8 +153,14 @@ where
 {
     let mut finalized_entries: HashMap<SymbolName, Unsigned36Bit> = HashMap::new();
     for (symbol_name, span, context) in symbol_refs_in_program_order {
-        let val: Unsigned36Bit = finalise_symbol(symbol_name, span, context, &mut t)
-            .map_err(SymbolTableFinalisationError::SymbolLookup)?;
+        let val: Unsigned36Bit = finalise_symbol(
+            symbol_name,
+            span,
+            target_address_does_not_matter(),
+            context,
+            &mut t,
+        )
+        .map_err(SymbolTableFinalisationError::SymbolLookup)?;
         finalized_entries.insert(symbol_name.clone(), val);
     }
     let mut origins: BTreeMap<usize, Address> = BTreeMap::new();
@@ -243,6 +250,17 @@ impl Display for SymbolLookupFailure {
             }
         }
     }
+}
+
+/// evaluate() uses the current address parameter in order to figure
+/// out the value of the # symbol.  But, that is not allowed on the
+/// right-hand-side of assignments.  I don't think the user guide
+/// prohibits it, but supporting it opens all kinds of odd questions
+/// (such as if FOO=#+2, what happens if I use FOO as an origin?).  So
+/// we prohibit it.  Meaning that the precise value we use here
+/// doesn't matter.
+fn target_address_does_not_matter() -> Address {
+    Address::ZERO
 }
 
 impl SymbolTable {
@@ -373,7 +391,13 @@ impl SymbolTable {
                         }
                     },
                     SymbolDefinition::Equality(expression) => {
-                        expression.evaluate(t, op).map(SymbolValue::Final)
+                        // The target adderss does not matter below
+                        // since assignments are not allowed to use
+                        // '#' on the right-hand-side of the
+                        // assignment.
+                        expression
+                            .evaluate(target_address_does_not_matter(), t, op)
+                            .map(SymbolValue::Final)
                     }
                     SymbolDefinition::Undefined(context_union) => {
                         match t.get_default_value(name, &span, &context_union) {
@@ -448,7 +472,7 @@ impl SymbolTable {
                     Some(SymbolDefinition::Equality(rhs)) => {
                         let mut new_op = FinalLookupOperation::default();
                         let op: &mut FinalLookupOperation = maybe_op.unwrap_or(&mut new_op);
-                        match rhs.evaluate(self, op) {
+                        match rhs.evaluate(target_address_does_not_matter(), self, op) {
                             Ok(value) => Ok(Address::from(subword::right_half(value))),
                             Err(e) => {
                                 panic!("no code to handle symbol lookup failure in finalise_origin: {e}"); // TODO

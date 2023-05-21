@@ -58,6 +58,7 @@ pub(crate) trait SymbolLookup {
 pub(crate) trait Evaluate {
     fn evaluate<S: SymbolLookup>(
         &self,
+        target_address: Address,
         symtab: &mut S,
         op: &mut S::Operation<'_>,
     ) -> Result<Unsigned36Bit, S::Error>;
