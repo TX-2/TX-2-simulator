@@ -16,7 +16,7 @@ use chumsky::error::Rich;
 use tracing::{event, span, Level};
 
 use super::ast::*;
-use super::eval::{Evaluate, MemoryReference, SymbolContext};
+use super::eval::{Evaluate, HereValue, MemoryReference, SymbolContext};
 use super::parser::parse_source_file;
 use super::state::NumeralMode;
 use super::symbol::SymbolName;
@@ -472,7 +472,7 @@ fn assemble_pass3(
             .iter()
             .enumerate()
             .map(|(offset, inst)| -> Result<Unsigned36Bit, AddressOverflow> {
-                let here = offset_from_origin(&address, offset)?;
+                let here = HereValue::Address(offset_from_origin(&address, offset)?);
                 Ok(inst
                     .evaluate(here, final_symtab, &mut ())
                     .expect("lookup on FinalSymbolTable is infallible"))

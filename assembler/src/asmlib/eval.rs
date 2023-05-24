@@ -55,10 +55,19 @@ pub(crate) trait SymbolLookup {
     ) -> Result<Address, Self::Error>;
 }
 
+/// HereValue specifies the value used for '#'
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub(crate) enum HereValue {
+    /// '#' refers to an address
+    Address(Address),
+    // NotAllowed will be for when '#' is not allowed (this is used
+    // when evaluating an origin).
+}
+
 pub(crate) trait Evaluate {
     fn evaluate<S: SymbolLookup>(
         &self,
-        target_address: Address,
+        target_address: HereValue,
         symtab: &mut S,
         op: &mut S::Operation<'_>,
     ) -> Result<Unsigned36Bit, S::Error>;

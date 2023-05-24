@@ -12,7 +12,7 @@ use super::super::ast::{
     Expression, HoldBit, InstructionFragment, LiteralValue, ManuscriptBlock, ManuscriptMetaCommand,
     Origin, SourceFile, Statement, TaggedProgramInstruction, UntaggedProgramInstruction,
 };
-use super::super::eval::SymbolValue;
+use super::super::eval::{HereValue, SymbolValue};
 #[cfg(test)]
 use super::Span;
 
@@ -1007,7 +1007,7 @@ fn program_instruction_with_opcode() {
             tagged_program_instruction(),
             no_state_setup
         )
-        .evaluate(Address::ZERO, &mut nosyms, &mut op),
+        .evaluate(HereValue::Address(Address::ZERO), &mut nosyms, &mut op),
         Ok(u36!(0o210452_030106))
     );
 }

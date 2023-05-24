@@ -11,8 +11,8 @@ use base::subword;
 
 use super::super::ast::Origin;
 use super::super::eval::{
-    BadSymbolDefinition, Evaluate, MemoryReference, SymbolContext, SymbolDefinition, SymbolLookup,
-    SymbolValue,
+    BadSymbolDefinition, Evaluate, HereValue, MemoryReference, SymbolContext, SymbolDefinition,
+    SymbolLookup, SymbolValue,
 };
 use super::super::symbol::SymbolName;
 use super::super::types::Span;
@@ -126,7 +126,7 @@ impl SymbolLookup for FinalSymbolTable {
 fn finalise_symbol(
     symbol_name: &SymbolName,
     span: &Span,
-    _target_address: Address,
+    _target_address: HereValue,
     context: &SymbolContext,
     t: &mut SymbolTable,
 ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
@@ -259,8 +259,8 @@ impl Display for SymbolLookupFailure {
 /// (such as if FOO=#+2, what happens if I use FOO as an origin?).  So
 /// we prohibit it.  Meaning that the precise value we use here
 /// doesn't matter.
-fn target_address_does_not_matter() -> Address {
-    Address::ZERO
+fn target_address_does_not_matter() -> HereValue {
+    HereValue::Address(Address::ZERO)
 }
 
 impl SymbolTable {
