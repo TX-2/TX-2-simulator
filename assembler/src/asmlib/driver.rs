@@ -3,7 +3,6 @@ mod symtab;
 #[cfg(test)]
 mod tests;
 
-use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::fmt::{self, Display, Formatter};
 use std::fs::OpenOptions;
@@ -16,14 +15,13 @@ use chumsky::error::Rich;
 use tracing::{event, span, Level};
 
 use super::ast::*;
-use super::eval::{Evaluate, HereValue, MemoryReference, SymbolContext};
+use super::eval::{Evaluate, HereValue, MemoryReference};
 use super::parser::parse_source_file;
 use super::state::NumeralMode;
 use super::symbol::SymbolName;
 use super::types::*;
 use base::prelude::{Address, Unsigned36Bit};
 use symtab::SymbolTable;
-use symtab::*;
 
 #[cfg(test)]
 use base::charset::Script;
@@ -265,7 +263,7 @@ fn assemble_pass1<'a>(
 /// This test helper is defined here so that we don't have to expose
 /// assemble_pass1, assemble_pass2.
 #[cfg(test)]
-pub(crate) fn assemble_nonempty_valid_input<'a>(input: &'a str) -> (Directive, FinalSymbolTable) {
+pub(crate) fn assemble_nonempty_valid_input<'a>(input: &'a str) -> (Directive, SymbolTable) {
     let mut errors: Vec<Rich<'_, char>> = Vec::new();
     let result: Result<(Option<SourceFile>, OutputOptions), AssemblerFailure> =
         assemble_pass1(input, &mut errors);
@@ -341,24 +339,9 @@ impl Binary {
     }
 }
 
-fn unique_symbols_in_order<I>(items: I) -> Vec<(SymbolName, Span, SymbolContext)>
-where
-    I: IntoIterator<Item = (SymbolName, Span, SymbolContext)>,
-{
-    let mut seen = HashSet::new();
-    let mut result = Vec::new();
-    for (sym, span, context) in items {
-        if !seen.contains(&sym) {
-            seen.insert(sym.clone());
-            result.push((sym, span, context));
-        }
-    }
-    result
-}
-
 struct Pass2Output<'a> {
     directive: Option<Directive>,
-    symbols: FinalSymbolTable,
+    symbols: SymbolTable,
     errors: Vec<Rich<'a, char>>,
 }
 
@@ -405,33 +388,6 @@ fn assemble_pass2<'a>(
         }
     };
 
-    let symbol_refs_in_program_order: Vec<(SymbolName, Span, SymbolContext)> =
-        unique_symbols_in_order(
-            source_file
-                .global_symbol_references()
-                .map(|(symbol, span, context)| (symbol, span, context)),
-        );
-    let final_symbols = match finalise_symbol_table(symtab, symbol_refs_in_program_order.iter()) {
-        Ok(fs) => fs,
-        Err(e) => match e {
-            SymbolTableFinalisationError::DefaultValueAssignment(
-                DefaultValueAssignmentError::Inconsistency(msg),
-            ) => {
-                return Err(AssemblerFailure::InternalError(format!(
-                    "inconsistency: {msg}"
-                )));
-            }
-            SymbolTableFinalisationError::DefaultValueAssignment(
-                DefaultValueAssignmentError::MachineLimitExceeded(e),
-            ) => {
-                return Err(AssemblerFailure::MachineLimitExceeded(e));
-            }
-            SymbolTableFinalisationError::SymbolLookup(e) => {
-                return Err(e.into());
-            }
-        },
-    };
-
     let directive = convert_source_file_to_directive(source_file);
     event!(
         Level::INFO,
@@ -440,7 +396,7 @@ fn assemble_pass2<'a>(
     );
     Ok(Pass2Output {
         directive: Some(directive),
-        symbols: final_symbols,
+        symbols: symtab,
         errors: Vec::new(),
     })
 }
@@ -448,7 +404,7 @@ fn assemble_pass2<'a>(
 /// Pass 3 generates binary code.
 fn assemble_pass3(
     directive: Directive,
-    final_symtab: &mut FinalSymbolTable,
+    symtab: &mut SymbolTable,
 ) -> Result<Binary, AssemblerFailure> {
     let span = span!(Level::ERROR, "assembly pass 3");
     let _enter = span.enter();
@@ -458,23 +414,25 @@ fn assemble_pass3(
         binary.set_entry_point(address);
     }
 
-    for (block_number, block) in directive.blocks.iter().enumerate() {
-        let address: Address = match final_symtab.get_block_origin(&block_number) {
-            Some(a) => *a,
-            None => {
+    for (block_number, directive_block) in directive.blocks().enumerate() {
+        let mut op = symtab::FinalLookupOperation::default();
+        let address: Address = match symtab.finalise_origin(block_number, Some(&mut op)) {
+            Ok(a) => a,
+            Err(_) => {
                 return Err(AssemblerFailure::InternalError(
                     format!("starting address for block {block_number} was not calculated by calculate_block_origins")
                 ));
             }
         };
-        let words: Result<Vec<Unsigned36Bit>, AddressOverflow> = block
+        let words: Result<Vec<Unsigned36Bit>, AddressOverflow> = directive_block
             .items
             .iter()
             .enumerate()
             .map(|(offset, inst)| -> Result<Unsigned36Bit, AddressOverflow> {
                 let here = HereValue::Address(offset_from_origin(&address, offset)?);
+                let mut op = Default::default();
                 Ok(inst
-                    .evaluate(here, final_symtab, &mut ())
+                    .evaluate(&here, symtab, &mut op)
                     .expect("lookup on FinalSymbolTable is infallible"))
             })
             .collect::<Result<Vec<_>, AddressOverflow>>();
@@ -583,9 +541,8 @@ pub(crate) fn assemble_source(source_file_body: &str) -> Result<Binary, Assemble
         );
 
         if options.list {
-            // List the symbols.
             for (name, definition) in symbols.list() {
-                println!("{name:>20} = {definition:12o}");
+                println!("{name:>20} = {definition}");
             }
         }
 

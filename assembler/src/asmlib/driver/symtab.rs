@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::fmt::{self, Debug, Display, Formatter};
@@ -45,156 +43,14 @@ impl Display for DefaultValueAssignmentError {
 
 impl std::error::Error for DefaultValueAssignmentError {}
 
-/// FinalSymbolTable has final values for all identifiers.
-#[derive(Debug, Default)]
-pub(crate) struct FinalSymbolTable {
-    entries: HashMap<SymbolName, Unsigned36Bit>,
-    block_origins: BTreeMap<usize, Address>,
-}
-
-impl FinalSymbolTable {
-    pub(crate) fn list(&self) -> Vec<(SymbolName, Unsigned36Bit)> {
-        let mut result: Vec<(SymbolName, Unsigned36Bit)> = self
-            .entries
-            .iter()
-            .map(|(name, val)| (name.clone(), *val))
-            .collect();
-        result.sort();
-        result
-    }
-
-    #[cfg(test)]
-    pub(crate) fn is_empty(&self) -> bool {
-        self.entries.is_empty()
-    }
-
-    pub(crate) fn get_block_origin(&self, block_number: &usize) -> Option<&Address> {
-        self.block_origins.get(block_number)
-    }
-}
-
-impl SymbolLookup for FinalSymbolTable {
-    type Error = Infallible;
-    type Operation<'a> = ();
-
-    fn lookup_with_op(
-        &mut self,
-        name: &SymbolName,
-        _span: Span,
-        _: &SymbolContext,
-        _op: &mut Self::Operation<'_>,
-    ) -> Result<SymbolValue, Self::Error> {
-        match self.entries.get(name) {
-            Some(value) => Ok(SymbolValue::Final(*value)),
-            None => {
-                panic!("no value was found in the final symbol table for symbol {name}");
-            }
-        }
-    }
-    fn lookup(
-        &mut self,
-        name: &SymbolName,
-        span: Span,
-        context: &SymbolContext,
-    ) -> Result<SymbolValue, Self::Error> {
-        self.lookup_with_op(name, span, context, &mut ())
-    }
-
-    fn resolve_memory_reference(
-        &mut self,
-        memref: &MemoryReference,
-        _span: Span,
-        _op: &mut Self::Operation<'_>,
-    ) -> Result<Address, Self::Error> {
-        match self.block_origins.get(&memref.block_number) {
-            Some(block_origin) => match offset_from_origin(block_origin, memref.block_offset) {
-                Ok(addr) => Ok(addr),
-                Err(e) => {
-                    panic!("failed to compute block offset {memref:?}: {e}");
-                }
-            },
-            None => {
-                panic!(
-                    "failed to resolve reference to unknown memory block {}",
-                    memref.block_number
-                );
-            }
-        }
-    }
-}
-
-fn finalise_symbol(
-    symbol_name: &SymbolName,
-    span: &Span,
-    _target_address: HereValue,
-    context: &SymbolContext,
-    t: &mut SymbolTable,
-) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-    let mut op = FinalLookupOperation::default();
-    match t.lookup_with_op(symbol_name, *span, context, &mut op) {
-        Ok(value) => match value {
-            SymbolValue::Final(value) => Ok(value),
-        },
-        Err(e) => Err(e),
-    }
-}
-
-pub(super) enum SymbolTableFinalisationError {
-    DefaultValueAssignment(DefaultValueAssignmentError),
-    SymbolLookup(SymbolLookupFailure),
-}
-
-pub(super) fn finalise_symbol_table<'a, I>(
-    mut t: SymbolTable,
-    symbol_refs_in_program_order: I,
-) -> Result<FinalSymbolTable, SymbolTableFinalisationError>
-where
-    I: Iterator<Item = &'a (SymbolName, Span, SymbolContext)>,
-{
-    let mut finalized_entries: HashMap<SymbolName, Unsigned36Bit> = HashMap::new();
-    for (symbol_name, span, context) in symbol_refs_in_program_order {
-        let val: Unsigned36Bit = finalise_symbol(
-            symbol_name,
-            span,
-            target_address_does_not_matter(),
-            context,
-            &mut t,
-        )
-        .map_err(SymbolTableFinalisationError::SymbolLookup)?;
-        finalized_entries.insert(symbol_name.clone(), val);
-    }
-    let mut origins: BTreeMap<usize, Address> = BTreeMap::new();
-    let blocks: Vec<(usize, BlockPosition)> =
-        t.blocks.iter().map(|(i, bl)| (*i, bl.clone())).collect();
-    for (block_number, block) in blocks {
-        let address = if let Some(address) = block.block_address {
-            address
-        } else {
-            let mut op = FinalLookupOperation::default();
-            match t.finalise_origin(block_number, block.span, Some(&mut op)) {
-                Ok(address) => address,
-                Err(e) => {
-                    return Err(SymbolTableFinalisationError::DefaultValueAssignment(e));
-                }
-            }
-        };
-        origins.insert(block_number, address);
-    }
-
-    Ok(FinalSymbolTable {
-        entries: finalized_entries,
-        block_origins: origins,
-    })
-}
-
 #[derive(Debug, Clone)]
 pub(super) struct BlockPosition {
     // span is either the span of the origin specification if there is
     // one, or otherwise the span of the first thing in the block.
-    span: Span,
-    origin: Option<Origin>,
-    block_address: Option<Address>,
-    block_size: usize,
+    pub(super) span: Span,
+    pub(super) origin: Option<Origin>,
+    pub(super) block_address: Option<Address>,
+    pub(super) block_size: usize,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -216,7 +72,7 @@ impl From<(SymbolDefinition, Span)> for InternalSymbolDef {
 /// such symbols are assigned values are indicated in "Unassigned
 /// Symexes" in section 6-2.2 of the User Handbook.
 #[derive(Debug)]
-pub(super) struct SymbolTable {
+pub(crate) struct SymbolTable {
     definitions: BTreeMap<SymbolName, InternalSymbolDef>,
     blocks: BTreeMap<usize, BlockPosition>,
     // TODO: put rc_block in here?
@@ -252,17 +108,6 @@ impl Display for SymbolLookupFailure {
     }
 }
 
-/// evaluate() uses the current address parameter in order to figure
-/// out the value of the # symbol.  But, that is not allowed on the
-/// right-hand-side of assignments.  I don't think the user guide
-/// prohibits it, but supporting it opens all kinds of odd questions
-/// (such as if FOO=#+2, what happens if I use FOO as an origin?).  So
-/// we prohibit it.  Meaning that the precise value we use here
-/// doesn't matter.
-fn target_address_does_not_matter() -> HereValue {
-    HereValue::Address(Address::ZERO)
-}
-
 impl SymbolTable {
     pub(crate) fn new<I>(block_sizes: I) -> SymbolTable
     where
@@ -291,12 +136,25 @@ impl SymbolTable {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn has_definitions(&self) -> bool {
+        !self.definitions.is_empty()
+    }
+
     pub(crate) fn get(&self, name: &SymbolName) -> Option<&SymbolDefinition> {
         self.definitions.get(name).map(|internal| &internal.def)
     }
 
     pub(crate) fn get_clone(&mut self, name: &SymbolName) -> Option<SymbolDefinition> {
         self.get(name).cloned()
+    }
+
+    pub(crate) fn list(&self) -> impl Iterator<Item = (&SymbolName, &SymbolDefinition)> {
+        // We take advantage of the fact that iterating over a
+        // BTreeMap yields the symbols in order.
+        self.definitions
+            .iter()
+            .map(|(symbol, internal_def)| (symbol, &internal_def.def))
     }
 
     pub(crate) fn define(
@@ -324,25 +182,6 @@ impl SymbolTable {
         }
     }
 
-    //pub(crate) fn define_if_undefined(
-    //    &mut self,
-    //    name: SymbolName,
-    //    value: Unsigned36Bit,
-    //    context: &SymbolContext,
-    //) {
-    //    self.definitions
-    //        .entry(name)
-    //        .and_modify(|def| {
-    //            if let SymbolDefinition::Undefined(_) = def.def {
-    //                def.def = SymbolDefinition::DefaultAssigned(value, context.clone());
-    //            }
-    //        })
-    //        .or_insert(InternalSymbolDef {
-    //            def: SymbolDefinition::DefaultAssigned(value, context.clone()),
-    //            used: todo!(),
-    //        })
-    //}
-
     pub(crate) fn record_usage_context(
         &mut self,
         name: SymbolName,
@@ -364,6 +203,7 @@ impl SymbolTable {
         &mut self,
         name: &SymbolName,
         span: Span,
+        target_address: &HereValue,
         _context: &SymbolContext,
         op: &mut FinalLookupOperation,
     ) -> Result<SymbolValue, SymbolLookupFailure> {
@@ -371,6 +211,7 @@ impl SymbolTable {
             t: &mut SymbolTable,
             name: &SymbolName,
             span: Span,
+            target_address: &HereValue,
             op: &mut FinalLookupOperation,
         ) -> Result<SymbolValue, SymbolLookupFailure> {
             if let Some(def) = t.get_clone(name) {
@@ -380,7 +221,7 @@ impl SymbolTable {
                         block_number,
                         block_offset,
                         span: _,
-                    } => match t.finalise_origin(block_number, span, Some(op)) {
+                    } => match t.finalise_origin(block_number, Some(op)) {
                         Ok(address) => Ok(SymbolValue::Final(
                             offset_from_origin(&address, block_offset)
                                 .expect("program is too long")
@@ -396,7 +237,7 @@ impl SymbolTable {
                         // '#' on the right-hand-side of the
                         // assignment.
                         expression
-                            .evaluate(target_address_does_not_matter(), t, op)
+                            .evaluate(target_address, t, op)
                             .map(SymbolValue::Final)
                     }
                     SymbolDefinition::Undefined(context_union) => {
@@ -423,7 +264,7 @@ impl SymbolTable {
                 },
             )));
         }
-        let result = body(self, name, span, op);
+        let result = body(self, name, span, target_address, op);
         op.deps_in_order.pop();
         op.depends_on.remove(name);
         result
@@ -432,7 +273,6 @@ impl SymbolTable {
     pub(crate) fn finalise_origin(
         &mut self,
         block_number: usize,
-        block_span: Span,
         maybe_op: Option<&mut FinalLookupOperation>,
     ) -> Result<Address, DefaultValueAssignmentError> {
         let mut newdef: Option<(SymbolName, SymbolDefinition, Span)> = None;
@@ -463,6 +303,7 @@ impl SymbolTable {
             BlockPosition {
                 origin: Some(Origin::Symbolic(span, symbol_name)),
                 block_address: None,
+                span: block_span,
                 ..
             } => {
                 // The block hasn't yet been assigned an address, but it has a symbolic name.
@@ -472,7 +313,7 @@ impl SymbolTable {
                     Some(SymbolDefinition::Equality(rhs)) => {
                         let mut new_op = FinalLookupOperation::default();
                         let op: &mut FinalLookupOperation = maybe_op.unwrap_or(&mut new_op);
-                        match rhs.evaluate(target_address_does_not_matter(), self, op) {
+                        match rhs.evaluate(&HereValue::NotAllowed, self, op) {
                             Ok(value) => Ok(Address::from(subword::right_half(value))),
                             Err(e) => {
                                 panic!("no code to handle symbol lookup failure in finalise_origin: {e}"); // TODO
@@ -547,7 +388,7 @@ impl SymbolTable {
             Some(previous_block_number) => match self.blocks.get(&previous_block_number).cloned() {
                 Some(previous) => {
                     let previous_block_origin =
-                        self.finalise_origin(previous_block_number, previous.span, Some(op))?;
+                        self.finalise_origin(previous_block_number, Some(op))?;
                     match offset_from_origin(&previous_block_origin, previous.block_size) {
                         Ok(addr) => Ok(addr),
                         Err(_) => Err(DefaultValueAssignmentError::MachineLimitExceeded(
@@ -636,20 +477,22 @@ impl SymbolLookup for SymbolTable {
         &mut self,
         name: &SymbolName,
         span: Span,
+        target_address: &HereValue,
         context: &SymbolContext,
         op: &mut Self::Operation<'_>,
     ) -> Result<SymbolValue, SymbolLookupFailure> {
-        self.final_lookup_helper(name, span, context, op)
+        self.final_lookup_helper(name, span, target_address, context, op)
     }
 
     fn lookup(
         &mut self,
         name: &SymbolName,
         span: Span,
+        target_address: &HereValue,
         context: &SymbolContext,
     ) -> Result<SymbolValue, SymbolLookupFailure> {
         let mut op = FinalLookupOperation::default();
-        self.lookup_with_op(name, span, context, &mut op)
+        self.lookup_with_op(name, span, target_address, context, &mut op)
     }
 
     fn resolve_memory_reference(
@@ -665,7 +508,7 @@ impl SymbolLookup for SymbolTable {
             }
         };
 
-        match self.finalise_origin(memref.block_number, span, Some(op)) {
+        match self.finalise_origin(memref.block_number, Some(op)) {
             Ok(block_origin) => match offset_from_origin(&block_origin, memref.block_offset) {
                 Ok(addr) => Ok(addr),
                 Err(_) => Err(limit_exceeded(MachineLimitExceededFailure::BlockTooLarge {

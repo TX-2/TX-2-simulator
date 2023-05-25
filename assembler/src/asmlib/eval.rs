@@ -38,12 +38,14 @@ pub(crate) trait SymbolLookup {
         &mut self,
         name: &SymbolName,
         span: Span, // TODO: use &Span?
+        target_address: &HereValue,
         context: &SymbolContext,
     ) -> Result<SymbolValue, Self::Error>;
     fn lookup_with_op(
         &mut self,
         name: &SymbolName,
         span: Span, // TODO: use &Span?
+        target_address: &HereValue,
         context: &SymbolContext,
         op: &mut Self::Operation<'_>,
     ) -> Result<SymbolValue, Self::Error>;
@@ -60,14 +62,15 @@ pub(crate) trait SymbolLookup {
 pub(crate) enum HereValue {
     /// '#' refers to an address
     Address(Address),
-    // NotAllowed will be for when '#' is not allowed (this is used
-    // when evaluating an origin).
+    /// NotAllowed is for when '#' is not allowed (this is used
+    /// when evaluating an origin).
+    NotAllowed,
 }
 
 pub(crate) trait Evaluate {
     fn evaluate<S: SymbolLookup>(
         &self,
-        target_address: HereValue,
+        target_address: &HereValue,
         symtab: &mut S,
         op: &mut S::Operation<'_>,
     ) -> Result<Unsigned36Bit, S::Error>;

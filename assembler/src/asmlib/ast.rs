@@ -67,7 +67,7 @@ impl LiteralValue {
 impl Evaluate for LiteralValue {
     fn evaluate<S: SymbolLookup>(
         &self,
-        _target_address: HereValue,
+        _target_address: &HereValue,
         _symtab: &mut S,
         _op: &mut S::Operation<'_>,
     ) -> Result<Unsigned36Bit, S::Error> {
@@ -156,18 +156,21 @@ impl Expression {
 impl Evaluate for Expression {
     fn evaluate<S: SymbolLookup>(
         &self,
-        target_address: HereValue,
+        target_address: &HereValue,
         symtab: &mut S,
         op: &mut S::Operation<'_>,
     ) -> Result<Unsigned36Bit, S::Error> {
         match self {
             Expression::Here => match target_address {
-                HereValue::Address(addr) => Ok(addr.into()),
+                HereValue::Address(addr) => Ok((*addr).into()),
+                HereValue::NotAllowed => {
+                    todo!("# is not allowed in origins")
+                }
             },
             Expression::Literal(literal) => Ok(literal.value()),
             Expression::Symbol(span, elevation, name) => {
                 let context = SymbolContext::from((elevation, *span));
-                match symtab.lookup_with_op(name, *span, &context, op) {
+                match symtab.lookup_with_op(name, *span, target_address, &context, op) {
                     Ok(SymbolValue::Final(value)) => Ok(value),
                     Err(e) => Err(e),
                 }
@@ -231,7 +234,7 @@ impl InstructionFragment {
 impl Evaluate for InstructionFragment {
     fn evaluate<S: SymbolLookup>(
         &self,
-        target_address: HereValue,
+        target_address: &HereValue,
         symtab: &mut S,
         op: &mut S::Operation<'_>,
     ) -> Result<Unsigned36Bit, S::Error> {
@@ -370,14 +373,14 @@ impl UntaggedProgramInstruction {
 impl Evaluate for UntaggedProgramInstruction {
     fn evaluate<S: SymbolLookup>(
         &self,
-        target_address: HereValue,
+        target_address: &HereValue,
         symtab: &mut S,
         op: &mut S::Operation<'_>,
     ) -> Result<Unsigned36Bit, S::Error> {
         fn or_looked_up_value<S: SymbolLookup>(
             accumulator: Result<Unsigned36Bit, S::Error>,
             frag: &InstructionFragment,
-            target_address: HereValue,
+            target_address: &HereValue,
             symtab: &mut S,
             op: &mut S::Operation<'_>,
         ) -> Result<Unsigned36Bit, S::Error> {
@@ -446,7 +449,7 @@ impl TaggedProgramInstruction {
 impl Evaluate for TaggedProgramInstruction {
     fn evaluate<S: SymbolLookup>(
         &self,
-        target_address: HereValue,
+        target_address: &HereValue,
         symtab: &mut S,
         op: &mut S::Operation<'_>,
     ) -> Result<Unsigned36Bit, S::Error> {
@@ -636,6 +639,10 @@ impl Directive {
 
     pub(crate) fn push(&mut self, block: Block) {
         self.blocks.push(block)
+    }
+
+    pub(crate) fn blocks(&self) -> impl Iterator<Item = &Block> {
+        self.blocks.iter()
     }
 }
 

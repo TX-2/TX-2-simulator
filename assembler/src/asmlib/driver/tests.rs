@@ -17,7 +17,7 @@ use base::{
 #[cfg(test)]
 fn assemble_literal(input: &str, expected: &InstructionFragment) {
     let (directive, symtab) = assemble_nonempty_valid_input(input);
-    if !symtab.is_empty() {
+    if symtab.has_definitions() {
         panic!("no symbol should have been generated");
     }
     match directive.blocks.as_slice() {
@@ -53,7 +53,9 @@ fn assemble_literal(input: &str, expected: &InstructionFragment) {
 }
 
 #[cfg(test)]
-fn assemble_check_symbols(input: &str, expected: &[(&str, SymbolValue)]) {
+fn assemble_check_symbols(input: &str, target_address: Address, expected: &[(&str, SymbolValue)]) {
+    use crate::eval::HereValue;
+
     let (_directive, mut symtab) = assemble_nonempty_valid_input(input);
     for (name, expected_value) in expected.into_iter() {
         let sym = SymbolName {
@@ -61,7 +63,8 @@ fn assemble_check_symbols(input: &str, expected: &[(&str, SymbolValue)]) {
         };
         let span = span(0..(name.len()));
         let context = SymbolContext::from((Script::Normal, span));
-        match symtab.lookup(&sym, span, &context) {
+        let here = HereValue::Address(target_address);
+        match symtab.lookup(&sym, span, &here, &context) {
             Ok(got) => {
                 if got != *expected_value {
                     panic!("incorrect value for symbol {name}; expected {expected_value:?}, got {got:?}");
@@ -199,6 +202,7 @@ fn test_assignment_rhs_is_instruction() {
             "** (AND HENCE IS RETAINED).\n",
             "FOO\n"
         ),
+        Address::ZERO,
         &[("FOO", SymbolValue::Final(u36!(0o210452_030106)))],
     );
 }
@@ -209,4 +213,28 @@ fn test_normal_hash_value() {
     assert_eq!(program.chunks[0].address, Address::from(u18!(0o100)));
     assert_eq!(program.chunks[0].words[0], u36!(2));
     assert_eq!(program.chunks[0].words[1], u36!(0o101));
+}
+
+#[test]
+fn test_assign_hash_value() {
+    // The point of this test is that it's allowed for # to be used in
+    // an assignment, and it represents the address at which the
+    // instruction is assembled.  So in our example here, the value of
+    // FOO depends on the address at which it is being used.
+    //
+    // While the User Handbook isn't explicit about this point, we
+    // know that M4 supported this, because the Sketchpad code uses
+    // this, like so:
+    //
+    // SPLATTT=#-NLIST-MASBL,,#-NLIST+MASBL
+    let program = assemble_source(concat!(
+        "         FOO = #\n",
+        "       START = 100\n",
+        "START| @super_1@ FOO\n",
+        "       @super_2@ FOO\n",
+    ))
+    .expect("program is valid");
+    assert_eq!(program.chunks[0].address, Address::from(u18!(0o100)));
+    assert_eq!(program.chunks[0].words[0], u36!(0o10000000100));
+    assert_eq!(program.chunks[0].words[1], u36!(0o20000000101));
 }

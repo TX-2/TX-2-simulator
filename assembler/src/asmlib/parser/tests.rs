@@ -972,6 +972,7 @@ impl SymbolLookup for NoSymbols {
         &mut self,
         _name: &SymbolName,
         _span: Span,
+        _target_address: &HereValue,
         _context: &SymbolContext,
         _op: &mut Self::Operation<'_>,
     ) -> Result<SymbolValue, Self::Error> {
@@ -982,6 +983,7 @@ impl SymbolLookup for NoSymbols {
         &mut self,
         _name: &SymbolName,
         _span: Span,
+        _target_address: &HereValue,
         _context: &crate::eval::SymbolContext,
     ) -> Result<SymbolValue, Self::Error> {
         Err(UnexpectedLookup {})
@@ -1007,7 +1009,7 @@ fn program_instruction_with_opcode() {
             tagged_program_instruction(),
             no_state_setup
         )
-        .evaluate(HereValue::Address(Address::ZERO), &mut nosyms, &mut op),
+        .evaluate(&HereValue::Address(Address::ZERO), &mut nosyms, &mut op),
         Ok(u36!(0o210452_030106))
     );
 }
