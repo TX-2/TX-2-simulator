@@ -8,6 +8,8 @@ use base::u36;
 use chumsky::error::Rich;
 use chumsky::prelude::*;
 
+use crate::eval::SymbolLookupFailure;
+
 use super::super::ast::{
     Expression, HoldBit, InstructionFragment, LiteralValue, ManuscriptBlock, ManuscriptMetaCommand,
     Origin, SourceFile, Statement, TaggedProgramInstruction, UntaggedProgramInstruction,
@@ -965,7 +967,6 @@ struct UnexpectedLookup {}
 struct NoSymbols {}
 
 impl SymbolLookup for NoSymbols {
-    type Error = UnexpectedLookup;
     type Operation<'a> = ();
 
     fn lookup_with_op(
@@ -975,8 +976,8 @@ impl SymbolLookup for NoSymbols {
         _target_address: &HereValue,
         _context: &SymbolContext,
         _op: &mut Self::Operation<'_>,
-    ) -> Result<SymbolValue, Self::Error> {
-        Err(UnexpectedLookup {})
+    ) -> Result<SymbolValue, SymbolLookupFailure> {
+        unreachable!("no lookups are expected")
     }
 
     fn lookup(
@@ -985,8 +986,8 @@ impl SymbolLookup for NoSymbols {
         _span: Span,
         _target_address: &HereValue,
         _context: &crate::eval::SymbolContext,
-    ) -> Result<SymbolValue, Self::Error> {
-        Err(UnexpectedLookup {})
+    ) -> Result<SymbolValue, SymbolLookupFailure> {
+        unreachable!("no lookups are expected")
     }
 
     fn resolve_memory_reference(
@@ -994,8 +995,8 @@ impl SymbolLookup for NoSymbols {
         _memref: &crate::eval::MemoryReference,
         _span: Span, // TODO: use &Span?
         _op: &mut Self::Operation<'_>,
-    ) -> Result<Address, Self::Error> {
-        Err(UnexpectedLookup {})
+    ) -> Result<Address, SymbolLookupFailure> {
+        unreachable!("no lookups are expected")
     }
 }
 

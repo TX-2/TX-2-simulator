@@ -8,7 +8,52 @@ use base::{
 
 use super::ast::UntaggedProgramInstruction;
 use super::symbol::SymbolName;
-use super::types::{OrderableSpan, Span};
+use super::types::{AssemblerFailure, MachineLimitExceededFailure, OrderableSpan, Span};
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum LookupTarget {
+    Symbol(SymbolName, Span),
+    MemRef(MemoryReference, Span),
+}
+
+impl From<(SymbolName, Span)> for LookupTarget {
+    fn from((sym, span): (SymbolName, Span)) -> LookupTarget {
+        LookupTarget::Symbol(sym, span)
+    }
+}
+
+impl From<(MemoryReference, Span)> for LookupTarget {
+    fn from((r, span): (MemoryReference, Span)) -> LookupTarget {
+        LookupTarget::MemRef(r, span)
+    }
+}
+
+impl LookupTarget {
+    fn span(&self) -> &Span {
+        match self {
+            LookupTarget::Symbol(_, span) | LookupTarget::MemRef(_, span) => span,
+        }
+    }
+}
+
+impl Display for LookupTarget {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        match self {
+            LookupTarget::Symbol(name, _) => {
+                write!(f, "symbol {name}")
+            }
+            LookupTarget::MemRef(
+                MemoryReference {
+                    block_number,
+                    block_offset: _,
+                },
+                _,
+            ) => {
+                write!(f, "memory block {block_number}")
+            }
+        }
+    }
+}
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub(crate) struct MemoryReference {
@@ -30,8 +75,86 @@ pub(crate) enum SymbolValue {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub(crate) enum MemoryReferenceResolutionFailure {}
 
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum SymbolLookupFailureKind {
+    Inconsistent(String),
+    Loop { deps_in_order: Vec<SymbolName> },
+    MachineLimitExceeded(MachineLimitExceededFailure),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct SymbolLookupFailure {
+    pub(crate) target: LookupTarget,
+    pub(crate) kind: SymbolLookupFailureKind,
+}
+
+impl Display for SymbolLookupFailure {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        let desc = self.target.to_string();
+        match self.kind() {
+            SymbolLookupFailureKind::Inconsistent(msg) => f.write_str(msg.as_str()),
+            SymbolLookupFailureKind::Loop { deps_in_order } => {
+                let names: Vec<String> = deps_in_order.iter().map(|dep| dep.to_string()).collect();
+                write!(
+                    f,
+                    "definition of {desc} has a dependency loop ({})",
+                    names.join("->")
+                )
+            }
+            SymbolLookupFailureKind::MachineLimitExceeded(fail) => {
+                write!(f, "machine limit exceeded: {fail}")
+            }
+        }
+    }
+}
+
+impl From<SymbolLookupFailure> for AssemblerFailure {
+    fn from(f: SymbolLookupFailure) -> AssemblerFailure {
+        let symbol_desc: String = f.target.to_string();
+        let span: Span = *f.target.span();
+        match f.kind {
+            SymbolLookupFailureKind::MachineLimitExceeded(limit_exceeded) => {
+                AssemblerFailure::MachineLimitExceeded(limit_exceeded)
+            }
+            SymbolLookupFailureKind::Loop { deps_in_order } => {
+                let chain: String = deps_in_order
+                    .iter()
+                    .map(|dep| dep.to_string())
+                    .collect::<Vec<_>>()
+                    .join("->");
+                AssemblerFailure::InvalidProgram {
+                    span,
+                    msg: format!("definition of {symbol_desc} has a dependency loop ({chain})",),
+                }
+            }
+            SymbolLookupFailureKind::Inconsistent(msg) => AssemblerFailure::InvalidProgram {
+                span,
+                msg: format!("program is inconsistent: {msg}",),
+            },
+        }
+    }
+}
+
+impl From<(SymbolName, Span, SymbolLookupFailureKind)> for SymbolLookupFailure {
+    fn from(
+        (symbol_name, span, kind): (SymbolName, Span, SymbolLookupFailureKind),
+    ) -> SymbolLookupFailure {
+        SymbolLookupFailure {
+            target: LookupTarget::Symbol(symbol_name, span),
+            kind,
+        }
+    }
+}
+
+impl SymbolLookupFailure {
+    pub(crate) fn kind(&self) -> &SymbolLookupFailureKind {
+        &self.kind
+    }
+}
+
+impl std::error::Error for SymbolLookupFailure {}
+
 pub(crate) trait SymbolLookup {
-    type Error;
     type Operation<'a>;
 
     fn lookup(
@@ -40,7 +163,7 @@ pub(crate) trait SymbolLookup {
         span: Span, // TODO: use &Span?
         target_address: &HereValue,
         context: &SymbolContext,
-    ) -> Result<SymbolValue, Self::Error>;
+    ) -> Result<SymbolValue, SymbolLookupFailure>;
     fn lookup_with_op(
         &mut self,
         name: &SymbolName,
@@ -48,13 +171,13 @@ pub(crate) trait SymbolLookup {
         target_address: &HereValue,
         context: &SymbolContext,
         op: &mut Self::Operation<'_>,
-    ) -> Result<SymbolValue, Self::Error>;
+    ) -> Result<SymbolValue, SymbolLookupFailure>;
     fn resolve_memory_reference(
         &mut self,
         memref: &MemoryReference,
         span: Span, // TODO: use &Span?
         op: &mut Self::Operation<'_>,
-    ) -> Result<Address, Self::Error>;
+    ) -> Result<Address, SymbolLookupFailure>;
 }
 
 /// HereValue specifies the value used for '#'
@@ -73,7 +196,7 @@ pub(crate) trait Evaluate {
         target_address: &HereValue,
         symtab: &mut S,
         op: &mut S::Operation<'_>,
-    ) -> Result<Unsigned36Bit, S::Error>;
+    ) -> Result<Unsigned36Bit, SymbolLookupFailure>;
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

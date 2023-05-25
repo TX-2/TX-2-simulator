@@ -9,14 +9,12 @@ use base::subword;
 
 use super::super::ast::Origin;
 use super::super::eval::{
-    BadSymbolDefinition, Evaluate, HereValue, MemoryReference, SymbolContext, SymbolDefinition,
-    SymbolLookup, SymbolValue,
+    BadSymbolDefinition, Evaluate, HereValue, LookupTarget, MemoryReference, SymbolContext,
+    SymbolDefinition, SymbolLookup, SymbolLookupFailure, SymbolLookupFailureKind, SymbolValue,
 };
 use super::super::symbol::SymbolName;
 use super::super::types::Span;
 use super::super::types::{offset_from_origin, MachineLimitExceededFailure};
-use super::LookupTarget;
-use super::{SymbolLookupFailure, SymbolLookupFailureKind};
 
 /// Instances of Infallible cannot be created as it has no variants.
 /// When the never type (`!`) is stabilised, we should use that
@@ -83,29 +81,6 @@ pub(crate) struct SymbolTable {
 pub(crate) struct FinalLookupOperation {
     depends_on: HashSet<SymbolName>,
     deps_in_order: Vec<SymbolName>,
-}
-
-impl Display for SymbolLookupFailure {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        let desc = self.target.to_string();
-        match self.kind() {
-            SymbolLookupFailureKind::MissingDefault => {
-                write!(f, "{desc} is not defined and no default value was applied")
-            }
-            SymbolLookupFailureKind::Inconsistent(msg) => f.write_str(msg.as_str()),
-            SymbolLookupFailureKind::Loop { deps_in_order } => {
-                let names: Vec<String> = deps_in_order.iter().map(|dep| dep.to_string()).collect();
-                write!(
-                    f,
-                    "definition of {desc} has a dependency loop ({})",
-                    names.join("->")
-                )
-            }
-            SymbolLookupFailureKind::MachineLimitExceeded(fail) => {
-                write!(f, "machine limit exceeded: {fail}")
-            }
-        }
-    }
 }
 
 impl SymbolTable {
@@ -470,7 +445,6 @@ impl SymbolTable {
 }
 
 impl SymbolLookup for SymbolTable {
-    type Error = SymbolLookupFailure;
     type Operation<'a> = FinalLookupOperation;
 
     fn lookup_with_op(

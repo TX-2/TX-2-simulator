@@ -10,7 +10,7 @@ use chumsky::span::Span as _;
 use base::charset::{subscript_char, superscript_char, Script};
 use base::prelude::*;
 
-use crate::eval::{HereValue, SymbolValue};
+use crate::eval::{HereValue, SymbolLookupFailure, SymbolValue};
 
 use super::eval::{Evaluate, SymbolContext, SymbolDefinition, SymbolLookup, SymbolUse};
 use super::state::NumeralMode;
@@ -70,7 +70,7 @@ impl Evaluate for LiteralValue {
         _target_address: &HereValue,
         _symtab: &mut S,
         _op: &mut S::Operation<'_>,
-    ) -> Result<Unsigned36Bit, S::Error> {
+    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         Ok(self.value())
     }
 }
@@ -159,7 +159,7 @@ impl Evaluate for Expression {
         target_address: &HereValue,
         symtab: &mut S,
         op: &mut S::Operation<'_>,
-    ) -> Result<Unsigned36Bit, S::Error> {
+    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         match self {
             Expression::Here => match target_address {
                 HereValue::Address(addr) => Ok((*addr).into()),
@@ -237,7 +237,7 @@ impl Evaluate for InstructionFragment {
         target_address: &HereValue,
         symtab: &mut S,
         op: &mut S::Operation<'_>,
-    ) -> Result<Unsigned36Bit, S::Error> {
+    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         self.value.evaluate(target_address, symtab, op)
     }
 }
@@ -376,14 +376,14 @@ impl Evaluate for UntaggedProgramInstruction {
         target_address: &HereValue,
         symtab: &mut S,
         op: &mut S::Operation<'_>,
-    ) -> Result<Unsigned36Bit, S::Error> {
+    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         fn or_looked_up_value<S: SymbolLookup>(
-            accumulator: Result<Unsigned36Bit, S::Error>,
+            accumulator: Result<Unsigned36Bit, SymbolLookupFailure>,
             frag: &InstructionFragment,
             target_address: &HereValue,
             symtab: &mut S,
             op: &mut S::Operation<'_>,
-        ) -> Result<Unsigned36Bit, S::Error> {
+        ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
             accumulator.and_then(|acc| Ok(acc | frag.value.evaluate(target_address, symtab, op)?))
         }
 
@@ -452,7 +452,7 @@ impl Evaluate for TaggedProgramInstruction {
         target_address: &HereValue,
         symtab: &mut S,
         op: &mut S::Operation<'_>,
-    ) -> Result<Unsigned36Bit, S::Error> {
+    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         self.instruction.evaluate(target_address, symtab, op)
     }
 }

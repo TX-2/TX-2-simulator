@@ -4,7 +4,6 @@ mod symtab;
 mod tests;
 
 use std::ffi::OsStr;
-use std::fmt::{self, Display, Formatter};
 use std::fs::OpenOptions;
 use std::io::{BufReader, BufWriter, Read};
 #[cfg(test)]
@@ -15,10 +14,9 @@ use chumsky::error::Rich;
 use tracing::{event, span, Level};
 
 use super::ast::*;
-use super::eval::{Evaluate, HereValue, MemoryReference};
+use super::eval::{Evaluate, HereValue};
 use super::parser::parse_source_file;
 use super::state::NumeralMode;
-use super::symbol::SymbolName;
 use super::types::*;
 use base::prelude::{Address, Unsigned36Bit};
 use symtab::SymbolTable;
@@ -44,114 +42,6 @@ struct OutputOptions {
     // metacommands.
     list: bool,
 }
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum SymbolLookupFailureKind {
-    MissingDefault,
-    Inconsistent(String),
-    Loop { deps_in_order: Vec<SymbolName> },
-    MachineLimitExceeded(MachineLimitExceededFailure),
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) enum LookupTarget {
-    Symbol(SymbolName, Span),
-    MemRef(MemoryReference, Span),
-}
-
-impl From<(SymbolName, Span)> for LookupTarget {
-    fn from((sym, span): (SymbolName, Span)) -> LookupTarget {
-        LookupTarget::Symbol(sym, span)
-    }
-}
-
-impl From<(MemoryReference, Span)> for LookupTarget {
-    fn from((r, span): (MemoryReference, Span)) -> LookupTarget {
-        LookupTarget::MemRef(r, span)
-    }
-}
-
-impl LookupTarget {
-    fn span(&self) -> &Span {
-        match self {
-            LookupTarget::Symbol(_, span) | LookupTarget::MemRef(_, span) => span,
-        }
-    }
-}
-
-impl Display for LookupTarget {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        match self {
-            LookupTarget::Symbol(name, _) => {
-                write!(f, "symbol {name}")
-            }
-            LookupTarget::MemRef(
-                MemoryReference {
-                    block_number,
-                    block_offset: _,
-                },
-                _,
-            ) => {
-                write!(f, "memory block {block_number}")
-            }
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct SymbolLookupFailure {
-    target: LookupTarget,
-    kind: SymbolLookupFailureKind,
-}
-
-impl From<SymbolLookupFailure> for AssemblerFailure {
-    fn from(f: SymbolLookupFailure) -> AssemblerFailure {
-        let symbol_desc: String = f.target.to_string();
-        let span: Span = *f.target.span();
-        match f.kind {
-            SymbolLookupFailureKind::MissingDefault => AssemblerFailure::InternalError(format!(
-                "no default value was assigned for {symbol_desc}"
-            )),
-            SymbolLookupFailureKind::MachineLimitExceeded(limit_exceeded) => {
-                AssemblerFailure::MachineLimitExceeded(limit_exceeded)
-            }
-            SymbolLookupFailureKind::Loop { deps_in_order } => {
-                let chain: String = deps_in_order
-                    .iter()
-                    .map(|dep| dep.to_string())
-                    .collect::<Vec<_>>()
-                    .join("->");
-                AssemblerFailure::InvalidProgram {
-                    span,
-                    msg: format!("definition of {symbol_desc} has a dependency loop ({chain})",),
-                }
-            }
-            SymbolLookupFailureKind::Inconsistent(msg) => AssemblerFailure::InvalidProgram {
-                span,
-                msg: format!("program is inconsistent: {msg}",),
-            },
-        }
-    }
-}
-
-impl From<(SymbolName, Span, SymbolLookupFailureKind)> for SymbolLookupFailure {
-    fn from(
-        (symbol_name, span, kind): (SymbolName, Span, SymbolLookupFailureKind),
-    ) -> SymbolLookupFailure {
-        SymbolLookupFailure {
-            target: LookupTarget::Symbol(symbol_name, span),
-            kind,
-        }
-    }
-}
-
-impl SymbolLookupFailure {
-    pub(crate) fn kind(&self) -> &SymbolLookupFailureKind {
-        &self.kind
-    }
-}
-
-impl std::error::Error for SymbolLookupFailure {}
 
 fn convert_source_file_to_directive(source_file: &SourceFile) -> Directive {
     let mut directive: Directive = Directive::default();
