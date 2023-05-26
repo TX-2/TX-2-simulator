@@ -126,22 +126,92 @@ fn format_elevated_chars(f: &mut Formatter<'_>, elevation: &Script, s: &str) -> 
     Ok(())
 }
 
+/// The Users Handbook specifies that the operators are the four
+/// arithmetic operators (+-×/) and the logical operators ∧ (AND), ∨
+/// (OR), and a circled ∨ meaning XOR.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Operator {
+    LogicalOr, // "union" in the Users Handbook
+}
+
+/// A molecule is an arithmetic expression all in normal script.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ArithmeticExpression {
+    first: Atom,
+    tail: Vec<(Operator, Atom)>,
+}
+
+impl From<Atom> for ArithmeticExpression {
+    fn from(a: Atom) -> ArithmeticExpression {
+        ArithmeticExpression {
+            first: a,
+            tail: Vec::new(),
+        }
+    }
+}
+
+impl ArithmeticExpression {
+    pub(crate) fn with_tail(first: Atom, tail: Vec<(Operator, Atom)>) -> ArithmeticExpression {
+        ArithmeticExpression { first, tail }
+    }
+
+    pub(crate) fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
+        let mut result = Vec::with_capacity(1 + self.tail.len());
+        result.extend(self.first.symbol_uses());
+        result.extend(self.tail.iter().flat_map(|(_op, x)| x.symbol_uses()));
+        result.into_iter()
+    }
+
+    fn eval_binop(left: Unsigned36Bit, binop: &Operator, right: Unsigned36Bit) -> Unsigned36Bit {
+        match binop {
+            Operator::LogicalOr => left.bitor(right.into()),
+        }
+    }
+}
+
+impl Evaluate for ArithmeticExpression {
+    fn evaluate<S: SymbolLookup>(
+        &self,
+        target_address: &HereValue,
+        symtab: &mut S,
+        op: &mut S::Operation<'_>,
+    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+        fn fold_step<S: SymbolLookup>(
+            acc: Result<Unsigned36Bit, SymbolLookupFailure>,
+            (binop, right): &(Operator, Atom),
+            target_address: &HereValue,
+            symtab: &mut S,
+            op: &mut S::Operation<'_>,
+        ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+            let right: Unsigned36Bit = right.evaluate(target_address, symtab, op)?;
+            Ok(ArithmeticExpression::eval_binop(acc?, binop, right))
+        }
+
+        let first: Unsigned36Bit = self.first.evaluate(target_address, symtab, op)?;
+        let result: Result<Unsigned36Bit, SymbolLookupFailure> =
+            self.tail.iter().fold(Ok(first), |acc, curr| {
+                fold_step(acc, curr, target_address, symtab, op)
+            });
+        result
+    }
+}
+
 /// Eventually we will support real expressions, but for now we only
 /// suport literals and references to symbols ("equalities" in the
 /// User Handbook).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Expression {
+pub(crate) enum Atom {
     Literal(LiteralValue),
     Symbol(Span, Script, SymbolName),
     Here(Script), // the special symbol '#'.
 }
 
-impl Expression {
+impl Atom {
     pub(crate) fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
         let mut result = Vec::with_capacity(1);
         match self {
-            Expression::Literal(_) | Expression::Here(_) => (),
-            Expression::Symbol(span, script, symbol_name) => {
+            Atom::Literal(_) | Atom::Here(_) => (),
+            Atom::Symbol(span, script, symbol_name) => {
                 result.push((
                     symbol_name.clone(),
                     *span,
@@ -153,7 +223,7 @@ impl Expression {
     }
 }
 
-impl Evaluate for Expression {
+impl Evaluate for Atom {
     fn evaluate<S: SymbolLookup>(
         &self,
         target_address: &HereValue,
@@ -161,7 +231,7 @@ impl Evaluate for Expression {
         op: &mut S::Operation<'_>,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         match self {
-            Expression::Here(elevation) => match target_address {
+            Atom::Here(elevation) => match target_address {
                 HereValue::Address(addr) => {
                     let value: Unsigned36Bit = (*addr).into();
                     Ok(value.shl(elevation.shift()))
@@ -170,8 +240,8 @@ impl Evaluate for Expression {
                     todo!("# is not allowed in origins")
                 }
             },
-            Expression::Literal(literal) => Ok(literal.value()),
-            Expression::Symbol(span, elevation, name) => {
+            Atom::Literal(literal) => Ok(literal.value()),
+            Atom::Symbol(span, elevation, name) => {
                 let context = SymbolContext::from((elevation, *span));
                 match symtab.lookup_with_op(name, *span, target_address, &context, op) {
                     Ok(SymbolValue::Final(value)) => Ok(value),
@@ -183,15 +253,15 @@ impl Evaluate for Expression {
     }
 }
 
-impl From<LiteralValue> for Expression {
-    fn from(literal: LiteralValue) -> Expression {
-        Expression::Literal(literal)
+impl From<LiteralValue> for Atom {
+    fn from(literal: LiteralValue) -> Atom {
+        Atom::Literal(literal)
     }
 }
 
-impl From<(Span, Script, Unsigned36Bit)> for Expression {
-    fn from((span, script, v): (Span, Script, Unsigned36Bit)) -> Expression {
-        Expression::from(LiteralValue::from((span, script, v)))
+impl From<(Span, Script, Unsigned36Bit)> for Atom {
+    fn from((span, script, v): (Span, Script, Unsigned36Bit)) -> Atom {
+        Atom::from(LiteralValue::from((span, script, v)))
     }
 }
 
@@ -211,14 +281,14 @@ fn elevated_string<'a>(s: &'a str, elevation: &Script) -> Cow<'a, str> {
     }
 }
 
-impl std::fmt::Display for Expression {
+impl std::fmt::Display for Atom {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Expression::Here(Script::Normal) => f.write_char('#'),
-            Expression::Here(Script::Sub) => f.write_str("@sub_hash@"),
-            Expression::Here(Script::Super) => f.write_str("@super_hash@"),
-            Expression::Literal(value) => value.fmt(f),
-            Expression::Symbol(_span, elevation, name) => {
+            Atom::Here(Script::Super) => f.write_str("@super_hash@"),
+            Atom::Here(Script::Normal) => f.write_char('#'),
+            Atom::Here(Script::Sub) => f.write_str("@sub_hash@"),
+            Atom::Literal(value) => value.fmt(f),
+            Atom::Symbol(_span, elevation, name) => {
                 elevated_string(&name.to_string(), elevation).fmt(f)
             }
         }
@@ -226,13 +296,24 @@ impl std::fmt::Display for Expression {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct InstructionFragment {
-    pub(crate) value: Expression,
+pub(crate) enum InstructionFragment {
+    /// Arithmetic expressions are permitted in normal case accorfind
+    /// to the Users Handbook, but currently this implementation
+    /// allows them in subscript/superscript too.
+    Arithmetic(ArithmeticExpression),
+    // TODO: subscript/superscript atom (if the `Arithmetic` variant
+    // disallows subscript/superscript).
 }
 
 impl InstructionFragment {
     pub(crate) fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
-        self.value.symbol_uses()
+        let mut result: Vec<_> = Vec::new();
+        match self {
+            InstructionFragment::Arithmetic(expr) => {
+                result.extend(expr.symbol_uses());
+            }
+        }
+        result.into_iter()
     }
 }
 
@@ -243,21 +324,22 @@ impl Evaluate for InstructionFragment {
         symtab: &mut S,
         op: &mut S::Operation<'_>,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-        self.value.evaluate(target_address, symtab, op)
+        match self {
+            InstructionFragment::Arithmetic(expr) => expr.evaluate(target_address, symtab, op),
+        }
     }
 }
 
 impl From<(Span, Script, Unsigned36Bit)> for InstructionFragment {
     fn from((span, script, v): (Span, Script, Unsigned36Bit)) -> InstructionFragment {
-        InstructionFragment {
-            value: Expression::from((span, script, v)),
-        }
+        // TODO: use the atomic variant instead.
+        InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::from((span, script, v))))
     }
 }
 
-impl From<Expression> for InstructionFragment {
-    fn from(e: Expression) -> Self {
-        Self { value: e }
+impl From<ArithmeticExpression> for InstructionFragment {
+    fn from(expr: ArithmeticExpression) -> Self {
+        InstructionFragment::Arithmetic(expr)
     }
 }
 
@@ -389,7 +471,7 @@ impl Evaluate for UntaggedProgramInstruction {
             symtab: &mut S,
             op: &mut S::Operation<'_>,
         ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-            accumulator.and_then(|acc| Ok(acc | frag.value.evaluate(target_address, symtab, op)?))
+            accumulator.and_then(|acc| Ok(acc | frag.evaluate(target_address, symtab, op)?))
         }
 
         self.parts

@@ -1,8 +1,8 @@
 use std::ops::{Range, Shl};
 
 use super::super::ast::{
-    Block, Expression, HoldBit, InstructionFragment, LiteralValue, ManuscriptBlock, PunchCommand,
-    SourceFile, Statement, TaggedProgramInstruction, UntaggedProgramInstruction,
+    ArithmeticExpression, Atom, Block, HoldBit, InstructionFragment, LiteralValue, ManuscriptBlock,
+    PunchCommand, SourceFile, Statement, TaggedProgramInstruction, UntaggedProgramInstruction,
 };
 use super::super::eval::{SymbolContext, SymbolLookup, SymbolValue};
 use super::super::symbol::SymbolName;
@@ -77,6 +77,10 @@ fn assemble_check_symbols(input: &str, target_address: Address, expected: &[(&st
     }
 }
 
+fn atom_to_fragment(atom: Atom) -> InstructionFragment {
+    InstructionFragment::Arithmetic(ArithmeticExpression::from(atom))
+}
+
 #[test]
 fn test_assemble_pass1() {
     let input = concat!("14\n", "☛☛PUNCH 26\n");
@@ -95,13 +99,11 @@ fn test_assemble_pass1() {
                     instruction: UntaggedProgramInstruction {
                         span: Span::from(0..2),
                         holdbit: HoldBit::Unspecified,
-                        parts: vec![InstructionFragment {
-                            value: Expression::Literal(LiteralValue::from((
-                                Span::from(0..2),
-                                Script::Normal,
-                                u36!(0o14)
-                            )))
-                        }]
+                        parts: vec![atom_to_fragment(Atom::Literal(LiteralValue::from((
+                            Span::from(0..2),
+                            Script::Normal,
+                            u36!(0o14)
+                        ))))]
                     }
                 })]
             }]
@@ -251,4 +253,19 @@ fn test_assign_hash_value() {
     assert_eq!(program.chunks[0].address, Address::from(u18!(0o100)));
     assert_eq!(program.chunks[0].words[0], u36!(0o10000000100));
     assert_eq!(program.chunks[0].words[1], u36!(0o20000000101));
+}
+
+#[test]
+fn test_logical_or_on_constants() {
+    let program1 = assemble_source("100| 4 ∨ 2\n").expect("program is valid");
+    assert_eq!(program1.chunks[0].words[0], u36!(0o6));
+
+    // Word assembly uses logical union.  The parse is different but
+    // the value is the same.
+    let program2 = assemble_source("100| 4 2\n").expect("program is valid");
+    assert_eq!(program2.chunks[0].words[0], u36!(0o6));
+
+    // Word assembly uses logical union, not add, so there is no carry.
+    let program3 = assemble_source("100| 4 4\n").expect("program is valid");
+    assert_eq!(program3.chunks[0].words[0], u36!(0o4));
 }

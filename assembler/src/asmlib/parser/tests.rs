@@ -11,7 +11,7 @@ use chumsky::prelude::*;
 use crate::eval::SymbolLookupFailure;
 
 use super::super::ast::{
-    Expression, HoldBit, InstructionFragment, LiteralValue, ManuscriptBlock, ManuscriptMetaCommand,
+    Atom, HoldBit, InstructionFragment, LiteralValue, ManuscriptBlock, ManuscriptMetaCommand,
     Origin, SourceFile, Statement, TaggedProgramInstruction, UntaggedProgramInstruction,
 };
 use super::super::eval::{HereValue, SymbolValue};
@@ -609,13 +609,13 @@ fn test_multi_syllable_tag() {
             instruction: UntaggedProgramInstruction {
                 span: span(11..15),
                 holdbit: HoldBit::Unspecified,
-                parts: vec![InstructionFragment {
-                    value: Expression::from(LiteralValue::from((
+                parts: vec![InstructionFragment::Arithmetic(ArithmeticExpression::from(
+                    Atom::from(LiteralValue::from((
                         span(11..14),
                         Script::Normal,
                         u36!(0o205)
-                    ))),
-                }]
+                    )))
+                ))]
             }
         }
     );
@@ -655,6 +655,10 @@ fn test_manuscript_with_multi_syllable_tag() {
     );
 }
 
+fn atom_to_fragment(atom: Atom) -> InstructionFragment {
+    InstructionFragment::Arithmetic(ArithmeticExpression::from(atom))
+}
+
 #[test]
 fn test_manuscript_line_with_real_arrow_tag() {
     const INPUT: &str = "HERE→207"; // real Unicode rightward arrow (U+2192).
@@ -672,9 +676,11 @@ fn test_manuscript_line_with_real_arrow_tag() {
                 instruction: UntaggedProgramInstruction {
                     span: span(7..10),
                     holdbit: HoldBit::Unspecified,
-                    parts: vec![InstructionFragment {
-                        value: Expression::from((span(7..10), Script::Normal, u36!(0o207)))
-                    }],
+                    parts: vec![atom_to_fragment(Atom::from((
+                        span(7..10),
+                        Script::Normal,
+                        u36!(0o207)
+                    )))],
                 }
             })
         )
@@ -723,9 +729,7 @@ fn assignment_of_literal(name: &str, assignment_span: Span, literal: LiteralValu
         UntaggedProgramInstruction {
             span: span((literal.span().start)..(assignment_span.end)),
             holdbit: HoldBit::Unspecified,
-            parts: vec![InstructionFragment {
-                value: Expression::Literal(literal),
-            }],
+            parts: vec![atom_to_fragment(Atom::Literal(literal))],
         },
     )
 }
@@ -833,13 +837,11 @@ fn test_assignment_lines() {
                         instruction: UntaggedProgramInstruction {
                             span: span(19..21),
                             holdbit: HoldBit::Unspecified,
-                            parts: vec![InstructionFragment {
-                                value: Expression::Literal(LiteralValue::from((
-                                    span(19..20),
-                                    Script::Normal,
-                                    u36!(6)
-                                )))
-                            }]
+                            parts: vec![atom_to_fragment(Atom::Literal(LiteralValue::from((
+                                span(19..20),
+                                Script::Normal,
+                                u36!(6)
+                            ))))]
                         }
                     })
                 ]
@@ -971,32 +973,32 @@ impl SymbolLookup for NoSymbols {
 
     fn lookup_with_op(
         &mut self,
-        _name: &SymbolName,
+        name: &SymbolName,
         _span: Span,
         _target_address: &HereValue,
         _context: &SymbolContext,
         _op: &mut Self::Operation<'_>,
     ) -> Result<SymbolValue, SymbolLookupFailure> {
-        unreachable!("no lookups are expected")
+        panic!("no lookups are expected, but got lookup for {name}")
     }
 
     fn lookup(
         &mut self,
-        _name: &SymbolName,
+        name: &SymbolName,
         _span: Span,
         _target_address: &HereValue,
         _context: &crate::eval::SymbolContext,
     ) -> Result<SymbolValue, SymbolLookupFailure> {
-        unreachable!("no lookups are expected")
+        panic!("no lookups are expected, but got lookup for {name}")
     }
 
     fn resolve_memory_reference(
         &mut self,
-        _memref: &crate::eval::MemoryReference,
+        memref: &crate::eval::MemoryReference,
         _span: Span, // TODO: use &Span?
         _op: &mut Self::Operation<'_>,
     ) -> Result<Address, SymbolLookupFailure> {
-        unreachable!("no lookups are expected")
+        panic!("no lookups are expected, but got lookup for {memref:?}")
     }
 }
 
@@ -1114,5 +1116,70 @@ fn test_annotation() {
     assert_eq!(
         parse_successfully_with("[hello]", terminal::annotation(), no_state_setup),
         "hello".to_string()
+    );
+}
+
+#[test]
+fn test_logical_or_naked() {
+    assert_eq!(
+        parse_successfully_with("∨", terminal::operator(Script::Normal), no_state_setup),
+        Operator::LogicalOr
+    );
+}
+
+#[test]
+fn test_logical_or_glyph_normal() {
+    assert_eq!(
+        parse_successfully_with("@or@", terminal::operator(Script::Normal), no_state_setup),
+        Operator::LogicalOr
+    );
+}
+
+#[test]
+fn test_logical_or_glyph_subscript() {
+    assert_eq!(
+        parse_successfully_with("@sub_or@", terminal::operator(Script::Sub), no_state_setup),
+        Operator::LogicalOr
+    );
+}
+
+#[test]
+fn test_logical_or_glyph_superscript() {
+    assert_eq!(
+        parse_successfully_with(
+            "@super_or@",
+            terminal::operator(Script::Super),
+            no_state_setup
+        ),
+        Operator::LogicalOr
+    );
+}
+
+#[test]
+fn test_arithmetic_expression_head_only() {
+    assert_eq!(
+        parse_successfully_with("6", arithmetic_expression(Script::Normal), no_state_setup),
+        ArithmeticExpression::from(Atom::Literal(LiteralValue::from((
+            span(0..1),
+            Script::Normal,
+            u36!(6)
+        ))))
+    );
+}
+
+#[test]
+fn test_arithmetic_expression_two_atoms() {
+    let head = Atom::Literal(LiteralValue::from((span(0..1), Script::Normal, u36!(4))));
+    let tail = vec![(
+        Operator::LogicalOr,
+        Atom::Literal(LiteralValue::from((span(6..7), Script::Normal, u36!(2)))),
+    )];
+    assert_eq!(
+        parse_successfully_with(
+            "4 ∨ 2",
+            arithmetic_expression(Script::Normal),
+            no_state_setup
+        ),
+        ArithmeticExpression::with_tail(head, tail),
     );
 }

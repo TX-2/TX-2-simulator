@@ -44,57 +44,73 @@ where
         .labelled("numeric literal")
 }
 
-fn here<'a, I>(script_required: Script) -> impl Parser<'a, I, Expression, Extra<'a, char>>
+fn here<'a, I>(script_required: Script) -> impl Parser<'a, I, Atom, Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char>,
 {
-    terminal::hash(script_required).to(Expression::Here(script_required))
+    terminal::hash(script_required).to(Atom::Here(script_required))
 }
 
-/// Parse an expression; these can currently only take the form of a literal.
-/// TX-2's M4 assembler allows arithmetic expressions also, but these are not
-/// currently implemented.
+/// Parse a sequence of values (symbolic or literal) and arithmetic
+/// operators.
 ///
-/// When we do implement fuller support for expressions, we need to pay
-/// attention to the rules for symex termination (see section 6-2.3
-/// "RULES FOR SYMEX FORMATION" item 8), because script changes
-/// terminate symexes.
-///
-/// This means that BAT² is not an identifier but a sequence[1] whose
-/// value is computed by OR-ing the value of the symex BAT with the
-/// value of the literal "²" (which is 2<<30, or 0o20_000_000_000).
-/// Whether BAT² is itself an expression or an "InstructionFragment" is
-/// something we will need to consider carefully.  For example, is
-/// (BAT²) valid?  If yes, then so is (BAT²)+1, meaning that our
-/// current rule for instruction_fragment may have to change
-/// significantly.
+/// BAT² is not an identifier but a sequence[1] whose value is
+/// computed by OR-ing the value of the symex BAT with the value of
+/// the literal "²" (which is 2<<30, or 0o20_000_000_000).  But BAT²
+/// is itself not a molecule (because there is a script change).
+/// However probably (BAT²) should be parsed as an atom.
 ///
 /// [1] I use "sequence" in the paragraph above to avoid saying
 /// "expression" or "instruction fragment".
-fn expression<'a, I>() -> impl Parser<'a, I, Expression, Extra<'a, char>>
+fn arithmetic_expression<'a, I>(
+    script_required: Script,
+) -> impl Parser<'a, I, ArithmeticExpression, Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char>,
 {
-    fn numeric_or_symbol_or_here_literal<'a, I>(
-        script_required: Script,
-    ) -> impl Parser<'a, I, Expression, Extra<'a, char>>
+    fn build((head, tail): (Atom, Vec<(Operator, Atom)>)) -> ArithmeticExpression {
+        ArithmeticExpression::with_tail(head, tail)
+    }
+
+    atom_in_script(script_required)
+        .then(operator_with_atom(script_required).repeated().collect())
+        .map(build)
+}
+
+fn operator_with_atom<'a, I>(
+    script_required: Script,
+) -> impl Parser<'a, I, (Operator, Atom), Extra<'a, char>>
+where
+    I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char>,
+{
+    terminal::operator(script_required)
+        .padded_by(terminal::horizontal_whitespace0())
+        .then(atom_in_script(script_required).padded_by(terminal::horizontal_whitespace0()))
+}
+
+fn atom_in_script<'a, I>(script_required: Script) -> impl Parser<'a, I, Atom, Extra<'a, char>>
+where
+    I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char>,
+{
+    fn non_opcode_atom<'a, I>(script_required: Script) -> impl Parser<'a, I, Atom, Extra<'a, char>>
     where
         I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char>,
     {
         choice((
-            literal(script_required).map(Expression::from),
-            here(script_required).map(Expression::from),
+            literal(script_required).map(Atom::from),
+            here(script_required).map(Atom::from),
             symbol(script_required)
-                .map_with_span(move |name, span| Expression::Symbol(span, script_required, name)),
+                .map_with_span(move |name, span| Atom::Symbol(span, script_required, name)),
         ))
     }
 
-    choice((
-        terminal::opcode().map(Expression::from),
-        numeric_or_symbol_or_here_literal(Script::Super),
-        numeric_or_symbol_or_here_literal(Script::Normal),
-        numeric_or_symbol_or_here_literal(Script::Sub),
-    ))
+    match script_required {
+        Script::Normal => terminal::opcode()
+            .map(Atom::from)
+            .or(non_opcode_atom(script_required))
+            .boxed(),
+        script => non_opcode_atom(script).boxed(),
+    }
 }
 
 fn symbol<'a, I>(script_required: Script) -> impl Parser<'a, I, SymbolName, Extra<'a, char>>
@@ -123,9 +139,18 @@ fn program_instruction_fragment<'srcbody, I>(
 where
     I: Input<'srcbody, Token = char, Span = Span> + StrInput<'srcbody, char>,
 {
-    expression()
-        .padded_by(terminal::horizontal_whitespace0())
-        .map(InstructionFragment::from)
+    fn frag<'a, I>(
+        script_required: Script,
+    ) -> impl Parser<'a, I, InstructionFragment, Extra<'a, char>>
+    where
+        I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char>,
+    {
+        arithmetic_expression(script_required)
+            .padded_by(terminal::horizontal_whitespace0())
+            .map(InstructionFragment::from)
+    }
+
+    choice((frag(Script::Super), frag(Script::Normal), frag(Script::Sub)))
 }
 
 fn program_instruction_fragments<'srcbody, I>(

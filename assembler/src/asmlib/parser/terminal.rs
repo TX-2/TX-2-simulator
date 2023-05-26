@@ -8,7 +8,7 @@ use chumsky::prelude::*;
 use chumsky::primitive::none_of;
 
 use super::super::ast::{
-    elevate_normal, elevate_sub, elevate_super, Elevated, HoldBit, LiteralValue,
+    elevate_normal, elevate_sub, elevate_super, Elevated, HoldBit, LiteralValue, Operator,
 };
 use super::helpers::{self, Sign};
 use super::{Extra, Span};
@@ -131,6 +131,7 @@ where
         "+" => '+',
         "hamb" => '≡', // "identical to" but perhaps we should also accept (on input) ☰ (U+2630, Trigram For Heaven).
         "times" => '×',
+        "or" => '∨',
         "arr" => '\u{2192}',
         "minus" => '-',
         "hand" => '☛',
@@ -774,4 +775,28 @@ where
     I: Input<'a, Token = char, Span = SimpleSpan> + StrInput<'a, char>,
 {
     chumsky::prelude::end()
+}
+
+fn logical_or<'a, I>(script_required: Script) -> impl Parser<'a, I, Operator, Extra<'a, char>>
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+{
+    const GLYPH_NAME: &str = "or";
+    match script_required {
+        Script::Normal => choice((just('∨'), at_glyph(script_required, GLYPH_NAME)))
+            .ignored()
+            .boxed(),
+        _ => at_glyph(script_required, GLYPH_NAME).ignored().boxed(),
+    }
+    .to(Operator::LogicalOr)
+    .labelled("logical or (∨)")
+}
+
+pub(super) fn operator<'a, I>(
+    script_required: Script,
+) -> impl Parser<'a, I, Operator, Extra<'a, char>>
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+{
+    logical_or(script_required).labelled("arithmetic operator")
 }

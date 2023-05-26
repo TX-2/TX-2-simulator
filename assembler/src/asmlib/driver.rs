@@ -455,6 +455,11 @@ fn span(range: Range<usize>) -> Span {
     Span::from(range)
 }
 
+#[cfg(test)]
+fn atom_to_fragment(atom: Atom) -> InstructionFragment {
+    InstructionFragment::Arithmetic(ArithmeticExpression::from(atom))
+}
+
 #[test]
 fn test_assemble_pass1() {
     let input = concat!("14\n", "☛☛PUNCH 26\n");
@@ -466,13 +471,11 @@ fn test_assemble_pass1() {
             instruction: UntaggedProgramInstruction {
                 span: span(0..2),
                 holdbit: HoldBit::Unspecified,
-                parts: vec![InstructionFragment {
-                    value: Expression::Literal(LiteralValue::from((
-                        span(0..2),
-                        Script::Normal,
-                        u36!(0o14),
-                    ))),
-                }],
+                parts: vec![atom_to_fragment(Atom::Literal(LiteralValue::from((
+                    span(0..2),
+                    Script::Normal,
+                    u36!(0o14),
+                ))))],
             },
         })],
     };
