@@ -150,7 +150,7 @@ where
             .map(InstructionFragment::from)
     }
 
-    choice((frag(Script::Super), frag(Script::Normal), frag(Script::Sub)))
+    choice((frag(Script::Normal), frag(Script::Super), frag(Script::Sub)))
 }
 
 fn program_instruction_fragments<'srcbody, I>(

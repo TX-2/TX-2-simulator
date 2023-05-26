@@ -269,3 +269,12 @@ fn test_logical_or_on_constants() {
     let program3 = assemble_source("100| 4 4\n").expect("program is valid");
     assert_eq!(program3.chunks[0].words[0], u36!(0o4));
 }
+
+#[test]
+fn test_logical_and_on_constants() {
+    let program1 = assemble_source("100| 6 ∧ 2\n").expect("program is valid");
+    assert_eq!(program1.chunks[0].words[0], u36!(0o2));
+
+    let program2 = assemble_source("100| 6 @and@ 4\n").expect("program is valid");
+    assert_eq!(program2.chunks[0].words[0], u36!(0o4));
+}

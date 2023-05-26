@@ -132,6 +132,7 @@ where
         "hamb" => '≡', // "identical to" but perhaps we should also accept (on input) ☰ (U+2630, Trigram For Heaven).
         "times" => '×',
         "or" => '∨',
+        "and" => '∧',
         "arr" => '\u{2192}',
         "minus" => '-',
         "hand" => '☛',
@@ -792,11 +793,27 @@ where
     .labelled("logical or (∨)")
 }
 
+fn logical_and<'a, I>(script_required: Script) -> impl Parser<'a, I, Operator, Extra<'a, char>>
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+{
+    const GLYPH_NAME: &str = "and";
+    match script_required {
+        Script::Normal => choice((just('∧'), at_glyph(script_required, GLYPH_NAME)))
+            .ignored()
+            .boxed(),
+        _ => at_glyph(script_required, GLYPH_NAME).ignored().boxed(),
+    }
+    .to(Operator::LogicalAnd)
+    .labelled("logical and (∧)")
+}
+
 pub(super) fn operator<'a, I>(
     script_required: Script,
 ) -> impl Parser<'a, I, Operator, Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
 {
-    logical_or(script_required).labelled("arithmetic operator")
+    choice((logical_or(script_required), logical_and(script_required)))
+        .labelled("arithmetic operator")
 }

@@ -132,6 +132,7 @@ fn format_elevated_chars(f: &mut Formatter<'_>, elevation: &Script, s: &str) -> 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Operator {
     LogicalOr, // "union" in the Users Handbook
+    LogicalAnd,
 }
 
 /// A molecule is an arithmetic expression all in normal script.
@@ -165,6 +166,7 @@ impl ArithmeticExpression {
     fn eval_binop(left: Unsigned36Bit, binop: &Operator, right: Unsigned36Bit) -> Unsigned36Bit {
         match binop {
             Operator::LogicalOr => left.bitor(right.into()),
+            Operator::LogicalAnd => left.and(right.into()),
         }
     }
 }
