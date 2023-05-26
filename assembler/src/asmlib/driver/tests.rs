@@ -1,4 +1,4 @@
-use std::ops::Range;
+use std::ops::{Range, Shl};
 
 use super::super::ast::{
     Block, Expression, HoldBit, InstructionFragment, LiteralValue, ManuscriptBlock, PunchCommand,
@@ -213,6 +213,20 @@ fn test_normal_hash_value() {
     assert_eq!(program.chunks[0].address, Address::from(u18!(0o100)));
     assert_eq!(program.chunks[0].words[0], u36!(2));
     assert_eq!(program.chunks[0].words[1], u36!(0o101));
+}
+
+#[test]
+fn test_super_hash_value() {
+    let program = assemble_source(concat!("1| @super_hash@\n",)).expect("program is valid");
+    assert_eq!(program.chunks[0].address, Address::from(u18!(0o1)));
+    assert_eq!(program.chunks[0].words[0], u36!(1).shl(30));
+}
+
+#[test]
+fn test_sub_hash_value() {
+    let program = assemble_source(concat!("1| @sub_hash@\n",)).expect("program is valid");
+    assert_eq!(program.chunks[0].address, Address::from(u18!(0o1)));
+    assert_eq!(program.chunks[0].words[0], u36!(1).shl(18));
 }
 
 #[test]

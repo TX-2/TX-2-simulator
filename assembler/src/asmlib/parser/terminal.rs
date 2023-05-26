@@ -26,11 +26,34 @@ where
     .labelled("arrow")
 }
 
-pub(super) fn hash<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
+pub(super) fn hash<'a, I>(script_required: Script) -> impl Parser<'a, I, Script, Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
 {
-    just('#').ignored()
+    const GLYPH_NAME: &str = "hash";
+
+    pub(super) fn hash_normal<'a, I>() -> impl Parser<'a, I, Script, Extra<'a, char>>
+    where
+        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    {
+        just('#')
+            .or(at_glyph(Script::Normal, GLYPH_NAME))
+            .to(Script::Normal)
+    }
+
+    pub(super) fn hash_sub_super<'a, I>(
+        script_required: Script,
+    ) -> impl Parser<'a, I, Script, Extra<'a, char>>
+    where
+        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    {
+        at_glyph(script_required, GLYPH_NAME).to(script_required)
+    }
+
+    match script_required {
+        Script::Normal => hash_normal().boxed(),
+        script => hash_sub_super(script).boxed(),
+    }
 }
 
 pub(super) fn at_glyph<'a, I>(
@@ -115,6 +138,7 @@ where
         "rect_dash" => '\u{25A3}',
         "circled_v" => '\u{24CB}',
         "sup" => '\u{2283}',
+        "hash" => '#',
         _ => {
             // I think this panic is OK because it takes place at the
             // time we construct the parser, so it doesn't depend on,

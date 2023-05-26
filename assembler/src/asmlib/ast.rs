@@ -133,14 +133,14 @@ fn format_elevated_chars(f: &mut Formatter<'_>, elevation: &Script, s: &str) -> 
 pub(crate) enum Expression {
     Literal(LiteralValue),
     Symbol(Span, Script, SymbolName),
-    Here, // the special symbol '#'.
+    Here(Script), // the special symbol '#'.
 }
 
 impl Expression {
     pub(crate) fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
         let mut result = Vec::with_capacity(1);
         match self {
-            Expression::Literal(_) | Expression::Here => (),
+            Expression::Literal(_) | Expression::Here(_) => (),
             Expression::Symbol(span, script, symbol_name) => {
                 result.push((
                     symbol_name.clone(),
@@ -161,8 +161,11 @@ impl Evaluate for Expression {
         op: &mut S::Operation<'_>,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         match self {
-            Expression::Here => match target_address {
-                HereValue::Address(addr) => Ok((*addr).into()),
+            Expression::Here(elevation) => match target_address {
+                HereValue::Address(addr) => {
+                    let value: Unsigned36Bit = (*addr).into();
+                    Ok(value.shl(elevation.shift()))
+                }
                 HereValue::NotAllowed => {
                     todo!("# is not allowed in origins")
                 }
@@ -211,7 +214,9 @@ fn elevated_string<'a>(s: &'a str, elevation: &Script) -> Cow<'a, str> {
 impl std::fmt::Display for Expression {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Expression::Here => f.write_char('#'),
+            Expression::Here(Script::Normal) => f.write_char('#'),
+            Expression::Here(Script::Sub) => f.write_str("@sub_hash@"),
+            Expression::Here(Script::Super) => f.write_str("@super_hash@"),
             Expression::Literal(value) => value.fmt(f),
             Expression::Symbol(_span, elevation, name) => {
                 elevated_string(&name.to_string(), elevation).fmt(f)

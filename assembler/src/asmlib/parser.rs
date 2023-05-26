@@ -44,11 +44,11 @@ where
         .labelled("numeric literal")
 }
 
-fn here<'a, I>() -> impl Parser<'a, I, Expression, Extra<'a, char>>
+fn here<'a, I>(script_required: Script) -> impl Parser<'a, I, Expression, Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char>,
 {
-    terminal::hash().to(Expression::Here)
+    terminal::hash(script_required).to(Expression::Here(script_required))
 }
 
 /// Parse an expression; these can currently only take the form of a literal.
@@ -75,20 +75,25 @@ fn expression<'a, I>() -> impl Parser<'a, I, Expression, Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char>,
 {
-    choice((
+    fn numeric_or_symbol_or_here_literal<'a, I>(
+        script_required: Script,
+    ) -> impl Parser<'a, I, Expression, Extra<'a, char>>
+    where
+        I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char>,
+    {
         choice((
-            literal(Script::Super),
-            literal(Script::Sub),
-            literal(Script::Normal),
-            terminal::opcode(),
+            literal(script_required).map(Expression::from),
+            here(script_required).map(Expression::from),
+            symbol(script_required)
+                .map_with_span(move |name, span| Expression::Symbol(span, script_required, name)),
         ))
-        .map(Expression::from),
-        here(), // TODO: support Super and Sub versions.
-        symbol(Script::Normal)
-            .map_with_span(|name, span| Expression::Symbol(span, Script::Normal, name)),
-        symbol(Script::Sub).map_with_span(|name, span| Expression::Symbol(span, Script::Sub, name)),
-        symbol(Script::Super)
-            .map_with_span(|name, span| Expression::Symbol(span, Script::Super, name)),
+    }
+
+    choice((
+        terminal::opcode().map(Expression::from),
+        numeric_or_symbol_or_here_literal(Script::Super),
+        numeric_or_symbol_or_here_literal(Script::Normal),
+        numeric_or_symbol_or_here_literal(Script::Sub),
     ))
 }
 
