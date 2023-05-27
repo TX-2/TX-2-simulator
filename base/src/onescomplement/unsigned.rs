@@ -204,6 +204,22 @@ macro_rules! unsigned_ones_complement_impl {
                 }
             }
 
+            pub fn wrapping_mul(self, rhs: $SelfT) -> $SelfT {
+                let left = <$InnerT>::from(self);
+                let right = <$InnerT>::from(rhs);
+                let in_range_value = left.wrapping_mul(right) & Self::VALUE_BITS;
+                Self::try_from(in_range_value).unwrap()
+            }
+
+            pub fn checked_mul(self, rhs: $SelfT) -> Option<$SelfT> {
+                let left = <$InnerT>::from(self);
+                let right = <$InnerT>::from(rhs);
+                match left.checked_mul(right) {
+                    Some(result) => Self::try_from(result).ok(),
+                    None => None,
+                }
+            }
+
             pub const fn abs(self) -> Self {
                 self
             }

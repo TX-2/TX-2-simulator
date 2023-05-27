@@ -134,6 +134,7 @@ pub(crate) enum Operator {
     Add,
     LogicalAnd,
     LogicalOr, // "union" in the Users Handbook
+    Multiply,
     Subtract,
 }
 
@@ -186,6 +187,12 @@ impl ArithmeticExpression {
                 Some(result) => result,
                 None => {
                     todo!("subtraction overflow occurred but this is not implemented")
+                }
+            },
+            Operator::Multiply => match left.checked_mul(right) {
+                Some(result) => result,
+                None => {
+                    todo!("multiplication overflow occurred but this is not implemented")
                 }
             },
             Operator::LogicalAnd => left.and(right.into()),

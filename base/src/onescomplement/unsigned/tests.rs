@@ -1,7 +1,7 @@
 use std::ops::Shl;
 use std::ops::Shr;
 
-use super::{ConversionFailed, Unsigned9Bit};
+use super::{ConversionFailed, Unsigned36Bit, Unsigned9Bit};
 
 macro_rules! assert_octal_eq {
     ($left:expr, $right:expr $(,)?) => {{
@@ -82,8 +82,8 @@ fn test_i8_round_tripping() {
             }
             Err(e) => {
                 panic!(
-		    "Unexpected overflow when round-tripping  {}->{:?}-> [conversion to i8 failed with error {}]",
-		    i, &q, e);
+                    "Unexpected overflow when round-tripping  {}->{:?}-> [conversion to i8 failed with error {}]",
+                    i, &q, e);
             }
         }
     }
@@ -110,8 +110,8 @@ fn test_u8_round_tripping() {
             }
             Err(e) => {
                 panic!(
-		    "Unexpected overflow when round-tripping  {}->{:?}-> [conversion to i8 failed with error {}]",
-		    i, &q, e);
+                    "Unexpected overflow when round-tripping  {}->{:?}-> [conversion to i8 failed with error {}]",
+                    i, &q, e);
             }
         }
     }
@@ -445,4 +445,18 @@ fn test_unsigned9bit_xor() {
     assert_eq!(one ^ one, zero);
     assert_eq!(one ^ zero, one);
     assert_eq!(zero ^ one, one);
+}
+
+#[test]
+fn test_unsigned36bit_checked_mul() {
+    let two: Unsigned36Bit = Unsigned36Bit::from(2_u8);
+    let four: Unsigned36Bit = Unsigned36Bit::from(4_u8);
+    assert_eq!(two.checked_mul(two), Some(four));
+}
+
+#[test]
+fn test_unsigned36bit_wrapping_mul() {
+    let two: Unsigned36Bit = Unsigned36Bit::from(2_u8);
+    let four: Unsigned36Bit = Unsigned36Bit::from(4_u8);
+    assert_eq!(two.wrapping_mul(two), four);
 }

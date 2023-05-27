@@ -293,3 +293,11 @@ fn test_subtraction_on_constants() {
     let program1 = assemble_source("100| 6 - 2\n").expect("program is valid");
     assert_eq!(program1.chunks[0].words[0], u36!(0o4));
 }
+
+#[test]
+fn test_multiplication_on_constants() {
+    let program1 = assemble_source("100| 6 @times@ 2\n").expect("program is valid");
+    assert_eq!(program1.chunks[0].words[0], u36!(0o14));
+    let program2 = assemble_source("100| 6×3\n").expect("program is valid");
+    assert_eq!(program2.chunks[0].words[0], u36!(0o22));
+}

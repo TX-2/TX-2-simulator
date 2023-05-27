@@ -861,6 +861,22 @@ where
     .labelled("-")
 }
 
+fn times<'a, I>(script_required: Script) -> impl Parser<'a, I, Operator, Extra<'a, char>>
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+{
+    const GLYPH_NAME: &str = "times";
+    match script_required {
+        Script::Normal => choice((just('\u{00D7}'), at_glyph(script_required, GLYPH_NAME)))
+            .ignored()
+            .boxed(),
+        Script::Sub => at_glyph(script_required, GLYPH_NAME).ignored().boxed(),
+        Script::Super => at_glyph(script_required, GLYPH_NAME).ignored().boxed(),
+    }
+    .to(Operator::Multiply)
+    .labelled("\u{00D7}") // ×
+}
+
 pub(super) fn operator<'a, I>(
     script_required: Script,
 ) -> impl Parser<'a, I, Operator, Extra<'a, char>>
@@ -872,6 +888,7 @@ where
         logical_and(script_required),
         add(script_required),
         subtract(script_required),
+        times(script_required),
     ))
     .labelled("arithmetic operator")
 }
