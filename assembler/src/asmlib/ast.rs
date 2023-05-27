@@ -134,6 +134,7 @@ pub(crate) enum Operator {
     Add,
     LogicalAnd,
     LogicalOr, // "union" in the Users Handbook
+    Subtract,
 }
 
 /// A molecule is an arithmetic expression all in normal script.
@@ -179,6 +180,12 @@ impl ArithmeticExpression {
                     // because (in the context of this function) -2
                     // appears to be a large unsigned number.
                     todo!("addition overflow occurred but end-around carry is not implemented")
+                }
+            },
+            Operator::Subtract => match left.checked_sub(right) {
+                Some(result) => result,
+                None => {
+                    todo!("subtraction overflow occurred but this is not implemented")
                 }
             },
             Operator::LogicalAnd => left.and(right.into()),

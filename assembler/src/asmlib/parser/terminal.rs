@@ -835,6 +835,32 @@ where
     .labelled("+")
 }
 
+fn subtract<'a, I>(script_required: Script) -> impl Parser<'a, I, Operator, Extra<'a, char>>
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+{
+    const GLYPH_NAME: &str = "minus";
+    match script_required {
+        Script::Normal => choice((just('-'), at_glyph(script_required, GLYPH_NAME)))
+            .ignored()
+            .boxed(),
+        Script::Sub => choice((
+            just('\u{208B}'), // subscript minus, '₋'
+            at_glyph(script_required, GLYPH_NAME),
+        ))
+        .ignored()
+        .boxed(),
+        Script::Super => choice((
+            just('\u{207B}'), // superscript minus, '⁻'
+            at_glyph(script_required, GLYPH_NAME),
+        ))
+        .ignored()
+        .boxed(),
+    }
+    .to(Operator::Subtract)
+    .labelled("-")
+}
+
 pub(super) fn operator<'a, I>(
     script_required: Script,
 ) -> impl Parser<'a, I, Operator, Extra<'a, char>>
@@ -845,6 +871,7 @@ where
         logical_or(script_required),
         logical_and(script_required),
         add(script_required),
+        subtract(script_required),
     ))
     .labelled("arithmetic operator")
 }
