@@ -460,3 +460,12 @@ fn test_unsigned36bit_wrapping_mul() {
     let four: Unsigned36Bit = Unsigned36Bit::from(4_u8);
     assert_eq!(two.wrapping_mul(two), four);
 }
+
+#[test]
+fn test_unsigned36bit_checked_div() {
+    let two: Unsigned36Bit = Unsigned36Bit::from(2_u8);
+    let four: Unsigned36Bit = Unsigned36Bit::from(4_u8);
+    assert_eq!(four.checked_div(two), Some(two));
+
+    assert_eq!(four.checked_div(Unsigned36Bit::ZERO), None);
+}

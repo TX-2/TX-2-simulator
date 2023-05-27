@@ -79,8 +79,8 @@ fn test_i16_round_tripping() {
             }
             Err(e) => {
                 panic!(
-		    "Unexpected overflow when round-tripping  {}->{:?}-> [conversion to i8 failed with error {}]",
-		    i, &q, e);
+                    "Unexpected overflow when round-tripping  {}->{:?}-> [conversion to i8 failed with error {}]",
+                    i, &q, e);
             }
         }
     }
@@ -134,4 +134,39 @@ fn test_i64_round_tripping() {
         round_trip(input);
         round_trip(-input);
     }
+}
+
+#[test]
+fn test_signed36_division() {
+    let minus_two = Signed36Bit::from(-2_i8);
+    let minus_one = Signed36Bit::from(-1_i8);
+    let one = Signed36Bit::from(1_i8);
+    let two = Signed36Bit::from(2_i8);
+    let three = Signed36Bit::from(3_i8);
+    let six = Signed36Bit::from(6_i8);
+
+    assert_eq!(one.checked_div(one), Some(one));
+    assert_eq!(six.checked_div(one), Some(six));
+    assert_eq!(six.checked_div(three), Some(two));
+    assert_eq!(three.checked_div(two), Some(one));
+    assert_eq!(six.checked_div(Signed36Bit::ZERO), None);
+
+    assert_eq!(minus_one.checked_div(minus_one), Some(one));
+    assert_eq!(two.checked_div(minus_one), Some(minus_two));
+    assert_eq!(three.checked_div(minus_two), Some(minus_one));
+}
+
+#[test]
+fn test_signed36_is_zero() {
+    assert!(Signed36Bit::ZERO.is_zero());
+    assert!(Signed36Bit::ZERO.is_positive_zero());
+    assert!(!Signed36Bit::ZERO.is_negative_zero());
+
+    assert!(Signed36Bit::MINUS_ZERO.is_zero());
+    assert!(Signed36Bit::MINUS_ZERO.is_negative_zero());
+    assert!(!Signed36Bit::MINUS_ZERO.is_positive_zero());
+
+    assert_eq!(Signed36Bit::ZERO, Signed36Bit::ZERO);
+    assert_eq!(Signed36Bit::MINUS_ZERO, Signed36Bit::MINUS_ZERO);
+    assert_eq!(Signed36Bit::MINUS_ZERO, Signed36Bit::ZERO);
 }

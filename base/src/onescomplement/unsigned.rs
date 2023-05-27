@@ -220,6 +220,15 @@ macro_rules! unsigned_ones_complement_impl {
                 }
             }
 
+            pub fn checked_div(self, rhs: $SelfT) -> Option<$SelfT> {
+                let left = <$InnerT>::from(self);
+                let right = <$InnerT>::from(rhs);
+                match left.checked_div(right) {
+                    Some(result) => Self::try_from(result).ok(),
+                    None => None,
+                }
+            }
+
             pub const fn abs(self) -> Self {
                 self
             }

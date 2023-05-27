@@ -301,3 +301,49 @@ fn test_multiplication_on_constants() {
     let program2 = assemble_source("100| 6×3\n").expect("program is valid");
     assert_eq!(program2.chunks[0].words[0], u36!(0o22));
 }
+
+#[test]
+fn test_division_on_positive_constants() {
+    // Positive division truncates towards zero.
+    let program = assemble_source("100| 6 / 2\n").expect("program is valid");
+    assert_eq!(program.chunks[0].words[0], u36!(0o3));
+    let program = assemble_source("100| 3 / 2\n").expect("program is valid");
+    assert_eq!(program.chunks[0].words[0], u36!(0o1));
+    let program = assemble_source("100| 1 / 1\n").expect("program is valid");
+    assert_eq!(program.chunks[0].words[0], u36!(0o1));
+    let program = assemble_source("100| 0 / 1\n").expect("program is valid");
+    assert_eq!(program.chunks[0].words[0], u36!(0o0));
+}
+
+#[test]
+fn test_division_on_negative_constants() {
+    let program = assemble_source(concat!("MINUSONE = 777777777776\n", "100| MINUSONE / 1\n"))
+        .expect("program is valid");
+    assert_eq!(program.chunks[0].words[0], u36!(0o777_777_777_776));
+
+    let program = assemble_source(concat!("MINUSONE = 777777777776\n", "100| 1 / MINUSONE\n"))
+        .expect("program is valid");
+    assert_eq!(program.chunks[0].words[0], u36!(0o777_777_777_776));
+
+    let program = assemble_source(concat!(
+        "MINUSONE = 777777777776\n",
+        "100| MINUSONE / MINUSONE\n"
+    ))
+    .expect("program is valid");
+    assert_eq!(program.chunks[0].words[0], u36!(0o1));
+}
+
+#[test]
+fn test_division_overflow_on_constants() {
+    // See the documentation for the opcode DIV (Users Handbook, page
+    // 3-62) for a description of the rules around division by either
+    // kind of zero.
+
+    // Division by +0
+    let program = assemble_source("100| 1 / 0\n").expect("program is valid");
+    assert_eq!(program.chunks[0].words[0], u36!(0o777_777_777_776)); // -1
+
+    // Division by -0
+    let program = assemble_source("100| 1 / 777777777777\n").expect("program is valid");
+    assert_eq!(program.chunks[0].words[0], u36!(0o1)); // 1
+}

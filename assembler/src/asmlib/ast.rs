@@ -136,6 +136,7 @@ pub(crate) enum Operator {
     LogicalOr, // "union" in the Users Handbook
     Multiply,
     Subtract,
+    Divide,
 }
 
 /// A molecule is an arithmetic expression all in normal script.
@@ -195,6 +196,22 @@ impl ArithmeticExpression {
                     todo!("multiplication overflow occurred but this is not implemented")
                 }
             },
+            Operator::Divide => {
+                let sleft: Signed36Bit = left.reinterpret_as_signed();
+                let sright: Signed36Bit = right.reinterpret_as_signed();
+                match sleft.checked_div(sright) {
+                    Some(result) => result.reinterpret_as_unsigned(),
+                    None => {
+                        if sright.is_positive_zero() {
+                            !left
+                        } else if sright.is_negative_zero() {
+                            left
+                        } else {
+                            unreachable!("division overflow occurred but RHS is not zero")
+                        }
+                    }
+                }
+            }
             Operator::LogicalAnd => left.and(right.into()),
             Operator::LogicalOr => left.bitor(right.into()),
         }

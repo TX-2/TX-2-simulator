@@ -131,6 +131,7 @@ where
         "+" => '+',
         "hamb" => '≡', // "identical to" but perhaps we should also accept (on input) ☰ (U+2630, Trigram For Heaven).
         "times" => '×',
+        "divide" => '/',
         "add" => '+',
         "or" => '∨',
         "and" => '∧',
@@ -877,6 +878,22 @@ where
     .labelled("\u{00D7}") // ×
 }
 
+fn divide<'a, I>(script_required: Script) -> impl Parser<'a, I, Operator, Extra<'a, char>>
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+{
+    const GLYPH_NAME: &str = "divide";
+    match script_required {
+        Script::Normal => choice((just('/'), at_glyph(script_required, GLYPH_NAME)))
+            .ignored()
+            .boxed(),
+        Script::Sub => at_glyph(script_required, GLYPH_NAME).ignored().boxed(),
+        Script::Super => at_glyph(script_required, GLYPH_NAME).ignored().boxed(),
+    }
+    .to(Operator::Divide)
+    .labelled("/")
+}
+
 pub(super) fn operator<'a, I>(
     script_required: Script,
 ) -> impl Parser<'a, I, Operator, Extra<'a, char>>
@@ -889,6 +906,7 @@ where
         add(script_required),
         subtract(script_required),
         times(script_required),
+        divide(script_required),
     ))
     .labelled("arithmetic operator")
 }

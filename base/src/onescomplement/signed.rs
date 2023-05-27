@@ -124,10 +124,21 @@ macro_rules! signed_ones_complement_impl {
             };
 
             pub const ZERO: Self = Self { bits: 0 };
+            pub const MINUS_ZERO: Self = Self {
+                bits: Self::ALL_BITS,
+            };
             pub const ONE: Self = Self { bits: 1 };
 
+            pub const fn is_positive_zero(&self) -> bool {
+                self.bits == 0
+            }
+
+            pub const fn is_negative_zero(&self) -> bool {
+                self.bits == Self::ALL_BITS
+            }
+
             pub const fn is_zero(&self) -> bool {
-                self.bits == 0 || self.bits == Self::ALL_BITS
+                self.is_positive_zero() || self.is_negative_zero()
             }
 
             pub const fn reinterpret_as_unsigned(&self) -> $UnsignedPeerT {
@@ -198,6 +209,19 @@ macro_rules! signed_ones_complement_impl {
                 const MODULUS: $SignedInnerT = 1 << ($BITS - 1);
                 Self {
                     bits: Self::convert_to_ones_complement(result % MODULUS),
+                }
+            }
+
+            pub fn checked_div(self, rhs: $SelfT) -> Option<$SelfT> {
+                if rhs.is_zero() {
+                    None
+                } else {
+                    let left = <$SignedInnerT>::from(self);
+                    let right = <$SignedInnerT>::from(rhs);
+                    match left.checked_div(right) {
+                        Some(result) => Self::try_from(result).ok(),
+                        None => unreachable!("division cannot overflow if rhs is nonzero"),
+                    }
                 }
             }
 
