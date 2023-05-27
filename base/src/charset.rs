@@ -60,6 +60,7 @@ pub fn subscript_char(ch: char) -> Result<char, NoSubscriptKnown> {
         '7' => Ok('\u{2087}'), // ₇
         '8' => Ok('\u{2088}'), // ₈
         '9' => Ok('\u{2089}'), // ₉
+        '+' => Ok('\u{208A}'), // '₊'
         '-' => Ok('\u{208B}'), // ₋
         '.' => Ok('.'),        // there appears to be no subscript version
         _ => Err(NoSubscriptKnown(ch)),
@@ -118,6 +119,7 @@ pub fn superscript_char(ch: char) -> Result<char, NoSuperscriptKnown> {
         'W' => Ok('ᵂ'),
         'X' => Ok('\u{2093}'),
         'Y' | 'Z' => Err(NoSuperscriptKnown(ch)),
+        '+' => Ok('\u{207A}'),
         _ => Err(NoSuperscriptKnown(ch)),
     }
 }

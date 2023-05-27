@@ -131,8 +131,9 @@ fn format_elevated_chars(f: &mut Formatter<'_>, elevation: &Script, s: &str) -> 
 /// (OR), and a circled ∨ meaning XOR.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Operator {
-    LogicalOr, // "union" in the Users Handbook
+    Add,
     LogicalAnd,
+    LogicalOr, // "union" in the Users Handbook
 }
 
 /// A molecule is an arithmetic expression all in normal script.
@@ -165,8 +166,23 @@ impl ArithmeticExpression {
 
     fn eval_binop(left: Unsigned36Bit, binop: &Operator, right: Unsigned36Bit) -> Unsigned36Bit {
         match binop {
-            Operator::LogicalOr => left.bitor(right.into()),
+            Operator::Add => match left.checked_add(right) {
+                Some(result) => result,
+                None => {
+                    // TODO: checked_add doesn't currently match the
+                    // operation of the TX-2 ADD instruction with
+                    // respect to (for example) overflow.  See
+                    // examples 4 and 5 for the ADD instruciton in the
+                    // Users Handbook, for instance.
+                    //
+                    // We also come here for cases like 4 + -2,
+                    // because (in the context of this function) -2
+                    // appears to be a large unsigned number.
+                    todo!("addition overflow occurred but end-around carry is not implemented")
+                }
+            },
             Operator::LogicalAnd => left.and(right.into()),
+            Operator::LogicalOr => left.bitor(right.into()),
         }
     }
 }
