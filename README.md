@@ -22,15 +22,18 @@ Project's website](https://tx-2.github.io/).
 The simulator doesn't emulate all the features of the original TX-2
 yet, but you can still try it out.
 
+### Try It Out Online
+
+You can try it on-line [here](https://tx-2.github.io/demo/).
+
 ### Building and Running the Web-based simulator
 
-You can either try it on-line [here](https://tx-2.github.io/demo/) or
-build and run it youself, by following [these
+To run the web-based version locally yourself, follow [these
 instructions](docs/build/web.md).
 
 ### Building and Running The Command-Line Tools
 
-Hardware emulation is less complete in the command-line version.
+Hardware emulation is much less complete in the command-line version.
 
 You can [try out the command-line simulator and tools by following
 these instructions](docs/build/cli.md).
