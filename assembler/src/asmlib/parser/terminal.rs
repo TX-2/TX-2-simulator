@@ -14,9 +14,9 @@ use super::helpers::{self, Sign};
 use super::{Extra, Span};
 use base::{charset::Script, u6, Unsigned36Bit, Unsigned6Bit};
 
-pub(super) fn arrow<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
+pub(super) fn arrow<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>> + Clone
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
 {
     choice((
         just("->").ignored().boxed(),
@@ -26,15 +26,17 @@ where
     .labelled("arrow")
 }
 
-pub(super) fn hash<'a, I>(script_required: Script) -> impl Parser<'a, I, Script, Extra<'a, char>>
+pub(super) fn hash<'a, I>(
+    script_required: Script,
+) -> impl Parser<'a, I, Script, Extra<'a, char>> + Clone
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
 {
     const GLYPH_NAME: &str = "hash";
 
-    pub(super) fn hash_normal<'a, I>() -> impl Parser<'a, I, Script, Extra<'a, char>>
+    pub(super) fn hash_normal<'a, I>() -> impl Parser<'a, I, Script, Extra<'a, char>> + Clone
     where
-        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
     {
         just('#')
             .or(at_glyph(Script::Normal, GLYPH_NAME))
@@ -43,9 +45,9 @@ where
 
     pub(super) fn hash_sub_super<'a, I>(
         script_required: Script,
-    ) -> impl Parser<'a, I, Script, Extra<'a, char>>
+    ) -> impl Parser<'a, I, Script, Extra<'a, char>> + Clone
     where
-        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
     {
         at_glyph(script_required, GLYPH_NAME).to(script_required)
     }
@@ -59,9 +61,9 @@ where
 pub(super) fn at_glyph<'a, I>(
     script: Script,
     name: &'static str,
-) -> impl Parser<'a, I, char, Extra<'a, char>>
+) -> impl Parser<'a, I, char, Extra<'a, char>> + Clone
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
 {
     let prefix = match script {
         Script::Normal => "",
@@ -154,13 +156,17 @@ where
     just(fullname).to(output)
 }
 
-pub(super) fn dot<'a, I>(script_required: Script) -> impl Parser<'a, I, char, Extra<'a, char>>
+pub(super) fn dot<'a, I>(
+    script_required: Script,
+) -> impl Parser<'a, I, char, Extra<'a, char>> + Clone
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
 {
-    fn unicode_dot<'a, I>(script_required: Script) -> impl Parser<'a, I, (), Extra<'a, char>>
+    fn unicode_dot<'a, I>(
+        script_required: Script,
+    ) -> impl Parser<'a, I, (), Extra<'a, char>> + Clone
     where
-        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
     {
         match script_required {
             Script::Normal => choice((just('\u{22C5}'), just('\u{00B7}')))
@@ -189,13 +195,14 @@ where
 
 pub(crate) fn digit<'srcbody, I>(
     script_required: Script,
-) -> impl Parser<'srcbody, I, char, Extra<'srcbody, char>>
+) -> impl Parser<'srcbody, I, char, Extra<'srcbody, char>> + Clone
 where
-    I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
+    I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody> + Clone,
 {
-    fn superscript_digit<'srcbody, I>() -> impl Parser<'srcbody, I, char, Extra<'srcbody, char>>
+    fn superscript_digit<'srcbody, I>(
+    ) -> impl Parser<'srcbody, I, char, Extra<'srcbody, char>> + Clone
     where
-        I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
+        I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody> + Clone,
     {
         one_of("\u{2070}\u{00B9}\u{00B2}\u{00B3}\u{2074}\u{2075}\u{2076}\u{2077}\u{2078}\u{2079}")
             .map(|ch| {
@@ -205,9 +212,10 @@ where
             .labelled("superscript digit")
     }
 
-    fn subscript_digit<'srcbody, I>() -> impl Parser<'srcbody, I, char, Extra<'srcbody, char>>
+    fn subscript_digit<'srcbody, I>(
+    ) -> impl Parser<'srcbody, I, char, Extra<'srcbody, char>> + Clone
     where
-        I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
+        I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody> + Clone,
     {
         one_of("\u{2080}\u{2081}\u{2082}\u{2083}\u{2084}\u{2085}\u{2086}\u{2087}\u{2088}\u{2089}")
             .map(|ch| {
@@ -216,18 +224,18 @@ where
             .labelled("subscript digit")
     }
 
-    fn normal_digit<'srcbody, I>() -> impl Parser<'srcbody, I, char, Extra<'srcbody, char>>
+    fn normal_digit<'srcbody, I>() -> impl Parser<'srcbody, I, char, Extra<'srcbody, char>> + Clone
     where
-        I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
+        I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody> + Clone,
     {
         one_of("0123456789").labelled("digit")
     }
 
     fn digit_glyph<'srcbody, I>(
         script_required: Script,
-    ) -> impl Parser<'srcbody, I, char, Extra<'srcbody, char>>
+    ) -> impl Parser<'srcbody, I, char, Extra<'srcbody, char>> + Clone
     where
-        I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
+        I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody> + Clone,
     {
         choice((
             at_glyph(script_required, "0"),
@@ -256,9 +264,9 @@ where
 
 pub(super) fn digit1<'srcbody, I>(
     script_required: Script,
-) -> impl Parser<'srcbody, I, String, Extra<'srcbody, char>>
+) -> impl Parser<'srcbody, I, String, Extra<'srcbody, char>> + Clone
 where
-    I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
+    I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody> + Clone,
 {
     digit(script_required)
         .repeated()
@@ -273,9 +281,9 @@ where
 
 pub(super) fn plus<'a, I>(
     script_required: Script,
-) -> impl Parser<'a, I, Elevated<Sign>, Extra<'a, char>>
+) -> impl Parser<'a, I, Elevated<Sign>, Extra<'a, char>> + Clone
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
 {
     match script_required {
         Script::Normal => just('+').to(elevate_normal(Sign::Plus)).boxed(),
@@ -292,9 +300,9 @@ where
 
 pub(super) fn minus<'srcbody, I>(
     script_required: Script,
-) -> impl Parser<'srcbody, I, Sign, Extra<'srcbody, char>>
+) -> impl Parser<'srcbody, I, Sign, Extra<'srcbody, char>> + Clone
 where
-    I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody>,
+    I: Input<'srcbody, Token = char, Span = SimpleSpan> + ValueInput<'srcbody> + Clone,
 {
     let glyph = at_glyph(script_required, "minus");
     match script_required {
@@ -306,15 +314,15 @@ where
 
 fn lw_lowercase_letter_except_h<'a, I>(
     script_required: Script,
-) -> impl Parser<'a, I, char, Extra<'a, char>>
+) -> impl Parser<'a, I, char, Extra<'a, char>> + Clone
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
 {
     fn lowercase_letter_glyph<'a, I>(
         script_required: Script,
-    ) -> impl Parser<'a, I, char, Extra<'a, char>>
+    ) -> impl Parser<'a, I, char, Extra<'a, char>> + Clone
     where
-        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
     {
         choice((
             // h is deliberately missing; it is not allowed in a
@@ -346,15 +354,17 @@ where
     })
 }
 
-fn lw_greek_letter<'a, I>(script_required: Script) -> impl Parser<'a, I, char, Extra<'a, char>>
+fn lw_greek_letter<'a, I>(
+    script_required: Script,
+) -> impl Parser<'a, I, char, Extra<'a, char>> + Clone
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
 {
     fn lw_greek_letter_glyph<'a, I>(
         script_required: Script,
-    ) -> impl Parser<'a, I, char, Extra<'a, char>>
+    ) -> impl Parser<'a, I, char, Extra<'a, char>> + Clone
     where
-        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
     {
         choice((
             at_glyph(script_required, "alpha"),
@@ -381,15 +391,17 @@ where
     }
 }
 
-fn uppercase_letter<'a, I>(script_required: Script) -> impl Parser<'a, I, char, Extra<'a, char>>
+fn uppercase_letter<'a, I>(
+    script_required: Script,
+) -> impl Parser<'a, I, char, Extra<'a, char>> + Clone
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
 {
     fn uppercase_letter_glyph<'a, I>(
         script_required: Script,
-    ) -> impl Parser<'a, I, char, Extra<'a, char>>
+    ) -> impl Parser<'a, I, char, Extra<'a, char>> + Clone
     where
-        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
     {
         choice((
             at_glyph(script_required, "A"),
@@ -465,9 +477,9 @@ where
     }
 }
 
-fn underscore<'a, I>(script_required: Script) -> impl Parser<'a, I, char, Extra<'a, char>>
+fn underscore<'a, I>(script_required: Script) -> impl Parser<'a, I, char, Extra<'a, char>> + Clone
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
 {
     let glyph = at_glyph(script_required, "underscore");
 
@@ -477,9 +489,9 @@ where
     }
 }
 
-fn overbar<'a, I>(script_required: Script) -> impl Parser<'a, I, char, Extra<'a, char>>
+fn overbar<'a, I>(script_required: Script) -> impl Parser<'a, I, char, Extra<'a, char>> + Clone
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
 {
     let glyph = at_glyph(script_required, "underscore");
 
@@ -493,9 +505,9 @@ where
     }
 }
 
-fn square<'a, I>(script_required: Script) -> impl Parser<'a, I, char, Extra<'a, char>>
+fn square<'a, I>(script_required: Script) -> impl Parser<'a, I, char, Extra<'a, char>> + Clone
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
 {
     let glyph = at_glyph(script_required, "square");
 
@@ -509,9 +521,9 @@ where
     }
 }
 
-fn circle<'a, I>(script_required: Script) -> impl Parser<'a, I, char, Extra<'a, char>>
+fn circle<'a, I>(script_required: Script) -> impl Parser<'a, I, char, Extra<'a, char>> + Clone
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
 {
     let glyph = at_glyph(script_required, "circle");
 
@@ -525,9 +537,9 @@ where
     }
 }
 
-fn apostrophe<'a, I>(script_required: Script) -> impl Parser<'a, I, char, Extra<'a, char>>
+fn apostrophe<'a, I>(script_required: Script) -> impl Parser<'a, I, char, Extra<'a, char>> + Clone
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
 {
     let glyph = at_glyph(script_required, "apostrophe");
     match script_required {
@@ -538,9 +550,9 @@ where
 
 fn nonblank_simple_symex_char<'a, I>(
     script_required: Script,
-) -> impl Parser<'a, I, char, Extra<'a, char>>
+) -> impl Parser<'a, I, char, Extra<'a, char>> + Clone
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
 {
     choice((
         digit(script_required).boxed(),
@@ -561,9 +573,9 @@ where
 
 pub(super) fn nonblank_simple_symex_chars<'a, I>(
     script_required: Script,
-) -> impl Parser<'a, I, String, Extra<'a, char>>
+) -> impl Parser<'a, I, String, Extra<'a, char>> + Clone
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
 {
     nonblank_simple_symex_char(script_required)
         .repeated()
@@ -571,9 +583,9 @@ where
         .collect()
 }
 
-pub(super) fn opcode_code<'a, I>() -> impl Parser<'a, I, Unsigned6Bit, Extra<'a, char>>
+pub(super) fn opcode_code<'a, I>() -> impl Parser<'a, I, Unsigned6Bit, Extra<'a, char>> + Clone
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
 {
     let group0 = choice((
         just("IOS").to(u6!(0o4)),
@@ -648,9 +660,9 @@ where
     ))
 }
 
-pub(super) fn opcode<'a, I>() -> impl Parser<'a, I, LiteralValue, Extra<'a, char>>
+pub(super) fn opcode<'a, I>() -> impl Parser<'a, I, LiteralValue, Extra<'a, char>> + Clone
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
 {
     fn opcode_to_literal(code: Unsigned6Bit, span: Span) -> LiteralValue {
         // Some opcodes automatically set the hold bit, so do that
@@ -666,27 +678,27 @@ where
         .labelled("opcode")
 }
 
-pub(super) fn metacommand_name<'a, I>() -> impl Parser<'a, I, &'a str, Extra<'a, char>>
+pub(super) fn metacommand_name<'a, I>() -> impl Parser<'a, I, &'a str, Extra<'a, char>> + Clone
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
 {
-    pub(super) fn hand<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
+    pub(super) fn hand<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>> + Clone
     where
-        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
     {
         at_glyph(Script::Normal, "hand").or(just('☛')).ignored()
     }
 
-    pub(super) fn doublehand<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
+    pub(super) fn doublehand<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>> + Clone
     where
-        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
     {
         hand().then(hand()).ignored()
     }
 
-    pub(super) fn name<'a, I>() -> impl Parser<'a, I, &'a str, Extra<'a, char>>
+    pub(super) fn name<'a, I>() -> impl Parser<'a, I, &'a str, Extra<'a, char>> + Clone
     where
-        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
     {
         let decimal = choice((
             just("DECIMAL"),
@@ -706,9 +718,9 @@ where
         .labelled("metacommand name")
 }
 
-pub(super) fn hold<'a, I>() -> impl Parser<'a, I, HoldBit, Extra<'a, char>>
+pub(super) fn hold<'a, I>() -> impl Parser<'a, I, HoldBit, Extra<'a, char>> + Clone
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
 {
     // Accept either 'h' or ':' signalling the hold bit should be set.
     // The documentation seems to use both, though perhaps ':' is the
@@ -719,16 +731,16 @@ where
     ))
 }
 
-pub(super) fn equals<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
+pub(super) fn equals<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>> + Clone
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
 {
     just("=").ignored()
 }
 
-pub(super) fn annotation<'a, I>() -> impl Parser<'a, I, String, Extra<'a, char>>
+pub(super) fn annotation<'a, I>() -> impl Parser<'a, I, String, Extra<'a, char>> + Clone
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char> + Clone,
 {
     none_of("]\n")
         .repeated()
@@ -737,52 +749,54 @@ where
         .labelled("annotation")
 }
 
-pub(super) fn ws<'srcbody, I>() -> impl Parser<'srcbody, I, (), Extra<'srcbody, char>>
+pub(super) fn ws<'srcbody, I>() -> impl Parser<'srcbody, I, (), Extra<'srcbody, char>> + Clone
 where
-    I: Input<'srcbody, Token = char, Span = SimpleSpan> + StrInput<'srcbody, char>,
+    I: Input<'srcbody, Token = char, Span = SimpleSpan> + StrInput<'srcbody, char> + Clone,
 {
     choice((one_of("\t ").ignored(), annotation().ignored()))
 }
 
 pub(super) fn horizontal_whitespace0<'srcbody, I>(
-) -> impl Parser<'srcbody, I, (), Extra<'srcbody, char>>
+) -> impl Parser<'srcbody, I, (), Extra<'srcbody, char>> + Clone
 where
-    I: Input<'srcbody, Token = char, Span = SimpleSpan> + StrInput<'srcbody, char>,
+    I: Input<'srcbody, Token = char, Span = SimpleSpan> + StrInput<'srcbody, char> + Clone,
 {
     ws().repeated().ignored()
 }
 
-pub(super) fn horizontal_whitespace1<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
+pub(super) fn horizontal_whitespace1<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>> + Clone
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char> + Clone,
 {
     ws().repeated().at_least(1).ignored()
 }
 
-pub(super) fn pipe<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
+pub(super) fn pipe<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>> + Clone
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
 {
     just('|').ignored()
 }
 
-pub(super) fn comment<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
+pub(super) fn comment<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>> + Clone
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + StrInput<'a, char>,
+    I: Input<'a, Token = char, Span = SimpleSpan> + StrInput<'a, char> + Clone,
 {
     just("**").ignore_then(none_of("\n").repeated().ignored())
 }
 
-pub(super) fn end_of_input<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>>
+pub(super) fn end_of_input<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>> + Clone
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + StrInput<'a, char>,
+    I: Input<'a, Token = char, Span = SimpleSpan> + StrInput<'a, char> + Clone,
 {
     chumsky::prelude::end()
 }
 
-fn logical_or<'a, I>(script_required: Script) -> impl Parser<'a, I, Operator, Extra<'a, char>>
+fn logical_or<'a, I>(
+    script_required: Script,
+) -> impl Parser<'a, I, Operator, Extra<'a, char>> + Clone
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
 {
     const GLYPH_NAME: &str = "or";
     match script_required {
@@ -795,9 +809,11 @@ where
     .labelled("logical or (∨)")
 }
 
-fn logical_and<'a, I>(script_required: Script) -> impl Parser<'a, I, Operator, Extra<'a, char>>
+fn logical_and<'a, I>(
+    script_required: Script,
+) -> impl Parser<'a, I, Operator, Extra<'a, char>> + Clone
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
 {
     const GLYPH_NAME: &str = "and";
     match script_required {
@@ -810,9 +826,9 @@ where
     .labelled("logical and (∧)")
 }
 
-fn add<'a, I>(script_required: Script) -> impl Parser<'a, I, Operator, Extra<'a, char>>
+fn add<'a, I>(script_required: Script) -> impl Parser<'a, I, Operator, Extra<'a, char>> + Clone
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
 {
     const GLYPH_NAME: &str = "add";
     match script_required {
@@ -836,9 +852,9 @@ where
     .labelled("+")
 }
 
-fn subtract<'a, I>(script_required: Script) -> impl Parser<'a, I, Operator, Extra<'a, char>>
+fn subtract<'a, I>(script_required: Script) -> impl Parser<'a, I, Operator, Extra<'a, char>> + Clone
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
 {
     const GLYPH_NAME: &str = "minus";
     match script_required {
@@ -862,9 +878,9 @@ where
     .labelled("-")
 }
 
-fn times<'a, I>(script_required: Script) -> impl Parser<'a, I, Operator, Extra<'a, char>>
+fn times<'a, I>(script_required: Script) -> impl Parser<'a, I, Operator, Extra<'a, char>> + Clone
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
 {
     const GLYPH_NAME: &str = "times";
     match script_required {
@@ -878,9 +894,9 @@ where
     .labelled("\u{00D7}") // ×
 }
 
-fn divide<'a, I>(script_required: Script) -> impl Parser<'a, I, Operator, Extra<'a, char>>
+fn divide<'a, I>(script_required: Script) -> impl Parser<'a, I, Operator, Extra<'a, char>> + Clone
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
 {
     const GLYPH_NAME: &str = "divide";
     match script_required {
@@ -896,9 +912,9 @@ where
 
 pub(super) fn operator<'a, I>(
     script_required: Script,
-) -> impl Parser<'a, I, Operator, Extra<'a, char>>
+) -> impl Parser<'a, I, Operator, Extra<'a, char>> + Clone
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
 {
     choice((
         logical_or(script_required),

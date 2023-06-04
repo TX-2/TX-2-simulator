@@ -31,7 +31,7 @@ fn concat_strings(mut s: String, next: String) -> String {
 // Compound chars are not supported at the moment, see docs/assembler/index.md.
 fn symex_syllable<'a, I>(script_required: Script) -> impl Parser<'a, I, String, Extra<'a, char>>
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
 {
     terminal::nonblank_simple_symex_chars(script_required).labelled("symex syllable")
 }
@@ -40,7 +40,7 @@ fn parse_symex_non_reserved_syllable<'a, I>(
     script_required: Script,
 ) -> impl Parser<'a, I, String, Extra<'a, char>>
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
 {
     let opcode_mapper = helpers::OpcodeMapper::default();
     symex_syllable(script_required).try_map(move |syllable, span| {
@@ -59,7 +59,7 @@ pub(super) fn parse_multi_syllable_symex<'a, I>(
     script_required: Script,
 ) -> impl Parser<'a, I, String, Extra<'a, char>>
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char> + Clone,
 {
     parse_symex_non_reserved_syllable(script_required)
         .foldl(
@@ -75,7 +75,7 @@ pub(super) fn parse_symex<'a, I>(
     script_required: Script,
 ) -> impl Parser<'a, I, SymbolName, Extra<'a, char>>
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char>,
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char> + Clone,
 {
     choice((
         parse_multi_syllable_symex(script_required),
@@ -89,7 +89,7 @@ pub(super) fn parse_symex_reserved_syllable<'a, I>(
     script_required: Script,
 ) -> impl Parser<'a, I, String, Extra<'a, char>>
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
 {
     let opcode_mapper = helpers::OpcodeMapper::default();
     symex_syllable(script_required)
