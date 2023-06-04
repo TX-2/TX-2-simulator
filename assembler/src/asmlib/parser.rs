@@ -65,8 +65,12 @@ fn build_arithmetic_expression(
 /// BAT² is not an identifier but a sequence[1] whose value is
 /// computed by OR-ing the value of the symex BAT with the value of
 /// the literal "²" (which is 2<<30, or 0o20_000_000_000).  But BAT²
-/// is itself not a molecule (because there is a script change).
-/// However probably (BAT²) should be parsed as an atom.
+/// is itself not an arithmetic_expression (because there is a script
+/// change).
+///
+/// You could argue that (BAT²) should be parsed as an atom.  Right
+/// now that doesn't work because all the elements of an expression
+/// (i.e. everything within the parens) need to have the same script.
 ///
 /// [1] I use "sequence" in the paragraph above to avoid saying
 /// "expression" or "instruction fragment".
@@ -80,6 +84,7 @@ where
     // when trying to parse inputs which have parentheses - that is,
     // inputs that require recursion.
     recursive(|arithmetic_expression| {
+        // Parse (E) where E is some expression.
         let parenthesised_arithmetic_expression = arithmetic_expression // this is the recursive call
             .clone()
             .delimited_by(
@@ -88,29 +93,26 @@ where
             )
             .map(|expr| Atom::Parens(Box::new(expr)));
 
-        let non_opcode_atom = choice((
-            literal(script_required).map(Atom::from),
-            here(script_required).map(Atom::from),
-            symbol(script_required)
-                .map_with_span(move |name, span| Atom::Symbol(span, script_required, name)),
-            parenthesised_arithmetic_expression,
-        ));
-
-        let atom_in_script = terminal::opcode()
+        // Parse a literal, symbol, #, or (recursively) an expression in parentheses.
+        let atom = terminal::opcode()
             .map(Atom::from)
-            .or(non_opcode_atom)
+            .or(choice((
+                literal(script_required).map(Atom::from),
+                here(script_required).map(Atom::from),
+                symbol(script_required)
+                    .map_with_span(move |name, span| Atom::Symbol(span, script_required, name)),
+                parenthesised_arithmetic_expression,
+            )))
             .boxed();
 
-        let operator_with_atom_in_script = terminal::operator(script_required)
+        // Parse an arithmetic operator (e.g. plus, times) followed by an atom.
+        let operator_with_atom = terminal::operator(script_required)
             .padded_by(terminal::horizontal_whitespace0())
-            .then(
-                atom_in_script
-                    .clone()
-                    .padded_by(terminal::horizontal_whitespace0()),
-            );
+            .then(atom.clone().padded_by(terminal::horizontal_whitespace0()));
 
-        atom_in_script
-            .then(operator_with_atom_in_script.repeated().collect())
+        // An arithmetic expression is an atom followed by zero or
+        // more pairs of (arithmetic operator, atom).
+        atom.then(operator_with_atom.repeated().collect())
             .map(build_arithmetic_expression)
     })
 }
