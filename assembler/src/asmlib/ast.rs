@@ -139,11 +139,34 @@ pub(crate) enum Operator {
     Divide,
 }
 
+impl std::fmt::Display for Operator {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_char(match self {
+            Operator::Add => '+',
+            Operator::LogicalAnd => '∧',
+            Operator::LogicalOr => '∨',
+            Operator::Multiply => '\u{00D7}',
+            Operator::Subtract => '-',
+            Operator::Divide => '/',
+        })
+    }
+}
+
 /// A molecule is an arithmetic expression all in normal script.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ArithmeticExpression {
     first: Atom,
     tail: Vec<(Operator, Atom)>,
+}
+
+impl std::fmt::Display for ArithmeticExpression {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.first)?;
+        for (op, atom) in self.tail.iter() {
+            write!(f, "{op}{atom}")?;
+        }
+        Ok(())
+    }
 }
 
 impl From<Atom> for ArithmeticExpression {
@@ -253,6 +276,7 @@ pub(crate) enum Atom {
     Literal(LiteralValue),
     Symbol(Span, Script, SymbolName),
     Here(Script), // the special symbol '#'.
+    Parens(Box<ArithmeticExpression>),
 }
 
 impl Atom {
@@ -266,6 +290,9 @@ impl Atom {
                     *span,
                     SymbolUse::Reference(SymbolContext::from((script, *span))),
                 ));
+            }
+            Atom::Parens(expr) => {
+                result.extend(expr.symbol_uses());
             }
         }
         result.into_iter()
@@ -298,6 +325,7 @@ impl Evaluate for Atom {
                 }
                 .map(|value| value.shl(elevation.shift()))
             }
+            Atom::Parens(expr) => expr.evaluate(target_address, symtab, op),
         }
     }
 }
@@ -339,6 +367,9 @@ impl std::fmt::Display for Atom {
             Atom::Literal(value) => value.fmt(f),
             Atom::Symbol(_span, elevation, name) => {
                 elevated_string(&name.to_string(), elevation).fmt(f)
+            }
+            Atom::Parens(expr) => {
+                write!(f, "({expr})")
             }
         }
     }

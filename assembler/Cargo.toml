@@ -25,6 +25,8 @@ tracing = "0.1"
 # https://github.com/tokio-rs/tracing/blob/master/LICENSE
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+backtrace-on-stack-overflow = "0.3.0"
+
 [lib]
 name = "assembler"
 path = "src/asmlib/lib.rs"

@@ -29,7 +29,9 @@ fn concat_strings(mut s: String, next: String) -> String {
 }
 
 // Compound chars are not supported at the moment, see docs/assembler/index.md.
-fn symex_syllable<'a, I>(script_required: Script) -> impl Parser<'a, I, String, Extra<'a, char>>
+fn symex_syllable<'a, I>(
+    script_required: Script,
+) -> impl Parser<'a, I, String, Extra<'a, char>> + Clone
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
 {
@@ -38,7 +40,7 @@ where
 
 fn parse_symex_non_reserved_syllable<'a, I>(
     script_required: Script,
-) -> impl Parser<'a, I, String, Extra<'a, char>>
+) -> impl Parser<'a, I, String, Extra<'a, char>> + Clone
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
 {
@@ -57,7 +59,7 @@ where
 
 pub(super) fn parse_multi_syllable_symex<'a, I>(
     script_required: Script,
-) -> impl Parser<'a, I, String, Extra<'a, char>>
+) -> impl Parser<'a, I, String, Extra<'a, char>> + Clone
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char> + Clone,
 {
@@ -73,7 +75,7 @@ where
 
 pub(super) fn parse_symex<'a, I>(
     script_required: Script,
-) -> impl Parser<'a, I, SymbolName, Extra<'a, char>>
+) -> impl Parser<'a, I, SymbolName, Extra<'a, char>> + Clone
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + StrInput<'a, char> + Clone,
 {
@@ -87,7 +89,7 @@ where
 
 pub(super) fn parse_symex_reserved_syllable<'a, I>(
     script_required: Script,
-) -> impl Parser<'a, I, String, Extra<'a, char>>
+) -> impl Parser<'a, I, String, Extra<'a, char>> + Clone
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
 {

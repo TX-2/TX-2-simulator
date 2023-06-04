@@ -1,5 +1,3 @@
-#![deny(unsafe_code)]
-
 use std::ffi::OsString;
 use std::path::PathBuf;
 
@@ -64,6 +62,8 @@ fn run_asembler() -> Result<(), Fail> {
 }
 
 fn main() {
+    unsafe { backtrace_on_stack_overflow::enable() };
+
     match run_asembler() {
         Err(e) => {
             eprintln!("{}", e);

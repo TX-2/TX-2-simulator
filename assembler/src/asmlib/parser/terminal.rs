@@ -145,6 +145,8 @@ where
         "circled_v" => '\u{24CB}',
         "sup" => '\u{2283}',
         "hash" => '#',
+        "lparen" => '(',
+        "rparen" => ')',
         _ => {
             // I think this panic is OK because it takes place at the
             // time we construct the parser, so it doesn't depend on,
@@ -254,9 +256,9 @@ where
     choice((
         digit_glyph(script_required),
         match script_required {
+            Script::Normal => normal_digit().boxed(),
             Script::Super => superscript_digit().boxed(),
             Script::Sub => subscript_digit().boxed(),
-            Script::Normal => normal_digit().boxed(),
         },
     ))
     .labelled("digit")
@@ -925,4 +927,32 @@ where
         divide(script_required),
     ))
     .labelled("arithmetic operator")
+}
+
+pub(super) fn left_paren<'a, I>(
+    script_required: Script,
+) -> impl Parser<'a, I, char, Extra<'a, char>> + Clone
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
+{
+    let glyph = at_glyph(script_required, "lparen").boxed();
+    match script_required {
+        Script::Normal => just('(').or(glyph).boxed(),
+        _ => glyph,
+    }
+    .labelled("(")
+}
+
+pub(super) fn right_paren<'a, I>(
+    script_required: Script,
+) -> impl Parser<'a, I, char, Extra<'a, char>> + Clone
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
+{
+    let glyph = at_glyph(script_required, "rparen").boxed();
+    match script_required {
+        Script::Normal => just(')').or(glyph).boxed(),
+        _ => glyph,
+    }
+    .labelled(")")
 }

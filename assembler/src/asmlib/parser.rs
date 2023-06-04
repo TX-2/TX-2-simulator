@@ -7,7 +7,7 @@ mod tests;
 use chumsky::error::Rich;
 use chumsky::extra::Full;
 use chumsky::input::{StrInput, ValueInput};
-use chumsky::prelude::{choice, Input, IterParser};
+use chumsky::prelude::{choice, recursive, Input, IterParser};
 use chumsky::Parser;
 
 use super::ast::*;
@@ -20,7 +20,9 @@ use helpers::Sign;
 
 pub(crate) type Extra<'a, T> = Full<Rich<'a, T>, NumeralMode, ()>;
 
-fn literal<'a, I>(script_required: Script) -> impl Parser<'a, I, LiteralValue, Extra<'a, char>>
+fn literal<'a, I>(
+    script_required: Script,
+) -> impl Parser<'a, I, LiteralValue, Extra<'a, char>> + Clone
 where
     I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + Clone,
 {
@@ -44,11 +46,17 @@ where
         .labelled("numeric literal")
 }
 
-fn here<'a, I>(script_required: Script) -> impl Parser<'a, I, Atom, Extra<'a, char>>
+fn here<'a, I>(script_required: Script) -> impl Parser<'a, I, Atom, Extra<'a, char>> + Clone
 where
     I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char> + Clone,
 {
     terminal::hash(script_required).to(Atom::Here(script_required))
+}
+
+fn build_arithmetic_expression(
+    (head, tail): (Atom, Vec<(Operator, Atom)>),
+) -> ArithmeticExpression {
+    ArithmeticExpression::with_tail(head, tail)
 }
 
 /// Parse a sequence of values (symbolic or literal) and arithmetic
@@ -64,56 +72,50 @@ where
 /// "expression" or "instruction fragment".
 fn arithmetic_expression<'a, I>(
     script_required: Script,
-) -> impl Parser<'a, I, ArithmeticExpression, Extra<'a, char>>
+) -> impl Parser<'a, I, ArithmeticExpression, Extra<'a, char>> + Clone
 where
     I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char> + Clone,
 {
-    fn build((head, tail): (Atom, Vec<(Operator, Atom)>)) -> ArithmeticExpression {
-        ArithmeticExpression::with_tail(head, tail)
-    }
+    // We use recursive here to prevent the parser blowing the stack
+    // when trying to parse inputs which have parentheses - that is,
+    // inputs that require recursion.
+    recursive(|arithmetic_expression| {
+        let parenthesised_arithmetic_expression = arithmetic_expression // this is the recursive call
+            .clone()
+            .delimited_by(
+                terminal::left_paren(script_required),
+                terminal::right_paren(script_required),
+            )
+            .map(|expr| Atom::Parens(Box::new(expr)));
 
-    atom_in_script(script_required)
-        .then(operator_with_atom(script_required).repeated().collect())
-        .map(build)
-}
-
-fn operator_with_atom<'a, I>(
-    script_required: Script,
-) -> impl Parser<'a, I, (Operator, Atom), Extra<'a, char>>
-where
-    I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char> + Clone,
-{
-    terminal::operator(script_required)
-        .padded_by(terminal::horizontal_whitespace0())
-        .then(atom_in_script(script_required).padded_by(terminal::horizontal_whitespace0()))
-}
-
-fn atom_in_script<'a, I>(script_required: Script) -> impl Parser<'a, I, Atom, Extra<'a, char>>
-where
-    I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char> + Clone,
-{
-    fn non_opcode_atom<'a, I>(script_required: Script) -> impl Parser<'a, I, Atom, Extra<'a, char>>
-    where
-        I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char> + Clone,
-    {
-        choice((
+        let non_opcode_atom = choice((
             literal(script_required).map(Atom::from),
             here(script_required).map(Atom::from),
             symbol(script_required)
                 .map_with_span(move |name, span| Atom::Symbol(span, script_required, name)),
-        ))
-    }
+            parenthesised_arithmetic_expression,
+        ));
 
-    match script_required {
-        Script::Normal => terminal::opcode()
+        let atom_in_script = terminal::opcode()
             .map(Atom::from)
-            .or(non_opcode_atom(script_required))
-            .boxed(),
-        script => non_opcode_atom(script).boxed(),
-    }
+            .or(non_opcode_atom)
+            .boxed();
+
+        let operator_with_atom_in_script = terminal::operator(script_required)
+            .padded_by(terminal::horizontal_whitespace0())
+            .then(
+                atom_in_script
+                    .clone()
+                    .padded_by(terminal::horizontal_whitespace0()),
+            );
+
+        atom_in_script
+            .then(operator_with_atom_in_script.repeated().collect())
+            .map(build_arithmetic_expression)
+    })
 }
 
-fn symbol<'a, I>(script_required: Script) -> impl Parser<'a, I, SymbolName, Extra<'a, char>>
+fn symbol<'a, I>(script_required: Script) -> impl Parser<'a, I, SymbolName, Extra<'a, char>> + Clone
 where
     I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char> + Clone,
 {
