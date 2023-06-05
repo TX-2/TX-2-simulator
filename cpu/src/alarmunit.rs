@@ -1,5 +1,5 @@
-///! The TX-2 can "mask" some alarms, and whether or not this is
-///! happening is controlled by the AlarmUnit.
+//! The TX-2 can "mask" some alarms, and whether or not this is
+//! happening is controlled by the AlarmUnit.
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde::Serialize;

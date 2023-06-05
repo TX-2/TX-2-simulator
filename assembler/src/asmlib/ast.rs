@@ -1,4 +1,4 @@
-///! Abstract syntax representation.   It's mostly not actually a tree.
+//! Abstract syntax representation.   It's mostly not actually a tree.
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::fmt::{self, Display, Formatter, Octal, Write};

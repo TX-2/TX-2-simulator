@@ -16,14 +16,14 @@
 //!   describes the Lincoln Writer codes.
 //! - [Table 7-5 in the User
 //!   Handbook](https://archive.org/details/tx-2-users-handbook-nov-63/page/n195) describes the character codes for the Xerox printer.  This code doesn't yet implement this mapping.
-///! - [The Lincoln Keyboard - a typewriter keyboard designed for
-///!   computers imput flexibility. A. Vanderburgh.  Communications of
-///!   the ACM, Volume 1, Issue 7, July
-///!   1958.](https://dl.acm.org/doi/10.1145/368873.368879) describes
-///!   the Lincoln Writer keyboard and the fact that some characters
-///!   do not advance the print carriage.
-///! - The Lincoln Lab Division 6 Quarterly Progress Report (15 June
-///!   1958).
+//! - [The Lincoln Keyboard - a typewriter keyboard designed for
+//!   computers imput flexibility. A. Vanderburgh.  Communications of
+//!   the ACM, Volume 1, Issue 7, July
+//!   1958.](https://dl.acm.org/doi/10.1145/368873.368879) describes
+//!   the Lincoln Writer keyboard and the fact that some characters
+//!   do not advance the print carriage.
+//! - The Lincoln Lab Division 6 Quarterly Progress Report (15 June
+//!   1958).
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
