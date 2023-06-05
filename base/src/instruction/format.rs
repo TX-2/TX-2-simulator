@@ -220,14 +220,15 @@ impl Display for SymbolicInstruction {
     ///
     /// The User Handbook indicates that the hold bit should be
     /// represented as _h_ (lower-case "H") when 1 and as _h_ with
-    /// overbar when 0.  We diverge from this usage for consistency
-    /// with the M4 listing of the Sketchpad code, which uses a
-    /// leading colon to indicate _hold_.  However, since I wasn't
-    /// able to find a negative override (setting _hold_ to zero) in
-    /// the Sketchpad code, we use &#x0127; (a Unicode lower-case h
-    /// with stroke) to signal that.  When the defer bit takes the
-    /// value which is the default for the current instruction,
-    /// nothing (neither "h" nor "&#x0127;") is printed.
+    /// overbar when 0.  We use &#x0127; (a Unicode lower-case h with
+    /// stroke) to signal that.  When the defer bit takes the value
+    /// which is the default for the current instruction, nothing
+    /// (neither "h" nor "&#x0127;") is printed.
+    ///
+    /// This documentation comment previously said that Sketchpad used
+    /// ':' for hold, but I cannot find an example of this in Jurij's
+    /// transcription, so the statement that Sketchpad used ':' must
+    /// have been wrong.
     ///
     /// The representation of instructions may change over time as we
     /// discover archival material containing program listings.  The
@@ -262,7 +263,10 @@ impl Display for SymbolicInstruction {
                 f.write_str("\u{0127} ")?; // lower-case h with stroke
             }
             (false, true) => {
-                f.write_str(": ")?;
+                // Some documentation uses ':' to indicate a held
+                // instruction, but this is not part of the Lincoln
+                // Writer character set.
+                f.write_str("h ")?;
             }
             _ => {
                 // This is the default, so it needs no annotation.
@@ -364,6 +368,15 @@ mod tests {
         // there (34 octal) doesn't seem to correspond very well with what
         // looks like a single digit index value.
         //
+        // Based on Jurij's transcription of the Sketchpad code, I
+        // think $ is actually @alpha@.  From the sk2 transcript:
+        //
+        // 4986 S1@alpha@= 34
+        // [..]
+        // 5002 @alpha@= S1@alpha@
+        // [..]
+        // 5337 @sup_minus@@sup_1@JPX @sub_alpha@ UNITS OFF1
+        //
         // Hold is used in conjunction with the JPX opcode in order to
         // prevent DISMISS (see page 3-26 of the User Guide which
         // describes JPX).  Hence the -1 seems reasonable, though in
@@ -433,14 +446,15 @@ mod tests {
     fn test_display_rsx() {
         // Example from Program II ("Inchworm"), address 377 755,
         // instruction word 74 11 71 377 763.  Note the leading colon,
-        // indicating the hold bit.
+        // indicating the hold bit.  We use 'h' instead since ':' is
+        // not actually part of the Lincoln Writer character set.
         let sinst = SymbolicInstruction {
             operand_address: OperandAddress::Direct(addr(0o377762)),
             index: Unsigned6Bit::try_from(0o71_u8).unwrap(),
             opcode: Opcode::Rsx,
             configuration: config_value(0o34),
-            held: true, // this is signaled by the colon.
+            held: true, // this is signaled by the 'h'.
         };
-        assert_eq!(&sinst.to_string(), ": ³⁴RSX₇₁ 377762"); // the ':' indicates `held`
+        assert_eq!(&sinst.to_string(), "h ³⁴RSX₇₁ 377762"); // the 'h' indicates `held`
     }
 }
