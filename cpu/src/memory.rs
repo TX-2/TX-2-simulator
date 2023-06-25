@@ -34,7 +34,7 @@ use tracing::{event, Level};
 use base::prelude::*;
 
 use super::context::Context;
-use mref::MemoryRef;
+use mref::{MemoryRead, MemoryReadRef, MemoryWriteRef};
 
 pub(crate) const S_MEMORY_START: u32 = 0o0000000;
 pub(crate) const S_MEMORY_SIZE: u32 = 1 + 0o0177777;
@@ -180,112 +180,94 @@ impl Debug for MemoryWord {
     }
 }
 
-/// The mref module exists to hide the internals of MemoryRef.
+/// The mref module exists to hide the internals of MemoryWriteRef and
+/// MemoryReadRef.
+///
+/// We cannot simply use `&mut MemoryWord` because the arithmetic
+/// element's registers A-E share a metabit (the metabit of the M
+/// register).
+///
 mod mref {
-    use super::{ExtraBits, MemoryOpFailure, MemoryWord};
+    use super::{ExtraBits, MemoryWord};
     use base::prelude::*;
 
-    /// MemoryRef logically represents a memory location (register).
-    /// We cannot simply use `&mut MemoryWord` because the arithmetic
-    /// element's registers A-E share a metabit (the metabit of the M
-    /// register).
-    ///
-    pub(super) enum MemoryRef<'a> {
-        Writeable {
-            word: &'a mut Unsigned36Bit,
-            meta: &'a mut bool,
-        },
-        Readable {
-            word: &'a Unsigned36Bit,
-            meta: &'a bool,
-            error_on_write: MemoryOpFailure,
-        },
-    }
-
-    impl<'a> MemoryRef<'a> {
-        pub(super) fn writeable(word: &'a mut Unsigned36Bit, meta: &'a mut bool) -> MemoryRef<'a> {
-            MemoryRef::Writeable { word, meta }
-        }
-
-        pub(super) fn readable(
-            word: &'a Unsigned36Bit,
-            meta: &'a bool,
-            error_on_write: MemoryOpFailure,
-        ) -> MemoryRef<'a> {
-            MemoryRef::Readable {
-                word,
-                meta,
-                error_on_write,
-            }
-        }
-
-        pub(super) fn readonly_from(mw: &MemoryWord, addr: Address) -> MemoryRef {
-            let extra_bits = ExtraBits { meta: mw.meta };
-            MemoryRef::readable(
-                &mw.word,
-                &mw.meta,
-                MemoryOpFailure::ReadOnly(addr, extra_bits),
-            )
-        }
-
-        pub(super) fn writeable_from(mw: &'a mut MemoryWord) -> MemoryRef {
-            MemoryRef::writeable(&mut mw.word, &mut mw.meta)
-        }
-
-        pub(super) fn extra_bits(&self) -> ExtraBits {
+    pub(super) trait MemoryRead {
+        fn get_value(&self) -> Unsigned36Bit;
+        fn get_meta_bit(&self) -> bool;
+        /// Some memory fetches set the metabit of the fetched word.
+        fn set_meta_bit(&mut self);
+        fn extra_bits(&self) -> ExtraBits {
             ExtraBits {
                 meta: self.get_meta_bit(),
             }
         }
+    }
 
-        pub(super) fn get_meta_bit(&self) -> bool {
-            match self {
-                MemoryRef::Writeable { word: _, meta } => **meta,
-                MemoryRef::Readable {
-                    word: _,
-                    meta,
-                    error_on_write: _,
-                } => **meta,
-            }
+    /// MemoryReadRef logically represents a memory location
+    /// (register) which we can read.
+    pub(super) struct MemoryReadRef<'a> {
+        word: &'a Unsigned36Bit,
+        meta: &'a mut bool,
+    }
+
+    impl<'a> MemoryReadRef<'a> {
+        pub(super) fn new(word: &'a Unsigned36Bit, meta: &'a mut bool) -> MemoryReadRef<'a> {
+            MemoryReadRef { word, meta }
         }
 
-        pub(super) fn set_meta_bit(&mut self, value: bool) -> Result<(), MemoryOpFailure> {
-            match self {
-                MemoryRef::Writeable { word: _, meta } => {
-                    **meta = value;
-                    Ok(())
-                }
-                MemoryRef::Readable {
-                    word: _,
-                    meta: _,
-                    error_on_write,
-                } => Err(error_on_write.clone()),
-            }
+        pub(super) fn readonly_from(mw: &'a mut MemoryWord) -> MemoryReadRef<'a> {
+            MemoryReadRef::new(&mw.word, &mut mw.meta)
+        }
+    }
+
+    impl<'a> MemoryRead for MemoryReadRef<'a> {
+        fn get_meta_bit(&self) -> bool {
+            *self.meta
         }
 
-        pub(super) fn get_value(&self) -> Unsigned36Bit {
-            match self {
-                MemoryRef::Writeable { word, meta: _ } => **word,
-                MemoryRef::Readable {
-                    word,
-                    meta: _,
-                    error_on_write: _,
-                } => **word,
-            }
+        fn set_meta_bit(&mut self) {
+            *self.meta = true;
         }
 
-        pub(super) fn set_value(&mut self, value: Unsigned36Bit) -> Result<(), MemoryOpFailure> {
-            match self {
-                MemoryRef::Writeable { word, meta: _ } => {
-                    **word = value;
-                    Ok(())
-                }
-                MemoryRef::Readable {
-                    word: _,
-                    meta: _,
-                    error_on_write,
-                } => Err(error_on_write.clone()),
-            }
+        fn get_value(&self) -> Unsigned36Bit {
+            *self.word
+        }
+    }
+
+    /// MemoryWriteRef logically represents a memory location
+    /// (register) which we can write to or read.
+    pub(super) struct MemoryWriteRef<'a> {
+        word: &'a mut Unsigned36Bit,
+        meta: &'a mut bool,
+    }
+
+    impl<'a> MemoryWriteRef<'a> {
+        pub(super) fn new(word: &'a mut Unsigned36Bit, meta: &'a mut bool) -> MemoryWriteRef<'a> {
+            MemoryWriteRef { word, meta }
+        }
+    }
+
+    impl<'a> MemoryRead for MemoryWriteRef<'a> {
+        fn get_meta_bit(&self) -> bool {
+            *self.meta
+        }
+
+        fn set_meta_bit(&mut self) {
+            *self.meta = true;
+        }
+
+        fn get_value(&self) -> Unsigned36Bit {
+            *self.word
+        }
+    }
+
+    impl<'a> MemoryWriteRef<'a> {
+        pub(super) fn set_meta_bit_to_value(&mut self, value: bool) {
+            *self.meta = value;
+        }
+
+        pub(super) fn set_value(&mut self, value: Unsigned36Bit) {
+            *self.word = value;
         }
     }
 }
@@ -303,12 +285,14 @@ struct Memory {
 }
 
 impl Memory {
-    fn get_mut(&mut self, offset: usize) -> MemoryRef<'_> {
-        MemoryRef::writeable_from(&mut self.words[offset])
+    fn get_mut(&mut self, offset: usize) -> MemoryWriteRef<'_> {
+        let mw = &mut self.words[offset];
+        MemoryWriteRef::new(&mut mw.word, &mut mw.meta)
     }
 
-    fn get(&mut self, offset: usize, addr: Address) -> MemoryRef<'_> {
-        MemoryRef::readonly_from(&self.words[offset], addr)
+    fn get(&mut self, offset: usize) -> MemoryReadRef<'_> {
+        let mw = &mut self.words[offset];
+        MemoryReadRef::new(&mw.word, &mut mw.meta)
     }
 
     fn new(size: usize) -> Memory {
@@ -326,12 +310,6 @@ pub struct MemoryUnit {
     t_memory: Memory,
     u_memory: Option<Memory>,
     v_memory: VMemory,
-}
-
-#[derive(Debug, Eq, PartialEq)]
-enum MemoryAccess {
-    Read,
-    Write,
 }
 
 enum MemoryDecode {
@@ -450,92 +428,124 @@ impl MemoryUnit {
         self.v_memory.set_e_register(value);
     }
 
-    /// Perform a memory access.  Return a mutable reference to the
-    /// memory word being accessed or, if this is an attempt to write
-    /// to a read-only location, return None.
-    fn access<'a>(
+    /// Perform a memory read access.  Return a MemoryReadRef for the
+    /// memory word being accessed.
+    fn read_access<'a>(
         &'a mut self,
         ctx: &Context,
-        access_type: &MemoryAccess,
         addr: &Address,
-    ) -> Result<Option<MemoryRef<'a>>, MemoryOpFailure> {
+    ) -> Result<MemoryReadRef<'a>, MemoryOpFailure> {
         match decode(addr) {
-            Some(MemoryDecode::S(offset)) => Ok(match access_type {
-                MemoryAccess::Read => Some(self.s_memory.get(offset, *addr)),
-                MemoryAccess::Write => Some(self.s_memory.get_mut(offset)),
-            }),
-            Some(MemoryDecode::T(offset)) => Ok(match access_type {
-                MemoryAccess::Read => Some(self.t_memory.get(offset, *addr)),
-                MemoryAccess::Write => Some(self.t_memory.get_mut(offset)),
-            }),
+            Some(MemoryDecode::S(offset)) => Ok(self.s_memory.get(offset)),
+            Some(MemoryDecode::T(offset)) => Ok(self.t_memory.get(offset)),
             Some(MemoryDecode::U(offset)) => {
                 if let Some(u) = &mut self.u_memory {
-                    Ok(match access_type {
-                        MemoryAccess::Read => Some(u.get(offset, *addr)),
-                        MemoryAccess::Write => Some(u.get_mut(offset)),
-                    })
+                    Ok(u.get(offset))
                 } else {
                     Err(MemoryOpFailure::NotMapped(*addr))
                 }
             }
-            Some(MemoryDecode::V(_)) => self.v_memory.access(ctx, access_type, addr),
+            Some(MemoryDecode::V(_)) => self.v_memory.read_access(ctx, addr),
+            None => Err(MemoryOpFailure::NotMapped(*addr)),
+        }
+    }
+
+    /// Perform a memory write access.  Return a MemoryWriteRef for
+    /// the memory word being accessed.  If the memory location is
+    /// read-only, return Ok(None).
+    fn write_access<'a>(
+        &'a mut self,
+        ctx: &Context,
+        addr: &Address,
+    ) -> Result<Option<MemoryWriteRef<'a>>, MemoryOpFailure> {
+        match decode(addr) {
+            Some(MemoryDecode::S(offset)) => Ok(Some(self.s_memory.get_mut(offset))),
+            Some(MemoryDecode::T(offset)) => Ok(Some(self.t_memory.get_mut(offset))),
+            Some(MemoryDecode::U(offset)) => {
+                if let Some(u) = &mut self.u_memory {
+                    Ok(Some(u.get_mut(offset)))
+                } else {
+                    Err(MemoryOpFailure::NotMapped(*addr))
+                }
+            }
+            Some(MemoryDecode::V(_)) => self.v_memory.write_access(ctx, addr),
             None => Err(MemoryOpFailure::NotMapped(*addr)),
         }
     }
 }
 
-/// Implement the heart of the change_bit() operation used by the SKM instruction.
-fn change_word(
-    mut target: MemoryRef<'_>,
-    op: &WordChange,
-) -> Result<Option<bool>, MemoryOpFailure> {
+fn skm_bit_mask(bit: &BitSelector) -> Unsigned36Bit {
+    if bit.bitpos <= 9 {
+        match Unsigned36Bit::try_from(1 << ((u8::from(bit.quarter) * 9) + (bit.bitpos - 1))) {
+            Ok(value) => value,
+            Err(_) => unreachable!("mask calculation cannot yield an out-of-range value"),
+        }
+    } else {
+        panic!("unexpected bit selector {bit:?}")
+    }
+}
+
+/// Implement the heart of the change_bit() operation used by the SKM
+/// instruction.  Returns the value of the selected bit, or None if
+/// the bit selector indicates a nonexistent bit (e.g. 0.0, 1.0).
+fn skm_bitop_get<R: MemoryRead>(target_word: &R, op: &WordChange) -> Option<bool> {
     // As the documentation for the SKM instruction (user
     // handbook, page 3-35) explains, we perform the
     // possible bit change before the possible rotate.
-    let prev: Option<bool> = match (op.bit.quarter, op.bit.bitpos) {
-        (_, 0) => None,
-        (quarter, shift @ 1..=9) => {
-            let mask = match Unsigned36Bit::try_from(1 << ((u8::from(quarter) * 9) + (shift - 1))) {
-                Ok(value) => value,
-                Err(_) => unreachable!("mask calculation cannot yield an out-of-range value"),
-            };
-            let old_value: bool = (target.get_value() & mask) != 0;
-            match op.bitop {
-                None => (),
-                Some(BitChange::Clear) => target.set_value(target.get_value() & !mask)?,
-                Some(BitChange::Set) => target.set_value(target.get_value() | mask)?,
-                Some(BitChange::Flip) => target.set_value(target.get_value() ^ mask)?,
-            }
-            Some(old_value)
+    match op.bit.bitpos {
+        0 => None,
+        1..=9 => {
+            let mask = skm_bit_mask(&op.bit);
+            Some((target_word.get_value() & mask) != 0)
         }
-        (_, 10) => {
+        10 => {
             // The metabit.
-            let old_value = target.get_meta_bit();
-            match op.bitop {
-                None => (),
-                Some(BitChange::Clear) => target.set_meta_bit(false)?,
-                Some(BitChange::Set) => target.set_meta_bit(true)?,
-                Some(BitChange::Flip) => target.set_meta_bit(!target.get_meta_bit())?,
-            }
-            Some(old_value)
+            Some(target_word.get_meta_bit())
         }
         // 11 is the parity bit 12 is the computed parity.
         // Both are read-only, but I don't think an attempt
         // to modify them trips an alarm (at least, I
         // can't see any mention of this in the SKM
         // documentation).
-        (_, 11 | 12) => {
-            fn compute_parity_bit(w: Unsigned36Bit) -> bool {
-                u64::from(w).count_ones() & 1 != 0
-            }
-            Some(compute_parity_bit(target.get_value()))
-        }
+        11 | 12 => Some(u64::from(target_word.get_value()).count_ones() & 1 != 0),
         _ => unreachable!(),
-    };
-    if op.cycle {
-        target.set_value(target.get_value() >> 1)?;
     }
-    Ok(prev)
+}
+
+fn skm_bitop_write(mut target: MemoryWriteRef<'_>, op: &WordChange) -> Option<bool> {
+    let maybe_bit: Option<bool> = skm_bitop_get(&target, op);
+    match (maybe_bit, op.bit.bitpos) {
+        (None, _) => {
+            // A nonexistent bit has been selected, so we can't change
+            // it.
+        }
+        (_, 1..=9) => {
+            let mask = skm_bit_mask(&op.bit);
+            match op.bitop {
+                None => (),
+                Some(BitChange::Clear) => target.set_value(target.get_value() & !mask),
+                Some(BitChange::Set) => target.set_value(target.get_value() | mask),
+                Some(BitChange::Flip) => target.set_value(target.get_value() ^ mask),
+            }
+        }
+        (Some(meta_bit_val), 10) => {
+            // The metabit.
+            match op.bitop {
+                None => (),
+                Some(BitChange::Clear) => target.set_meta_bit_to_value(false),
+                Some(BitChange::Set) => target.set_meta_bit_to_value(true),
+                Some(BitChange::Flip) => target.set_meta_bit_to_value(!meta_bit_val),
+            }
+        }
+        (_, 11 | 12) => {
+            // Cannot set the parity bits in software.
+        }
+        (Some(_), 0 | 13..=u8::MAX) => unreachable!(),
+    }
+    if op.cycle {
+        target.set_value(target.get_value() >> 1);
+    }
+    maybe_bit
 }
 
 impl MemoryMapped for MemoryUnit {
@@ -545,10 +555,9 @@ impl MemoryMapped for MemoryUnit {
         addr: &Address,
         side_effect: &MetaBitChange,
     ) -> Result<(Unsigned36Bit, ExtraBits), MemoryOpFailure> {
-        match self.access(ctx, &MemoryAccess::Read, addr) {
+        match self.read_access(ctx, addr) {
             Err(e) => Err(e),
-            Ok(None) => unreachable!(),
-            Ok(Some(mut mem_word)) => {
+            Ok(mut mem_word) => {
                 let word = mem_word.get_value();
                 let extra_bits = mem_word.extra_bits();
                 match side_effect {
@@ -566,8 +575,9 @@ impl MemoryMapped for MemoryUnit {
                                 // see the longer comment in the store() method.
                                 return Err(MemoryOpFailure::ReadOnly(*addr, extra_bits));
                             }
+                        } else {
+                            mem_word.set_meta_bit();
                         }
-                        mem_word.set_meta_bit(true)?
                     }
                 }
                 Ok((word, extra_bits))
@@ -609,7 +619,7 @@ impl MemoryMapped for MemoryUnit {
         // TODO: instructions are not allowed to write to V-memory
         // (directly) though writes to registers are allowed.  For
         // example EXA is permitted, I think.
-        match self.access(ctx, &MemoryAccess::Write, addr) {
+        match self.write_access(ctx, addr) {
             Err(e) => {
                 return Err(e);
             }
@@ -619,10 +629,10 @@ impl MemoryMapped for MemoryUnit {
                 return Ok(());
             }
             Ok(Some(mut mem_word)) => {
-                mem_word.set_value(*value)?;
+                mem_word.set_value(*value);
                 match meta {
                     MetaBitChange::None => (),
-                    MetaBitChange::Set => mem_word.set_meta_bit(true)?,
+                    MetaBitChange::Set => mem_word.set_meta_bit(),
                 }
             }
         }
@@ -630,10 +640,10 @@ impl MemoryMapped for MemoryUnit {
     }
 
     fn cycle_word(&mut self, ctx: &Context, addr: &Address) -> Result<ExtraBits, MemoryOpFailure> {
-        match self.access(ctx, &MemoryAccess::Write, addr) {
+        match self.write_access(ctx, addr) {
             Ok(Some(mut target)) => {
                 let extra_bits = target.extra_bits();
-                target.set_value(target.get_value() << 1)?;
+                target.set_value(target.get_value() << 1);
                 Ok(extra_bits)
             }
             Err(e) => {
@@ -656,36 +666,37 @@ impl MemoryMapped for MemoryUnit {
         addr: &Address,
         op: &WordChange,
     ) -> Result<Option<bool>, MemoryOpFailure> {
-        let memory_access: MemoryAccess = if op.will_mutate_memory() {
-            MemoryAccess::Write
-        } else {
-            MemoryAccess::Read
-        };
-        // If the memory address is not mapped at all, access will
-        // return Err, causing the next line to bail out of this
-        // function.
-        match self.access(ctx, &memory_access, addr)? {
-            None => {
-                // The memory address is mapped to read-only memory.
-                // For example, plugboard memory.
-                //
-                // We downgrade the bit operation to be non-mutating,
-                // so that the outcome of the bit test is as it should
-                // be, but the memory-write is inhibited.
-                match self.access(ctx, &MemoryAccess::Read, addr)? {
-                    None => unreachable!(),
-                    Some(mem_word) => {
-                        let downgraded_op = WordChange {
-                            bit: op.bit,  // access the same bit
-                            bitop: None,  // read-only
-                            cycle: false, // read-only
-                        };
-                        assert!(!downgraded_op.will_mutate_memory()); // should be read-only now
-                        change_word(mem_word, &downgraded_op)
-                    }
-                }
+        fn downgrade_op(op: &WordChange) -> WordChange {
+            WordChange {
+                bit: op.bit,  // access the same bit
+                bitop: None,  // read-only
+                cycle: false, // read-only
             }
-            Some(mem_word) => change_word(mem_word, op),
+        }
+
+        if op.will_mutate_memory() {
+            // If the memory address is not mapped at all, access will
+            // return Err, causing the next line to bail out of this
+            // function.
+            match self.write_access(ctx, addr)? {
+                None => {
+                    // The memory address is mapped to read-only
+                    // memory.  For example, plugboard memory.
+                    //
+                    // We downgrade the bit operation to be
+                    // non-mutating, so that the outcome of the bit
+                    // test is as it should be, but the memory-write
+                    // is inhibited.
+                    let mem_word = self.read_access(ctx, addr)?;
+                    let downgraded_op = downgrade_op(op);
+                    assert!(!downgraded_op.will_mutate_memory()); // should be read-only now
+                    Ok(skm_bitop_get(&mem_word, &downgraded_op))
+                }
+                Some(mem_word) => Ok(skm_bitop_write(mem_word, op)),
+            }
+        } else {
+            let mem_word = self.read_access(ctx, addr)?;
+            Ok(skm_bitop_get(&mem_word, op))
         }
     }
 }
@@ -721,8 +732,8 @@ struct VMemory {
     unimplemented_external_input_register: MemoryWord,
     rtc: MemoryWord,
     rtc_start: Duration,
-    codabo_start_point: [MemoryWord; 8],
-    plugboard: [MemoryWord; 32],
+    codabo_start_point: [Unsigned36Bit; 8],
+    plugboard: [Unsigned36Bit; 32],
 
     /// Writes to unknown locations are required to be ignored, but
     /// reads have to return a value.  If permit_unknown_reads is set,
@@ -730,44 +741,41 @@ struct VMemory {
     /// raised (though that alarm may in turn be suppressed).
     permit_unknown_reads: bool,
     sacrificial_word_for_unknown_reads: MemoryWord,
+
+    // Writes to VMemory metabits are civerted to here so that setting
+    // the metabit has no (permanent) effect.
+    sacrificial_metabit: bool,
 }
 
-const fn standard_plugboard_internal() -> [MemoryWord; 32] {
+const fn standard_plugboard_internal() -> [Unsigned36Bit; 32] {
     // This data has not yet been double-checked and no tests
     // validate it, so it might be quite wrong.
     //
     // This is taken from the listing in section 5-5.2 (page 5-27) of
     // the Users Handbook.
-    const fn mw(n: Unsigned36Bit) -> MemoryWord {
-        MemoryWord {
-            word: n,
-            meta: false,
-        }
-    }
-
     [
         // Plugboard memory starts with Plugboard B at 0o3777740.
         //
         // F-memory settings; these are verified against the
         // information from Table 7-2 by a test in the exchanger code.
-        mw(u36!(0o_760342_340000)),
-        mw(u36!(0o_410763_762761)),
-        mw(u36!(0o_160142_140411)),
-        mw(u36!(0o_202163_162161)),
-        mw(u36!(0o_732232_230200)),
-        mw(u36!(0o_605731_730733)),
-        mw(u36!(0o_320670_750600)),
-        mw(u36!(0o_604331_330333)),
+        u36!(0o_760342_340000),
+        u36!(0o_410763_762761),
+        u36!(0o_160142_140411),
+        u36!(0o_202163_162161),
+        u36!(0o_732232_230200),
+        u36!(0o_605731_730733),
+        u36!(0o_320670_750600),
+        u36!(0o_604331_330333),
         // 0o377750: standard program to load the F-memory settings
         // (this is not verified by the test in the exchanger code).
-        mw(u36!(0o_002200_377740)), // ⁰⁰SPG 377740
-        mw(u36!(0o_042200_377741)), // ⁰⁴SPG 377741
-        mw(u36!(0o_102200_377742)), // ¹⁰SPG 277742
-        mw(u36!(0o_142200_377743)), // ¹⁴SPG 277743
-        mw(u36!(0o_202200_377744)), // ²⁰SPG 277744
-        mw(u36!(0o_242200_377745)), // ²⁴SPG 277745
-        mw(u36!(0o_302200_377746)), // ³⁰SPG 277746
-        mw(u36!(0o_342200_377747)), // ³⁴SPG 277747
+        u36!(0o_002200_377740), // ⁰⁰SPG 377740
+        u36!(0o_042200_377741), // ⁰⁴SPG 377741
+        u36!(0o_102200_377742), // ¹⁰SPG 277742
+        u36!(0o_142200_377743), // ¹⁴SPG 277743
+        u36!(0o_202200_377744), // ²⁰SPG 277744
+        u36!(0o_242200_377745), // ²⁴SPG 277745
+        u36!(0o_302200_377746), // ³⁰SPG 277746
+        u36!(0o_342200_377747), // ³⁴SPG 277747
         // Plugboard A, 0o377760-0o377777
         // 0o0377760: Standard program: read in reader leader from paper tape
         //
@@ -777,39 +785,36 @@ const fn standard_plugboard_internal() -> [MemoryWord; 32] {
         // X₅₄: starts at -23, counts upward; we add this to 26 to get the
         //      address into which we perform tape transfers (with TSD),
         //      so that the standard reader leader is read into locations 3 to 26
-        mw(u36!(0o011254_000023)), // ¹SKX₅₄ 23        ** X₅₄=-23, length of reader leader
-        mw(u36!(0o001252_377763)), // REX₅₂ 377763     ** Load 377763 into X₅₂ (seq 52 start point)
-        mw(u36!(0o210452_030106)), // ²¹IOS₅₂ 30106    ** PETR: Load bin, read assembly mode
+        u36!(0o011254_000023), // ¹SKX₅₄ 23        ** X₅₄=-23, length of reader leader
+        u36!(0o001252_377763), // REX₅₂ 377763     ** Load 377763 into X₅₂ (seq 52 start point)
+        u36!(0o210452_030106), // ²¹IOS₅₂ 30106    ** PETR: Load bin, read assembly mode
         // 0o0377763
-        mw(u36!(0o001253_000005)), // REX₅₃ 5          ** Load 5 into X₅₃
+        u36!(0o001253_000005), // REX₅₃ 5          ** Load 5 into X₅₃
         // 0o0377764
-        mw(u36!(0o405754_000026)), // h TSD₅₄ 26       ** Load into 26+X₅₄ (which is negative)
+        u36!(0o405754_000026), // h TSD₅₄ 26       ** Load into 26+X₅₄ (which is negative)
         // 0o0377765
-        mw(u36!(0o760653_377764)), // h ³⁶JPX₅₃ 377764 ** loop if X₅₃>0, decrement it
+        u36!(0o760653_377764), // h ³⁶JPX₅₃ 377764 ** loop if X₅₃>0, decrement it
         // 0o0377766
-        mw(u36!(0o410754_377763)), // h ¹JNX₅₄ 377763  ** loop if X₅₄<0, increment it
+        u36!(0o410754_377763), // h ¹JNX₅₄ 377763  ** loop if X₅₄<0, increment it
         // 0o0377767
-        mw(u36!(0o140500_000003)), // ¹⁴JPQ 3          ** Jump to start of reader leader
+        u36!(0o140500_000003), // ¹⁴JPQ 3          ** Jump to start of reader leader
         // At the time we jump, sequence 0o52 is executing, with
         // X₅₂ = 0o377763, X₅₃ = 0, X₅₄ = 0.
         //
         // 0o0377770: Standard program: clear memory
-        mw(u36!(0o001277_207777)),
-        mw(u36!(0o001677_777776)),
-        mw(u36!(0o140500_377773)),
-        mw(u36!(0o001200_777610)),
-        mw(u36!(0o760677_377771)),
-        mw(u36!(0o301712_377744)),
-        mw(u36!(0o000077_000000)),
-        mw(u36!(0o140500_377750)),
+        u36!(0o001277_207777),
+        u36!(0o001677_777776),
+        u36!(0o140500_377773),
+        u36!(0o001200_777610),
+        u36!(0o760677_377771),
+        u36!(0o301712_377744),
+        u36!(0o000077_000000),
+        u36!(0o140500_377750),
     ]
 }
 
 pub(crate) fn get_standard_plugboard() -> Vec<Unsigned36Bit> {
-    standard_plugboard_internal()
-        .iter()
-        .map(|mw| mw.word)
-        .collect()
+    standard_plugboard_internal().to_vec()
 }
 
 const RESULT_OF_VMEMORY_UNKNOWN_READ: MemoryWord = MemoryWord {
@@ -827,14 +832,14 @@ impl VMemory {
             e_register: Unsigned36Bit::default(),
             m_register_metabit: false,
             codabo_start_point: [
-                MemoryWord::default(),
-                MemoryWord::default(),
-                MemoryWord::default(),
-                MemoryWord::default(),
-                MemoryWord::default(),
-                MemoryWord::default(),
-                MemoryWord::default(),
-                MemoryWord::default(),
+                Unsigned36Bit::default(),
+                Unsigned36Bit::default(),
+                Unsigned36Bit::default(),
+                Unsigned36Bit::default(),
+                Unsigned36Bit::default(),
+                Unsigned36Bit::default(),
+                Unsigned36Bit::default(),
+                Unsigned36Bit::default(),
             ],
             plugboard: standard_plugboard_internal(),
             unimplemented_shaft_encoder: MemoryWord::default(),
@@ -843,6 +848,7 @@ impl VMemory {
             rtc_start: ctx.real_elapsed_time,
             permit_unknown_reads: true,
             sacrificial_word_for_unknown_reads: RESULT_OF_VMEMORY_UNKNOWN_READ,
+            sacrificial_metabit: false,
         };
         result.reset_rtc(ctx);
         result
@@ -893,27 +899,45 @@ impl VMemory {
         &'a mut self,
         ctx: &Context,
         addr: &Address,
-    ) -> Result<MemoryRef<'a>, MemoryOpFailure> {
-        let readonly = |word: &'a Unsigned36Bit, meta: &'a bool| {
-            let extra_bits = ExtraBits { meta: *meta };
-            let e = MemoryOpFailure::ReadOnly(*addr, extra_bits);
-            MemoryRef::readable(word, meta, e)
+    ) -> Result<MemoryReadRef<'a>, MemoryOpFailure> {
+        // Most locations in V memory have a metabit which cannot be
+        // set in software.  In some cases (e.g. the shaft encoders)
+        // it can be set in hardware.
+        let readonly = |word: &'a Unsigned36Bit, meta_value: bool, meta_loc: &'a mut bool| {
+            *meta_loc = meta_value;
+            MemoryReadRef::new(word, meta_loc)
         };
 
         match u32::from(addr) {
-            0o0377604 => Ok(readonly(&self.a_register, &self.m_register_metabit)),
-            0o0377605 => Ok(readonly(&self.b_register, &self.m_register_metabit)),
-            0o0377606 => Ok(readonly(&self.c_register, &self.m_register_metabit)),
-            0o0377607 => Ok(readonly(&self.d_register, &self.m_register_metabit)),
-            0o0377610 => Ok(readonly(&self.e_register, &self.m_register_metabit)),
+            // The metabit of the Arithmetic Element registers is
+            // shared (in fact, it is the metabit of the M register).
+            0o0377604 => Ok(MemoryReadRef::new(
+                &self.a_register,
+                &mut self.m_register_metabit,
+            )),
+            0o0377605 => Ok(MemoryReadRef::new(
+                &self.b_register,
+                &mut self.m_register_metabit,
+            )),
+            0o0377606 => Ok(MemoryReadRef::new(
+                &self.c_register,
+                &mut self.m_register_metabit,
+            )),
+            0o0377607 => Ok(MemoryReadRef::new(
+                &self.d_register,
+                &mut self.m_register_metabit,
+            )),
+            0o0377610 => Ok(MemoryReadRef::new(
+                &self.e_register,
+                &mut self.m_register_metabit,
+            )),
             0o0377620 => {
                 event!(
                     Level::WARN,
                     "Reading the shaft encoder is not yet implemented"
                 );
-                Ok(MemoryRef::readonly_from(
-                    &self.unimplemented_shaft_encoder,
-                    *addr,
+                Ok(MemoryReadRef::readonly_from(
+                    &mut self.unimplemented_shaft_encoder,
                 ))
             }
             0o0377621 => {
@@ -921,55 +945,64 @@ impl VMemory {
                     Level::WARN,
                     "Reading the external input register is not yet implemented"
                 );
-                Ok(MemoryRef::readonly_from(
-                    &self.unimplemented_external_input_register,
-                    *addr,
+                Ok(readonly(
+                    &self.unimplemented_external_input_register.word,
+                    self.unimplemented_external_input_register.meta,
+                    &mut self.sacrificial_metabit,
                 ))
             }
             0o0377630 => {
                 self.update_rtc(ctx);
-                Ok(MemoryRef::readonly_from(&self.rtc, *addr))
+                Ok(MemoryReadRef::readonly_from(&mut self.rtc))
             }
-            0o0377710 => Ok(MemoryRef::readonly_from(
-                // CODABO Reset0
+            0o0377710 => Ok(readonly(
                 &self.codabo_start_point[0],
-                *addr,
-            )),
-            0o0377711 => Ok(MemoryRef::readonly_from(
-                // CODABO Reset1
-                &self.codabo_start_point[1],
-                *addr,
-            )),
-            0o0377712 => Ok(MemoryRef::readonly_from(
-                // CODABO Reset2
-                &self.codabo_start_point[2],
-                *addr,
-            )),
-            0o0377713 => Ok(MemoryRef::readonly_from(&self.codabo_start_point[3], *addr)), // CODABO Reset3
-            0o0377714 => Ok(MemoryRef::readonly_from(
-                // CODABO Reset4
-                &self.codabo_start_point[4],
-                *addr,
-            )),
-            0o0377715 => Ok(MemoryRef::readonly_from(
-                // CODABO Reset5
-                &self.codabo_start_point[5],
-                *addr,
-            )),
-            0o0377716 => Ok(MemoryRef::readonly_from(
-                // CODABO Reset6
-                &self.codabo_start_point[6],
-                *addr,
-            )),
-            0o0377717 => Ok(MemoryRef::readonly_from(
-                // CODABO Reset7
-                &self.codabo_start_point[7],
-                *addr,
-            )),
+                false,
+                &mut self.sacrificial_metabit,
+            )), // CODABO Reset0
+            0o0377711 => Ok(readonly(
+                &mut self.codabo_start_point[1],
+                false,
+                &mut self.sacrificial_metabit,
+            )), // CODABO Reset1
+            0o0377712 => Ok(readonly(
+                &mut self.codabo_start_point[2],
+                false,
+                &mut self.sacrificial_metabit,
+            )), // CODABO Reset2
+            0o0377713 => Ok(readonly(
+                &mut self.codabo_start_point[3],
+                false,
+                &mut self.sacrificial_metabit,
+            )), // CODABO Reset3
+            0o0377714 => Ok(readonly(
+                &mut self.codabo_start_point[4],
+                false,
+                &mut self.sacrificial_metabit,
+            )), // CODABO Reset4
+            0o0377715 => Ok(readonly(
+                &mut self.codabo_start_point[5],
+                false,
+                &mut self.sacrificial_metabit,
+            )), // CODABO Reset5
+            0o0377716 => Ok(readonly(
+                &mut self.codabo_start_point[6],
+                false,
+                &mut self.sacrificial_metabit,
+            )), // CODABO Reset6
+            0o0377717 => Ok(readonly(
+                &mut self.codabo_start_point[7],
+                false,
+                &mut self.sacrificial_metabit,
+            )), // CODABO Reset7
 
             a @ 0o0377740..=0o0377777 => {
                 if let Ok(offset) = TryInto::<usize>::try_into(a - 0o0377740) {
-                    Ok(MemoryRef::readonly_from(&self.plugboard[offset], *addr))
+                    Ok(readonly(
+                        &mut self.plugboard[offset],
+                        false,
+                        &mut self.sacrificial_metabit,
+                    ))
                 } else {
                     // Unreachable because the matched range is
                     // not large enough to exceed the capacity of
@@ -979,9 +1012,8 @@ impl VMemory {
             }
             _ => {
                 if self.permit_unknown_reads {
-                    Ok(MemoryRef::readonly_from(
-                        &self.sacrificial_word_for_unknown_reads,
-                        *addr,
+                    Ok(MemoryReadRef::readonly_from(
+                        &mut self.sacrificial_word_for_unknown_reads,
                     ))
                 } else {
                     event!(
@@ -1002,26 +1034,26 @@ impl VMemory {
         &'a mut self,
         _ctx: &Context,
         addr: &Address,
-    ) -> Result<Option<MemoryRef<'a>>, MemoryOpFailure> {
+    ) -> Result<Option<MemoryWriteRef<'a>>, MemoryOpFailure> {
         // The AE registers are supposed to share a single metabit, the metabit of the M register.
         match u32::from(addr) {
-            0o0377604 => Ok(Some(MemoryRef::writeable(
+            0o0377604 => Ok(Some(MemoryWriteRef::new(
                 &mut self.a_register,
                 &mut self.m_register_metabit,
             ))),
-            0o0377605 => Ok(Some(MemoryRef::writeable(
+            0o0377605 => Ok(Some(MemoryWriteRef::new(
                 &mut self.b_register,
                 &mut self.m_register_metabit,
             ))),
-            0o0377606 => Ok(Some(MemoryRef::writeable(
+            0o0377606 => Ok(Some(MemoryWriteRef::new(
                 &mut self.c_register,
                 &mut self.m_register_metabit,
             ))),
-            0o0377607 => Ok(Some(MemoryRef::writeable(
+            0o0377607 => Ok(Some(MemoryWriteRef::new(
                 &mut self.d_register,
                 &mut self.m_register_metabit,
             ))),
-            0o0377610 => Ok(Some(MemoryRef::writeable(
+            0o0377610 => Ok(Some(MemoryWriteRef::new(
                 &mut self.e_register,
                 &mut self.m_register_metabit,
             ))),
@@ -1029,25 +1061,6 @@ impl VMemory {
             // memory, except the A, B, C, D, and E registers cannot
             // be changed by any instruction".
             _ => Ok(None),
-        }
-    }
-
-    /// Perform a memory access.  Return a mutable reference to the
-    /// memory word being accessed or, if this is an attempt to write
-    /// to a read-only location, return None.
-    fn access<'a>(
-        &'a mut self,
-        ctx: &Context,
-        access_type: &MemoryAccess,
-        addr: &Address,
-    ) -> Result<Option<MemoryRef<'a>>, MemoryOpFailure> {
-        match access_type {
-            MemoryAccess::Write => self.write_access(ctx, addr),
-            // Memory reads cannot return None because that represents
-            // a failure to write.  But the access() operation returns
-            // Option<&mut MemoryWord>, so the read path here
-            // unconditionally returns a non-empty Option.
-            MemoryAccess::Read => self.read_access(ctx, addr).map(Some),
         }
     }
 
@@ -1128,7 +1141,7 @@ fn test_write_all_mem() {
         let addr: Address = Address::try_from(a).unwrap();
         // The point of this test is to verify that we con't have any
         // todo!()s in reachable code paths.
-        let result = mem.access(&context, &MemoryAccess::Write, &addr);
+        let result = mem.write_access(&context, &addr);
         match result {
             Ok(Some(_)) => (),
             Ok(None) => {
@@ -1164,17 +1177,9 @@ fn test_read_all_mem() {
         let addr: Address = Address::try_from(a).unwrap();
         // The point of this test is to verify that we con't have any
         // todo!()s in reachable code paths.
-        let result = mem.access(&context, &MemoryAccess::Read, &addr);
+        let result = mem.read_access(&context, &addr);
         match result {
-            Ok(Some(_)) => (),
-            Ok(None) => {
-                // For writes, this indicates that the write is
-                // ignored. This should not happen for reads.
-                panic!(
-                    "'None' result during read of memory address {:o}, this should not happen (cannot ignore a read)",
-                    addr
-                );
-            }
+            Ok(_) => (),
             Err(MemoryOpFailure::NotMapped(_)) => (),
             Err(e) => {
                 panic!("Failure {:?} during read of memory address {:o}", e, addr);
@@ -1203,25 +1208,22 @@ fn test_ae_registers_share_metabit() {
     let ae_regs = [a_addr, b_addr, c_addr, d_addr, e_addr];
 
     fn set_metabit(context: &Context, mem: &mut MemoryUnit, addr: Address, value: bool) {
-        match mem.access(&context, &MemoryAccess::Write, &addr) {
-            Ok(Some(mut word)) => word.set_meta_bit(value).expect("AE registers are writable"),
+        match mem.write_access(&context, &addr) {
+            Ok(Some(mut word)) => word.set_meta_bit_to_value(value),
             Ok(None) => {
-                panic!("AE register at {addr} is not mapped");
+                panic!("AE register at {addr:o} is not mapped");
             }
             Err(e) => {
-                panic!("failed to write memory at {addr}: {e}");
+                panic!("failed to write memory at {addr:o}: {e}");
             }
         }
     }
 
     fn get_metabit(context: &Context, mem: &mut MemoryUnit, addr: Address) -> bool {
-        match mem.access(&context, &MemoryAccess::Read, &addr) {
-            Ok(Some(word)) => word.get_meta_bit(),
-            Ok(None) => {
-                panic!("AE register at {addr} is not mapped");
-            }
+        match mem.read_access(&context, &addr) {
+            Ok(word) => word.get_meta_bit(),
             Err(e) => {
-                panic!("failed to read memory at {addr}: {e}");
+                panic!("failed to read memory at {addr:o}: {e}");
             }
         }
     }
