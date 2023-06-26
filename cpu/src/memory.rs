@@ -616,9 +616,6 @@ impl MemoryMapped for MemoryUnit {
             return Ok(()); // ignore the write.
         }
 
-        // TODO: instructions are not allowed to write to V-memory
-        // (directly) though writes to registers are allowed.  For
-        // example EXA is permitted, I think.
         match self.write_access(ctx, addr) {
             Err(e) => {
                 return Err(e);
