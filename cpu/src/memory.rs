@@ -1145,15 +1145,17 @@ fn test_write_all_mem() {
         match result {
             Ok(Some(_)) => (),
             Ok(None) => {
-                // This indicates that the write is ignored.  This may
-                // or may not be correct.  For example it's OK (I
-                // assume) to ignore a write to the shaft-encoder
-                // register since that is a memory-mapped input-only
-                // device, but it is not OK to ignore a write to
-                // 0377604 which is the Arithmetic Unit's B register.
-                //
-                // TODO: implement and test writes to toggle memory
-                // (Vₜ).
+                // The only memory for which writes are forbidden is
+                // in V memory.
+                assert!(a >= V_MEMORY_START);
+                assert!(a <= 0o0377777);
+                // However, writes to the arithmetic element are
+                // permitted.
+                assert_ne!(a, 0o0377604); // A
+                assert_ne!(a, 0o0377605); // B
+                assert_ne!(a, 0o0377606); // C
+                assert_ne!(a, 0o0377607); // D
+                assert_ne!(a, 0o0377610); // E
             }
             Err(MemoryOpFailure::NotMapped(_)) => (),
             Err(e) => {

@@ -354,15 +354,6 @@ impl Debug for AttachedUnit {
     }
 }
 
-// TODO: actually delete this
-//#[derive(Debug)]
-//enum DeviceType {
-//    Input { in_maintenance: bool },
-//    Output { in_maintenance: bool },
-//    Nonexistent,
-//    AttachedButNotConnected,
-//}
-
 /// Manages a collection of devices.  Does not actually correspond to
 /// a tangible physical component of the TX-2 system.
 #[derive(Debug)]
