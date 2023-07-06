@@ -12,6 +12,6 @@ cpu = {path = "../cpu" }
 base = {path = "../base" }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-clap = { version = "3", features = ["derive"] }
-termcolor = "1"			# Unlicense OR MIT license
-atty = "0.2"			# MIT license
+clap = { version = "4", features = ["derive"] }
+termcolor = "1"                 # Unlicense OR MIT license
+atty = "0.2"                    # MIT license

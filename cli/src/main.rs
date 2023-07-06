@@ -10,7 +10,7 @@ use std::io::{BufReader, Read};
 use std::str::FromStr;
 use std::time::Duration;
 
-use clap::{ArgAction::Set, ArgEnum, Parser};
+use clap::{ArgAction::Set, Parser, ValueEnum};
 use tracing::{event, Level};
 use tracing_subscriber::filter::{EnvFilter, LevelFilter};
 use tracing_subscriber::prelude::*;
@@ -145,7 +145,7 @@ fn run_until_alarm(
 }
 
 /// Whether to panic when there was an unmasked alarm.
-#[derive(Debug, Clone, PartialEq, Eq, ArgEnum)]
+#[derive(Debug, Clone, PartialEq, Eq, ValueEnum)]
 enum PanicOnUnmaskedAlarm {
     // Panic when an unmasked alarm occurs.  If the RUST_BACKTRACE
     // environment variable is also set, a stack backtrace will be
@@ -173,20 +173,20 @@ impl FromStr for PanicOnUnmaskedAlarm {
 
 /// Command-line simulator for the historical TX-2 computer
 #[derive(Parser, Debug)]
-#[clap(author = AUTHOR, version, about, long_about = None)]
+#[command(author = AUTHOR, version, about, long_about = None)]
 struct Cli {
     /// Run this many times faster than real-time ('MAX' for as-fast-as-possible)
-    #[clap(action = Set, long = "speed-multiplier")]
+    #[arg(action = Set, long = "speed-multiplier")]
     speed_multiplier: Option<String>,
 
     /// When set, panic if an alarm occurs (so that a stack backtrace
     /// is produced when the RUST_BACKTRACE environment variable is
     /// also set).  When unset, stop the emulator without panic.
-    #[clap(action = Set, long = "panic-on-unmasked-alarm", arg_enum)]
+    #[arg(action = Set, long = "panic-on-unmasked-alarm", value_enum)]
     panic_on_unmasked_alarm: Option<PanicOnUnmaskedAlarm>,
 
     /// File containing paper tape data
-    #[clap(action = Set)]
+    #[arg(action = Set)]
     tape: Option<OsString>,
 }
 
