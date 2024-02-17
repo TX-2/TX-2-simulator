@@ -37,10 +37,11 @@ where
     opt_sign
         .then(terminal::digit1(script_required))
         .then(maybe_dot)
-        .try_map_with_state(move |((maybe_sign, digits), hasdot), span, state| {
-            match helpers::make_num(maybe_sign, &digits, hasdot, state) {
-                Ok(value) => Ok(LiteralValue::from((span, script_required, value))),
-                Err(e) => Err(Rich::custom(span, e.to_string())),
+        .try_map_with(move |((maybe_sign, digits), hasdot), extra| {
+            let mode: NumeralMode = extra.state().clone();
+            match helpers::make_num(maybe_sign, &digits, hasdot, mode) {
+                Ok(value) => Ok(LiteralValue::from((extra.span(), script_required, value))),
+                Err(e) => Err(Rich::custom(extra.span(), e.to_string())),
             }
         })
         .labelled("numeric literal")
@@ -100,7 +101,7 @@ where
                 literal(script_required).map(Atom::from),
                 here(script_required).map(Atom::from),
                 symbol(script_required)
-                    .map_with_span(move |name, span| Atom::Symbol(span, script_required, name)),
+                    .map_with(move |name, extra| Atom::Symbol(extra.span(), script_required, name)),
                 parenthesised_arithmetic_expression,
             )))
             .boxed();
@@ -132,7 +133,10 @@ where
 {
     let arrow = terminal::arrow().padded_by(terminal::horizontal_whitespace0());
     symbol(Script::Normal)
-        .map_with_span(|name, span| Tag { name, span })
+        .map_with(|name, extra| Tag {
+            name,
+            span: extra.span(),
+        })
         .then_ignore(arrow)
         .then_ignore(terminal::horizontal_whitespace0())
         .labelled("tag definition")
@@ -225,17 +229,15 @@ where
         .or_not()
         .padded_by(terminal::horizontal_whitespace0())
         .labelled("instruction hold bit");
-    maybe_hold
-        .then(program_instruction_fragments())
-        .map_with_span(
-            |(maybe_hold, parts): (Option<HoldBit>, Vec<InstructionFragment>), span| {
-                UntaggedProgramInstruction {
-                    span,
-                    holdbit: maybe_hold.unwrap_or(HoldBit::Unspecified),
-                    parts,
-                }
-            },
-        )
+    maybe_hold.then(program_instruction_fragments()).map_with(
+        |(maybe_hold, parts): (Option<HoldBit>, Vec<InstructionFragment>), extra| {
+            UntaggedProgramInstruction {
+                span: extra.span(),
+                holdbit: maybe_hold.unwrap_or(HoldBit::Unspecified),
+                parts,
+            }
+        },
+    )
 }
 
 fn tagged_program_instruction<'a, I>(
@@ -276,7 +278,7 @@ where
         // We have to parse an assignment first here, in order to
         // accept "FOO=2" as an assignment rather than the instruction
         // fragment "FOO" followed by a syntax error.
-        assignment().map_with_span(|(sym, inst), span| Statement::Assignment(span, sym, inst)),
+        assignment().map_with(|(sym, inst), extra| Statement::Assignment(extra.span(), sym, inst)),
         tagged_program_instruction().map(Statement::Instruction),
     ))
 }
@@ -301,8 +303,8 @@ where
         I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char> + Clone,
     {
         metacommand()
-            .map_with_state(|cmd, _span, state| {
-                execute_metacommand(state, &cmd);
+            .map_with(|cmd, extra| {
+                execute_metacommand(extra.state(), &cmd);
                 ManuscriptLine::MetaCommand(cmd)
             })
             .labelled("metacommand")
@@ -345,7 +347,7 @@ where
                     + Clone,
             {
                 symbol(Script::Normal)
-                    .map_with_span(|sym, span| Origin::Symbolic(span, sym))
+                    .map_with(|sym, extra| Origin::Symbolic(extra.span(), sym))
                     .labelled("symbolic address expression")
             }
             choice((literal_address_expression(), symbolic_address_expression()))

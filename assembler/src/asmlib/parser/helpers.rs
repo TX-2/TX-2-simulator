@@ -53,7 +53,7 @@ pub(super) fn make_num(
     sign: Option<Sign>,
     digits: &str,
     hasdot: bool,
-    state: &NumeralMode,
+    state: NumeralMode,
 ) -> Result<Unsigned36Bit, StringConversionFailed> {
     make_u36(digits, state.radix(hasdot)).map(|n| {
         if let Some(Sign::Minus) = sign {

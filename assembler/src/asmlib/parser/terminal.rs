@@ -676,7 +676,7 @@ where
     }
 
     opcode_code()
-        .map_with_span(opcode_to_literal)
+        .map_with(|code, extra| opcode_to_literal(code, extra.span()))
         .labelled("opcode")
 }
 
