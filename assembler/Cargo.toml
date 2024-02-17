@@ -12,7 +12,7 @@ base = {path = "../base" }
 # https://github.com/clap-rs/clap/blob/master/LICENSE-APACHE
 clap = { version = "3", features = ["derive"] }
 
-chumsky = { version="1.0.0-alpha.4", features=["label"] }
+chumsky = { version="=1.0.0-alpha.4", features=["label"] }
 
 # tempfile has an "MIT or Apache-2.0" copyright license
 tempfile = "3"
