@@ -316,7 +316,10 @@ enum MemoryDecode {
     S(usize),
     T(usize),
     U(usize),
-    V(usize),
+    // The V-memory emulation is implemented in terms of absolute
+    // addresses, not in terms of offsets into the V-memory.  So there
+    // is no need for an offset field for the V-memory case.
+    V,
 }
 
 fn decode(address: &Address) -> Option<MemoryDecode> {
@@ -327,7 +330,7 @@ fn decode(address: &Address) -> Option<MemoryDecode> {
         S(u32),
         T(u32),
         U(u32),
-        V(u32),
+        V,
     }
     let addr: u32 = u32::from(address);
     let decoded = {
@@ -342,13 +345,13 @@ fn decode(address: &Address) -> Option<MemoryDecode> {
             // memory, before the V memory) is not mapped to anything.
             None
         } else if (V_MEMORY_START..V_MEMORY_START + V_MEMORY_SIZE).contains(&addr) {
-            Some(MemoryDecode32::V(addr - V_MEMORY_START))
+            Some(MemoryDecode32::V)
         } else {
             // The end of V memory is the highest address it is possible
             // to form in 17 bits.  So, it should not be possible to form
             // an invalid address in an Address struct, so we should not
             // be able to get here.
-            panic!(
+            unreachable!(
                 "Access to memory address {:?} should be impossible",
                 &address
             );
@@ -363,7 +366,7 @@ fn decode(address: &Address) -> Option<MemoryDecode> {
         MemoryDecode32::S(addr) => MemoryDecode::S(addr.try_into().unwrap()),
         MemoryDecode32::T(addr) => MemoryDecode::T(addr.try_into().unwrap()),
         MemoryDecode32::U(addr) => MemoryDecode::U(addr.try_into().unwrap()),
-        MemoryDecode32::V(addr) => MemoryDecode::V(addr.try_into().unwrap()),
+        MemoryDecode32::V => MemoryDecode::V,
     })
 }
 
@@ -445,7 +448,7 @@ impl MemoryUnit {
                     Err(MemoryOpFailure::NotMapped(*addr))
                 }
             }
-            Some(MemoryDecode::V(_)) => self.v_memory.read_access(ctx, addr),
+            Some(MemoryDecode::V) => self.v_memory.read_access(ctx, addr),
             None => Err(MemoryOpFailure::NotMapped(*addr)),
         }
     }
@@ -468,7 +471,7 @@ impl MemoryUnit {
                     Err(MemoryOpFailure::NotMapped(*addr))
                 }
             }
-            Some(MemoryDecode::V(_)) => self.v_memory.write_access(ctx, addr),
+            Some(MemoryDecode::V) => self.v_memory.write_access(ctx, addr),
             None => Err(MemoryOpFailure::NotMapped(*addr)),
         }
     }
