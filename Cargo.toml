@@ -1,25 +1,26 @@
 [workspace]
 members = [
-	# base includes a representation for instructions (which could
-	# be shared for example between the emulator and a
-	# cross-assembler).
-	"base",
+        # base includes a representation for instructions (which could
+        # be shared for example between the emulator and a
+        # cross-assembler).
+        "base",
 
-	# cpu implements the cpu emulation itself.
-	"cpu",
+        # cpu implements the cpu emulation itself.
+        "cpu",
 
-	# cli provides a basic emulator suitable for running from the command-line.
-	"cli",
+        # cli provides a basic emulator suitable for running from the command-line.
+        "cli",
 
-	# assembler is a cross-assembler for the TX-2 machine.  It
-	# runs on the same kind of machine as the simulator but
-	# produces output intended to be run within the simulated
-	# TX-2.
-	"assembler",
+        # assembler is a cross-assembler for the TX-2 machine.  It
+        # runs on the same kind of machine as the simulator but
+        # produces output intended to be run within the simulated
+        # TX-2.
+        "assembler",
 
-	# Web-based simulator.
-	"tx2-web",
+        # Web-based simulator.
+        "tx2-web",
 ]
+
 
 [profile.wasm-release]
 inherits = "release"
