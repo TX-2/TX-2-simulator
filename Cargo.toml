@@ -20,7 +20,7 @@ members = [
         # Web-based simulator.
         "tx2-web",
 ]
-
+resolver = "2"
 
 [profile.wasm-release]
 inherits = "release"
