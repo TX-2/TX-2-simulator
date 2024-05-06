@@ -53,7 +53,7 @@ pub(super) fn make_num(
     sign: Option<Sign>,
     digits: &str,
     hasdot: bool,
-    state: NumeralMode,
+    state: &NumeralMode,
 ) -> Result<Unsigned36Bit, StringConversionFailed> {
     make_u36(digits, state.radix(hasdot)).map(|n| {
         if let Some(Sign::Minus) = sign {
@@ -63,12 +63,6 @@ pub(super) fn make_num(
         }
     })
 }
-
-//// //pub(super) fn make_num_from_span(
-//// //    (sign, digits, dot): (Option<char>, ek::LocatedSpan, Option<ek::LocatedSpan>),
-//// //) -> Result<Unsigned36Bit, StringConversionFailed> {
-//// //    make_num((sign, &digits, digits.extra.radix(dot.is_some())))
-//// //}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum DecodedOpcode {
@@ -216,7 +210,7 @@ pub(super) fn manuscript_lines_to_blocks(
     let mut effective_origin: Option<Origin> = None;
 
     fn ship_block(
-        statements: &Vec<Statement>,
+        statements: &[Statement],
         maybe_origin: Option<Origin>,
         result: &mut Vec<ManuscriptBlock>,
     ) {

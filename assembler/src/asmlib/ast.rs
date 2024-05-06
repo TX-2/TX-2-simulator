@@ -249,19 +249,19 @@ impl Evaluate for ArithmeticExpression {
         op: &mut S::Operation<'_>,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         fn fold_step<S: SymbolLookup>(
-            acc: Result<Unsigned36Bit, SymbolLookupFailure>,
+            acc: Unsigned36Bit,
             (binop, right): &(Operator, Atom),
             target_address: &HereValue,
             symtab: &mut S,
             op: &mut S::Operation<'_>,
         ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
             let right: Unsigned36Bit = right.evaluate(target_address, symtab, op)?;
-            Ok(ArithmeticExpression::eval_binop(acc?, binop, right))
+            Ok(ArithmeticExpression::eval_binop(acc, binop, right))
         }
 
         let first: Unsigned36Bit = self.first.evaluate(target_address, symtab, op)?;
         let result: Result<Unsigned36Bit, SymbolLookupFailure> =
-            self.tail.iter().fold(Ok(first), |acc, curr| {
+            self.tail.iter().try_fold(first, |acc, curr| {
                 fold_step(acc, curr, target_address, symtab, op)
             });
         result
@@ -545,18 +545,18 @@ impl Evaluate for UntaggedProgramInstruction {
         op: &mut S::Operation<'_>,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         fn or_looked_up_value<S: SymbolLookup>(
-            accumulator: Result<Unsigned36Bit, SymbolLookupFailure>,
+            accumulator: Unsigned36Bit,
             frag: &InstructionFragment,
             target_address: &HereValue,
             symtab: &mut S,
             op: &mut S::Operation<'_>,
         ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-            accumulator.and_then(|acc| Ok(acc | frag.evaluate(target_address, symtab, op)?))
+            Ok(accumulator | frag.evaluate(target_address, symtab, op)?)
         }
 
         self.parts
             .iter()
-            .fold(Ok(Unsigned36Bit::ZERO), |acc, curr| {
+            .try_fold(Unsigned36Bit::ZERO, |acc, curr| {
                 or_looked_up_value(acc, curr, target_address, symtab, op)
             })
             .map(|word| match self.holdbit {

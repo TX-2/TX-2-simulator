@@ -38,7 +38,7 @@ where
         .then(terminal::digit1(script_required))
         .then(maybe_dot)
         .try_map_with(move |((maybe_sign, digits), hasdot), extra| {
-            let mode: NumeralMode = extra.state().clone();
+            let mode: &NumeralMode = extra.state();
             match helpers::make_num(maybe_sign, &digits, hasdot, mode) {
                 Ok(value) => Ok(LiteralValue::from((extra.span(), script_required, value))),
                 Err(e) => Err(Rich::custom(extra.span(), e.to_string())),
