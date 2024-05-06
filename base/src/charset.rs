@@ -397,7 +397,7 @@ pub fn lincoln_char_to_described_char(
                 '\u{20DE}', // combining enclosing square
             )
         }
-        0o14 | 0o15 | 0o16 | 0o17 => return Some(unprintable(lin_ch, *state)), // "READ IN", "BEGIN", "NO", "YES"
+        0o14..=0o17 => return Some(unprintable(lin_ch, *state)), // "READ IN", "BEGIN", "NO", "YES"
         0o20 => by_case('A', 'n'),
         0o21 => by_case('B', '⊂'), // Subset of (U+2282)
         0o22 => by_case('C', '∨'), // Logical or (U+2228)

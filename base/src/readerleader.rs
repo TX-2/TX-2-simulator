@@ -9,7 +9,7 @@ use super::{u18, u5, u6};
 /// instruction word).
 fn bit_index(q: u8, bitnum: u8) -> Unsigned6Bit {
     let quarter = match q {
-        1 | 2 | 3 => q,
+        1..=3 => q,
         4 => 0,
         _ => {
             panic!("invalid quarter number {}", q);

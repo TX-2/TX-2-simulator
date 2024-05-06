@@ -532,7 +532,7 @@ impl Unit for LincolnWriterInput {
                 match (self.data.is_empty(), data.as_slice()) {
                     (_, []) => Ok(InputFlagRaised::No), // no incoming data
                     (false, _) => Err(InputEventError::BufferUnavailable),
-                    (true, [items @ ..]) => {
+                    (true, items) => {
                         match self.state.try_borrow_mut() {
                             Ok(mut state) => {
                                 if !self.data.is_empty() {
@@ -543,7 +543,7 @@ impl Unit for LincolnWriterInput {
                                         },
                                     }));
                                 }
-                                for item in items.iter() {
+                                for item in items {
                                     // Deal with any state changes.
                                     // Because all state changes occur in
                                     // one go, we may get the unexpected

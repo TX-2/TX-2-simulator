@@ -89,7 +89,6 @@ impl ControlUnit {
 
         if nonzero(cf & 0b10000_u8) {
             self.dismiss_unless_held("JMP has dismiss bit set in config syllable");
-        } else {
         }
         Ok(OpcodeResult {
             program_counter_change: Some(ProgramCounterChange::Jump(new_pc)),

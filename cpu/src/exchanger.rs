@@ -938,7 +938,7 @@ pub(crate) fn exchanged_value_for_store(
 
 pub(crate) fn standard_plugboard_f_memory_settings() -> [SystemConfiguration; 0o40] {
     let mut result: [SystemConfiguration; 0o40] = {
-        let default_val = SystemConfiguration::try_from(0_u8).unwrap();
+        let default_val = SystemConfiguration::from(0_u8);
         [default_val; 32]
     };
     let plugboard = get_standard_plugboard();

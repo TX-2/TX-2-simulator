@@ -12,6 +12,7 @@
 //! - Manage switching between sequences
 //! - Remember the setting of the TSP (Toggle Start Point) register
 use std::collections::{BTreeMap, HashSet};
+use std::fmt::Write;
 use std::ops::BitAnd;
 use std::time::Duration;
 
@@ -149,10 +150,13 @@ impl SequenceFlags {
         let mask = SequenceFlags::flagbit(flag);
         self.flag_values |= mask;
         self.flag_changes |= mask;
-        let seqs: String = ones_of_value_as_vec(self.flag_values)
-            .into_iter()
-            .map(|v| format!("{:>02o} ", u64::from(v)))
-            .collect();
+        let seqs: String =
+            ones_of_value_as_vec(self.flag_values)
+                .into_iter()
+                .fold(String::new(), |mut acc, v| {
+                    write!(acc, "{:>02o} ", u64::from(v)).expect("write to string must succeed");
+                    acc
+                });
         event!(
             Level::DEBUG,
             "Raised flag {flag:o}; runnable sequences now {seqs}"
@@ -304,7 +308,7 @@ impl ControlRegisters {
     fn new(configuration_memory_config: ConfigurationMemorySetup) -> ControlRegisters {
         let fmem = match configuration_memory_config {
             ConfigurationMemorySetup::Uninitialised => {
-                let default_val = SystemConfiguration::try_from(0_u8).unwrap();
+                let default_val = SystemConfiguration::from(0_u8);
                 [default_val; 32]
             }
             ConfigurationMemorySetup::StandardForTestingOnly => {
