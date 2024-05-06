@@ -98,6 +98,34 @@ impl Display for TransferFailed {
 
 impl std::error::Error for TransferFailed {}
 
+pub enum UnitType {
+    StartOver,
+    IndexRegister(SequenceNumber),
+    Hardware(SequenceNumber),
+    SoftwareOnly(SequenceNumber),
+}
+
+impl UnitType {
+    pub fn sequence(&self) -> SequenceNumber {
+        match self {
+            UnitType::StartOver => SequenceNumber::ZERO,
+            UnitType::IndexRegister(s) | UnitType::SoftwareOnly(s) | UnitType::Hardware(s) => *s,
+        }
+    }
+}
+
+impl From<Unsigned6Bit> for UnitType {
+    fn from(n: Unsigned6Bit) -> UnitType {
+        match u8::from(n) {
+            0 => UnitType::StartOver,
+            1..=0o40 => UnitType::IndexRegister(n),
+            0o41..=0o75 => UnitType::Hardware(n),
+            0o76..=0o77 => UnitType::SoftwareOnly(n),
+            _ => unreachable!("unit number outside the range of an unsigned 6-bit quantity"),
+        }
+    }
+}
+
 /// Units report their status (which is used to construct their report
 /// word) with this struct.
 #[derive(Debug, Serialize)]
@@ -396,11 +424,23 @@ impl DeviceManager {
     }
 
     pub fn update_poll_time(&mut self, ctx: &Context, seq: SequenceNumber) {
-        if self.poll_queue.update(seq, ctx.simulated_time).is_err() {
+        if let Err(pollq::PollQueueUpdateFailure::UnknownSequence(seq)) =
+            self.poll_queue.update(seq, ctx.simulated_time)
+        {
             // This happens when we complete an IOS or TSD
             // instruction from a sequence that has no attached
             // hardware.  For example software-only sequences such
             // as 0o0, 0o76 or 0o77.  It's harmless.
+            match UnitType::from(seq) {
+                UnitType::SoftwareOnly(_) => (), // this is OK.
+                UnitType::Hardware(_) => (),     // No attached hardware, this is also OK.
+                UnitType::StartOver => {
+                    unreachable!("attempted to update poll time for STARTOVER unit");
+                }
+                UnitType::IndexRegister(n) => {
+                    unreachable!("attempted to update poll time for index register unit {n:o}");
+                }
+            }
         }
     }
 
@@ -451,10 +491,22 @@ impl DeviceManager {
     pub fn attach(
         &mut self,
         ctx: &Context,
-        unit_number: Unsigned6Bit,
+        unit_type: UnitType,
         in_maintenance: bool,
         mut unit: Box<dyn Unit>,
     ) {
+        let unit_number = match unit_type {
+            UnitType::StartOver => {
+                panic!("Cannot attach hardware to unit 0");
+            }
+            UnitType::IndexRegister(reg) => {
+                panic!("Cannot attach hardware to unit {reg:o}, it's reserved for use as an index register");
+            }
+            UnitType::SoftwareOnly(seq) => {
+                panic!("Cannot attach hardware to software-only unit {seq:o}");
+            }
+            UnitType::Hardware(seq) => seq,
+        };
         self.mark_device_changed(unit_number);
         let status: UnitStatus = unit.poll(ctx);
         self.devices.insert(
@@ -776,17 +828,30 @@ pub fn set_up_peripherals(ctx: &Context, devices: &mut DeviceManager) {
     const NOT_IN_MAINTENANCE: bool = false;
     fn attach_lw(
         ctx: &Context,
-        input_unit: Unsigned6Bit,
-        output_unit: Unsigned6Bit,
+        input_unit: UnitType,
+        output_unit: UnitType,
         devices: &mut DeviceManager,
     ) {
         let state = Rc::new(RefCell::new(LincolnState::default()));
-        let output = Box::new(LincolnWriterOutput::new(output_unit, state.clone()));
-        let input = Box::new(LincolnWriterInput::new(input_unit, state));
+        let output = Box::new(LincolnWriterOutput::new(
+            output_unit.sequence(),
+            state.clone(),
+        ));
+        let input = Box::new(LincolnWriterInput::new(input_unit.sequence(), state));
         devices.attach(ctx, output_unit, NOT_IN_MAINTENANCE, output);
         devices.attach(ctx, input_unit, NOT_IN_MAINTENANCE, input);
     }
 
-    devices.attach(ctx, PETR, NOT_IN_MAINTENANCE, Box::new(Petr::new()));
-    attach_lw(ctx, u6!(0o65), u6!(0o66), devices);
+    devices.attach(
+        ctx,
+        UnitType::from(PETR),
+        NOT_IN_MAINTENANCE,
+        Box::new(Petr::new()),
+    );
+    attach_lw(
+        ctx,
+        UnitType::from(u6!(0o65)),
+        UnitType::from(u6!(0o66)),
+        devices,
+    );
 }

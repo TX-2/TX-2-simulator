@@ -13,6 +13,9 @@ pub(crate) struct PollQueue {
 
 #[derive(Debug)]
 pub(crate) enum PollQueueUpdateFailure {
+    // UnknownSequence rises when we try to update the poll time for a
+    // sequence with no attached hardware.  This is a normal thing for
+    // software-only sequences.
     UnknownSequence(SequenceNumber),
 }
 
