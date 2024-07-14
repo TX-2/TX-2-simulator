@@ -2,7 +2,6 @@ import { Grid, GridItemProps } from '@react-css/grid';
 import { AlarmController } from 'controller/alarms';
 import AlarmPanel from './AlarmPanel';
 import Checkbox from './checkbox';
-import Flex from './Flex';
 import { Instructions } from './Instructions';
 import { IoController } from 'controller/io';
 import { IoPanel } from './IoPanel';
@@ -86,14 +85,14 @@ export const MainGrid = (props: MainGridProps) => (
       <Box column="1 / span 3" row="1" style={{overflowY: "scroll"}}>
         <Instructions /></Box>
       <Box column="1 / span 3" row="2">
-        <Flex flexDirection="row">
+        <div className="main-grid-flexbox">
           <AlarmPanel
             alarmStatuses={props.alarmController.all_alarm_info()}
             maskedChangeCallback={props.alarmController.set_alarm_masked.bind(props.alarmController)}
             registerStatusCallback={props.alarmController.set_alarm_status_callback.bind(props.alarmController)}
           />
           <IoPanel ioController={props.ioController} />
-        </Flex>
+        </div>
       </Box>
       <Box column="1" row="3">
         <Buttons
