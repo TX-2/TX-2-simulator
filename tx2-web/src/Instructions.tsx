@@ -10,6 +10,9 @@ export function Instructions(): JSX.Element {
 
   return (
     <section className={styles['instructions']}>
+      <button onClick={toggleInstructionsVisibility}>
+        {instructionsVisible ? 'Hide Instructions' : 'Show Instructions'}
+      </button>
       {instructionsVisible && (
         <>
           <p>Here are some getting-started instructions.</p>
@@ -26,9 +29,6 @@ export function Instructions(): JSX.Element {
           </p>
         </>
       )}
-      <button onClick={toggleInstructionsVisibility}>
-        {instructionsVisible ? 'Hide Instructions' : 'Show Instructions'}
-      </button>
     </section>
   );
 }
