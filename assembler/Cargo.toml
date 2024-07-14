@@ -10,7 +10,7 @@ base = {path = "../base" }
 # Clap is dual-licensed MIT/Apache
 # https://github.com/clap-rs/clap/blob/master/LICENSE-MIT
 # https://github.com/clap-rs/clap/blob/master/LICENSE-APACHE
-clap = { version = "3", features = ["derive"] }
+clap = { version = "4", features = ["derive"] }
 
 chumsky = { version="=1.0.0-alpha.6", features=["label"] }
 
