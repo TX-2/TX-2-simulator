@@ -5,7 +5,6 @@ import React from 'react';
 interface FlexProperties extends Properties {
   className?: string,
   children?: JSX.Element[] | string,
-  container?: boolean,
 }
 
 const Flex = (props: FlexProperties) => (
