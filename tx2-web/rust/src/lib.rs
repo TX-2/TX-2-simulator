@@ -71,7 +71,7 @@ pub fn tx2_next_simulated_tick(tx2: &Tx2) -> f64 {
     // We use next_after to round f up slightly to ensure that the
     // tick time used by the next JS call to tick() is actually a
     // different time to the current tick.
-    let f = next.as_secs_f64().next_after(std::f64::INFINITY);
+    let f = next.as_secs_f64().next_after(f64::INFINITY);
     event!(
         Level::TRACE,
         "tx2_next_simulated_tick: next={next:?}, f={f:?}"
