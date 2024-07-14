@@ -76,6 +76,9 @@ jobs:
         path: dist-for-deploy
 
     - name: Deploy to GitHub Pages
+      # When changing version of this action, remember to update the
+      # repository settings in github, otherwise the new version may
+      # not be allowed to run.
       uses: crazy-max/ghaction-github-pages@v4
       with:
         repo: TX-2/demo
