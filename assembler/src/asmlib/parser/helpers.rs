@@ -1,6 +1,4 @@
 use std::collections::HashMap;
-use std::error::Error;
-use std::fmt::{self, Display};
 use std::num::IntErrorKind;
 
 use base::prelude::*;
@@ -261,21 +259,6 @@ pub(super) fn opcode_auto_hold_bit(opcode: Unsigned6Bit) -> u64 {
         1 << 35
     } else {
         0
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
-pub(crate) struct InvalidSymexChar(char);
-
-impl Error for InvalidSymexChar {}
-
-impl Display for InvalidSymexChar {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "'{}' is not valid at this point in a symbol name",
-            self.0
-        )
     }
 }
 

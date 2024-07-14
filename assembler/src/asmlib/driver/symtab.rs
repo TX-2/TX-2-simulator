@@ -9,18 +9,12 @@ use base::subword;
 
 use super::super::ast::Origin;
 use super::super::eval::{
-    BadSymbolDefinition, Evaluate, HereValue, LookupTarget, MemoryReference, SymbolContext,
-    SymbolDefinition, SymbolLookup, SymbolLookupFailure, SymbolLookupFailureKind, SymbolValue,
+    BadSymbolDefinition, Evaluate, HereValue, LookupTarget, SymbolContext, SymbolDefinition,
+    SymbolLookup, SymbolLookupFailure, SymbolLookupFailureKind, SymbolValue,
 };
 use super::super::symbol::SymbolName;
 use super::super::types::Span;
 use super::super::types::{offset_from_origin, MachineLimitExceededFailure};
-
-/// Instances of Infallible cannot be created as it has no variants.
-/// When the never type (`!`) is stabilised, we should use that
-/// instead.
-#[derive(Debug)]
-pub(crate) enum Infallible {}
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub(crate) enum DefaultValueAssignmentError {
@@ -456,48 +450,5 @@ impl SymbolLookup for SymbolTable {
         op: &mut Self::Operation<'_>,
     ) -> Result<SymbolValue, SymbolLookupFailure> {
         self.final_lookup_helper(name, span, target_address, context, op)
-    }
-
-    fn lookup(
-        &mut self,
-        name: &SymbolName,
-        span: Span,
-        target_address: &HereValue,
-        context: &SymbolContext,
-    ) -> Result<SymbolValue, SymbolLookupFailure> {
-        let mut op = FinalLookupOperation::default();
-        self.lookup_with_op(name, span, target_address, context, &mut op)
-    }
-
-    fn resolve_memory_reference(
-        &mut self,
-        memref: &MemoryReference,
-        span: Span,
-        op: &mut Self::Operation<'_>,
-    ) -> Result<Address, SymbolLookupFailure> {
-        let limit_exceeded = |mle: MachineLimitExceededFailure| -> SymbolLookupFailure {
-            SymbolLookupFailure {
-                target: LookupTarget::MemRef(*memref, span),
-                kind: SymbolLookupFailureKind::MachineLimitExceeded(mle),
-            }
-        };
-
-        match self.finalise_origin(memref.block_number, Some(op)) {
-            Ok(block_origin) => match offset_from_origin(&block_origin, memref.block_offset) {
-                Ok(addr) => Ok(addr),
-                Err(_) => Err(limit_exceeded(MachineLimitExceededFailure::BlockTooLarge {
-                    block_number: memref.block_number,
-                    block_origin,
-                    offset: memref.block_offset,
-                })),
-            },
-            Err(value_assign_error) => match value_assign_error {
-                DefaultValueAssignmentError::Inconsistency(msg) => Err(SymbolLookupFailure {
-                    target: LookupTarget::MemRef(*memref, span),
-                    kind: SymbolLookupFailureKind::Inconsistent(msg),
-                }),
-                DefaultValueAssignmentError::MachineLimitExceeded(mle) => Err(limit_exceeded(mle)),
-            },
-        }
     }
 }

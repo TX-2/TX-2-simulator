@@ -981,25 +981,6 @@ impl SymbolLookup for NoSymbols {
     ) -> Result<SymbolValue, SymbolLookupFailure> {
         panic!("no lookups are expected, but got lookup for {name}")
     }
-
-    fn lookup(
-        &mut self,
-        name: &SymbolName,
-        _span: Span,
-        _target_address: &HereValue,
-        _context: &crate::eval::SymbolContext,
-    ) -> Result<SymbolValue, SymbolLookupFailure> {
-        panic!("no lookups are expected, but got lookup for {name}")
-    }
-
-    fn resolve_memory_reference(
-        &mut self,
-        memref: &crate::eval::MemoryReference,
-        _span: Span, // TODO: use &Span?
-        _op: &mut Self::Operation<'_>,
-    ) -> Result<Address, SymbolLookupFailure> {
-        panic!("no lookups are expected, but got lookup for {memref:?}")
-    }
 }
 
 #[test]

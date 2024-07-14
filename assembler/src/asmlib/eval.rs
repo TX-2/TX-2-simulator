@@ -72,9 +72,6 @@ pub(crate) enum SymbolValue {
     Final(Unsigned36Bit),
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub(crate) enum MemoryReferenceResolutionFailure {}
-
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum SymbolLookupFailureKind {
     Inconsistent(String),
@@ -157,13 +154,6 @@ impl std::error::Error for SymbolLookupFailure {}
 pub(crate) trait SymbolLookup {
     type Operation<'a>;
 
-    fn lookup(
-        &mut self,
-        name: &SymbolName,
-        span: Span, // TODO: use &Span?
-        target_address: &HereValue,
-        context: &SymbolContext,
-    ) -> Result<SymbolValue, SymbolLookupFailure>;
     fn lookup_with_op(
         &mut self,
         name: &SymbolName,
@@ -172,12 +162,6 @@ pub(crate) trait SymbolLookup {
         context: &SymbolContext,
         op: &mut Self::Operation<'_>,
     ) -> Result<SymbolValue, SymbolLookupFailure>;
-    fn resolve_memory_reference(
-        &mut self,
-        memref: &MemoryReference,
-        span: Span, // TODO: use &Span?
-        op: &mut Self::Operation<'_>,
-    ) -> Result<Address, SymbolLookupFailure>;
 }
 
 /// HereValue specifies the value used for '#'

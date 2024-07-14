@@ -4,6 +4,7 @@ use super::super::ast::{
     ArithmeticExpression, Atom, Block, HoldBit, InstructionFragment, LiteralValue, ManuscriptBlock,
     PunchCommand, SourceFile, Statement, TaggedProgramInstruction, UntaggedProgramInstruction,
 };
+use super::super::driver::symtab::FinalLookupOperation;
 use super::super::eval::{SymbolContext, SymbolLookup, SymbolValue};
 use super::super::symbol::SymbolName;
 use super::super::types::Span;
@@ -64,7 +65,8 @@ fn assemble_check_symbols(input: &str, target_address: Address, expected: &[(&st
         let span = span(0..(name.len()));
         let context = SymbolContext::from((Script::Normal, span));
         let here = HereValue::Address(target_address);
-        match symtab.lookup(&sym, span, &here, &context) {
+        let mut op = FinalLookupOperation::default();
+        match symtab.lookup_with_op(&sym, span, &here, &context, &mut op) {
             Ok(got) => {
                 if got != *expected_value {
                     panic!("incorrect value for symbol {name}; expected {expected_value:?}, got {got:?}");
