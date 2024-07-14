@@ -47,7 +47,7 @@ jobs:
 
     # Save wasm build so that we can optionally deploy it without rebuilding
     - name: Save wasm dist artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: tx2-web-dist
         path: tx2-web/dist
