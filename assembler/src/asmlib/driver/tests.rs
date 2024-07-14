@@ -58,7 +58,7 @@ fn assemble_check_symbols(input: &str, target_address: Address, expected: &[(&st
     use crate::eval::HereValue;
 
     let (_directive, mut symtab) = assemble_nonempty_valid_input(input);
-    for (name, expected_value) in expected.into_iter() {
+    for (name, expected_value) in expected.iter() {
         let sym = SymbolName {
             canonical: name.to_string(),
         };

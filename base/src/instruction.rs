@@ -554,11 +554,11 @@ mod tests {
             OperandAddress::Direct(addr(0o0377750_u32)),
             "wrong address"
         );
-        assert_eq!(inst.is_deferred_addressing(), false, "wrong dismis");
+        assert!(!inst.is_deferred_addressing(), "wrong dismiss");
         assert_eq!(inst.index_address(), 0, "wrong index");
         assert_eq!(inst.opcode_number(), 5, "wrong opcode");
         assert!(inst.configuration().is_zero(), "wrong cf");
-        assert_eq!(inst.is_held(), false, "wrong held");
+        assert!(!inst.is_held(), "wrong held");
     }
 
     #[test]

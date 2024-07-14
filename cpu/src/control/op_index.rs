@@ -427,7 +427,7 @@ mod tests {
             Signed18Bit::ZERO,
             &[Unsigned36Bit::ONE],
             false,
-            Some(&vec![(1usize, SystemConfiguration::from(0_u8))]),
+            Some(&[(1usize, SystemConfiguration::from(0_u8))]),
             1,
         );
         assert_eq!(sum, Signed18Bit::ONE);
@@ -439,15 +439,8 @@ mod tests {
     fn op_aux_negative() {
         const COMPLAIN: &str = "failed to set up AUX test data";
         let context = make_ctx();
-        let minus_three = Signed36Bit::try_from(-3)
-            .expect(COMPLAIN)
-            .reinterpret_as_unsigned();
-        let items_to_add = [
-            Signed36Bit::try_from(-1)
-                .expect(COMPLAIN)
-                .reinterpret_as_unsigned(),
-            minus_three,
-        ];
+        let minus_three = Signed36Bit::from(-3).reinterpret_as_unsigned();
+        let items_to_add = [Signed36Bit::from(-1).reinterpret_as_unsigned(), minus_three];
         let (sum, e) = simulate_aux(
             &context,
             Unsigned6Bit::ONE,                                // Use register X₁
@@ -457,7 +450,7 @@ mod tests {
             // System configuration 0o340 uses only the right-hand
             // subword, which is how AUX behaves anyway - so this
             // should make no difference.
-            Some(&vec![(1usize, SystemConfiguration::from(0o340_u8))]),
+            Some(&[(1usize, SystemConfiguration::from(0o340_u8))]),
             1usize,
         );
         assert_eq!(sum, Signed18Bit::try_from(0o250073).expect(COMPLAIN));
@@ -475,7 +468,7 @@ mod tests {
             u18!(0o000_111).reinterpret_as_signed(),
             &[u36!(0o444_000_222_010)],
             false,
-            Some(&vec![(1usize, SystemConfiguration::from(0_u8))]),
+            Some(&[(1usize, SystemConfiguration::from(0_u8))]),
             1,
         );
         assert_eq!(sum, u18!(0o222_121).reinterpret_as_signed());
@@ -621,7 +614,7 @@ mod tests {
             u18!(0o300_555).reinterpret_as_signed(), // initial value
             &[u36!(0o020_010)],
             false,
-            Some(&vec![(1usize, SystemConfiguration::from(u9!(0o750)))]), // 0o750: q2 only
+            Some(&[(1usize, SystemConfiguration::from(u9!(0o750)))]), // 0o750: q2 only
             1usize,
         );
         // The sum should be formed from q2 of the initial value

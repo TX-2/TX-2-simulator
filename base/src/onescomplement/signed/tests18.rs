@@ -19,8 +19,8 @@ macro_rules! assert_octal_eq {
 fn test_signed18_max_value() {
     assert_eq!(u64::try_from(Signed18Bit::MAX), Ok(0o377_777_u64));
     assert_eq!(u32::try_from(Signed18Bit::MAX), Ok(0o377_777_u32));
-    assert_eq!(i64::from(Signed18Bit::MAX), 0o377_777 as i64);
-    assert_eq!(i32::from(Signed18Bit::MAX), 0o377_777 as i32);
+    assert_eq!(i64::from(Signed18Bit::MAX), 0o377_777_i64);
+    assert_eq!(i32::from(Signed18Bit::MAX), 0o377_777_i32);
 }
 
 #[test]
@@ -31,8 +31,8 @@ fn test_signed18_max_range() {
 
 #[test]
 fn test_signed18_min_value() {
-    assert_eq!(i64::from(Signed18Bit::MIN), -(0o377_777 as i64));
-    assert_eq!(i32::from(Signed18Bit::MIN), -(0o377_777 as i32));
+    assert_eq!(i64::from(Signed18Bit::MIN), -0o377_777_i64);
+    assert_eq!(i32::from(Signed18Bit::MIN), -0o377_777_i32);
 }
 
 #[test]
@@ -352,14 +352,14 @@ fn test_from_signed18bit_to_u16() {
 #[test]
 fn test_signed18bit_ord() {
     assert!(Signed18Bit::ZERO < Signed18Bit::ONE);
-    assert!(!(Signed18Bit::ONE < Signed18Bit::ZERO));
-    assert!(!(Signed18Bit::ZERO < Signed18Bit::ZERO));
-    assert!(!(Signed18Bit::ONE < Signed18Bit::ONE));
+    assert!(Signed18Bit::ONE >= Signed18Bit::ZERO);
+    assert!(Signed18Bit::ZERO >= Signed18Bit::ZERO);
+    assert!(Signed18Bit::ONE >= Signed18Bit::ONE);
 
     assert!(Signed18Bit::ONE > Signed18Bit::ZERO);
-    assert!(!(Signed18Bit::ZERO > Signed18Bit::ZERO));
-    assert!(!(Signed18Bit::ONE > Signed18Bit::ONE));
-    assert!(!(Signed18Bit::ZERO > Signed18Bit::ONE));
+    assert!(Signed18Bit::ZERO <= Signed18Bit::ZERO);
+    assert!(Signed18Bit::ONE <= Signed18Bit::ONE);
+    assert!(Signed18Bit::ZERO <= Signed18Bit::ONE);
 
     assert!(Signed18Bit::MIN < Signed18Bit::MAX);
     assert!(Signed18Bit::MAX > Signed18Bit::MIN);

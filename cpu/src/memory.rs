@@ -1210,7 +1210,7 @@ fn test_ae_registers_share_metabit() {
     let ae_regs = [a_addr, b_addr, c_addr, d_addr, e_addr];
 
     fn set_metabit(context: &Context, mem: &mut MemoryUnit, addr: Address, value: bool) {
-        match mem.write_access(&context, &addr) {
+        match mem.write_access(context, &addr) {
             Ok(Some(mut word)) => word.set_meta_bit_to_value(value),
             Ok(None) => {
                 panic!("AE register at {addr:o} is not mapped");
@@ -1222,7 +1222,7 @@ fn test_ae_registers_share_metabit() {
     }
 
     fn get_metabit(context: &Context, mem: &mut MemoryUnit, addr: Address) -> bool {
-        match mem.read_access(&context, &addr) {
+        match mem.read_access(context, &addr) {
             Ok(word) => word.get_meta_bit(),
             Err(e) => {
                 panic!("failed to read memory at {addr:o}: {e}");

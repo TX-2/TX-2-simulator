@@ -123,7 +123,7 @@ fn test_i64_round_tripping() {
                 assert!(input <= -(1_i64 << 35));
             }
             Ok(x) => {
-                let result: i64 = x.try_into().expect("round-trip should work");
+                let result: i64 = x.into();
                 assert_octal_eq!(input, result);
             }
         }

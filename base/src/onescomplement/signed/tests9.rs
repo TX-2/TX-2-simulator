@@ -204,14 +204,14 @@ fn test_signed9bit_ord() {
     let zero: Signed9Bit = Signed9Bit::from(0_i8);
     let one: Signed9Bit = Signed9Bit::from(1_i8);
     assert!(zero < one);
-    assert!(!(one < zero));
-    assert!(!(zero < zero));
-    assert!(!(one < one));
+    assert!(one >= zero);
+    assert!(zero >= zero);
+    assert!(one >= one);
 
     assert!(one > zero);
-    assert!(!(zero > zero));
-    assert!(!(one > one));
-    assert!(!(zero > one));
+    assert!(zero <= zero);
+    assert!(one <= one);
+    assert!(zero <= one);
 
     assert!(Signed9Bit::MIN < Signed9Bit::MAX);
     assert!(Signed9Bit::MAX > Signed9Bit::MIN);

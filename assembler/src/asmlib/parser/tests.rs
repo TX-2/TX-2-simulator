@@ -24,7 +24,7 @@ use super::super::symbol::SymbolName;
 use super::symex::{parse_multi_syllable_symex, parse_symex};
 use super::*;
 
-fn errors_as_string<'a, T: Display>(errors: &[Rich<'a, T>]) -> String {
+fn errors_as_string<T: Display>(errors: &[Rich<'_, T>]) -> String {
     let n = errors.len();
     errors
         .iter()
@@ -736,7 +736,7 @@ fn assignment_of_literal(name: &str, assignment_span: Span, literal: LiteralValu
 
 #[test]
 fn test_assignment_literal() {
-    const INPUTS: &[(&'static str, usize)] = &[
+    const INPUTS: &[(&str, usize)] = &[
         ("FOO=2", 4),
         ("FOO =2", 5),
         ("F O O = 2", 8), // spaces are also allowed inside symexes.
@@ -757,7 +757,7 @@ fn test_assignment_literal() {
 
 #[test]
 fn test_assignment_superscript() {
-    const INPUTS: &[(&'static str, usize, usize)] = &[
+    const INPUTS: &[(&str, usize, usize)] = &[
         // Unicode code point B2 is a superscript 2.
         ("FOO=\u{00B2}", 4, 6),
         ("FOO =\u{00B2}", 5, 7),
@@ -778,7 +778,7 @@ fn test_assignment_superscript() {
 
 #[test]
 fn test_assignment_subscript() {
-    const INPUTS: &[(&'static str, usize, usize)] = &[
+    const INPUTS: &[(&str, usize, usize)] = &[
         // Unicode code point 2083 is a subscript 3.
         ("FOO=\u{2083}", 4, 7),
         ("FOO =\u{2083}", 5, 8),

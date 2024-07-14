@@ -316,8 +316,8 @@ fn test_sequence_numnber() {
     assert!(ZERO < ONE);
     assert_eq!(ONE, ONE);
     assert_eq!(ZERO, ZERO);
-    assert!(!(ONE == ZERO));
-    assert!(!(ZERO == ONE));
+    assert!(ONE != ZERO);
+    assert!(ZERO != ONE);
 
     // When SequenceNumber is Unsigned6Bit, SequenceNumber::MAX should be 0o77.
     // assert_eq!(SequenceNumber::MAX, SequenceNumber::try_from(0o77_u8).unwrap());

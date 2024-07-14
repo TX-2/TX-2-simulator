@@ -3,8 +3,6 @@ use std::fs::{File, OpenOptions};
 use std::io::{BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 
-use tempfile;
-
 use assembler::*;
 
 fn get_test_input_file_name(relative_to_manifest: &str) -> PathBuf {
@@ -31,11 +29,11 @@ fn get_temp_output_file_name() -> tempfile::TempPath {
 
 fn files_are_identical(expected: &OsStr, got: &OsStr) -> Result<(), String> {
     fn must_open(name: &OsStr) -> File {
-        File::open(name).expect(&format!("should be able to open test file {name:?}"))
+        File::open(name).unwrap_or_else(|_| panic!("should be able to open test file {name:?}"))
     }
 
-    let expected_file = must_open(&expected);
-    let got_file = must_open(&got);
+    let expected_file = must_open(expected);
+    let got_file = must_open(got);
     const COMPLAIN: &str = "should be able to obtain file size";
     let expected_file_len = expected_file.metadata().expect(COMPLAIN).len();
     let got_file_len = got_file.metadata().expect(COMPLAIN).len();
@@ -97,15 +95,15 @@ fn assembler_golden_output_test(
     let input = get_test_input_file_name(input_relative_path);
     let golden = get_test_input_file_name(golden_output_relative_path);
     let actual_output = get_temp_output_file_name();
-    fill_output_file_with_garbage(&actual_output.to_path_buf());
-    match assemble_file(input.as_os_str(), &actual_output.to_path_buf()) {
+    fill_output_file_with_garbage(&actual_output);
+    match assemble_file(input.as_os_str(), &actual_output) {
         Ok(()) => match files_are_identical(golden.as_os_str(), actual_output.as_os_str()) {
             Ok(()) => Ok(()),
             Err(e) => Err(format!(
                 "{} and {} are not identical: {}",
                 golden.display(),
                 actual_output.display(),
-                e.to_string()
+                e
             )),
         },
         Err(e) => Err(format!("failed to assemble {input_relative_path}: {e}")),

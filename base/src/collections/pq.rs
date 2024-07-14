@@ -45,7 +45,7 @@ fn test_reverse_order() {
     assert_ne!(ReverseOrdered::from(1), ReverseOrdered::from(0));
     assert!(ReverseOrdered::from(1) < ReverseOrdered::from(0));
     assert_ne!(ReverseOrdered::from(1), ReverseOrdered::from(0));
-    assert!(!(ReverseOrdered::from(1) > ReverseOrdered::from(0)));
+    assert!(ReverseOrdered::from(1) <= ReverseOrdered::from(0));
 }
 
 pub struct KeyedReversePriorityQueueUnknownKeyError {}

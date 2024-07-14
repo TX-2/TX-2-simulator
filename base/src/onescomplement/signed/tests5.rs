@@ -34,14 +34,14 @@ fn test_signed5bit_ord() {
     let zero: Signed5Bit = Signed5Bit::try_from(0_i8).unwrap();
     let one: Signed5Bit = Signed5Bit::try_from(1_i8).unwrap();
     assert!(zero < one);
-    assert!(!(one < zero));
-    assert!(!(zero < zero));
-    assert!(!(one < one));
+    assert!(one >= zero);
+    assert!(zero >= zero);
+    assert!(one >= one);
 
     assert!(one > zero);
-    assert!(!(zero > zero));
-    assert!(!(one > one));
-    assert!(!(zero > one));
+    assert!(zero <= zero);
+    assert!(one <= one);
+    assert!(zero <= one);
 
     assert!(Signed5Bit::MIN < Signed5Bit::MAX);
     assert!(Signed5Bit::MAX > Signed5Bit::MIN);

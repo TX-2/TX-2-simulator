@@ -153,7 +153,7 @@ fn assemble_pass1<'a>(
 /// This test helper is defined here so that we don't have to expose
 /// assemble_pass1, assemble_pass2.
 #[cfg(test)]
-pub(crate) fn assemble_nonempty_valid_input<'a>(input: &'a str) -> (Directive, SymbolTable) {
+pub(crate) fn assemble_nonempty_valid_input(input: &str) -> (Directive, SymbolTable) {
     let mut errors: Vec<Rich<'_, char>> = Vec::new();
     let result: Result<(Option<SourceFile>, OutputOptions), AssemblerFailure> =
         assemble_pass1(input, &mut errors);

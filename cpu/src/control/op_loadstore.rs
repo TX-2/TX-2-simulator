@@ -285,8 +285,7 @@ mod tests {
         let base: Signed18Bit = final_operand_address
             .reinterpret_as_signed()
             .checked_sub(defer_index.unwrap_or(Signed18Bit::ZERO))
-            .map(|x| x.checked_sub(xj))
-            .flatten()
+            .and_then(|x| x.checked_sub(xj))
             .expect("test data caused arithmetic overflow");
         let defer: Unsigned36Bit = join_halves(
             defer_index.unwrap_or_default().reinterpret_as_unsigned(),
@@ -367,7 +366,7 @@ mod tests {
             .memory_store_without_exchange(
                 ctx,
                 &mut mem,
-                &working_address,
+                working_address,
                 &mem_word,
                 &UpdateE::No,
                 &MetaBitChange::None,

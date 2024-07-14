@@ -214,14 +214,14 @@ fn test_unsigned9bit_ord() {
     let zero: Unsigned9Bit = Unsigned9Bit::from(0_u8);
     let one: Unsigned9Bit = Unsigned9Bit::from(1_u8);
     assert!(zero < one);
-    assert!(!(one < zero));
-    assert!(!(zero < zero));
-    assert!(!(one < one));
+    assert!(one >= zero);
+    assert!(zero >= zero);
+    assert!(one >= one);
 
     assert!(one > zero);
-    assert!(!(zero > zero));
-    assert!(!(one > one));
-    assert!(!(zero > one));
+    assert!(zero <= zero);
+    assert!(one <= one);
+    assert!(zero <= one);
 
     assert!(Unsigned9Bit::MIN < Unsigned9Bit::MAX);
     assert!(Unsigned9Bit::MAX > Unsigned9Bit::MIN);
