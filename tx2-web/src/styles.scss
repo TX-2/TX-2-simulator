@@ -89,11 +89,15 @@
     background-color: rgb(255, 255, 240);
 }
 
-.lw__output {
+.lw__output_container {
     border: 0px;
     border-style: none;
     margin: 0px 0px;
+}
+
+.lw__output {
     font-family: monospace;
+    height: 4ex;
 }
 
 .lw__cursor  {

@@ -18,7 +18,7 @@ export class LincolnWriter extends React.Component<LincolnWriterProps, LincolnWr
 
   render(): React.ReactElement {
     return (<div className={styles['lw']}>
-      <div className={styles['lw__output']}>
+      <div className={styles['lw__output_container']}>
         <div className={styles['lw__paper']}>
           <span className={styles['lw__output']} id={this.historyId}></span>
           <span  className={styles['lw__output']} id={this.currentId}></span>

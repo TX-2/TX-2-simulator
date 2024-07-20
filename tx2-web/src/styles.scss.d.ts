@@ -15,6 +15,7 @@ declare namespace StylesScssNamespace {
     lw__input__keyboard: string;
     lw__input__keyboard_hits: string;
     lw__output: string;
+    lw__output_container: string;
     lw__paper: string;
     "main-grid-flexbox": string;
     "status-panel": string;
