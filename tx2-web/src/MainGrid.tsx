@@ -9,6 +9,7 @@ import { LincolnWriter } from './LincolnWriter';
 import React from 'react';
 import TapeLoadModal from './TapeLoadModal';
 import { Tx2Controller } from 'controller/tx2';
+import styles from './styles.scss'
 
 interface ButtonsProps {
   changeRunCallback(run: boolean): void,
@@ -109,7 +110,7 @@ export const MainGrid = (props: MainGridProps) => (
           loadSample={props.loadSample}
         />
       </Box>
-      <Box column="2" row="3" style={{padding: "20px", overflowY: "scroll"}}>
+      <Box column="2" row="3" className={styles['lw__container']}>
         <LincolnWriter
           inputUnit={0o65}
           outputUnit={0o66}

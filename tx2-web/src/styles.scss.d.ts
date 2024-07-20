@@ -10,6 +10,7 @@ declare namespace StylesScssNamespace {
     instructions: string;
     "io-panel": string;
     lw: string;
+    lw__container: string;
     lw__cursor: string;
     "lw__cursor-animation": string;
     lw__input__keyboard: string;
