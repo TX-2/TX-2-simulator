@@ -25,12 +25,15 @@ export class LincolnWriter extends React.Component<LincolnWriterProps, LincolnWr
           <span className={styles['lw__cursor']}>&nbsp;</span>
         </div>
       </div>
+    <details>
+      <summary>Keyboard</summary>
       <Keyboard
         tx2Controller={this.props.tx2Controller}
         className={styles['lw__input__keyboard']}
         hdClass={styles['lw__input__keyboard_hits']}
         unit={this.props.inputUnit}
       />
+      </details>
     </div>);
   }
 }

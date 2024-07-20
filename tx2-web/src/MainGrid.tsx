@@ -86,12 +86,18 @@ export const MainGrid = (props: MainGridProps) => (
         <Instructions /></Box>
       <Box column="1 / span 3" row="2">
         <div className="main-grid-flexbox">
-          <AlarmPanel
-            alarmStatuses={props.alarmController.all_alarm_info()}
-            maskedChangeCallback={props.alarmController.set_alarm_masked.bind(props.alarmController)}
-            registerStatusCallback={props.alarmController.set_alarm_status_callback.bind(props.alarmController)}
-          />
-          <IoPanel ioController={props.ioController} />
+          <details className="alarm-details">
+            <summary>Alarms</summary>
+            <AlarmPanel
+              alarmStatuses={props.alarmController.all_alarm_info()}
+              maskedChangeCallback={props.alarmController.set_alarm_masked.bind(props.alarmController)}
+              registerStatusCallback={props.alarmController.set_alarm_status_callback.bind(props.alarmController)}
+            />
+          </details>
+          <details className="io-details" open>
+            <summary>I/O</summary>
+            <IoPanel ioController={props.ioController} />
+          </details>
         </div>
       </Box>
       <Box column="1" row="3">
