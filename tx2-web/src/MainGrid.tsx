@@ -115,7 +115,7 @@ export const MainGrid = (props: MainGridProps) => (
               registerStatusCallback={props.alarmController.set_alarm_status_callback.bind(props.alarmController)}
             />
           </details>
-          <details className="io-details" open>
+          <details className="io-details">
             <summary>I/O</summary>
             <IoPanel ioController={props.ioController} />
           </details>
