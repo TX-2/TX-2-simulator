@@ -6,8 +6,10 @@ use base::Unsigned6Bit;
 
 fn generate_html_for_char(uch: char, attributes: &LincolnState, _advance: bool) -> String {
     let colour_class = match attributes.colour {
-        Colour::Black => "lw-black",
-        Colour::Red => "lw-red",
+        // These styles are defined in index.html, not in CSS files
+        // (because those styles get renamed).
+        Colour::Black => "lwb",
+        Colour::Red => "lwr",
     };
     let (script_open, script_close) = match attributes.script {
         Script::Normal => ("", ""),
