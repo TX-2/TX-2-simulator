@@ -7,6 +7,7 @@ declare namespace StylesScssNamespace {
     "alarm-panel__masked": string;
     "alarm-panel__message": string;
     "alarm-panel__name": string;
+    gridbox: string;
     instructions: string;
     "io-panel": string;
     lw: string;

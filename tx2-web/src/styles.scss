@@ -1,5 +1,12 @@
 /* Many UI elements are styled directly in the React code, still. */
 
+.gridbox {
+    background: lightgray;
+    color: black;
+    borderRadius: 5px;
+    padding: 10px;
+}
+
 .status-panel {
     font-family: Sans-Serif;
     margin: 0.5em;
@@ -91,6 +98,9 @@
     border: 0px;
     border-style: none;
     margin: 0px 0px;
+
+    overflow: auto;
+    height: 16ex;
 }
 
 .lw__output {
