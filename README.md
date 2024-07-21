@@ -1,8 +1,9 @@
 # TX-2 Simulator
 
 We are trying to create a simulator for Lincoln Lab's historic TX-2
-computer.  Notably, this is the computer on which Ivan Sutherland's
-Sketchpad program ran.
+computer. Notably, this is the computer on which Ivan Sutherland's
+Sketchpad program ran. If we can get the simulator working, we may be
+able to run Sketchpad once again.
 
 From [the Wikipedia entry for the TX-2](https://en.wikipedia.org/wiki/TX-2):
 
@@ -14,7 +15,7 @@ From [the Wikipedia entry for the TX-2](https://en.wikipedia.org/wiki/TX-2):
 ## For More Information
 
 The [OVERVIEW](docs/OVERVIEW.md) file explains the high-level design
-of the simulator.  More information is available at the [TX-2
+of the simulator. More information is available at the [TX-2
 Project's website](https://tx-2.github.io/).
 
 ## Trying It Out
@@ -47,6 +48,6 @@ programming of the TX-2](https://tx-2.github.io/documentation.html).
 This is what our implementation is based on.
 
 Please see our [Contributor's Guide](CONTRIBUTING.md) for information
-on what we need and how you can help.  The Guide also explains what
+on what we need and how you can help. The Guide also explains what
 non-coding contributions are needed and how to identify a good "first
 issue" to pick up.
