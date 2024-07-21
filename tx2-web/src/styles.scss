@@ -3,8 +3,16 @@
 .gridbox {
     background: lightgray;
     color: black;
-    borderRadius: 5px;
+    border-radius: 5px;
     padding: 10px;
+
+    padding-right: 1em;
+    padding-left: 1em;
+}
+
+details {
+    margin-top: 0.5ex;
+    margin-right: 0.5em;
 }
 
 .status-panel {
@@ -88,9 +96,6 @@
 
     margin-top: 0px;
     margin-bottom: 0px;
-    margin-right: 1em;
-    margin-left: 1em;
-
     padding-left: 0.5ex;
     padding-right: 0.5ex;
 
