@@ -1,5 +1,5 @@
-import { create_html_canvas_2d_painter, draw_keyboard } from '../build/tx2_web'
-import React, { useEffect, useRef, useState } from 'react'
+import { create_html_canvas_2d_painter, draw_keyboard } from '../build/tx2_web';
+import React, { useEffect, useRef, useState } from 'react';
 import { Tx2Controller } from 'controller/tx2';
 
 type Coordinates = {
@@ -65,6 +65,7 @@ interface KeyboardProps {
   tx2Controller: Tx2Controller,
   className?: string | undefined,
   hdClass?: string | undefined,
+  keysClass?: string | undefined,
   unit: number,
 }
 
@@ -112,9 +113,9 @@ const Keyboard = (props: KeyboardProps) => {
   // We draw two canvases; the first is visible and shows the actual
   // keyboard keys.  The second is invisible but the same size, and is
   // used for mouse pointer hit detection.
-  return (<div>
+  return (<div className={props.className}>
     <Canvas
-      className={props.className}
+      className={props.keysClass}
       draw={draw_vis}
       click={click_keyboard}
       width={w}

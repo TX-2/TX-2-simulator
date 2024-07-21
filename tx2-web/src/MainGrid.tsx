@@ -121,7 +121,7 @@ export const MainGrid = (props: MainGridProps) => (
           </details>
         </div>
       </Box>
-      <Box column="1" row="4" className={styles['lw__container']}>
+      <Box column="1" row="4" className={styles['lw__box']}>
         <LincolnWriter
           inputUnit={0o65}
           outputUnit={0o66}

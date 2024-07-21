@@ -30,6 +30,7 @@ export class LincolnWriter extends React.Component<LincolnWriterProps, LincolnWr
       <Keyboard
         tx2Controller={this.props.tx2Controller}
         className={styles['lw__input__keyboard']}
+        keysClass={styles['lw__input__keyboard_keys']}
         hdClass={styles['lw__input__keyboard_hits']}
         unit={this.props.inputUnit}
       />
