@@ -81,6 +81,7 @@ details {
     }
     &_keys {
         @extend .lw__input__keyboard;
+        position: absolute;
         font: "12px sans-serif";
         /* Put the keyboard picture canvas behind the hit detector canvas */
         z-index: 0;
