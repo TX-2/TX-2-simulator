@@ -14,7 +14,7 @@ often [http://localhost:8081/](http://localhost:8081/).
 
 ## License
 
-* MIT license ([LICENSE-MIT](../LICENSE-MIT)
+* MIT license ([LICENSE-MIT](../LICENSE-MIT))
 
 ### Contribution
 
