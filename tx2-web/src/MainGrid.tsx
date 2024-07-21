@@ -1,3 +1,4 @@
+
 import { Grid, GridItemProps } from '@react-css/grid';
 import { AlarmController } from 'controller/alarms';
 import AlarmPanel from './AlarmPanel';
@@ -7,9 +8,9 @@ import { IoController } from 'controller/io';
 import { IoPanel } from './IoPanel';
 import { LincolnWriter } from './LincolnWriter';
 import React from 'react';
+import styles from './styles.scss';
 import TapeLoadModal from './TapeLoadModal';
 import { Tx2Controller } from 'controller/tx2';
-import styles from './styles.scss'
 
 interface ButtonsProps {
   changeRunCallback(run: boolean): void,
