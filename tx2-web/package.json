@@ -9,7 +9,7 @@
     "build:webpack-with-repeat": "npm run build:webpack-once || npm run build:webpack-once",
     "build": "npm run build:wasm && npm run build:webpack-with-repeat",
     "dev": "webpack server",
-    "lint": "eslint ."
+    "lint": "eslint --cache ."
   },
   "keywords": [],
   "author": "James Youngman <youngman@google.com>",
