@@ -962,9 +962,6 @@ fn test_multi_syllable_symex() {
     );
 }
 
-#[derive(Default, Debug, PartialEq, Eq)]
-struct UnexpectedLookup {}
-
 #[derive(Default, PartialEq, Eq)]
 struct NoSymbols {}
 

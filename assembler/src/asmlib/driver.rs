@@ -3,15 +3,20 @@ mod symtab;
 #[cfg(test)]
 mod tests;
 
+use std::collections::BTreeMap;
 use std::ffi::OsStr;
+use std::fmt::Display;
 use std::fs::OpenOptions;
 use std::io::{BufReader, BufWriter, Read};
 #[cfg(test)]
 use std::ops::Range;
 use std::path::Path;
 
+use base::subword::split_halves;
 use chumsky::error::Rich;
 use tracing::{event, span, Level};
+
+use crate::symbol::SymbolName;
 
 use super::ast::*;
 use super::eval::{Evaluate, HereValue};
@@ -37,10 +42,18 @@ pub enum DirectiveMetaCommand {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-struct OutputOptions {
+pub struct OutputOptions {
     // TODO: implement arguments of the LIST, PLIST, TYPE
     // metacommands.
-    list: bool,
+    pub list: bool,
+}
+
+impl OutputOptions {
+    fn merge(self, other: OutputOptions) -> OutputOptions {
+        OutputOptions {
+            list: self.list || other.list,
+        }
+    }
 }
 
 fn convert_source_file_to_directive(source_file: &SourceFile) -> Directive {
@@ -73,20 +86,11 @@ fn convert_source_file_to_directive(source_file: &SourceFile) -> Directive {
                 None
             }
         };
-        let mut block = Block {
+        directive.push(Block {
             origin: mblock.origin.clone(),
             location,
-            items: Vec::with_capacity(mblock.statements.len()),
-        };
-        for statement in mblock.statements.iter() {
-            match statement {
-                Statement::Instruction(inst) => {
-                    block.push(inst.clone());
-                }
-                Statement::Assignment(_, _, _) => (),
-            }
-        }
-        directive.push(block);
+            items: mblock.statements.clone(),
+        });
     }
 
     match source_file.punch {
@@ -130,12 +134,7 @@ fn assemble_pass1<'a>(
 ) -> Result<(Option<SourceFile>, OutputOptions), AssemblerFailure> {
     let span = span!(Level::ERROR, "assembly pass 1");
     let _enter = span.enter();
-    let options = OutputOptions {
-        // Because we don't parse the LIST etc. metacommands yet, we
-        // simply hard-code the list option so that the symbol table isn't
-        // unused.
-        list: true,
-    };
+    let options = OutputOptions { list: false };
 
     fn setup(state: &mut NumeralMode) {
         // Octal is actually the default numeral mode, we just call
@@ -169,7 +168,10 @@ pub(crate) fn assemble_nonempty_valid_input(input: &str) -> (Directive, SymbolTa
                 panic!("input should be valid: {:?}", &p2output.errors);
             }
             match p2output.directive {
-                Some(directive) => (directive, p2output.symbols),
+                Some(directive) => {
+                    eprintln!("assemble_nonempty_valid_input: {input} assembled to {directive:#?}");
+                    (directive, p2output.symbols)
+                }
                 None => {
                     panic!("assembly pass 2 generated no errors but also no output");
                 }
@@ -291,20 +293,167 @@ fn assemble_pass2<'a>(
     })
 }
 
+fn extract_span<'a>(body: &'a str, span: &Span) -> &'a str {
+    &body[span.start..span.end]
+}
+
+#[derive(Debug)]
+enum ListingLine {
+    Origin(Origin),
+    Instruction {
+        address: Address,
+        instruction: TaggedProgramInstruction,
+        binary: Unsigned36Bit,
+    },
+}
+
+impl ListingLine {}
+
+struct ListingLineWithBody<'a> {
+    line: &'a ListingLine,
+    body: &'a str,
+}
+
+impl Display for ListingLineWithBody<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.line {
+            ListingLine::Origin(origin) => {
+                write!(f, "{origin}|")
+            }
+            ListingLine::Instruction {
+                address,
+                instruction,
+                binary,
+            } => {
+                let displayed_tag: Option<&str> = instruction
+                    .tag
+                    .as_ref()
+                    .map(|t| extract_span(self.body, &t.span));
+                match displayed_tag {
+                    Some(t) => {
+                        write!(f, "{t:10}->")?;
+                    }
+                    None => {
+                        const EMPTY: &str = "";
+                        write!(f, "{EMPTY:12}")?;
+                    }
+                }
+                let displayed_instruction: &str =
+                    extract_span(self.body, &instruction.instruction.span).trim();
+                let (left, right) = split_halves(*binary);
+                write!(
+                    f,
+                    "{displayed_instruction:30}  |{left:06} {right:06}| {address:012}"
+                )
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+struct FinalSymbolDefinition {
+    value: Unsigned36Bit,
+    representation: String,
+}
+
+#[derive(Debug, Default)]
+struct FinalSymbolTable {
+    definitions: BTreeMap<SymbolName, FinalSymbolDefinition>,
+}
+
+impl FinalSymbolTable {
+    fn define(&mut self, name: SymbolName, def: FinalSymbolDefinition) {
+        self.definitions.insert(name, def);
+    }
+}
+
+impl Display for FinalSymbolTable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (
+            name,
+            FinalSymbolDefinition {
+                value,
+                representation,
+            },
+        ) in self.definitions.iter()
+        {
+            writeln!(f, "{name:20} = {value:012} ** {representation:>20}")?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Default)]
+struct Listing {
+    final_symbols: FinalSymbolTable,
+    output: Vec<ListingLine>,
+}
+
+impl Listing {
+    fn set_final_symbols(&mut self, final_symbols: FinalSymbolTable) {
+        self.final_symbols = final_symbols;
+    }
+
+    fn push_line(&mut self, line: ListingLine) {
+        self.output.push(line)
+    }
+
+    fn format_symbol_table(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.final_symbols)
+    }
+}
+
+struct ListingWithBody<'a> {
+    listing: &'a Listing,
+    body: &'a str,
+}
+
+impl Display for ListingWithBody<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Symbol Table:")?;
+        self.listing.format_symbol_table(f)?;
+        writeln!(f)?;
+
+        writeln!(f, "Directive:")?;
+        for line in self.listing.output.iter() {
+            writeln!(
+                f,
+                "{}",
+                &ListingLineWithBody {
+                    line,
+                    body: self.body,
+                }
+            )?;
+        }
+        Ok(())
+    }
+}
+
 /// Pass 3 generates binary code.
 fn assemble_pass3(
     directive: Directive,
     symtab: &mut SymbolTable,
-) -> Result<Binary, AssemblerFailure> {
+    body: &str,
+    mut maybe_listing: Option<&mut Listing>,
+) -> Result<(Binary, FinalSymbolTable), AssemblerFailure> {
     let span = span!(Level::ERROR, "assembly pass 3");
     let _enter = span.enter();
 
+    let mut final_symbols = FinalSymbolTable::default();
     let mut binary = Binary::default();
     if let Some(address) = directive.entry_point() {
         binary.set_entry_point(address);
     }
 
     for (block_number, directive_block) in directive.blocks().enumerate() {
+        if let Some(origin) = directive_block.origin.as_ref() {
+            if let Some(listing) = maybe_listing.as_mut() {
+                // This is an origin (Users Handbook section 6-2.5)
+                // not a tag (6-2.2).
+                listing.push_line(ListingLine::Origin(origin.clone()));
+            }
+        }
+
         let mut op = symtab::FinalLookupOperation::default();
         let address: Address = match symtab.finalise_origin(block_number, Some(&mut op)) {
             Ok(a) => a,
@@ -314,30 +463,63 @@ fn assemble_pass3(
                 ));
             }
         };
-        let words: Result<Vec<Unsigned36Bit>, AddressOverflow> = directive_block
-            .items
-            .iter()
-            .enumerate()
-            .map(|(offset, inst)| -> Result<Unsigned36Bit, AddressOverflow> {
-                let here = HereValue::Address(offset_from_origin(&address, offset)?);
-                let mut op = Default::default();
-                Ok(inst
-                    .evaluate(&here, symtab, &mut op)
-                    .expect("lookup on FinalSymbolTable is infallible"))
-            })
-            .collect::<Result<Vec<_>, AddressOverflow>>();
-        let words = match words {
-            Ok(w) => w,
-            Err(AddressOverflow(base, offset)) => {
-                return Err(AssemblerFailure::MachineLimitExceeded(
-                    MachineLimitExceededFailure::BlockTooLarge {
-                        block_number,
-                        block_origin: base,
-                        offset,
-                    },
-                ));
+        let mut words: Vec<Unsigned36Bit> = Vec::with_capacity(directive_block.items.len());
+        for (offset, statement) in directive_block.items.iter().enumerate() {
+            match offset_from_origin(&address, offset) {
+                Ok(here) => match statement {
+                    Statement::Assignment(span, symbol, definition) => {
+                        let mut op = Default::default();
+                        let value = definition
+                            .evaluate(&HereValue::Address(here), symtab, &mut op)
+                            .expect("lookup on FinalSymbolTable is infallible");
+                        final_symbols.define(
+                            symbol.clone(),
+                            FinalSymbolDefinition {
+                                value,
+                                representation: extract_span(body, span).trim().to_string(),
+                            },
+                        );
+                    }
+                    Statement::Instruction(inst) => {
+                        if let Some(tag) = inst.tag.as_ref() {
+                            final_symbols.define(
+                                tag.name.clone(),
+                                FinalSymbolDefinition {
+                                    value: here.into(),
+                                    representation: extract_span(body, &tag.span)
+                                        .trim()
+                                        .to_string(),
+                                },
+                            );
+                        }
+
+                        let mut op = Default::default();
+                        let word = inst
+                            .evaluate(&HereValue::Address(here), symtab, &mut op)
+                            .expect("lookup on FinalSymbolTable is infallible");
+
+                        if let Some(listing) = maybe_listing.as_mut() {
+                            listing.push_line(ListingLine::Instruction {
+                                address: here,
+                                instruction: inst.clone(),
+                                binary: word,
+                            });
+                        }
+                        words.push(word);
+                    }
+                },
+                Err(AddressOverflow(base, offset)) => {
+                    return Err(AssemblerFailure::MachineLimitExceeded(
+                        MachineLimitExceededFailure::BlockTooLarge {
+                            block_number,
+                            block_origin: base,
+                            offset,
+                        },
+                    ));
+                }
             }
-        };
+        }
+
         if words.is_empty() {
             event!(
                 Level::DEBUG,
@@ -352,7 +534,8 @@ fn assemble_pass3(
             binary.add_chunk(BinaryChunk { address, words });
         }
     }
-    Ok(binary)
+
+    Ok((binary, final_symbols))
 }
 
 fn pos_line_column(s: &str, pos: usize) -> Result<(usize, usize), ()> {
@@ -395,12 +578,17 @@ fn fail_with_diagnostics(source_file_body: &str, errors: Vec<Rich<char>>) -> Ass
     }
 }
 
-pub(crate) fn assemble_source(source_file_body: &str) -> Result<Binary, AssemblerFailure> {
+pub(crate) fn assemble_source(
+    source_file_body: &str,
+    mut options: OutputOptions,
+) -> Result<Binary, AssemblerFailure> {
     let mut errors = Vec::new();
-    let (source_file, options) = assemble_pass1(source_file_body, &mut errors)?;
+    let (source_file, source_options) = assemble_pass1(source_file_body, &mut errors)?;
     if !errors.is_empty() {
         return Err(fail_with_diagnostics(source_file_body, errors));
     }
+    options = options.merge(source_options);
+
     let source_file =
         source_file.expect("assembly pass1 generated no errors, an AST should have been returned");
 
@@ -430,14 +618,25 @@ pub(crate) fn assemble_source(source_file_body: &str) -> Result<Binary, Assemble
             directive.instruction_count()
         );
 
-        if options.list {
-            for (name, definition) in symbols.list() {
-                println!("{name:>20} = {definition}");
-            }
-        }
+        let mut listing = if options.list {
+            Some(Listing::default())
+        } else {
+            None
+        };
 
         // Pass 3 generates the binary output
-        assemble_pass3(directive, &mut symbols)?
+        let (binary, final_symbols) =
+            assemble_pass3(directive, &mut symbols, source_file_body, listing.as_mut())?;
+
+        if let Some(listing) = listing.as_mut() {
+            listing.set_final_symbols(final_symbols);
+            let lb = ListingWithBody {
+                listing,
+                body: source_file_body,
+            };
+            println!("{lb}");
+        }
+        binary
     };
 
     // The count here also doesn't include the size of the RC-block as
@@ -488,7 +687,7 @@ fn test_assemble_pass1() {
                 punch: Some(PunchCommand(expected_directive_entry_point)),
                 blocks: vec![expected_block],
             }),
-            OutputOptions { list: true }
+            OutputOptions { list: false }
         )
     );
     assert!(errors.is_empty());
@@ -497,6 +696,7 @@ fn test_assemble_pass1() {
 pub fn assemble_file(
     input_file_name: &OsStr,
     output_file_name: &Path,
+    options: OutputOptions,
 ) -> Result<(), AssemblerFailure> {
     let input_file = OpenOptions::new()
         .read(true)
@@ -507,7 +707,7 @@ pub fn assemble_file(
             line_number: None,
         })?;
 
-    let source_file_body = {
+    let source_file_body: String = {
         let mut body = String::new();
         match BufReader::new(input_file).read_to_string(&mut body) {
             Err(e) => {
@@ -521,7 +721,7 @@ pub fn assemble_file(
         }
     };
 
-    let user_program: Binary = assemble_source(&source_file_body)?;
+    let user_program: Binary = assemble_source(&source_file_body, options)?;
 
     // The Users Guide explains on page 6-23 how the punched binary
     // is created (and read back in).

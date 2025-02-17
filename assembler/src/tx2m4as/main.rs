@@ -1,7 +1,7 @@
 use std::ffi::OsString;
 use std::path::PathBuf;
 
-use clap::ArgAction::Set;
+use clap::ArgAction::{Set, SetTrue};
 use clap::Parser;
 use tracing::{event, span, Level};
 use tracing_subscriber::prelude::*;
@@ -24,6 +24,11 @@ struct Cli {
     /// File to which assembler output is written
     #[clap(action = Set, short = 'o', long)]
     output: OsString,
+
+    /// When set, list the assembler output (analogous to the listing
+    /// produced by the M4 assembler's LIST command).
+    #[clap(action = SetTrue, long)]
+    list: bool,
 }
 
 fn run_asembler() -> Result<(), Fail> {
@@ -52,7 +57,8 @@ fn run_asembler() -> Result<(), Fail> {
     let span = span!(Level::ERROR, "assemble", input=?cli.input, output=?cli.output);
     let _enter = span.enter();
     let output_path = PathBuf::from(cli.output);
-    let result = assemble_file(&cli.input, &output_path).map_err(Fail::AsmFail);
+    let options: OutputOptions = OutputOptions { list: cli.list };
+    let result = assemble_file(&cli.input, &output_path, options).map_err(Fail::AsmFail);
     if let Err(e) = &result {
         event!(Level::ERROR, "assembly failed: {:?}", e);
     } else {

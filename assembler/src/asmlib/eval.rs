@@ -327,11 +327,14 @@ impl Display for SymbolDefinition {
                 block_offset,
                 span: _,
             } => {
-                write!(f, "tag at offset {block_offset} in block {block_number}")
+                write!(
+                    f,
+                    "tag at offset {block_offset} in block {block_number} with unspecified address"
+                )
             }
-            SymbolDefinition::Equality(_inst) => {
+            SymbolDefinition::Equality(inst) => {
                 // TODO: print the assigned value, too?
-                write!(f, "assignment with value")
+                write!(f, "assignment with value {inst:#?}")
             }
             SymbolDefinition::Undefined(_context) => f.write_str("undefined"),
         }

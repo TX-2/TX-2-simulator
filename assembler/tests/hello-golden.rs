@@ -96,7 +96,7 @@ fn assembler_golden_output_test(
     let golden = get_test_input_file_name(golden_output_relative_path);
     let actual_output = get_temp_output_file_name();
     fill_output_file_with_garbage(&actual_output);
-    match assemble_file(input.as_os_str(), &actual_output) {
+    match assemble_file(input.as_os_str(), &actual_output, Default::default()) {
         Ok(()) => match files_are_identical(golden.as_os_str(), actual_output.as_os_str()) {
             Ok(()) => Ok(()),
             Err(e) => Err(format!(

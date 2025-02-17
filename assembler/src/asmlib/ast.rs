@@ -567,6 +567,10 @@ impl Evaluate for UntaggedProgramInstruction {
     }
 }
 
+/// A "Tag" is a symex used as a name for a place in a program.  A tag
+/// is always terminated by an arrow ("->") and [in the symbol table]
+/// it set to the numerical location of the word that it tags. [from
+/// section 6-2.2 of the User's Handbook].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Tag {
     pub(crate) name: SymbolName,
@@ -817,14 +821,10 @@ impl Directive {
 pub(crate) struct Block {
     pub(crate) origin: Option<Origin>,
     pub(crate) location: Option<Address>,
-    pub(crate) items: Vec<TaggedProgramInstruction>,
+    pub(crate) items: Vec<Statement>,
 }
 
 impl Block {
-    pub(crate) fn push(&mut self, inst: TaggedProgramInstruction) {
-        self.items.push(inst);
-    }
-
     pub(crate) fn instruction_count(&self) -> usize {
         self.items.len()
     }

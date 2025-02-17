@@ -118,14 +118,6 @@ impl SymbolTable {
         self.get(name).cloned()
     }
 
-    pub(crate) fn list(&self) -> impl Iterator<Item = (&SymbolName, &SymbolDefinition)> {
-        // We take advantage of the fact that iterating over a
-        // BTreeMap yields the symbols in order.
-        self.definitions
-            .iter()
-            .map(|(symbol, internal_def)| (symbol, &internal_def.def))
-    }
-
     pub(crate) fn define(
         &mut self,
         span: Span,
@@ -191,11 +183,12 @@ impl SymbolTable {
                         block_offset,
                         span: _,
                     } => match t.finalise_origin(block_number, Some(op)) {
-                        Ok(address) => Ok(SymbolValue::Final(
-                            offset_from_origin(&address, block_offset)
-                                .expect("program is too long")
-                                .into(),
-                        )),
+                        Ok(address) => {
+                            let computed_address: Address =
+                                offset_from_origin(&address, block_offset)
+                                    .expect("program is too long");
+                            Ok(SymbolValue::Final(computed_address.into()))
+                        }
                         Err(e) => {
                             panic!("failed to finalise origin of block {block_number}: {e}");
                         }
@@ -333,14 +326,13 @@ impl SymbolTable {
                 None => Err(DefaultValueAssignmentError::Inconsistency(
                     format!("request to finalise origin of block {block_number} but there is no such block"))),
             }
-        }).map(|a| {
+        }).inspect(|_a| {
             if let Some((symbol_name, def, span)) = newdef {
                 self.definitions.insert(symbol_name, InternalSymbolDef {
                     span,
                     def,
                 });
             }
-            a
         })
     }
 
