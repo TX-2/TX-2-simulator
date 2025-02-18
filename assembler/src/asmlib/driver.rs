@@ -3,7 +3,6 @@ mod symtab;
 #[cfg(test)]
 mod tests;
 
-use std::collections::BTreeMap;
 use std::ffi::OsStr;
 use std::fmt::Display;
 use std::fs::OpenOptions;
@@ -16,15 +15,13 @@ use base::subword::split_halves;
 use chumsky::error::Rich;
 use tracing::{event, span, Level};
 
-use crate::symbol::SymbolName;
-
 use super::ast::*;
 use super::eval::{Evaluate, HereValue};
 use super::parser::parse_source_file;
 use super::state::NumeralMode;
 use super::types::*;
 use base::prelude::{Address, Unsigned36Bit};
-use symtab::SymbolTable;
+use symtab::{FinalSymbolDefinition, FinalSymbolTable, SymbolTable};
 
 #[cfg(test)]
 use base::charset::Script;
@@ -350,39 +347,6 @@ impl Display for ListingLineWithBody<'_> {
     }
 }
 
-#[derive(Debug)]
-struct FinalSymbolDefinition {
-    value: Unsigned36Bit,
-    representation: String,
-}
-
-#[derive(Debug, Default)]
-struct FinalSymbolTable {
-    definitions: BTreeMap<SymbolName, FinalSymbolDefinition>,
-}
-
-impl FinalSymbolTable {
-    fn define(&mut self, name: SymbolName, def: FinalSymbolDefinition) {
-        self.definitions.insert(name, def);
-    }
-}
-
-impl Display for FinalSymbolTable {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for (
-            name,
-            FinalSymbolDefinition {
-                value,
-                representation,
-            },
-        ) in self.definitions.iter()
-        {
-            writeln!(f, "{name:20} = {value:012} ** {representation:>20}")?;
-        }
-        Ok(())
-    }
-}
-
 #[derive(Debug, Default)]
 struct Listing {
     final_symbols: FinalSymbolTable,
@@ -454,7 +418,7 @@ fn assemble_pass3(
             }
         }
 
-        let mut op = symtab::FinalLookupOperation::default();
+        let mut op = symtab::LookupOperation::default();
         let address: Address = match symtab.finalise_origin(block_number, Some(&mut op)) {
             Ok(a) => a,
             Err(_) => {
@@ -474,22 +438,20 @@ fn assemble_pass3(
                             .expect("lookup on FinalSymbolTable is infallible");
                         final_symbols.define(
                             symbol.clone(),
-                            FinalSymbolDefinition {
+                            FinalSymbolDefinition::new(
                                 value,
-                                representation: extract_span(body, span).trim().to_string(),
-                            },
+                                extract_span(body, span).trim().to_string(),
+                            ),
                         );
                     }
                     Statement::Instruction(inst) => {
                         if let Some(tag) = inst.tag.as_ref() {
                             final_symbols.define(
                                 tag.name.clone(),
-                                FinalSymbolDefinition {
-                                    value: here.into(),
-                                    representation: extract_span(body, &tag.span)
-                                        .trim()
-                                        .to_string(),
-                                },
+                                FinalSymbolDefinition::new(
+                                    here.into(),
+                                    extract_span(body, &tag.span).trim().to_string(),
+                                ),
                             );
                         }
 
@@ -534,6 +496,8 @@ fn assemble_pass3(
             binary.add_chunk(BinaryChunk { address, words });
         }
     }
+
+    final_symbols.check_all_defined(&*symtab);
 
     Ok((binary, final_symbols))
 }

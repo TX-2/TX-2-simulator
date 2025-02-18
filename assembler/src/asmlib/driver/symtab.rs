@@ -72,7 +72,7 @@ pub(crate) struct SymbolTable {
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct FinalLookupOperation {
+pub(crate) struct LookupOperation {
     depends_on: HashSet<SymbolName>,
     deps_in_order: Vec<SymbolName>,
 }
@@ -166,14 +166,14 @@ impl SymbolTable {
         span: Span,
         target_address: &HereValue,
         _context: &SymbolContext,
-        op: &mut FinalLookupOperation,
+        op: &mut LookupOperation,
     ) -> Result<SymbolValue, SymbolLookupFailure> {
         fn body(
             t: &mut SymbolTable,
             name: &SymbolName,
             span: Span,
             target_address: &HereValue,
-            op: &mut FinalLookupOperation,
+            op: &mut LookupOperation,
         ) -> Result<SymbolValue, SymbolLookupFailure> {
             if let Some(def) = t.get_clone(name) {
                 match def {
@@ -194,7 +194,7 @@ impl SymbolTable {
                         }
                     },
                     SymbolDefinition::Equality(expression) => {
-                        // The target adderss does not matter below
+                        // The target address does not matter below
                         // since assignments are not allowed to use
                         // '#' on the right-hand-side of the
                         // assignment.
@@ -235,7 +235,7 @@ impl SymbolTable {
     pub(crate) fn finalise_origin(
         &mut self,
         block_number: usize,
-        maybe_op: Option<&mut FinalLookupOperation>,
+        maybe_op: Option<&mut LookupOperation>,
     ) -> Result<Address, DefaultValueAssignmentError> {
         let mut newdef: Option<(SymbolName, SymbolDefinition, Span)> = None;
         match self
@@ -258,8 +258,8 @@ impl SymbolTable {
                 block_address: None,
                 ..
             } => {
-                let mut new_op = FinalLookupOperation::default();
-                let op: &mut FinalLookupOperation = maybe_op.unwrap_or(&mut new_op);
+                let mut new_op = LookupOperation::default();
+                let op: &mut LookupOperation = maybe_op.unwrap_or(&mut new_op);
                 self.assign_default_for_block(block_number, op)
             }
             BlockPosition {
@@ -273,8 +273,8 @@ impl SymbolTable {
                 // assign an address and then update the symbol table.
                 match self.get_clone(&symbol_name) {
                     Some(SymbolDefinition::Equality(rhs)) => {
-                        let mut new_op = FinalLookupOperation::default();
-                        let op: &mut FinalLookupOperation = maybe_op.unwrap_or(&mut new_op);
+                        let mut new_op = LookupOperation::default();
+                        let op: &mut LookupOperation = maybe_op.unwrap_or(&mut new_op);
                         match rhs.evaluate(&HereValue::NotAllowed, self, op) {
                             Ok(value) => Ok(Address::from(subword::right_half(value))),
                             Err(e) => {
@@ -302,15 +302,15 @@ impl SymbolTable {
                     }
                     None => {
                         let context = SymbolContext::origin(block_number, span);
-                        let mut new_op = FinalLookupOperation::default();
-                        let op: &mut FinalLookupOperation = maybe_op.unwrap_or(&mut new_op);
+                        let mut new_op = LookupOperation::default();
+                        let op: &mut LookupOperation = maybe_op.unwrap_or(&mut new_op);
                         let addr = self.assign_default_for_block(block_number, op)?;
                         newdef = Some((symbol_name.clone(), SymbolDefinition::DefaultAssigned(addr.into(), context), span));
                         Ok(addr)
                     }
                     Some(SymbolDefinition::Undefined(context)) => {
-                        let mut new_op = FinalLookupOperation::default();
-                        let op: &mut FinalLookupOperation = maybe_op.unwrap_or(&mut new_op);
+                        let mut new_op = LookupOperation::default();
+                        let op: &mut LookupOperation = maybe_op.unwrap_or(&mut new_op);
                         let addr = self.assign_default_for_block(block_number, op)?;
                         newdef = Some((symbol_name.clone(), SymbolDefinition::DefaultAssigned(addr.into(), context), block_span));
                         Ok(addr)
@@ -339,7 +339,7 @@ impl SymbolTable {
     fn assign_default_for_block(
         &mut self,
         block_number: usize,
-        op: &mut FinalLookupOperation,
+        op: &mut LookupOperation,
     ) -> Result<Address, DefaultValueAssignmentError> {
         let address = match block_number.checked_sub(1) {
             None => {
@@ -431,7 +431,7 @@ impl SymbolTable {
 }
 
 impl SymbolLookup for SymbolTable {
-    type Operation<'a> = FinalLookupOperation;
+    type Operation<'a> = LookupOperation;
 
     fn lookup_with_op(
         &mut self,
@@ -442,5 +442,55 @@ impl SymbolLookup for SymbolTable {
         op: &mut Self::Operation<'_>,
     ) -> Result<SymbolValue, SymbolLookupFailure> {
         self.final_lookup_helper(name, span, target_address, context, op)
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct FinalSymbolDefinition {
+    value: Unsigned36Bit,
+    representation: String,
+}
+
+impl FinalSymbolDefinition {
+    pub(crate) fn new(value: Unsigned36Bit, representation: String) -> Self {
+        FinalSymbolDefinition {
+            value,
+            representation,
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct FinalSymbolTable {
+    definitions: BTreeMap<SymbolName, FinalSymbolDefinition>,
+}
+
+impl FinalSymbolTable {
+    pub(crate) fn define(&mut self, name: SymbolName, def: FinalSymbolDefinition) {
+        self.definitions.insert(name, def);
+    }
+
+    pub(crate) fn check_all_defined(&self, symtab: &SymbolTable) {
+        for (name, definition) in symtab.definitions.iter() {
+            if !self.definitions.contains_key(name) {
+                panic!("symbol {name} appears in symbol table with definition {definition:?} but was not finalised in the final symbol table");
+            }
+        }
+    }
+}
+
+impl Display for FinalSymbolTable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (
+            name,
+            FinalSymbolDefinition {
+                value,
+                representation,
+            },
+        ) in self.definitions.iter()
+        {
+            writeln!(f, "{name:20} = {value:012} ** {representation:>20}")?;
+        }
+        Ok(())
     }
 }
