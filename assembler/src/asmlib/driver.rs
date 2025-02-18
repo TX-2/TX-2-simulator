@@ -20,7 +20,7 @@ use super::eval::{Evaluate, HereValue};
 use super::parser::parse_source_file;
 use super::state::NumeralMode;
 use super::types::*;
-use base::prelude::{Address, Unsigned36Bit};
+use base::prelude::{Address, Unsigned18Bit, Unsigned36Bit};
 use symtab::{FinalSymbolDefinition, FinalSymbolTable, SymbolTable};
 
 #[cfg(test)]
@@ -29,6 +29,8 @@ use base::charset::Script;
 use base::prelude::Unsigned18Bit;
 #[cfg(test)]
 use base::u36;
+
+const EMPTY: &str = "";
 
 /// Represents the meta commands which are still relevant in the
 /// directive.  Excludes things like the PUNCH meta command.
@@ -304,8 +306,6 @@ enum ListingLine {
     },
 }
 
-impl ListingLine {}
-
 struct ListingLineWithBody<'a> {
     line: &'a ListingLine,
     body: &'a str,
@@ -331,17 +331,20 @@ impl Display for ListingLineWithBody<'_> {
                         write!(f, "{t:10}->")?;
                     }
                     None => {
-                        const EMPTY: &str = "";
                         write!(f, "{EMPTY:12}")?;
                     }
                 }
                 let displayed_instruction: &str =
                     extract_span(self.body, &instruction.instruction.span).trim();
                 let (left, right) = split_halves(*binary);
-                write!(
-                    f,
-                    "{displayed_instruction:30}  |{left:06} {right:06}| {address:012}"
-                )
+                write!(f, "{displayed_instruction:30}  |{left:06} {right:06}| ")?;
+
+                let addr_value: Unsigned18Bit = (*address).into();
+                if addr_value & 0o7 == 0 {
+                    write!(f, "{addr_value:>06o}")
+                } else {
+                    write!(f, "   {:>03o}", addr_value & 0o777)
+                }
             }
         }
     }
