@@ -3,6 +3,7 @@ mod symtab;
 #[cfg(test)]
 mod tests;
 
+use std::cmp::max;
 use std::ffi::OsStr;
 use std::fmt::Display;
 use std::fs::OpenOptions;
@@ -16,17 +17,15 @@ use chumsky::error::Rich;
 use tracing::{event, span, Level};
 
 use super::ast::*;
-use super::eval::{Evaluate, HereValue};
+use super::eval::{Evaluate, HereValue, SymbolDefinition};
 use super::parser::parse_source_file;
 use super::state::NumeralMode;
 use super::types::*;
-use base::prelude::{Address, Unsigned18Bit, Unsigned36Bit};
+use base::prelude::{Address, IndexBy, Unsigned18Bit, Unsigned36Bit};
 use symtab::{FinalSymbolDefinition, FinalSymbolTable, SymbolTable};
 
 #[cfg(test)]
 use base::charset::Script;
-#[cfg(test)]
-use base::prelude::Unsigned18Bit;
 #[cfg(test)]
 use base::u36;
 
@@ -55,20 +54,24 @@ impl OutputOptions {
     }
 }
 
-fn convert_source_file_to_directive(source_file: &SourceFile) -> Directive {
+fn convert_source_file_to_directive(
+    source_file: &SourceFile,
+    symtab: &mut SymbolTable,
+) -> Result<Directive, AssemblerFailure> {
     let mut directive: Directive = Directive::default();
+    let mut block_default_location: Address = Origin::default_address();
+
     for (block_number, mblock) in source_file.blocks.iter().enumerate() {
         // We still include zero-word blocks in the directive output
         // so that we don't change the block numbering.
         let len = mblock.instruction_count();
         let location: Option<Address> = match mblock.origin.as_ref() {
             None => {
-                let address = Origin::default_address();
                 event!(
                     Level::DEBUG,
-                    "Locating directive block {block_number} having {len} words at default origin {address:o}",
+                    "Locating directive block {block_number} having {len} words at default origin {block_default_location:o}",
                 );
-                Some(address)
+                Some(block_default_location)
             }
             Some(Origin::Literal(_, address)) => {
                 event!(
@@ -77,12 +80,27 @@ fn convert_source_file_to_directive(source_file: &SourceFile) -> Directive {
                 );
                 Some(*address)
             }
-            Some(Origin::Symbolic(_, name)) => {
+            Some(Origin::Symbolic(span, name)) => {
                 event!(
                     Level::DEBUG,
-                    "Locating directive block {block_number} having {len} words at symbolic location {name}, which is not resolved yet",
+                    "Locating directive block {block_number} having {len} words at symbolic location {name}, which we now known to be {block_default_location}",
                 );
-                None
+                if !symtab.is_defined(&name) {
+                    if let Err(e) = symtab.define(
+                        span.clone(),
+                        name.clone(),
+                        SymbolDefinition::Origin(block_default_location),
+                    ) {
+                        return Err(AssemblerFailure::InvalidProgram {
+                            span: span.clone(),
+                            msg: format!("inconsistent definitions of origin {name}: {e}"),
+                        });
+                    }
+                    Some(block_default_location)
+                } else {
+                    println!("origin for block {block_number} is not yet defined");
+                    None
+                }
             }
         };
         directive.push(Block {
@@ -90,6 +108,17 @@ fn convert_source_file_to_directive(source_file: &SourceFile) -> Directive {
             location,
             items: mblock.statements.clone(),
         });
+        if let Some(loc) = location {
+            // Some programs could use equates or explicit origin
+            // specifications to generate blocks that overlap.  From
+            // my understanding of the User Handbook, such programs
+            // are not rejected.  The tape loader will happily load
+            // such programs.  But we don't have clear tests for such
+            // cases.  We can add these if we come across programs
+            // that seem to do this.
+            let block_end: Address = loc.index_by(len);
+            block_default_location = max(block_default_location, block_end);
+        }
     }
 
     match source_file.punch {
@@ -123,7 +152,7 @@ fn convert_source_file_to_directive(source_file: &SourceFile) -> Directive {
     // existing program be cleared?  Should the symbol
     // table be cleared?
 
-    directive
+    Ok(directive)
 }
 
 /// Pass 1 converts the program source into an abstract syntax representation.
@@ -272,14 +301,14 @@ fn assemble_pass2<'a>(
     let span = span!(Level::ERROR, "assembly pass 2");
     let _enter = span.enter();
 
-    let symtab = match initial_symbol_table(source_file) {
+    let mut symtab = match initial_symbol_table(source_file) {
         Ok(syms) => syms,
         Err(errors) => {
             return Err(fail_with_diagnostics(source_file_body, errors));
         }
     };
 
-    let directive = convert_source_file_to_directive(source_file);
+    let directive: Directive = convert_source_file_to_directive(source_file, &mut symtab)?;
     event!(
         Level::INFO,
         "assembly generated {} instructions",
@@ -413,14 +442,6 @@ fn assemble_pass3(
     }
 
     for (block_number, directive_block) in directive.blocks().enumerate() {
-        if let Some(origin) = directive_block.origin.as_ref() {
-            if let Some(listing) = maybe_listing.as_mut() {
-                // This is an origin (Users Handbook section 6-2.5)
-                // not a tag (6-2.2).
-                listing.push_line(ListingLine::Origin(origin.clone()));
-            }
-        }
-
         let mut op = symtab::LookupOperation::default();
         let address: Address = match symtab.finalise_origin(block_number, Some(&mut op)) {
             Ok(a) => a,
@@ -430,8 +451,37 @@ fn assemble_pass3(
                 ));
             }
         };
+
+        if let Some(origin) = directive_block.origin.as_ref() {
+            if let Origin::Symbolic(span, symbol_name) = origin {
+                final_symbols.define_if_undefined(
+                    symbol_name.clone(),
+                    FinalSymbolDefinition::new(
+                        address.into(),
+                        extract_span(body, span).trim().to_string(),
+                    ),
+                );
+            }
+            if let Some(listing) = maybe_listing.as_mut() {
+                // This is an origin (Users Handbook section 6-2.5)
+                // not a tag (6-2.2).
+                listing.push_line(ListingLine::Origin(origin.clone()));
+            }
+        }
+
         let mut words: Vec<Unsigned36Bit> = Vec::with_capacity(directive_block.items.len());
         for (offset, statement) in directive_block.items.iter().enumerate() {
+            let offset: Unsigned18Bit = if let Ok(n) = Unsigned18Bit::try_from(offset) {
+                n
+            } else {
+                return Err(AssemblerFailure::MachineLimitExceeded(
+                    MachineLimitExceededFailure::BlockTooLarge {
+                        block_number,
+                        block_origin: address,
+                        offset,
+                    },
+                ));
+            };
             match offset_from_origin(&address, offset) {
                 Ok(here) => match statement {
                     Statement::Assignment(span, symbol, definition) => {
@@ -458,6 +508,7 @@ fn assemble_pass3(
                             );
                         }
 
+                        eprintln!("offset {offset}: assembling instruction {inst:?}");
                         let mut op = Default::default();
                         let word = inst
                             .evaluate(&HereValue::Address(here), symtab, &mut op)
@@ -478,7 +529,7 @@ fn assemble_pass3(
                         MachineLimitExceededFailure::BlockTooLarge {
                             block_number,
                             block_origin: base,
-                            offset,
+                            offset: offset.into(),
                         },
                     ));
                 }

@@ -581,7 +581,7 @@ impl Tag {
     pub(crate) fn symbol_uses(
         &self,
         block_number: usize,
-        block_offset: usize,
+        block_offset: Unsigned18Bit,
     ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
         [(
             self.name.clone(),
@@ -606,7 +606,7 @@ impl TaggedProgramInstruction {
     pub(crate) fn symbol_uses(
         &self,
         block: usize,
-        offset: usize,
+        offset: Unsigned18Bit,
     ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
         let mut result = Vec::new();
         if let Some(tag) = self.tag.as_ref() {
@@ -720,17 +720,17 @@ impl Statement {
         }
     }
 
-    fn memory_size(&self) -> usize {
+    fn memory_size(&self) -> Unsigned18Bit {
         match self {
-            Statement::Assignment(_, _, _) => 0,
-            Statement::Instruction(_) => 1,
+            Statement::Assignment(_, _, _) => Unsigned18Bit::ZERO,
+            Statement::Instruction(_) => Unsigned18Bit::ONE,
         }
     }
 
     pub(crate) fn symbol_uses(
         &self,
         block: usize,
-        offset: usize,
+        offset: Unsigned18Bit,
     ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
         match self {
             Statement::Assignment(span, symbol, expression) => {
@@ -765,12 +765,14 @@ impl ManuscriptBlock {
             result.extend(origin.symbol_uses(block_number));
         }
         for (offset, statement) in self.statements.iter().enumerate() {
-            result.extend(statement.symbol_uses(block_number, offset));
+            let off: Unsigned18Bit = Unsigned18Bit::try_from(offset)
+                .expect("block should not be larger than the TX-2's memory");
+            result.extend(statement.symbol_uses(block_number, off));
         }
         result.into_iter()
     }
 
-    pub(crate) fn instruction_count(&self) -> usize {
+    pub(crate) fn instruction_count(&self) -> Unsigned18Bit {
         self.statements.iter().map(|st| st.memory_size()).sum()
     }
 
@@ -796,8 +798,11 @@ pub(crate) struct Directive {
 }
 
 impl Directive {
-    pub(crate) fn instruction_count(&self) -> usize {
-        self.blocks.iter().map(Block::instruction_count).sum()
+    pub(crate) fn instruction_count(&self) -> Unsigned18Bit {
+        self.blocks
+            .iter()
+            .map(Block::emitted_instruction_count)
+            .sum()
     }
 
     pub(crate) fn set_entry_point(&mut self, a: Address) {
@@ -825,7 +830,7 @@ pub(crate) struct Block {
 }
 
 impl Block {
-    pub(crate) fn instruction_count(&self) -> usize {
-        self.items.len()
+    pub(crate) fn emitted_instruction_count(&self) -> Unsigned18Bit {
+        self.items.iter().map(|stmt| stmt.memory_size()).sum()
     }
 }

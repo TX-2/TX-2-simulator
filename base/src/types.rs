@@ -171,7 +171,13 @@ impl IndexBy<u8> for Address {
     }
 }
 
-fn idx_impl(base: Address, delta: Signed18Bit) -> Result<Address, ConversionFailed> {
+fn unsigned_idx_impl(base: Address, delta: Unsigned18Bit) -> Result<Address, ConversionFailed> {
+    let (current, mark) = base.split();
+    let physical = current.wrapping_add(delta) & !PLACEHOLDER_MARK_BIT;
+    Ok(Address::join(physical, mark))
+}
+
+fn signed_idx_impl(base: Address, delta: Signed18Bit) -> Result<Address, ConversionFailed> {
     let (current, mark) = base.split();
     let abs_delta: Unsigned18Bit = Unsigned18Bit::try_from(i32::from(delta.abs()))?;
     let physical = match delta.signum() {
@@ -184,19 +190,25 @@ fn idx_impl(base: Address, delta: Signed18Bit) -> Result<Address, ConversionFail
 
 impl IndexBy<Signed5Bit> for Address {
     fn index_by(&self, delta: Signed5Bit) -> Address {
-        idx_impl(*self, Signed18Bit::from(delta)).unwrap()
+        signed_idx_impl(*self, Signed18Bit::from(delta)).unwrap()
     }
 }
 
 impl IndexBy<Signed6Bit> for Address {
     fn index_by(&self, delta: Signed6Bit) -> Address {
-        idx_impl(*self, Signed18Bit::from(delta)).unwrap()
+        signed_idx_impl(*self, Signed18Bit::from(delta)).unwrap()
     }
 }
 
 impl IndexBy<Signed18Bit> for Address {
     fn index_by(&self, delta: Signed18Bit) -> Address {
-        idx_impl(*self, delta).unwrap()
+        signed_idx_impl(*self, delta).unwrap()
+    }
+}
+
+impl IndexBy<Unsigned18Bit> for Address {
+    fn index_by(&self, delta: Unsigned18Bit) -> Address {
+        unsigned_idx_impl(*self, delta).unwrap()
     }
 }
 

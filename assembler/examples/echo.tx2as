@@ -10,8 +10,8 @@
 ** The first Lincoln Writer's input is unit 65.  We will put the code
 ** for its sequence at 200, so the program counter for sequence 65
 ** (which is X₆₅) should start at 200.
-100|      REX₆₅   200     ** Set X₆₅ to 200.
-        ²¹IOS₆₅ 30000     ** Connect Lincoln Writer input 1 (unit 65).
+100|      REX₆₅ ECHOLOOP     ** Set X₆₅ to 200.
+        ²¹IOS₆₅ 30000        ** Connect Lincoln Writer input 1 (unit 65).
 
 ** The IOS instruction connecting unit 65 has the side effect of
 ** making sequence 65 runnable. Because bit 020 of the configuration
@@ -27,14 +27,14 @@
 ** in Volume 2 of the TX-2 Techical Manual.  In our current case,
 ** there is no need to write this data to any other location than E.
 
-200| ³TSD 377610 ** read code into E register
-     ³SED    500 ** compare with STOP, skip if different.
-                 ** use configuration 3 to compare only Q1.
-      0          ** STOP entered, so execute an invalid instruction.
-      JMP    200 ** code is not STOP, so loop to 200.
+ECHOLOOP|  ³TSD 377610       ** read code into E register
+           ³SED    STOPCODE  ** compare with STOP, skip if different.
+                             ** use configuration 3 to compare only Q1.
+           0                 ** STOP entered, so execute an invalid instruction.
+           JMP    ECHOLOOP   ** code is not STOP, so loop to 200.
 
 ** We keep data at 500 and following
-500| 76   ** the LW code for STOP
+STOPCODE-> 76           ** the LW code for STOP
 
 
 ** Indicate to the assembler that it should generate a punched tape

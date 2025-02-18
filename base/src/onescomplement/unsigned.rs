@@ -455,6 +455,14 @@ macro_rules! unsigned_ones_complement_impl {
             }
         }
 
+        impl std::iter::Sum for $SelfT {
+            fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+                iter.fold(Self::ZERO, |acc, n| {
+                    acc.checked_add(n).expect("sum should not overflow")
+                })
+            }
+        }
+
         impl std::ops::Shl<$SelfT> for $SelfT {
             type Output = $SelfT;
             fn shl(self, shift_by: $SelfT) -> Self {

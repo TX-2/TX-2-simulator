@@ -196,7 +196,7 @@ impl Display for Fail {
 impl Error for Fail {}
 
 #[derive(Debug)]
-pub(crate) struct AddressOverflow(pub(crate) Address, pub(crate) usize);
+pub(crate) struct AddressOverflow(pub(crate) Address, pub(crate) Unsigned18Bit);
 
 impl std::error::Error for AddressOverflow {}
 
@@ -212,11 +212,10 @@ impl Display for AddressOverflow {
 
 pub(crate) fn offset_from_origin(
     origin: &Address,
-    offset: usize,
+    offset: Unsigned18Bit,
 ) -> Result<Address, AddressOverflow> {
-    let offset18 = Unsigned18Bit::try_from(offset).map_err(|_| AddressOverflow(*origin, offset))?;
     let (physical, _mark) = origin.split();
-    match physical.checked_add(offset18) {
+    match physical.checked_add(offset) {
         Some(total) => Ok(Address::from(total)),
         None => Err(AddressOverflow(*origin, offset)),
     }

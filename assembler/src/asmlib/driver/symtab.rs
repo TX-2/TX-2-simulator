@@ -13,8 +13,7 @@ use super::super::eval::{
     SymbolLookup, SymbolLookupFailure, SymbolLookupFailureKind, SymbolValue,
 };
 use super::super::symbol::SymbolName;
-use super::super::types::Span;
-use super::super::types::{offset_from_origin, MachineLimitExceededFailure};
+use super::super::types::{offset_from_origin, MachineLimitExceededFailure, Span};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub(crate) enum DefaultValueAssignmentError {
@@ -42,7 +41,7 @@ pub(super) struct BlockPosition {
     pub(super) span: Span,
     pub(super) origin: Option<Origin>,
     pub(super) block_address: Option<Address>,
-    pub(super) block_size: usize,
+    pub(super) block_size: Unsigned18Bit,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -80,7 +79,7 @@ pub(crate) struct LookupOperation {
 impl SymbolTable {
     pub(crate) fn new<I>(block_sizes: I) -> SymbolTable
     where
-        I: IntoIterator<Item = (Span, Option<Origin>, usize)>,
+        I: IntoIterator<Item = (Span, Option<Origin>, Unsigned18Bit)>,
     {
         let blocks = block_sizes
             .into_iter()
@@ -116,6 +115,10 @@ impl SymbolTable {
 
     pub(crate) fn get_clone(&mut self, name: &SymbolName) -> Option<SymbolDefinition> {
         self.get(name).cloned()
+    }
+
+    pub(crate) fn is_defined(&self, name: &SymbolName) -> bool {
+        self.definitions.contains_key(name)
     }
 
     pub(crate) fn define(
@@ -178,15 +181,14 @@ impl SymbolTable {
             if let Some(def) = t.get_clone(name) {
                 match def {
                     SymbolDefinition::DefaultAssigned(value, _) => Ok(SymbolValue::Final(value)),
+                    SymbolDefinition::Origin(addr) => Ok(SymbolValue::Final(addr.into())),
                     SymbolDefinition::Tag {
                         block_number,
                         block_offset,
                         span: _,
                     } => match t.finalise_origin(block_number, Some(op)) {
                         Ok(address) => {
-                            let computed_address: Address =
-                                offset_from_origin(&address, block_offset)
-                                    .expect("program is too long");
+                            let computed_address: Address = address.index_by(block_offset);
                             Ok(SymbolValue::Final(computed_address.into()))
                         }
                         Err(e) => {
@@ -282,6 +284,7 @@ impl SymbolTable {
                             }
                         }
                     }
+                    Some(SymbolDefinition::Origin(addr)) => Ok(addr),
                     Some(SymbolDefinition::Tag { .. }) => {
                         // e.g.
                         //     FOO|FOO-> 1
@@ -356,7 +359,7 @@ impl SymbolTable {
                             MachineLimitExceededFailure::BlockTooLarge {
                                 block_number: previous_block_number,
                                 block_origin: previous_block_origin,
-                                offset: previous.block_size,
+                                offset: previous.block_size.into(),
                             },
                         )),
                     }
@@ -468,6 +471,12 @@ pub(crate) struct FinalSymbolTable {
 impl FinalSymbolTable {
     pub(crate) fn define(&mut self, name: SymbolName, def: FinalSymbolDefinition) {
         self.definitions.insert(name, def);
+    }
+
+    pub(crate) fn define_if_undefined(&mut self, name: SymbolName, def: FinalSymbolDefinition) {
+        if !self.definitions.contains_key(&name) {
+            self.definitions.insert(name, def);
+        }
     }
 
     pub(crate) fn check_all_defined(&self, symtab: &SymbolTable) {

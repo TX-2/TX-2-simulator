@@ -3,7 +3,7 @@ use std::fmt::{self, Debug, Display, Formatter};
 
 use base::{
     charset::Script,
-    prelude::{Address, Unsigned36Bit},
+    prelude::{Address, Unsigned18Bit, Unsigned36Bit},
 };
 
 use super::ast::UntaggedProgramInstruction;
@@ -284,9 +284,10 @@ impl From<(Script, Span)> for SymbolContext {
 pub(crate) enum SymbolDefinition {
     Tag {
         block_number: usize,
-        block_offset: usize,
+        block_offset: Unsigned18Bit,
         span: Span,
     },
+    Origin(Address),
     Equality(UntaggedProgramInstruction),
     Undefined(SymbolContext),
     DefaultAssigned(Unsigned36Bit, SymbolContext),
@@ -295,6 +296,7 @@ pub(crate) enum SymbolDefinition {
 impl Debug for SymbolDefinition {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            SymbolDefinition::Origin(address) => write!(f, "Origin({address:o})"),
             SymbolDefinition::Tag {
                 block_number,
                 block_offset,
@@ -321,6 +323,9 @@ impl Display for SymbolDefinition {
         match self {
             SymbolDefinition::DefaultAssigned(value, _) => {
                 write!(f, "default-assigned as {value}")
+            }
+            SymbolDefinition::Origin(addr) => {
+                write!(f, "{addr:06o}")
             }
             SymbolDefinition::Tag {
                 block_number,
