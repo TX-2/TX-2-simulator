@@ -26,11 +26,7 @@ fn assemble_literal(input: &str, expected: &InstructionFragment) {
     let got = directive.blocks.as_slice();
     eprintln!("{got:#?}");
     match got {
-        [LocatedBlock {
-            origin: _,
-            location: _,
-            items,
-        }] => {
+        [LocatedBlock { location: _, items }] => {
             eprintln!("There are {} items", items.len());
             match items.as_slice() {
                 [Statement::Instruction(TaggedProgramInstruction {
@@ -137,12 +133,7 @@ fn span(range: Range<usize>) -> Span {
 fn test_metacommand_dec_changes_default_base() {
     const INPUT: &str = concat!("10\n", "☛☛DECIMAL\n", "10  ** Ten\n");
     let (directive, _) = assemble_nonempty_valid_input(INPUT);
-    if let [LocatedBlock {
-        origin: _,
-        location: _,
-        items,
-    }] = directive.blocks.as_slice()
-    {
+    if let [LocatedBlock { location: _, items }] = directive.blocks.as_slice() {
         if let [Statement::Instruction(TaggedProgramInstruction {
             tag: None,
             instruction:

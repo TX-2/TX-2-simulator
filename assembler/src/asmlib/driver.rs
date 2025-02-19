@@ -260,6 +260,7 @@ impl Binary {
 
 struct Pass2Output<'a> {
     directive: Option<Directive>,
+    origins: Vec<Option<Origin>>,
     symbols: SymbolTable,
     errors: Vec<Rich<'a, char>>,
 }
@@ -331,10 +332,12 @@ fn assemble_pass2<'a>(
     }
 
     // Deduce the address of every block.
-    let directive: Directive = assign_block_positions(blocks, maybe_entry_point, &mut symtab)?;
+    let (directive, origins): (Directive, Vec<Option<Origin>>) =
+        assign_block_positions(blocks, maybe_entry_point, &mut symtab)?;
 
     Ok(Pass2Output {
         directive: Some(directive),
+        origins,
         symbols: symtab,
         errors: Vec::new(),
     })
@@ -459,8 +462,10 @@ fn assign_block_positions(
     blocks: Vec<Block>,
     maybe_entry_point: Option<Address>,
     symtab: &mut SymbolTable,
-) -> Result<Directive, AssemblerFailure> {
+) -> Result<(Directive, Vec<Option<Origin>>), AssemblerFailure> {
     let mut output_blocks: Vec<LocatedBlock> = Vec::with_capacity(blocks.len());
+    let mut origins: Vec<Option<Origin>> = Vec::with_capacity(blocks.len());
+
     for (block_number, directive_block) in blocks.into_iter().enumerate() {
         let mut op = symtab::LookupOperation::default();
         let address: Address = match symtab.finalise_origin(block_number, Some(&mut op)) {
@@ -471,6 +476,8 @@ fn assign_block_positions(
                 )));
             }
         };
+
+        origins.push(directive_block.origin.clone());
 
         if let Some(Origin::Symbolic(span, symbol_name)) = directive_block.origin.as_ref() {
             if !symtab.is_defined(symbol_name) {
@@ -489,18 +496,18 @@ fn assign_block_positions(
             }
         }
         output_blocks.push(LocatedBlock {
-            origin: directive_block.origin,
             location: address,
             items: directive_block.items,
         });
     }
 
-    Ok(Directive::new(output_blocks, maybe_entry_point))
+    Ok((Directive::new(output_blocks, maybe_entry_point), origins))
 }
 
 /// Pass 3 generates binary code.
 fn assemble_pass3(
     directive: Directive,
+    origins: Vec<Option<Origin>>,
     symtab: &mut SymbolTable,
     body: &str,
     mut maybe_listing: Option<&mut Listing>,
@@ -515,6 +522,20 @@ fn assemble_pass3(
 
     let mut final_symbols = FinalSymbolTable::default();
 
+    for (origin, block) in origins.iter().zip(directive.blocks()) {
+        if let Some(Origin::Symbolic(span, symbol_name)) = origin {
+            assert!(symtab.is_defined(symbol_name));
+
+            final_symbols.define_if_undefined(
+                symbol_name.clone(),
+                FinalSymbolDefinition::new(
+                    block.location.into(),
+                    extract_span(body, span).trim().to_string(),
+                ),
+            );
+        }
+    }
+
     // Emit the binary code.
     for (block_number, directive_block) in directive.blocks().enumerate() {
         event!(
@@ -524,19 +545,7 @@ fn assemble_pass3(
             directive_block.items.len(),
         );
 
-        if let Some(origin) = directive_block.origin.as_ref() {
-            if let Origin::Symbolic(span, symbol_name) = origin {
-                assert!(symtab.is_defined(symbol_name));
-
-                final_symbols.define_if_undefined(
-                    symbol_name.clone(),
-                    FinalSymbolDefinition::new(
-                        directive_block.location.into(),
-                        extract_span(body, span).trim().to_string(),
-                    ),
-                );
-            }
-
+        if let Some(Some(origin)) = origins.get(block_number) {
             if let Some(listing) = maybe_listing.as_mut() {
                 // This is an origin (Users Handbook section 6-2.5)
                 // not a tag (6-2.2).
@@ -685,6 +694,7 @@ pub(crate) fn assemble_source(
     // Now we do pass 2.
     let Pass2Output {
         directive,
+        origins,
         mut symbols,
         errors,
     } = assemble_pass2(&source_file, source_file_body)?;
@@ -709,8 +719,13 @@ pub(crate) fn assemble_source(
         };
 
         // Pass 3 generates the binary output
-        let (binary, final_symbols) =
-            assemble_pass3(directive, &mut symbols, source_file_body, listing.as_mut())?;
+        let (binary, final_symbols) = assemble_pass3(
+            directive,
+            origins,
+            &mut symbols,
+            source_file_body,
+            listing.as_mut(),
+        )?;
 
         if let Some(listing) = listing.as_mut() {
             listing.set_final_symbols(final_symbols);

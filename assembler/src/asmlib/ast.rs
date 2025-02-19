@@ -829,7 +829,6 @@ impl Block {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct LocatedBlock {
-    pub(crate) origin: Option<Origin>,
     pub(crate) location: Address,
     pub(crate) items: Vec<Statement>,
 }
