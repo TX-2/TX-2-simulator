@@ -474,9 +474,7 @@ impl FinalSymbolTable {
     }
 
     pub(crate) fn define_if_undefined(&mut self, name: SymbolName, def: FinalSymbolDefinition) {
-        if !self.definitions.contains_key(&name) {
-            self.definitions.insert(name, def);
-        }
+        self.definitions.entry(name).or_insert(def);
     }
 
     pub(crate) fn check_all_defined(&self, symtab: &SymbolTable) {

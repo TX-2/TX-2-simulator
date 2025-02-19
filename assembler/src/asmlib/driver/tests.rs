@@ -1,8 +1,9 @@
 use std::ops::{Range, Shl};
 
 use super::super::ast::{
-    ArithmeticExpression, Atom, Block, HoldBit, InstructionFragment, LiteralValue, ManuscriptBlock,
-    PunchCommand, SourceFile, Statement, TaggedProgramInstruction, UntaggedProgramInstruction,
+    ArithmeticExpression, Atom, HoldBit, InstructionFragment, LiteralValue, LocatedBlock,
+    ManuscriptBlock, PunchCommand, SourceFile, Statement, TaggedProgramInstruction,
+    UntaggedProgramInstruction,
 };
 use super::super::driver::symtab::LookupOperation;
 use super::super::eval::{SymbolContext, SymbolLookup, SymbolValue};
@@ -25,7 +26,7 @@ fn assemble_literal(input: &str, expected: &InstructionFragment) {
     let got = directive.blocks.as_slice();
     eprintln!("{got:#?}");
     match got {
-        [Block {
+        [LocatedBlock {
             origin: _,
             location: _,
             items,
@@ -136,7 +137,7 @@ fn span(range: Range<usize>) -> Span {
 fn test_metacommand_dec_changes_default_base() {
     const INPUT: &str = concat!("10\n", "☛☛DECIMAL\n", "10  ** Ten\n");
     let (directive, _) = assemble_nonempty_valid_input(INPUT);
-    if let [Block {
+    if let [LocatedBlock {
         origin: _,
         location: _,
         items,

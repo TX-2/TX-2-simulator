@@ -793,31 +793,23 @@ pub(crate) struct Directive {
     // are assigned in the order they appear in the code, and
     // similarly for undefined origins (e.g. "FOO| JMP ..." where FOO
     // has no definition).
-    pub(crate) blocks: Vec<Block>,
+    pub(crate) blocks: Vec<LocatedBlock>,
     entry_point: Option<Address>,
 }
 
 impl Directive {
-    pub(crate) fn instruction_count(&self) -> Unsigned18Bit {
-        self.blocks
-            .iter()
-            .map(Block::emitted_instruction_count)
-            .sum()
-    }
-
-    pub(crate) fn set_entry_point(&mut self, a: Address) {
-        self.entry_point = Some(a)
+    pub(crate) fn new(blocks: Vec<LocatedBlock>, entry_point: Option<Address>) -> Self {
+        Self {
+            blocks,
+            entry_point,
+        }
     }
 
     pub(crate) fn entry_point(&self) -> Option<Address> {
         self.entry_point
     }
 
-    pub(crate) fn push(&mut self, block: Block) {
-        self.blocks.push(block)
-    }
-
-    pub(crate) fn blocks(&self) -> impl Iterator<Item = &Block> {
+    pub(crate) fn blocks(&self) -> impl Iterator<Item = &LocatedBlock> {
         self.blocks.iter()
     }
 }
@@ -833,4 +825,11 @@ impl Block {
     pub(crate) fn emitted_instruction_count(&self) -> Unsigned18Bit {
         self.items.iter().map(|stmt| stmt.memory_size()).sum()
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct LocatedBlock {
+    pub(crate) origin: Option<Origin>,
+    pub(crate) location: Address,
+    pub(crate) items: Vec<Statement>,
 }

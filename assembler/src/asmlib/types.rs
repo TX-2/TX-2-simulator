@@ -53,11 +53,16 @@ pub enum MachineLimitExceededFailure {
         block_origin: Address,
         offset: usize,
     },
+    /// Program size does not fit in an Unsigned18Bit quantity.
+    ProgramTooBig,
 }
 
 impl Display for MachineLimitExceededFailure {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         match self {
+            MachineLimitExceededFailure::ProgramTooBig => {
+                write!(f, "program does not fit into the TX-2's address space")
+            }
             MachineLimitExceededFailure::RanOutOfIndexRegisters(name) => {
                 write!(f, "there are not enough index registers to assign one as the default for the symbol {name}")
             }

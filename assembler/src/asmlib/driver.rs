@@ -17,9 +17,10 @@ use chumsky::error::Rich;
 use tracing::{event, span, Level};
 
 use super::ast::*;
-use super::eval::{Evaluate, HereValue, SymbolDefinition};
+use super::eval::{BadSymbolDefinition, Evaluate, HereValue, SymbolDefinition};
 use super::parser::parse_source_file;
 use super::state::NumeralMode;
+use super::symbol::SymbolName;
 use super::types::*;
 use base::prelude::{Address, IndexBy, Unsigned18Bit, Unsigned36Bit};
 use symtab::{FinalSymbolDefinition, FinalSymbolTable, SymbolTable};
@@ -54,11 +55,12 @@ impl OutputOptions {
     }
 }
 
-fn convert_source_file_to_directive(
+fn convert_source_file_to_blocks(
     source_file: &SourceFile,
     symtab: &mut SymbolTable,
-) -> Result<Directive, AssemblerFailure> {
-    let mut directive: Directive = Directive::default();
+) -> Result<(Vec<Block>, Option<Address>), AssemblerFailure> {
+    let mut entry_point: Option<Address> = None;
+    let mut blocks = Vec::new();
     let mut block_default_location: Address = Origin::default_address();
 
     for (block_number, mblock) in source_file.blocks.iter().enumerate() {
@@ -85,16 +87,13 @@ fn convert_source_file_to_directive(
                     Level::DEBUG,
                     "Locating directive block {block_number} having {len} words at symbolic location {name}, which we now known to be {block_default_location}",
                 );
-                if !symtab.is_defined(&name) {
+                if !symtab.is_defined(name) {
                     if let Err(e) = symtab.define(
-                        span.clone(),
+                        *span,
                         name.clone(),
                         SymbolDefinition::Origin(block_default_location),
                     ) {
-                        return Err(AssemblerFailure::InvalidProgram {
-                            span: span.clone(),
-                            msg: format!("inconsistent definitions of origin {name}: {e}"),
-                        });
+                        return Err(inconsistent_origin_definition(*span, name.clone(), e));
                     }
                     Some(block_default_location)
                 } else {
@@ -103,7 +102,7 @@ fn convert_source_file_to_directive(
                 }
             }
         };
-        directive.push(Block {
+        blocks.push(Block {
             origin: mblock.origin.clone(),
             location,
             items: mblock.statements.clone(),
@@ -127,7 +126,7 @@ fn convert_source_file_to_directive(
                 Level::INFO,
                 "program entry point was specified as {address:o}"
             );
-            directive.set_entry_point(address);
+            entry_point = Some(address);
         }
         Some(PunchCommand(None)) => {
             event!(Level::INFO, "program entry point was not specified");
@@ -152,7 +151,7 @@ fn convert_source_file_to_directive(
     // existing program be cleared?  Should the symbol
     // table be cleared?
 
-    Ok(directive)
+    Ok((blocks, entry_point))
 }
 
 /// Pass 1 converts the program source into an abstract syntax representation.
@@ -294,6 +293,11 @@ fn initial_symbol_table<'a>(source_file: &SourceFile) -> Result<SymbolTable, Vec
 
 /// Pass 2 converts the abstract syntax representation into a
 /// `Directive`, which is closer to binary code.
+///
+/// The source_file input is essentially an abstract syntax
+/// representation.  The output is a symbol table and a "directive"
+/// which is a sequence of blocks of code of known size (but not, at
+/// this stage, necessarily of known position).
 fn assemble_pass2<'a>(
     source_file: &SourceFile,
     source_file_body: &'a str,
@@ -308,12 +312,27 @@ fn assemble_pass2<'a>(
         }
     };
 
-    let directive: Directive = convert_source_file_to_directive(source_file, &mut symtab)?;
-    event!(
-        Level::INFO,
-        "assembly generated {} instructions",
-        directive.instruction_count()
-    );
+    let (blocks, maybe_entry_point) = convert_source_file_to_blocks(source_file, &mut symtab)?;
+
+    match blocks.iter().try_fold(Unsigned18Bit::ZERO, |acc, b| {
+        acc.checked_add(b.emitted_instruction_count())
+    }) {
+        None => {
+            return Err(AssemblerFailure::MachineLimitExceeded(
+                MachineLimitExceededFailure::ProgramTooBig,
+            ));
+        }
+        Some(count) => {
+            event!(
+                Level::INFO,
+                "assembly pass 2 generated {count} instructions"
+            );
+        }
+    }
+
+    // Deduce the address of every block.
+    let directive: Directive = assign_block_positions(blocks, maybe_entry_point, &mut symtab)?;
+
     Ok(Pass2Output {
         directive: Some(directive),
         symbols: symtab,
@@ -425,6 +444,60 @@ impl Display for ListingWithBody<'_> {
     }
 }
 
+fn inconsistent_origin_definition(
+    span: Span,
+    name: SymbolName,
+    e: BadSymbolDefinition,
+) -> AssemblerFailure {
+    AssemblerFailure::InvalidProgram {
+        span,
+        msg: format!("inconsistent definitions of origin {name}: {e}"),
+    }
+}
+
+fn assign_block_positions(
+    blocks: Vec<Block>,
+    maybe_entry_point: Option<Address>,
+    symtab: &mut SymbolTable,
+) -> Result<Directive, AssemblerFailure> {
+    let mut output_blocks: Vec<LocatedBlock> = Vec::with_capacity(blocks.len());
+    for (block_number, directive_block) in blocks.into_iter().enumerate() {
+        let mut op = symtab::LookupOperation::default();
+        let address: Address = match symtab.finalise_origin(block_number, Some(&mut op)) {
+            Ok(a) => a,
+            Err(_) => {
+                return Err(AssemblerFailure::InternalError(format!(
+                    "starting address for block {block_number} was not calculated"
+                )));
+            }
+        };
+
+        if let Some(Origin::Symbolic(span, symbol_name)) = directive_block.origin.as_ref() {
+            if !symtab.is_defined(symbol_name) {
+                if let Err(e) = symtab.define(
+                    *span,
+                    symbol_name.clone(),
+                    SymbolDefinition::Origin(address),
+                ) {
+                    // Inconsistent definition.
+                    return Err(inconsistent_origin_definition(
+                        *span,
+                        symbol_name.clone(),
+                        e,
+                    ));
+                }
+            }
+        }
+        output_blocks.push(LocatedBlock {
+            origin: directive_block.origin,
+            location: address,
+            items: directive_block.items,
+        });
+    }
+
+    Ok(Directive::new(output_blocks, maybe_entry_point))
+}
+
 /// Pass 3 generates binary code.
 fn assemble_pass3(
     directive: Directive,
@@ -435,33 +508,35 @@ fn assemble_pass3(
     let span = span!(Level::ERROR, "assembly pass 3");
     let _enter = span.enter();
 
-    let mut final_symbols = FinalSymbolTable::default();
     let mut binary = Binary::default();
     if let Some(address) = directive.entry_point() {
         binary.set_entry_point(address);
     }
 
+    let mut final_symbols = FinalSymbolTable::default();
+
+    // Emit the binary code.
     for (block_number, directive_block) in directive.blocks().enumerate() {
-        let mut op = symtab::LookupOperation::default();
-        let address: Address = match symtab.finalise_origin(block_number, Some(&mut op)) {
-            Ok(a) => a,
-            Err(_) => {
-                return Err(AssemblerFailure::InternalError(
-                    format!("starting address for block {block_number} was not calculated by calculate_block_origins")
-                ));
-            }
-        };
+        event!(
+            Level::DEBUG,
+            "Block {block_number} of output has address {0:#o} and length {1:#o}",
+            directive_block.location,
+            directive_block.items.len(),
+        );
 
         if let Some(origin) = directive_block.origin.as_ref() {
             if let Origin::Symbolic(span, symbol_name) = origin {
+                assert!(symtab.is_defined(symbol_name));
+
                 final_symbols.define_if_undefined(
                     symbol_name.clone(),
                     FinalSymbolDefinition::new(
-                        address.into(),
+                        directive_block.location.into(),
                         extract_span(body, span).trim().to_string(),
                     ),
                 );
             }
+
             if let Some(listing) = maybe_listing.as_mut() {
                 // This is an origin (Users Handbook section 6-2.5)
                 // not a tag (6-2.2).
@@ -477,12 +552,12 @@ fn assemble_pass3(
                 return Err(AssemblerFailure::MachineLimitExceeded(
                     MachineLimitExceededFailure::BlockTooLarge {
                         block_number,
-                        block_origin: address,
+                        block_origin: directive_block.location,
                         offset,
                     },
                 ));
             };
-            match offset_from_origin(&address, offset) {
+            match offset_from_origin(&directive_block.location, offset) {
                 Ok(here) => match statement {
                     Statement::Assignment(span, symbol, definition) => {
                         let mut op = Default::default();
@@ -508,7 +583,6 @@ fn assemble_pass3(
                             );
                         }
 
-                        eprintln!("offset {offset}: assembling instruction {inst:?}");
                         let mut op = Default::default();
                         let word = inst
                             .evaluate(&HereValue::Address(here), symtab, &mut op)
@@ -542,12 +616,10 @@ fn assemble_pass3(
                 "block {block_number} will not be included in the output because it is empty"
             );
         } else {
-            event!(
-                Level::DEBUG,
-                "Block {block_number} of output has address {address:o} and length {}",
-                words.len()
-            );
-            binary.add_chunk(BinaryChunk { address, words });
+            binary.add_chunk(BinaryChunk {
+                address: directive_block.location,
+                words,
+            });
         }
     }
 
@@ -630,12 +702,6 @@ pub(crate) fn assemble_source(
 
     // Now we do pass 3.
     let binary = {
-        event!(
-            Level::INFO,
-            "assembly pass 2 generated {} instructions",
-            directive.instruction_count()
-        );
-
         let mut listing = if options.list {
             Some(Listing::default())
         } else {
