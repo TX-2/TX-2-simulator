@@ -97,7 +97,6 @@ fn convert_source_file_to_blocks(
                     }
                     Some(block_default_location)
                 } else {
-                    println!("origin for block {block_number} is not yet defined");
                     None
                 }
             }
@@ -195,10 +194,7 @@ pub(crate) fn assemble_nonempty_valid_input(input: &str) -> (Directive, SymbolTa
                 panic!("input should be valid: {:?}", &p2output.errors);
             }
             match p2output.directive {
-                Some(directive) => {
-                    eprintln!("assemble_nonempty_valid_input: {input} assembled to {directive:#?}");
-                    (directive, p2output.symbols)
-                }
+                Some(directive) => (directive, p2output.symbols),
                 None => {
                     panic!("assembly pass 2 generated no errors but also no output");
                 }
