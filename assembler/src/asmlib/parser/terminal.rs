@@ -14,7 +14,7 @@ use super::helpers::{self, Sign};
 use super::{Extra, Span};
 use base::{charset::Script, u6, Unsigned36Bit, Unsigned6Bit};
 
-pub(super) fn arrow<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>> + Clone
+pub(super) fn arrow_ignored<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>> + Clone
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
 {
@@ -24,6 +24,13 @@ where
         at_glyph(Script::Normal, "arr").ignored().boxed(),
     ))
     .labelled("arrow")
+}
+
+pub(super) fn arrow<'a, I>() -> impl Parser<'a, I, char, Extra<'a, char>> + Clone
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
+{
+    arrow_ignored().map(|_| '\u{2192}')
 }
 
 pub(super) fn hash<'a, I>(
@@ -680,22 +687,29 @@ where
         .labelled("opcode")
 }
 
+pub(super) fn hand<'a, I>() -> impl Parser<'a, I, char, Extra<'a, char>> + Clone
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
+{
+    at_glyph(Script::Normal, "hand").or(just('☛'))
+}
+
+pub(super) fn hand_ignored<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>> + Clone
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
+{
+    hand().ignored()
+}
+
 pub(super) fn metacommand_name<'a, I>() -> impl Parser<'a, I, &'a str, Extra<'a, char>> + Clone
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
 {
-    pub(super) fn hand<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>> + Clone
-    where
-        I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
-    {
-        at_glyph(Script::Normal, "hand").or(just('☛')).ignored()
-    }
-
     pub(super) fn doublehand<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>> + Clone
     where
         I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
     {
-        hand().then(hand()).ignored()
+        hand_ignored().then(hand_ignored()).ignored()
     }
 
     pub(super) fn name<'a, I>() -> impl Parser<'a, I, &'a str, Extra<'a, char>> + Clone
@@ -708,11 +722,12 @@ where
             just("DECIM"),
             just("DECI"),
             just("DEC"),
-            just("DE"),
         ));
         let octal = choice((just("OCTAL"), just("OCTA"), just("OCT"), just("OC")));
         let punch = choice((just("PUNCH"), just("PUNC"), just("PUN"), just("PU")));
-        choice((decimal, octal, punch))
+        let def = just("DEF");
+        let emd = choice((just("EMD"), just("EM")));
+        choice((decimal, octal, punch, def, emd))
     }
 
     doublehand()
@@ -733,11 +748,60 @@ where
     ))
 }
 
-pub(super) fn equals<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>> + Clone
+pub(super) fn equals<'a, I>() -> impl Parser<'a, I, char, Extra<'a, char>> + Clone
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
 {
-    just("=").ignored()
+    just('=')
+}
+
+pub(super) fn equals_ignored<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>> + Clone
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
+{
+    equals().ignored()
+}
+
+pub(super) fn proper_superset<'a, I>() -> impl Parser<'a, I, char, Extra<'a, char>> + Clone
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
+{
+    just('⊃')
+}
+
+pub(super) fn identical_to<'a, I>() -> impl Parser<'a, I, char, Extra<'a, char>> + Clone
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
+{
+    choice((
+        just('≡').ignored(),
+        // The "hamb" here is from the notation introduced by Jurij
+        // for trascribing Sketchpad's source code, and presumably
+        // stands for "hamburger".
+        at_glyph(Script::Normal, "hamb").ignored(),
+    ))
+    .map(|_| '≡')
+}
+
+pub(super) fn tilde<'a, I>() -> impl Parser<'a, I, char, Extra<'a, char>> + Clone
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
+{
+    just('~')
+}
+
+pub(super) fn union<'a, I>() -> impl Parser<'a, I, char, Extra<'a, char>> + Clone
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
+{
+    just('∪') // Union, U+222A
+}
+
+pub(super) fn intersection<'a, I>() -> impl Parser<'a, I, char, Extra<'a, char>> + Clone
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
+{
+    just('∩') // Intersection, U+2229
 }
 
 pub(super) fn annotation<'a, I>() -> impl Parser<'a, I, String, Extra<'a, char>> + Clone
@@ -773,11 +837,39 @@ where
     ws().repeated().at_least(1).ignored()
 }
 
-pub(super) fn pipe<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>> + Clone
+pub(super) fn pipe<'a, I>() -> impl Parser<'a, I, char, Extra<'a, char>> + Clone
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
 {
-    just('|').ignored()
+    just('|')
+}
+
+pub(super) fn less_than<'a, I>() -> impl Parser<'a, I, char, Extra<'a, char>> + Clone
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
+{
+    just('<')
+}
+
+pub(super) fn greater_than<'a, I>() -> impl Parser<'a, I, char, Extra<'a, char>> + Clone
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
+{
+    just('>')
+}
+
+pub(super) fn solidus<'a, I>() -> impl Parser<'a, I, char, Extra<'a, char>> + Clone
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
+{
+    just('/')
+}
+
+pub(super) fn pipe_ignored<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>> + Clone
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
+{
+    pipe().ignored()
 }
 
 pub(super) fn comment<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>> + Clone
@@ -794,7 +886,7 @@ where
     chumsky::prelude::end()
 }
 
-fn logical_or<'a, I>(
+pub(super) fn logical_or<'a, I>(
     script_required: Script,
 ) -> impl Parser<'a, I, Operator, Extra<'a, char>> + Clone
 where
@@ -811,7 +903,7 @@ where
     .labelled("logical or (∨)")
 }
 
-fn logical_and<'a, I>(
+pub(super) fn logical_and<'a, I>(
     script_required: Script,
 ) -> impl Parser<'a, I, Operator, Extra<'a, char>> + Clone
 where
@@ -880,7 +972,9 @@ where
     .labelled("-")
 }
 
-fn times<'a, I>(script_required: Script) -> impl Parser<'a, I, Operator, Extra<'a, char>> + Clone
+pub(super) fn times<'a, I>(
+    script_required: Script,
+) -> impl Parser<'a, I, Operator, Extra<'a, char>> + Clone
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
 {

@@ -131,7 +131,7 @@ fn tag_definition<'a, I>() -> impl Parser<'a, I, Tag, Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char> + Clone,
 {
-    let arrow = terminal::arrow().padded_by(terminal::horizontal_whitespace0());
+    let arrow = terminal::arrow_ignored().padded_by(terminal::horizontal_whitespace0());
     symbol(Script::Normal)
         .map_with(|name, extra| Tag {
             name,
@@ -173,19 +173,99 @@ where
         .labelled("program instruction")
 }
 
+/// Macro terminators are described in section 6-4.5 of the TX-2 User Handbook.
+fn macro_terminator<'a, I>() -> impl Parser<'a, I, char, Extra<'a, char>>
+where
+    I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char> + Clone,
+{
+    // This list of 16 allowed terminators is exhaustive, see section
+    // 6-4.5 of the TX-2 User Handbook.
+    //
+    // ☛ · = →  | ⊃ ≡ ~ < > ∩ ∪ / × ∨ ∧
+    //
+    // We use a centre dot for the dot symbol because otherwise the
+    // low position of "." makes it look like part of a subscript.
+    choice((
+        terminal::hand(),
+        terminal::dot(Script::Normal),
+        terminal::equals(),
+        terminal::arrow(),
+        terminal::pipe(),
+        terminal::proper_superset(),
+        terminal::identical_to(),
+        terminal::tilde(),
+        terminal::less_than(),
+        terminal::greater_than(),
+        terminal::intersection(),
+        terminal::union(),
+        terminal::solidus(),
+        terminal::times(Script::Normal).map(|_| '\u{00D7}'),
+        terminal::logical_or(Script::Normal).map(|_| '\u{2228}'),
+        terminal::logical_and(Script::Normal).map(|_| '\u{2227}'),
+    ))
+}
+
+fn macro_argument<'a, I>() -> impl Parser<'a, I, MacroArgument, Extra<'a, char>>
+where
+    I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char> + Clone,
+{
+    (macro_terminator().then(symbol(Script::Normal))).map_with(|(terminator, symbol), extra| {
+        MacroArgument {
+            name: symbol,
+            span: extra.span(),
+            preceding_terminator: terminator,
+        }
+    })
+}
+
+fn macro_arguments<'a, I>() -> impl Parser<'a, I, Vec<MacroArgument>, Extra<'a, char>>
+where
+    I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char> + Clone,
+{
+    macro_argument().repeated().collect()
+}
+
+/// Macros are described in section 6-4 of the TX-2 User Handbook.
+fn macro_definition<'a, I>() -> impl Parser<'a, I, MacroDefinition, Extra<'a, char>>
+where
+    I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char> + Clone,
+{
+    (named_metacommand("DEF").then(terminal::horizontal_whitespace1()))
+        .ignore_then(
+            symbol(Script::Normal) // the macro's name
+                .padded_by(terminal::horizontal_whitespace0()),
+        )
+        .then(macro_arguments())
+        .then_ignore(end_of_line())
+        .then(
+            (statement().then_ignore(end_of_line()))
+                .repeated()
+                .collect::<Vec<_>>()
+                .labelled("macro body"),
+        )
+        .then_ignore(named_metacommand("EMD"))
+        .then_ignore(end_of_line())
+        .map_with(|((name, args), body), extra| MacroDefinition {
+            name,
+            args,
+            body,
+            span: extra.span(),
+        })
+}
+
+fn named_metacommand<'a, I>(name: &'static str) -> impl Parser<'a, I, (), Extra<'a, char>>
+where
+    I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char> + Clone,
+{
+    terminal::metacommand_name()
+        .filter(move |n| *n == name)
+        .ignored()
+}
+
 fn metacommand<'a, I>() -> impl Parser<'a, I, ManuscriptMetaCommand, Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char> + Clone,
 {
-    fn named_metacommand<'a, I>(name: &'static str) -> impl Parser<'a, I, (), Extra<'a, char>>
-    where
-        I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char> + Clone,
-    {
-        terminal::metacommand_name()
-            .filter(move |n| *n == name)
-            .ignored()
-    }
-
     fn punch<'a, I>() -> impl Parser<'a, I, ManuscriptMetaCommand, Extra<'a, char>>
     where
         I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char> + Clone,
@@ -217,7 +297,12 @@ where
         .labelled("base-change metacommand")
     }
 
-    choice((base_change(), punch())).labelled("metacommand")
+    choice((
+        base_change(),
+        punch(),
+        macro_definition().map(ManuscriptMetaCommand::Macro),
+    ))
+    .labelled("metacommand")
 }
 
 fn untagged_program_instruction<'a, I>(
@@ -270,7 +355,7 @@ where
     {
         terminal::horizontal_whitespace0()
             .ignore_then(symex::parse_symex(Script::Normal))
-            .then_ignore(terminal::equals().padded_by(terminal::horizontal_whitespace0()))
+            .then_ignore(terminal::equals_ignored().padded_by(terminal::horizontal_whitespace0()))
             .then(untagged_program_instruction())
     }
 
@@ -289,7 +374,7 @@ where
 {
     fn execute_metacommand(state: &mut NumeralMode, cmd: &ManuscriptMetaCommand) {
         match cmd {
-            ManuscriptMetaCommand::Punch(_) => {
+            ManuscriptMetaCommand::Punch(_) | ManuscriptMetaCommand::Macro(_) => {
                 // Instead of executing this metacommand as we parse it,
                 // we simply return it as part of the parser output, and
                 // it is executed by the driver.
@@ -352,7 +437,7 @@ where
             }
             choice((literal_address_expression(), symbolic_address_expression()))
                 .padded_by(terminal::horizontal_whitespace0())
-                .then_ignore(terminal::pipe())
+                .then_ignore(terminal::pipe_ignored())
         }
 
         let optional_origin_with_statement = origin()
@@ -417,8 +502,12 @@ where
             |lines: Vec<Option<ManuscriptLine>>| {
                 // Filter out empty lines.
                 let lines: Vec<ManuscriptLine> = lines.into_iter().flatten().collect();
-                let (blocks, punch) = helpers::manuscript_lines_to_blocks(lines);
-                SourceFile { blocks, punch }
+                let (blocks, macros, punch) = helpers::manuscript_lines_to_blocks(lines);
+                SourceFile {
+                    blocks,
+                    macros,
+                    punch,
+                }
             },
         )
     }

@@ -335,7 +335,8 @@ fn test_empty_manuscript() {
         parse_successfully_with("", source_file(), no_state_setup),
         SourceFile {
             blocks: vec![],
-            punch: None
+            macros: vec![],
+            punch: None,
         }
     )
 }
@@ -403,7 +404,8 @@ fn test_manuscript_with_bare_literal() {
                         ))],
                     }
                 })]
-            }]
+            }],
+            macros: vec![],
         }
     );
 }
@@ -478,6 +480,7 @@ fn test_manuscript_without_tag() {
                     }),
                 ]
             }],
+            macros: vec![],
             punch: None,
         }
     );
@@ -534,6 +537,7 @@ fn test_manuscript_with_single_syllable_tag() {
                     }
                 })]
             }],
+            macros: vec![],
             punch: None
         }
     );
@@ -563,7 +567,8 @@ fn test_manuscript_with_origin() {
                         ))]
                     }
                 })]
-            }]
+            }],
+            macros: vec![],
         }
     );
 }
@@ -650,7 +655,8 @@ fn test_manuscript_with_multi_syllable_tag() {
                         ))]
                     }
                 })]
-            }]
+            }],
+            macros: vec![],
         }
     );
 }
@@ -713,7 +719,8 @@ fn test_manuscript_with_real_arrow_tag() {
                         span: span(7..10),
                     }
                 })]
-            }]
+            }],
+            macros: Vec::new(),
         }
     );
 }
@@ -845,7 +852,8 @@ fn test_assignment_lines() {
                         }
                     })
                 ]
-            }]
+            }],
+            macros: Vec::new(),
         }
     );
 }
@@ -882,7 +890,8 @@ fn test_assignment_origin() {
                         }
                     })]
                 }
-            ]
+            ],
+            macros: Vec::new(),
         }
     );
 }
@@ -1170,4 +1179,250 @@ fn test_parenthesised_expression() {
             Atom::from(LiteralValue::from((span(1..2), Script::Normal, u36!(1))))
         ))))
     );
+}
+
+#[test]
+fn test_macro_arg() {
+    assert_eq!(
+        parse_successfully_with("@hand@A01", macro_argument(), no_state_setup),
+        MacroArgument {
+            name: SymbolName::from("A01".to_string()),
+            span: span(0..9),
+            preceding_terminator: '☛',
+        }
+    );
+
+    assert_eq!(
+        parse_successfully_with("@dot@A02", macro_argument(), no_state_setup),
+        MacroArgument {
+            name: SymbolName::from("A02".to_string()),
+            span: span(0..8),
+            preceding_terminator: '·',
+        }
+    );
+
+    assert_eq!(
+        parse_successfully_with("=A03", macro_argument(), no_state_setup),
+        MacroArgument {
+            name: SymbolName::from("A03".to_string()),
+            span: span(0..4),
+            preceding_terminator: '=',
+        }
+    );
+
+    assert_eq!(
+        parse_successfully_with("@arr@A04", macro_argument(), no_state_setup),
+        MacroArgument {
+            name: SymbolName::from("A04".to_string()),
+            span: span(0..8),
+            preceding_terminator: '→',
+        }
+    );
+
+    assert_eq!(
+        // Alternative form for convenience (and consistency with
+        // what we allow for tags).
+        parse_successfully_with("->A04", macro_argument(), no_state_setup),
+        MacroArgument {
+            name: SymbolName::from("A04".to_string()),
+            span: span(0..5),
+            preceding_terminator: '→',
+        }
+    );
+
+    assert_eq!(
+        parse_successfully_with("|A05", macro_argument(), no_state_setup),
+        MacroArgument {
+            name: SymbolName::from("A05".to_string()),
+            span: span(0..4),
+            preceding_terminator: '|',
+        }
+    );
+
+    assert_eq!(
+        parse_successfully_with("⊃A06", macro_argument(), no_state_setup),
+        MacroArgument {
+            name: SymbolName::from("A06".to_string()),
+            span: span(0..6),
+            preceding_terminator: '⊃',
+        }
+    );
+
+    assert_eq!(
+        parse_successfully_with("≡A07", macro_argument(), no_state_setup),
+        MacroArgument {
+            name: SymbolName::from("A07".to_string()),
+            span: span(0..6),
+            preceding_terminator: '≡',
+        }
+    );
+
+    assert_eq!(
+        parse_successfully_with("@hamb@A07", macro_argument(), no_state_setup),
+        MacroArgument {
+            name: SymbolName::from("A07".to_string()),
+            span: span(0..9),
+            preceding_terminator: '≡',
+        }
+    );
+
+    assert_eq!(
+        parse_successfully_with("~A08", macro_argument(), no_state_setup),
+        MacroArgument {
+            name: SymbolName::from("A08".to_string()),
+            span: span(0..4),
+            preceding_terminator: '~',
+        }
+    );
+
+    assert_eq!(
+        parse_successfully_with("<A09", macro_argument(), no_state_setup),
+        MacroArgument {
+            name: SymbolName::from("A09".to_string()),
+            span: span(0..4),
+            preceding_terminator: '<',
+        }
+    );
+
+    assert_eq!(
+        parse_successfully_with(">A10", macro_argument(), no_state_setup),
+        MacroArgument {
+            name: SymbolName::from("A10".to_string()),
+            span: span(0..4),
+            preceding_terminator: '>',
+        }
+    );
+
+    assert_eq!(
+        parse_successfully_with("∩A11", macro_argument(), no_state_setup),
+        MacroArgument {
+            name: SymbolName::from("A11".to_string()),
+            span: span(0..6),
+            preceding_terminator: '∩',
+        }
+    );
+
+    assert_eq!(
+        parse_successfully_with("∪A12", macro_argument(), no_state_setup),
+        MacroArgument {
+            name: SymbolName::from("A12".to_string()),
+            span: span(0..6),
+            preceding_terminator: '∪',
+        }
+    );
+
+    assert_eq!(
+        parse_successfully_with("/A13", macro_argument(), no_state_setup),
+        MacroArgument {
+            name: SymbolName::from("A13".to_string()),
+            span: span(0..4),
+            preceding_terminator: '/',
+        }
+    );
+
+    assert_eq!(
+        parse_successfully_with("×A14", macro_argument(), no_state_setup),
+        MacroArgument {
+            name: SymbolName::from("A14".to_string()),
+            span: span(0..5),
+            preceding_terminator: '×',
+        }
+    );
+
+    assert_eq!(
+        parse_successfully_with("∨A15", macro_argument(), no_state_setup),
+        MacroArgument {
+            name: SymbolName::from("A15".to_string()),
+            span: span(0..6),
+            preceding_terminator: '∨',
+        }
+    );
+
+    assert_eq!(
+        parse_successfully_with("∧A16", macro_argument(), no_state_setup),
+        MacroArgument {
+            name: SymbolName::from("A16".to_string()),
+            span: span(0..6),
+            preceding_terminator: '∧',
+        }
+    );
+}
+
+#[test]
+fn test_macro_args() {
+    assert_eq!(
+        parse_successfully_with("=X@hand@YZ@arr@P", macro_arguments(), no_state_setup),
+        vec![
+            MacroArgument {
+                name: SymbolName::from("X".to_string()),
+                span: span(0..2),
+                preceding_terminator: '=',
+            },
+            MacroArgument {
+                name: SymbolName::from("YZ".to_string()),
+                span: span(2..10),
+                preceding_terminator: '☛',
+            },
+            MacroArgument {
+                name: SymbolName::from("P".to_string()),
+                span: span(10..16),
+                preceding_terminator: '→',
+            },
+        ]
+    );
+}
+
+#[test]
+fn test_macro_definition_with_empty_body() {
+    // TBD: where in a macro definition are comments allowed?
+    let got = parse_successfully_with(
+        concat!("☛☛DEF MYMACRO\n", "☛☛EMD\n"),
+        macro_definition(),
+        no_state_setup,
+    );
+    let expected = MacroDefinition {
+        name: SymbolName::from("MYMACRO".to_string()),
+        args: Vec::new(), // no args
+        body: Vec::new(), // no body
+        span: span(0..28),
+    };
+    assert_eq!(got, expected);
+}
+
+#[test]
+fn test_macro_definition_with_trivial_body() {
+    let got = parse_successfully_with(
+        concat!(
+            "☛☛DEF JUST|A\n",
+            // This macro definition has a one-line body.
+            "A\n",
+            "☛☛EMD\n"
+        ),
+        macro_definition(),
+        no_state_setup,
+    );
+    let expected = MacroDefinition {
+        name: SymbolName::from("JUST".to_string()),
+        args: vec![MacroArgument {
+            name: SymbolName::from("A".to_string()),
+            span: span(14..16),
+            preceding_terminator: '|',
+        }],
+        body: vec![Statement::Instruction(TaggedProgramInstruction {
+            tag: None,
+            instruction: UntaggedProgramInstruction {
+                span: span(17..18),
+                holdbit: HoldBit::Unspecified,
+                parts: vec![InstructionFragment::Arithmetic(ArithmeticExpression::from(
+                    Atom::Symbol(
+                        span(17..18),
+                        Script::Normal,
+                        SymbolName::from("A".to_string()),
+                    ),
+                ))],
+            },
+        })],
+        span: span(0..29),
+    };
+    assert_eq!(got, expected);
 }

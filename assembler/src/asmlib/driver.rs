@@ -785,6 +785,7 @@ fn test_assemble_pass1() {
             Some(SourceFile {
                 punch: Some(PunchCommand(expected_directive_entry_point)),
                 blocks: vec![expected_block],
+                macros: Vec::new(),
             }),
             OutputOptions { list: false }
         )

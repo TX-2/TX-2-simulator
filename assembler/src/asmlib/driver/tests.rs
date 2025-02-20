@@ -120,7 +120,8 @@ fn test_assemble_pass1() {
                         ))))]
                     }
                 })]
-            }]
+            }],
+            macros: Vec::new(), // no macros
         })
     );
 }

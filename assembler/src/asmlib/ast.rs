@@ -634,6 +634,7 @@ const HELD_MASK: Unsigned36Bit = u36!(1 << 35);
 pub(crate) struct SourceFile {
     pub(crate) punch: Option<PunchCommand>,
     pub(crate) blocks: Vec<ManuscriptBlock>,
+    pub(crate) macros: Vec<MacroDefinition>,
 }
 
 impl SourceFile {
@@ -686,11 +687,12 @@ pub(crate) enum ManuscriptMetaCommand {
     // TODO: implement the XXX metacommand.
     BaseChange(NumeralMode),
     Punch(PunchCommand),
+    Macro(MacroDefinition),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ManuscriptLine {
-    MetaCommand(ManuscriptMetaCommand),
+    MetaCommand(ManuscriptMetaCommand), // can actually span several lines.
     JustOrigin(Origin),
     Code(Option<Origin>, Statement),
 }
@@ -748,6 +750,30 @@ impl Statement {
         .into_iter()
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct MacroArgument {
+    pub(crate) name: SymbolName,
+    pub(crate) span: Span,
+    pub(crate) preceding_terminator: char,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct MacroDefinition {
+    pub(crate) name: SymbolName, // composite character macros are not yet supported
+    pub(crate) args: Vec<MacroArgument>,
+    // body should probably be a sequence of ManuscriptLine in order
+    // to allow an origin specification to exist within a macro body.
+    // But that is not supported yet.
+    pub(crate) body: Vec<Statement>,
+    pub(crate) span: Span,
+}
+
+/// impl MacroDefinition {
+///     pub(crate) fn emitted_instruction_count(&self) -> Unsigned18Bit {
+///         self.body.iter().map(|stmt| stmt.memory_size()).sum()
+///     }
+/// }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ManuscriptBlock {

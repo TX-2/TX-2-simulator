@@ -201,8 +201,13 @@ pub(super) fn punch_address(a: Option<LiteralValue>) -> Result<PunchCommand, Str
 
 pub(super) fn manuscript_lines_to_blocks(
     lines: Vec<ManuscriptLine>,
-) -> (Vec<ManuscriptBlock>, Option<PunchCommand>) {
+) -> (
+    Vec<ManuscriptBlock>,
+    Vec<MacroDefinition>,
+    Option<PunchCommand>,
+) {
     let mut result: Vec<ManuscriptBlock> = Vec::new();
+    let macros: Vec<MacroDefinition> = Vec::new();
     let mut current_statements: Vec<Statement> = Vec::new();
     let mut maybe_punch: Option<PunchCommand> = None;
     let mut effective_origin: Option<Origin> = None;
@@ -230,6 +235,9 @@ pub(super) fn manuscript_lines_to_blocks(
                 // were parsed following them, so no need to keep them
                 // now.
             }
+            ManuscriptLine::MetaCommand(ManuscriptMetaCommand::Macro(_)) => {
+                unimplemented!("macro definitions are not yet supported")
+            }
             ManuscriptLine::JustOrigin(new_origin) => {
                 ship_block(&current_statements, effective_origin, &mut result);
                 current_statements.clear();
@@ -248,7 +256,7 @@ pub(super) fn manuscript_lines_to_blocks(
     }
     ship_block(&current_statements, effective_origin, &mut result);
     current_statements.clear();
-    (result, maybe_punch)
+    (result, macros, maybe_punch)
 }
 
 /// Some instructions are assembled with the hold bit automatically
