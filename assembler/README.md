@@ -46,12 +46,7 @@ There are some other examples in the `examples` folder.
 The assembler isn't finished yet, so there are a number of quite
 severe limitations:
 
-* No support yet for comments.
-* No symbol table, so tags, origins, addresses etc. cannot be symbols.
-* No expression evaluation, so we cannot use arithmetic expressions
-  (though please note that the TX-2 assembler, M4, had ideas of
-  operator precedence which don't reflect normal usage).
-* No support for deferred operands or RC words.
+* No support for deferred operands or RC ("Register-Containing") words.
 * No support for macros.  Confusingly, the TX-2 assembler supported
   macros and was called M4, but is unrelated to the Unix program `m4`.
 
