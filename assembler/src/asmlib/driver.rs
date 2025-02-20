@@ -4,6 +4,7 @@ mod symtab;
 mod tests;
 
 use std::cmp::max;
+use std::collections::BTreeMap;
 use std::ffi::OsStr;
 use std::fmt::Display;
 use std::fs::OpenOptions;
@@ -58,12 +59,12 @@ impl OutputOptions {
 fn convert_source_file_to_blocks(
     source_file: &SourceFile,
     symtab: &mut SymbolTable,
-) -> Result<(Vec<Block>, Option<Address>), AssemblerFailure> {
+) -> Result<(BTreeMap<BlockIdentifier, Block>, Option<Address>), AssemblerFailure> {
     let mut entry_point: Option<Address> = None;
-    let mut blocks = Vec::new();
+    let mut blocks = BTreeMap::new();
     let mut block_default_location: Address = Origin::default_address();
 
-    for (block_number, mblock) in source_file.blocks.iter().enumerate() {
+    for (block_id, mblock) in source_file.blocks.iter() {
         // We still include zero-word blocks in the directive output
         // so that we don't change the block numbering.
         let len = mblock.instruction_count();
@@ -71,21 +72,21 @@ fn convert_source_file_to_blocks(
             None => {
                 event!(
                     Level::DEBUG,
-                    "Locating directive block {block_number} having {len} words at default origin {block_default_location:o}",
+                    "Locating directive {block_id} having {len} words at default origin {block_default_location:o}",
                 );
                 Some(block_default_location)
             }
             Some(Origin::Literal(_, address)) => {
                 event!(
                     Level::DEBUG,
-                    "Locating directive block {block_number} having {len} words at origin {address:o}",
+                    "Locating directive {block_id} having {len} words at origin {address:o}",
                 );
                 Some(*address)
             }
             Some(Origin::Symbolic(span, name)) => {
                 event!(
                     Level::DEBUG,
-                    "Locating directive block {block_number} having {len} words at symbolic location {name}, which we now known to be {block_default_location}",
+                    "Locating directive {block_id} having {len} words at symbolic location {name}, which we now known to be {block_default_location}",
                 );
                 if !symtab.is_defined(name) {
                     if let Err(e) = symtab.define(
@@ -101,11 +102,14 @@ fn convert_source_file_to_blocks(
                 }
             }
         };
-        blocks.push(Block {
-            origin: mblock.origin.clone(),
-            location,
-            items: mblock.statements.clone(),
-        });
+        blocks.insert(
+            *block_id,
+            Block {
+                origin: mblock.origin.clone(),
+                location,
+                items: mblock.statements.clone(),
+            },
+        );
         if let Some(loc) = location {
             // Some programs could use equates or explicit origin
             // specifications to generate blocks that overlap.  From
@@ -256,14 +260,14 @@ impl Binary {
 
 struct Pass2Output<'a> {
     directive: Option<Directive>,
-    origins: Vec<Option<Origin>>,
+    origins: BTreeMap<BlockIdentifier, Option<Origin>>,
     symbols: SymbolTable,
     errors: Vec<Rich<'a, char>>,
 }
 
 fn initial_symbol_table<'a>(source_file: &SourceFile) -> Result<SymbolTable, Vec<Rich<'a, char>>> {
     let mut errors = Vec::new();
-    let mut symtab = SymbolTable::new(source_file.blocks.iter().map(|block| {
+    let mut symtab = SymbolTable::new(source_file.blocks.values().map(|block| {
         let span: Span = block.origin_span();
         (span, block.origin.clone(), block.instruction_count())
     }));
@@ -311,7 +315,7 @@ fn assemble_pass2<'a>(
 
     let (blocks, maybe_entry_point) = convert_source_file_to_blocks(source_file, &mut symtab)?;
 
-    match blocks.iter().try_fold(Unsigned18Bit::ZERO, |acc, b| {
+    match blocks.values().try_fold(Unsigned18Bit::ZERO, |acc, b| {
         acc.checked_add(b.emitted_instruction_count())
     }) {
         None => {
@@ -328,7 +332,7 @@ fn assemble_pass2<'a>(
     }
 
     // Deduce the address of every block.
-    let (directive, origins): (Directive, Vec<Option<Origin>>) =
+    let (directive, origins): (Directive, BTreeMap<BlockIdentifier, Option<Origin>>) =
         assign_block_positions(blocks, maybe_entry_point, &mut symtab)?;
 
     Ok(Pass2Output {
@@ -455,25 +459,26 @@ fn inconsistent_origin_definition(
 }
 
 fn assign_block_positions(
-    blocks: Vec<Block>,
+    blocks: BTreeMap<BlockIdentifier, Block>,
     maybe_entry_point: Option<Address>,
     symtab: &mut SymbolTable,
-) -> Result<(Directive, Vec<Option<Origin>>), AssemblerFailure> {
-    let mut output_blocks: Vec<LocatedBlock> = Vec::with_capacity(blocks.len());
-    let mut origins: Vec<Option<Origin>> = Vec::with_capacity(blocks.len());
+) -> Result<(Directive, BTreeMap<BlockIdentifier, Option<Origin>>), AssemblerFailure> {
+    let mut output_blocks: BTreeMap<BlockIdentifier, LocatedBlock> = BTreeMap::new();
 
-    for (block_number, directive_block) in blocks.into_iter().enumerate() {
+    let mut origins: BTreeMap<BlockIdentifier, Option<Origin>> = BTreeMap::new();
+
+    for (block_id, directive_block) in blocks.into_iter() {
         let mut op = symtab::LookupOperation::default();
-        let address: Address = match symtab.finalise_origin(block_number, Some(&mut op)) {
+        let address: Address = match symtab.finalise_origin(block_id, Some(&mut op)) {
             Ok(a) => a,
             Err(_) => {
                 return Err(AssemblerFailure::InternalError(format!(
-                    "starting address for block {block_number} was not calculated"
+                    "starting address for {block_id} was not calculated"
                 )));
             }
         };
 
-        origins.push(directive_block.origin.clone());
+        origins.insert(block_id, directive_block.origin.clone());
 
         if let Some(Origin::Symbolic(span, symbol_name)) = directive_block.origin.as_ref() {
             if !symtab.is_defined(symbol_name) {
@@ -491,22 +496,101 @@ fn assign_block_positions(
                 }
             }
         }
-        output_blocks.push(LocatedBlock {
-            location: address,
-            items: directive_block.items,
-        });
+        output_blocks.insert(
+            block_id,
+            LocatedBlock {
+                location: address,
+                items: directive_block.items,
+            },
+        );
     }
 
     Ok((Directive::new(output_blocks, maybe_entry_point), origins))
 }
 
+fn build_binary_block(
+    directive_block: &LocatedBlock,
+    block_id: BlockIdentifier,
+    symtab: &mut SymbolTable,
+    final_symbols: &mut FinalSymbolTable,
+    body: &str,
+    listing: &mut Listing,
+) -> Result<Vec<Unsigned36Bit>, AssemblerFailure> {
+    let mut words: Vec<Unsigned36Bit> = Vec::with_capacity(directive_block.items.len());
+    for (offset, statement) in directive_block.items.iter().enumerate() {
+        let offset: Unsigned18Bit = if let Ok(n) = Unsigned18Bit::try_from(offset) {
+            n
+        } else {
+            return Err(AssemblerFailure::MachineLimitExceeded(
+                MachineLimitExceededFailure::BlockTooLarge {
+                    block_id,
+                    block_origin: directive_block.location,
+                    offset,
+                },
+            ));
+        };
+        match offset_from_origin(&directive_block.location, offset) {
+            Ok(here) => match statement {
+                Statement::Assignment(span, symbol, definition) => {
+                    let mut op = Default::default();
+                    let value = definition
+                        .evaluate(&HereValue::Address(here), symtab, &mut op)
+                        .expect("lookup on FinalSymbolTable is infallible");
+                    final_symbols.define(
+                        symbol.clone(),
+                        FinalSymbolDefinition::new(
+                            value,
+                            FinalSymbolType::Equality,
+                            extract_span(body, span).trim().to_string(),
+                        ),
+                    );
+                }
+                Statement::Instruction(inst) => {
+                    if let Some(tag) = inst.tag.as_ref() {
+                        final_symbols.define(
+                            tag.name.clone(),
+                            FinalSymbolDefinition::new(
+                                here.into(),
+                                FinalSymbolType::Tag,
+                                extract_span(body, &tag.span).trim().to_string(),
+                            ),
+                        );
+                    }
+
+                    let mut op = Default::default();
+                    let word = inst
+                        .evaluate(&HereValue::Address(here), symtab, &mut op)
+                        .expect("lookup on FinalSymbolTable is infallible");
+
+                    listing.push_line(ListingLine::Instruction {
+                        address: here,
+                        instruction: inst.clone(),
+                        binary: word,
+                    });
+                    words.push(word);
+                }
+            },
+            Err(AddressOverflow(base, offset)) => {
+                return Err(AssemblerFailure::MachineLimitExceeded(
+                    MachineLimitExceededFailure::BlockTooLarge {
+                        block_id,
+                        block_origin: base,
+                        offset: offset.into(),
+                    },
+                ));
+            }
+        }
+    }
+    Ok(words)
+}
+
 /// Pass 3 generates binary code.
 fn assemble_pass3(
     directive: Directive,
-    origins: Vec<Option<Origin>>,
+    origins: BTreeMap<BlockIdentifier, Option<Origin>>,
     symtab: &mut SymbolTable,
     body: &str,
-    mut maybe_listing: Option<&mut Listing>,
+    listing: &mut Listing,
 ) -> Result<(Binary, FinalSymbolTable), AssemblerFailure> {
     let span = span!(Level::ERROR, "assembly pass 3");
     let _enter = span.enter();
@@ -518,8 +602,8 @@ fn assemble_pass3(
 
     let mut final_symbols = FinalSymbolTable::default();
 
-    for (origin, block) in origins.iter().zip(directive.blocks()) {
-        if let Some(Origin::Symbolic(span, symbol_name)) = origin {
+    for (block_id, block) in directive.blocks() {
+        if let Some(Some(Origin::Symbolic(span, symbol_name))) = origins.get(block_id) {
             assert!(symtab.is_defined(symbol_name));
 
             final_symbols.define_if_undefined(
@@ -534,101 +618,39 @@ fn assemble_pass3(
     }
 
     // Emit the binary code.
-    for (block_number, directive_block) in directive.blocks().enumerate() {
+    for (block_id, directive_block) in directive.blocks() {
         event!(
             Level::DEBUG,
-            "Block {block_number} of output has address {0:#o} and length {1:#o}",
+            "{block_id} in output has address {0:#o} and length {1:#o}",
             directive_block.location,
             directive_block.items.len(),
         );
 
-        if let Some(Some(origin)) = origins.get(block_number) {
-            if let Some(listing) = maybe_listing.as_mut() {
-                // This is an origin (Users Handbook section 6-2.5)
-                // not a tag (6-2.2).
-                listing.push_line(ListingLine::Origin(origin.clone()));
-            }
+        if let Some(Some(origin)) = origins.get(block_id) {
+            // This is an origin (Users Handbook section 6-2.5)
+            // not a tag (6-2.2).
+            listing.push_line(ListingLine::Origin(origin.clone()));
         }
 
-        let mut words: Vec<Unsigned36Bit> = Vec::with_capacity(directive_block.items.len());
-        for (offset, statement) in directive_block.items.iter().enumerate() {
-            let offset: Unsigned18Bit = if let Ok(n) = Unsigned18Bit::try_from(offset) {
-                n
-            } else {
-                return Err(AssemblerFailure::MachineLimitExceeded(
-                    MachineLimitExceededFailure::BlockTooLarge {
-                        block_number,
-                        block_origin: directive_block.location,
-                        offset,
-                    },
-                ));
-            };
-            match offset_from_origin(&directive_block.location, offset) {
-                Ok(here) => match statement {
-                    Statement::Assignment(span, symbol, definition) => {
-                        let mut op = Default::default();
-                        let value = definition
-                            .evaluate(&HereValue::Address(here), symtab, &mut op)
-                            .expect("lookup on FinalSymbolTable is infallible");
-                        final_symbols.define(
-                            symbol.clone(),
-                            FinalSymbolDefinition::new(
-                                value,
-                                FinalSymbolType::Equality,
-                                extract_span(body, span).trim().to_string(),
-                            ),
-                        );
-                    }
-                    Statement::Instruction(inst) => {
-                        if let Some(tag) = inst.tag.as_ref() {
-                            final_symbols.define(
-                                tag.name.clone(),
-                                FinalSymbolDefinition::new(
-                                    here.into(),
-                                    FinalSymbolType::Tag,
-                                    extract_span(body, &tag.span).trim().to_string(),
-                                ),
-                            );
-                        }
-
-                        let mut op = Default::default();
-                        let word = inst
-                            .evaluate(&HereValue::Address(here), symtab, &mut op)
-                            .expect("lookup on FinalSymbolTable is infallible");
-
-                        if let Some(listing) = maybe_listing.as_mut() {
-                            listing.push_line(ListingLine::Instruction {
-                                address: here,
-                                instruction: inst.clone(),
-                                binary: word,
-                            });
-                        }
-                        words.push(word);
-                    }
-                },
-                Err(AddressOverflow(base, offset)) => {
-                    return Err(AssemblerFailure::MachineLimitExceeded(
-                        MachineLimitExceededFailure::BlockTooLarge {
-                            block_number,
-                            block_origin: base,
-                            offset: offset.into(),
-                        },
-                    ));
-                }
-            }
-        }
-
+        let words = build_binary_block(
+            directive_block,
+            *block_id,
+            symtab,
+            &mut final_symbols,
+            body,
+            listing,
+        )?;
         if words.is_empty() {
             event!(
                 Level::DEBUG,
-                "block {block_number} will not be included in the output because it is empty"
+                "{block_id} will not be included in the output because it is empty"
             );
         } else {
             binary.add_chunk(BinaryChunk {
                 address: directive_block.location,
                 words,
             });
-        }
+        };
     }
 
     final_symbols.check_all_defined(&*symtab);
@@ -709,36 +731,30 @@ pub(crate) fn assemble_source(
         Some(d) => d,
     };
 
-    // Now we do pass 3.
+    // Now we do pass 3, which generates the binary output
     let binary = {
-        let mut listing = if options.list {
-            Some(Listing::default())
-        } else {
-            None
-        };
-
-        // Pass 3 generates the binary output
+        let mut listing = Listing::default();
         let (binary, final_symbols) = assemble_pass3(
             directive,
             origins,
             &mut symbols,
             source_file_body,
-            listing.as_mut(),
+            &mut listing,
         )?;
 
-        if let Some(listing) = listing.as_mut() {
-            listing.set_final_symbols(final_symbols);
-            let lb = ListingWithBody {
-                listing,
-                body: source_file_body,
-            };
-            println!("{lb}");
+        listing.set_final_symbols(final_symbols);
+        if options.list {
+            println!(
+                "{0}",
+                ListingWithBody {
+                    listing: &listing,
+                    body: source_file_body,
+                }
+            );
         }
         binary
     };
 
-    // The count here also doesn't include the size of the RC-block as
-    // that is not yet implemented.
     event!(
         Level::INFO,
         "assembly pass 3 generated {} words of binary output (not counting the reader leader)",
@@ -783,7 +799,11 @@ fn test_assemble_pass1() {
         (
             Some(SourceFile {
                 punch: Some(PunchCommand(expected_directive_entry_point)),
-                blocks: vec![expected_block],
+                blocks: {
+                    let mut m = BTreeMap::new();
+                    m.insert(BlockIdentifier::Number(0), expected_block);
+                    m
+                },
                 macros: Vec::new(),
             }),
             OutputOptions { list: false }

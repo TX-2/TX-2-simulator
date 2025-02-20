@@ -13,7 +13,7 @@ use super::super::eval::{
     SymbolLookup, SymbolLookupFailure, SymbolLookupFailureKind, SymbolValue,
 };
 use super::super::symbol::SymbolName;
-use super::super::types::{offset_from_origin, MachineLimitExceededFailure, Span};
+use super::super::types::{offset_from_origin, BlockIdentifier, MachineLimitExceededFailure, Span};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub(crate) enum DefaultValueAssignmentError {
@@ -65,7 +65,7 @@ impl From<(SymbolDefinition, Span)> for InternalSymbolDef {
 #[derive(Debug)]
 pub(crate) struct SymbolTable {
     definitions: BTreeMap<SymbolName, InternalSymbolDef>,
-    blocks: BTreeMap<usize, BlockPosition>,
+    blocks: BTreeMap<BlockIdentifier, BlockPosition>,
     // TODO: put rc_block in here?
     index_registers_used: Unsigned6Bit,
 }
@@ -85,8 +85,9 @@ impl SymbolTable {
             .into_iter()
             .enumerate()
             .map(|(i, (span, maybe_origin, block_size))| {
+                let block_id = BlockIdentifier::Number(i);
                 (
-                    i,
+                    block_id,
                     BlockPosition {
                         span,
                         origin: maybe_origin,
@@ -183,16 +184,16 @@ impl SymbolTable {
                     SymbolDefinition::DefaultAssigned(value, _) => Ok(SymbolValue::Final(value)),
                     SymbolDefinition::Origin(addr) => Ok(SymbolValue::Final(addr.into())),
                     SymbolDefinition::Tag {
-                        block_number,
+                        block_id,
                         block_offset,
                         span: _,
-                    } => match t.finalise_origin(block_number, Some(op)) {
+                    } => match t.finalise_origin(block_id, Some(op)) {
                         Ok(address) => {
                             let computed_address: Address = address.index_by(block_offset);
                             Ok(SymbolValue::Final(computed_address.into()))
                         }
                         Err(e) => {
-                            panic!("failed to finalise origin of block {block_number}: {e}");
+                            panic!("failed to finalise origin of {block_id}: {e}");
                         }
                     },
                     SymbolDefinition::Equality(expression) => {
@@ -236,13 +237,13 @@ impl SymbolTable {
 
     pub(crate) fn finalise_origin(
         &mut self,
-        block_number: usize,
+        block_id: BlockIdentifier,
         maybe_op: Option<&mut LookupOperation>,
     ) -> Result<Address, DefaultValueAssignmentError> {
         let mut newdef: Option<(SymbolName, SymbolDefinition, Span)> = None;
         match self
             .blocks
-            .get(&block_number)
+            .get(&block_id)
             .expect("request to finalise origin of non-existent block")
             .clone()
         {
@@ -262,7 +263,7 @@ impl SymbolTable {
             } => {
                 let mut new_op = LookupOperation::default();
                 let op: &mut LookupOperation = maybe_op.unwrap_or(&mut new_op);
-                self.assign_default_for_block(block_number, op)
+                self.assign_default_for_block(block_id, op)
             }
             BlockPosition {
                 origin: Some(Origin::Symbolic(span, symbol_name)),
@@ -298,36 +299,36 @@ impl SymbolTable {
                         // different contents (here, 2 or 3).
                         //
                         // TODO: handle this without a panic.
-                        panic!("origin of block {block_number} is defined as {symbol_name} but this is a tag, and that is not allowed");
+                        panic!("origin of block {block_id} is defined as {symbol_name} but this is a tag, and that is not allowed");
                     }
                     Some(SymbolDefinition::DefaultAssigned(value, _)) => {
                         Ok(Address::from(subword::right_half(value)))
                     }
                     None => {
-                        let context = SymbolContext::origin(block_number, span);
+                        let context = SymbolContext::origin(block_id, span);
                         let mut new_op = LookupOperation::default();
                         let op: &mut LookupOperation = maybe_op.unwrap_or(&mut new_op);
-                        let addr = self.assign_default_for_block(block_number, op)?;
+                        let addr = self.assign_default_for_block(block_id, op)?;
                         newdef = Some((symbol_name.clone(), SymbolDefinition::DefaultAssigned(addr.into(), context), span));
                         Ok(addr)
                     }
                     Some(SymbolDefinition::Undefined(context)) => {
                         let mut new_op = LookupOperation::default();
                         let op: &mut LookupOperation = maybe_op.unwrap_or(&mut new_op);
-                        let addr = self.assign_default_for_block(block_number, op)?;
+                        let addr = self.assign_default_for_block(block_id, op)?;
                         newdef = Some((symbol_name.clone(), SymbolDefinition::DefaultAssigned(addr.into(), context), block_span));
                         Ok(addr)
                     }
                 }
             }
         }.and_then(|addr| {
-            match self.blocks.get_mut(&block_number) {
+            match self.blocks.get_mut(&block_id) {
                 Some(block_pos) => {
                     block_pos.block_address = Some(addr);
                     Ok(addr)
                 }
                 None => Err(DefaultValueAssignmentError::Inconsistency(
-                    format!("request to finalise origin of block {block_number} but there is no such block"))),
+                    format!("request to finalise origin of {block_id} but there is no such block"))),
             }
         }).inspect(|_a| {
             if let Some((symbol_name, def, span)) = newdef {
@@ -341,23 +342,22 @@ impl SymbolTable {
 
     fn assign_default_for_block(
         &mut self,
-        block_number: usize,
+        block_id: BlockIdentifier,
         op: &mut LookupOperation,
     ) -> Result<Address, DefaultValueAssignmentError> {
-        let address = match block_number.checked_sub(1) {
+        let address = match block_id.previous_block() {
             None => {
                 // This is the first block.
                 Ok(Origin::default_address())
             }
-            Some(previous_block_number) => match self.blocks.get(&previous_block_number).cloned() {
+            Some(previous_block) => match self.blocks.get(&previous_block).cloned() {
                 Some(previous) => {
-                    let previous_block_origin =
-                        self.finalise_origin(previous_block_number, Some(op))?;
+                    let previous_block_origin = self.finalise_origin(previous_block, Some(op))?;
                     match offset_from_origin(&previous_block_origin, previous.block_size) {
                         Ok(addr) => Ok(addr),
                         Err(_) => Err(DefaultValueAssignmentError::MachineLimitExceeded(
                             MachineLimitExceededFailure::BlockTooLarge {
-                                block_number: previous_block_number,
+                                block_id: previous_block,
                                 block_origin: previous_block_origin,
                                 offset: previous.block_size.into(),
                             },
@@ -365,14 +365,14 @@ impl SymbolTable {
                     }
                 }
                 None => {
-                    panic!("block {previous_block_number} is missing from the block layout");
+                    panic!("{previous_block} is missing from the block layout");
                 }
             },
         }?;
-        if let Some(pos) = self.blocks.get_mut(&block_number) {
+        if let Some(pos) = self.blocks.get_mut(&block_id) {
             pos.block_address = Some(address);
         } else {
-            panic!("block {block_number} is missing from the block layout");
+            panic!("{block_id} is missing from the block layout");
         }
         Ok(address)
     }

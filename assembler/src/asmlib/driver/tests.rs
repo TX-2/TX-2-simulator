@@ -1,4 +1,7 @@
-use std::ops::{Range, Shl};
+use std::{
+    collections::BTreeMap,
+    ops::{Range, Shl},
+};
 
 use super::super::ast::{
     ArithmeticExpression, Atom, HoldBit, InstructionFragment, LiteralValue, LocatedBlock,
@@ -8,7 +11,7 @@ use super::super::ast::{
 use super::super::driver::symtab::LookupOperation;
 use super::super::eval::{SymbolContext, SymbolLookup, SymbolValue};
 use super::super::symbol::SymbolName;
-use super::super::types::Span;
+use super::super::types::{BlockIdentifier, Span};
 use super::assemble_pass1;
 use super::{assemble_nonempty_valid_input, assemble_source};
 use base::{
@@ -23,7 +26,8 @@ fn assemble_literal(input: &str, expected: &InstructionFragment) {
     if symtab.has_definitions() {
         panic!("no symbol should have been generated");
     }
-    let got = directive.blocks.as_slice();
+    let gotvec: Vec<LocatedBlock> = directive.blocks.into_values().collect();
+    let got = gotvec.as_slice();
     eprintln!("{got:#?}");
     match got {
         [LocatedBlock { location: _, items }] => {
@@ -95,8 +99,23 @@ fn atom_to_fragment(atom: Atom) -> InstructionFragment {
     InstructionFragment::Arithmetic(ArithmeticExpression::from(atom))
 }
 
+fn one_item_map<K, V>(key: K, value: V) -> BTreeMap<K, V>
+where
+    K: Ord,
+{
+    let mut result = BTreeMap::new();
+    result.insert(key, value);
+    result
+}
+
 #[test]
 fn test_assemble_pass1() {
+    fn single_manuscript_block_map(
+        mb: ManuscriptBlock,
+    ) -> BTreeMap<BlockIdentifier, ManuscriptBlock> {
+        one_item_map(BlockIdentifier::Number(0), mb)
+    }
+
     let input = concat!("14\n", "☛☛PUNCH 26\n");
     let mut errors = Vec::new();
     let (source_file, _options) =
@@ -106,7 +125,7 @@ fn test_assemble_pass1() {
         source_file,
         Some(SourceFile {
             punch: Some(PunchCommand(Some(Address::from(u18!(0o26))))),
-            blocks: vec![ManuscriptBlock {
+            blocks: single_manuscript_block_map(ManuscriptBlock {
                 origin: None,
                 statements: vec![Statement::Instruction(TaggedProgramInstruction {
                     tag: None,
@@ -120,7 +139,7 @@ fn test_assemble_pass1() {
                         ))))]
                     }
                 })]
-            }],
+            }),
             macros: Vec::new(), // no macros
         })
     );
@@ -134,7 +153,13 @@ fn span(range: Range<usize>) -> Span {
 fn test_metacommand_dec_changes_default_base() {
     const INPUT: &str = concat!("10\n", "☛☛DECIMAL\n", "10  ** Ten\n");
     let (directive, _) = assemble_nonempty_valid_input(INPUT);
-    if let [LocatedBlock { location: _, items }] = directive.blocks.as_slice() {
+    if let [LocatedBlock { location: _, items }] = directive
+        .blocks
+        .values()
+        .cloned()
+        .collect::<Vec<_>>()
+        .as_slice()
+    {
         if let [Statement::Instruction(TaggedProgramInstruction {
             tag: None,
             instruction:

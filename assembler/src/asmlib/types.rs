@@ -44,12 +44,53 @@ impl PartialEq for OrderableSpan {
 
 impl Eq for OrderableSpan {}
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord)]
+pub enum BlockIdentifier {
+    Number(usize),
+    RcWords,
+}
+
+impl BlockIdentifier {
+    pub fn next_block(&self) -> Option<BlockIdentifier> {
+        match self {
+            BlockIdentifier::Number(n) => match n.checked_add(1) {
+                None => {
+                    panic!("too many blocks");
+                }
+                Some(succ) => Some(BlockIdentifier::Number(succ)),
+            },
+            BlockIdentifier::RcWords => None,
+        }
+    }
+
+    pub fn previous_block(&self) -> Option<BlockIdentifier> {
+        match self {
+            BlockIdentifier::Number(n) => match n.checked_sub(1) {
+                None => None,
+                Some(nn) => Some(BlockIdentifier::Number(nn)),
+            },
+            BlockIdentifier::RcWords => {
+                unimplemented!("previous_block should not be called on the RC-words block.");
+            }
+        }
+    }
+}
+
+impl Display for BlockIdentifier {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            BlockIdentifier::Number(n) => write!(f, "block {n}"),
+            BlockIdentifier::RcWords => f.write_str("RC-word block"),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum MachineLimitExceededFailure {
     RanOutOfIndexRegisters(SymbolName),
     RcBlockTooLarge,
     BlockTooLarge {
-        block_number: usize,
+        block_id: BlockIdentifier,
         block_origin: Address,
         offset: usize,
     },
@@ -68,11 +109,11 @@ impl Display for MachineLimitExceededFailure {
             }
             MachineLimitExceededFailure::RcBlockTooLarge => f.write_str("RC block is too large"),
             MachineLimitExceededFailure::BlockTooLarge {
-                block_number,
+                block_id,
                 block_origin,
                 offset,
             } => {
-                write!(f, "program block {block_number} is too large; offset {offset} from block start {block_origin} does not fit in physical memory")
+                write!(f, "{block_id} is too large; offset {offset} from block start {block_origin} does not fit in physical memory")
             }
         }
     }

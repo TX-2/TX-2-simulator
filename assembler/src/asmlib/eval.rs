@@ -8,7 +8,9 @@ use base::{
 
 use super::ast::UntaggedProgramInstruction;
 use super::symbol::SymbolName;
-use super::types::{AssemblerFailure, MachineLimitExceededFailure, OrderableSpan, Span};
+use super::types::{
+    AssemblerFailure, BlockIdentifier, MachineLimitExceededFailure, OrderableSpan, Span,
+};
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum LookupTarget {
@@ -187,12 +189,12 @@ pub(crate) trait Evaluate {
 pub(crate) enum SymbolUse {
     Reference(SymbolContext),
     Definition(SymbolDefinition),
-    Origin(SymbolName, usize),
+    Origin(SymbolName, BlockIdentifier),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 enum SymbolContextMergeError {
-    ConflictingOrigin(usize, usize),
+    ConflictingOrigin(BlockIdentifier, BlockIdentifier),
 }
 
 #[derive(Debug, Default, PartialEq, Eq, Clone)]
@@ -202,7 +204,7 @@ pub(crate) struct SymbolContext {
     configuration: bool,
     index: bool,
     address: bool,
-    origin_of_block: Option<usize>,
+    origin_of_block: Option<BlockIdentifier>,
     uses: BTreeSet<OrderableSpan>, // Span does not implement Hash
 }
 
@@ -220,9 +222,9 @@ impl SymbolContext {
         [OrderableSpan(span)].into_iter().collect()
     }
 
-    pub(crate) fn origin(block_number: usize, span: Span) -> SymbolContext {
+    pub(crate) fn origin(block_id: BlockIdentifier, span: Span) -> SymbolContext {
         SymbolContext {
-            origin_of_block: Some(block_number),
+            origin_of_block: Some(block_id),
             uses: SymbolContext::uses(span),
             ..Default::default()
         }
@@ -283,7 +285,7 @@ impl From<(Script, Span)> for SymbolContext {
 #[derive(PartialEq, Eq, Clone)]
 pub(crate) enum SymbolDefinition {
     Tag {
-        block_number: usize,
+        block_id: BlockIdentifier,
         block_offset: Unsigned18Bit,
         span: Span,
     },
@@ -298,13 +300,13 @@ impl Debug for SymbolDefinition {
         match self {
             SymbolDefinition::Origin(address) => write!(f, "Origin({address:o})"),
             SymbolDefinition::Tag {
-                block_number,
+                block_id,
                 block_offset,
                 span: _,
             } => {
                 write!(
                     f,
-                    "Tag {{block_number:{block_number}, block_offset:{block_offset}}}"
+                    "Tag {{block_id:{block_id:?}, block_offset:{block_offset}}}"
                 )
             }
             SymbolDefinition::Equality(expr) => f.debug_tuple("Equality").field(expr).finish(),
@@ -328,13 +330,13 @@ impl Display for SymbolDefinition {
                 write!(f, "{addr:06o}")
             }
             SymbolDefinition::Tag {
-                block_number,
+                block_id,
                 block_offset,
                 span: _,
             } => {
                 write!(
                     f,
-                    "tag at offset {block_offset} in block {block_number} with unspecified address"
+                    "tag at offset {block_offset} in {block_id} with unspecified address"
                 )
             }
             SymbolDefinition::Equality(inst) => {

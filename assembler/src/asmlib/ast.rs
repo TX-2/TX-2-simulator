@@ -1,6 +1,7 @@
 //! Abstract syntax representation.   It's mostly not actually a tree.
 use std::borrow::Cow;
 use std::cmp::Ordering;
+use std::collections::BTreeMap;
 use std::fmt::{self, Display, Formatter, Octal, Write};
 use std::hash::Hash;
 use std::ops::Shl;
@@ -15,7 +16,7 @@ use crate::eval::{HereValue, SymbolLookupFailure, SymbolValue};
 use super::eval::{Evaluate, SymbolContext, SymbolDefinition, SymbolLookup, SymbolUse};
 use super::state::NumeralMode;
 use super::symbol::SymbolName;
-use super::types::Span;
+use super::types::{BlockIdentifier, Span};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct Elevated<T> {
@@ -504,14 +505,16 @@ impl Octal for Origin {
 impl Origin {
     pub(crate) fn symbol_uses(
         &self,
-        block: usize,
+        block_id: BlockIdentifier,
     ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
         let mut result = Vec::with_capacity(1);
         match self {
             Origin::Literal(_span, _) => (),
-            Origin::Symbolic(span, name) => {
-                result.push((name.clone(), *span, SymbolUse::Origin(name.clone(), block)))
-            }
+            Origin::Symbolic(span, name) => result.push((
+                name.clone(),
+                *span,
+                SymbolUse::Origin(name.clone(), block_id),
+            )),
         }
         result.into_iter()
     }
@@ -580,14 +583,14 @@ pub(crate) struct Tag {
 impl Tag {
     pub(crate) fn symbol_uses(
         &self,
-        block_number: usize,
+        block_id: BlockIdentifier,
         block_offset: Unsigned18Bit,
     ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
         [(
             self.name.clone(),
             self.span,
             SymbolUse::Definition(SymbolDefinition::Tag {
-                block_number,
+                block_id,
                 block_offset,
                 span: self.span,
             }),
@@ -605,12 +608,12 @@ pub(crate) struct TaggedProgramInstruction {
 impl TaggedProgramInstruction {
     pub(crate) fn symbol_uses(
         &self,
-        block: usize,
+        block_id: BlockIdentifier,
         offset: Unsigned18Bit,
     ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
         let mut result = Vec::new();
         if let Some(tag) = self.tag.as_ref() {
-            result.extend(tag.symbol_uses(block, offset));
+            result.extend(tag.symbol_uses(block_id, offset));
         }
         result.extend(self.instruction.symbol_uses());
         result.into_iter()
@@ -633,7 +636,7 @@ const HELD_MASK: Unsigned36Bit = u36!(1 << 35);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SourceFile {
     pub(crate) punch: Option<PunchCommand>,
-    pub(crate) blocks: Vec<ManuscriptBlock>,
+    pub(crate) blocks: BTreeMap<BlockIdentifier, ManuscriptBlock>,
     pub(crate) macros: Vec<MacroDefinition>,
 }
 
@@ -641,8 +644,7 @@ impl SourceFile {
     pub(crate) fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> + '_ {
         self.blocks
             .iter()
-            .enumerate()
-            .flat_map(|(block_number, block)| block.symbol_uses(block_number))
+            .flat_map(|(block_id, block)| block.symbol_uses(*block_id))
     }
 
     pub(crate) fn global_symbol_references(
@@ -731,7 +733,7 @@ impl Statement {
 
     pub(crate) fn symbol_uses(
         &self,
-        block: usize,
+        block_id: BlockIdentifier,
         offset: Unsigned18Bit,
     ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
         match self {
@@ -745,7 +747,7 @@ impl Statement {
                     ),
                 )]
             }
-            Statement::Instruction(inst) => inst.symbol_uses(block, offset).collect(),
+            Statement::Instruction(inst) => inst.symbol_uses(block_id, offset).collect(),
         }
         .into_iter()
     }
@@ -784,16 +786,16 @@ pub(crate) struct ManuscriptBlock {
 impl ManuscriptBlock {
     pub(crate) fn symbol_uses(
         &self,
-        block_number: usize,
+        block_id: BlockIdentifier,
     ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
         let mut result: Vec<(SymbolName, Span, SymbolUse)> = Vec::new();
         if let Some(origin) = self.origin.as_ref() {
-            result.extend(origin.symbol_uses(block_number));
+            result.extend(origin.symbol_uses(block_id));
         }
         for (offset, statement) in self.statements.iter().enumerate() {
             let off: Unsigned18Bit = Unsigned18Bit::try_from(offset)
                 .expect("block should not be larger than the TX-2's memory");
-            result.extend(statement.symbol_uses(block_number, off));
+            result.extend(statement.symbol_uses(block_id, off));
         }
         result.into_iter()
     }
@@ -813,18 +815,21 @@ impl ManuscriptBlock {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct Directive {
     // items must be in manuscript order, because RC block addresses
     // are assigned in the order they appear in the code, and
     // similarly for undefined origins (e.g. "FOO| JMP ..." where FOO
     // has no definition).
-    pub(crate) blocks: Vec<LocatedBlock>,
+    pub(crate) blocks: BTreeMap<BlockIdentifier, LocatedBlock>,
     entry_point: Option<Address>,
 }
 
 impl Directive {
-    pub(crate) fn new(blocks: Vec<LocatedBlock>, entry_point: Option<Address>) -> Self {
+    pub(crate) fn new(
+        blocks: BTreeMap<BlockIdentifier, LocatedBlock>,
+        entry_point: Option<Address>,
+    ) -> Self {
         Self {
             blocks,
             entry_point,
@@ -835,7 +840,7 @@ impl Directive {
         self.entry_point
     }
 
-    pub(crate) fn blocks(&self) -> impl Iterator<Item = &LocatedBlock> {
+    pub(crate) fn blocks(&self) -> impl Iterator<Item = (&BlockIdentifier, &LocatedBlock)> {
         self.blocks.iter()
     }
 }

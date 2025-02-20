@@ -1,6 +1,9 @@
-use std::fmt::{Debug, Display};
 #[cfg(test)]
 use std::ops::Range;
+use std::{
+    collections::BTreeMap,
+    fmt::{Debug, Display},
+};
 
 use base::prelude::*;
 use base::u36;
@@ -334,7 +337,7 @@ fn test_empty_manuscript() {
     assert_eq!(
         parse_successfully_with("", source_file(), no_state_setup),
         SourceFile {
-            blocks: vec![],
+            blocks: BTreeMap::new(),
             macros: vec![],
             punch: None,
         }
@@ -384,13 +387,21 @@ fn test_manuscript_line_with_bare_literal() {
     );
 }
 
+fn manuscript_blocks(blocks: Vec<ManuscriptBlock>) -> BTreeMap<BlockIdentifier, ManuscriptBlock> {
+    let mut result = BTreeMap::new();
+    for (i, block) in blocks.into_iter().enumerate() {
+        result.insert(BlockIdentifier::Number(i), block);
+    }
+    result
+}
+
 #[test]
 fn test_manuscript_with_bare_literal() {
     assert_eq!(
         parse_successfully_with("1\n", source_file(), no_state_setup),
         SourceFile {
             punch: None,
-            blocks: vec![ManuscriptBlock {
+            blocks: manuscript_blocks(vec![ManuscriptBlock {
                 origin: None,
                 statements: vec![Statement::Instruction(TaggedProgramInstruction {
                     tag: None,
@@ -404,7 +415,7 @@ fn test_manuscript_with_bare_literal() {
                         ))],
                     }
                 })]
-            }],
+            }]),
             macros: vec![],
         }
     );
@@ -451,7 +462,7 @@ fn test_manuscript_without_tag() {
             no_state_setup
         ),
         SourceFile {
-            blocks: vec![ManuscriptBlock {
+            blocks: manuscript_blocks(vec![ManuscriptBlock {
                 origin: None,
                 statements: vec![
                     Statement::Instruction(TaggedProgramInstruction {
@@ -479,7 +490,7 @@ fn test_manuscript_without_tag() {
                         }
                     }),
                 ]
-            }],
+            }]),
             macros: vec![],
             punch: None,
         }
@@ -517,7 +528,7 @@ fn test_manuscript_with_single_syllable_tag() {
             no_state_setup
         ),
         SourceFile {
-            blocks: vec![ManuscriptBlock {
+            blocks: manuscript_blocks(vec![ManuscriptBlock {
                 origin: None,
                 statements: vec![Statement::Instruction(TaggedProgramInstruction {
                     tag: Some(Tag {
@@ -536,7 +547,7 @@ fn test_manuscript_with_single_syllable_tag() {
                         )),]
                     }
                 })]
-            }],
+            }]),
             macros: vec![],
             punch: None
         }
@@ -553,7 +564,7 @@ fn test_manuscript_with_origin() {
         ),
         SourceFile {
             punch: None,
-            blocks: vec![ManuscriptBlock {
+            blocks: manuscript_blocks(vec![ManuscriptBlock {
                 origin: Some(Origin::Literal(span(0..3), Address::new(u18!(0o100)))),
                 statements: vec![Statement::Instruction(TaggedProgramInstruction {
                     tag: None,
@@ -567,7 +578,7 @@ fn test_manuscript_with_origin() {
                         ))]
                     }
                 })]
-            }],
+            }]),
             macros: vec![],
         }
     );
@@ -636,7 +647,7 @@ fn test_manuscript_with_multi_syllable_tag() {
         ),
         SourceFile {
             punch: None,
-            blocks: vec![ManuscriptBlock {
+            blocks: manuscript_blocks(vec![ManuscriptBlock {
                 origin: None,
                 statements: vec![Statement::Instruction(TaggedProgramInstruction {
                     tag: Some(Tag {
@@ -655,7 +666,7 @@ fn test_manuscript_with_multi_syllable_tag() {
                         ))]
                     }
                 })]
-            }],
+            }]),
             macros: vec![],
         }
     );
@@ -700,7 +711,7 @@ fn test_manuscript_with_real_arrow_tag() {
         parse_successfully_with(INPUT, source_file(), no_state_setup),
         SourceFile {
             punch: None,
-            blocks: vec![ManuscriptBlock {
+            blocks: manuscript_blocks(vec![ManuscriptBlock {
                 origin: None,
                 statements: vec![Statement::Instruction(TaggedProgramInstruction {
                     tag: Some(Tag {
@@ -719,7 +730,7 @@ fn test_manuscript_with_real_arrow_tag() {
                         span: span(7..10),
                     }
                 })]
-            }],
+            }]),
             macros: Vec::new(),
         }
     );
@@ -826,7 +837,7 @@ fn test_assignment_lines() {
         ),
         SourceFile {
             punch: None,
-            blocks: vec![ManuscriptBlock {
+            blocks: manuscript_blocks(vec![ManuscriptBlock {
                 origin: None,
                 statements: vec![
                     assignment_of_literal(
@@ -852,7 +863,7 @@ fn test_assignment_lines() {
                         }
                     })
                 ]
-            }],
+            }]),
             macros: Vec::new(),
         }
     );
@@ -866,7 +877,7 @@ fn test_assignment_origin() {
         tree,
         SourceFile {
             punch: None,
-            blocks: vec![
+            blocks: manuscript_blocks(vec![
                 ManuscriptBlock {
                     origin: None,
                     statements: vec![assignment_of_literal(
@@ -890,7 +901,7 @@ fn test_assignment_origin() {
                         }
                     })]
                 }
-            ],
+            ]),
             macros: Vec::new(),
         }
     );
