@@ -448,16 +448,28 @@ impl SymbolLookup for SymbolTable {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum FinalSymbolType {
+    Tag,
+    Equality,
+}
+
 #[derive(Debug)]
 pub(crate) struct FinalSymbolDefinition {
     value: Unsigned36Bit,
     representation: String,
+    sym_type: FinalSymbolType,
 }
 
 impl FinalSymbolDefinition {
-    pub(crate) fn new(value: Unsigned36Bit, representation: String) -> Self {
+    pub(crate) fn new(
+        value: Unsigned36Bit,
+        sym_type: FinalSymbolType,
+        representation: String,
+    ) -> Self {
         FinalSymbolDefinition {
             value,
+            sym_type,
             representation,
         }
     }
@@ -488,16 +500,29 @@ impl FinalSymbolTable {
 
 impl Display for FinalSymbolTable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for (
-            name,
-            FinalSymbolDefinition {
-                value,
-                representation,
-            },
-        ) in self.definitions.iter()
-        {
-            writeln!(f, "{name:20} = {value:012} ** {representation:>20}")?;
-        }
-        Ok(())
+        let show = |f: &mut std::fmt::Formatter<'_>,
+                    sym_type_wanted: FinalSymbolType,
+                    title: &str|
+         -> std::fmt::Result {
+            writeln!(f)?;
+            writeln!(f, "** {title}")?;
+            for (
+                name,
+                FinalSymbolDefinition {
+                    value,
+                    sym_type,
+                    representation,
+                },
+            ) in self.definitions.iter()
+            {
+                if sym_type == &sym_type_wanted {
+                    writeln!(f, "{name:20} = {value:012} ** {representation:>20}")?;
+                }
+            }
+            Ok(())
+        };
+
+        show(f, FinalSymbolType::Tag, "Tags")?;
+        show(f, FinalSymbolType::Equality, "Equalities")
     }
 }

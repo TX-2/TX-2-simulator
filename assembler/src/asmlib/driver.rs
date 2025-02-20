@@ -23,7 +23,7 @@ use super::state::NumeralMode;
 use super::symbol::SymbolName;
 use super::types::*;
 use base::prelude::{Address, IndexBy, Unsigned18Bit, Unsigned36Bit};
-use symtab::{FinalSymbolDefinition, FinalSymbolTable, SymbolTable};
+use symtab::{FinalSymbolDefinition, FinalSymbolTable, FinalSymbolType, SymbolTable};
 
 #[cfg(test)]
 use base::charset::Script;
@@ -526,6 +526,7 @@ fn assemble_pass3(
                 symbol_name.clone(),
                 FinalSymbolDefinition::new(
                     block.location.into(),
+                    FinalSymbolType::Tag, // actually origin
                     extract_span(body, span).trim().to_string(),
                 ),
             );
@@ -573,6 +574,7 @@ fn assemble_pass3(
                             symbol.clone(),
                             FinalSymbolDefinition::new(
                                 value,
+                                FinalSymbolType::Equality,
                                 extract_span(body, span).trim().to_string(),
                             ),
                         );
@@ -583,6 +585,7 @@ fn assemble_pass3(
                                 tag.name.clone(),
                                 FinalSymbolDefinition::new(
                                     here.into(),
+                                    FinalSymbolType::Tag,
                                     extract_span(body, &tag.span).trim().to_string(),
                                 ),
                             );
