@@ -10,7 +10,7 @@ use super::super::ast::{
 };
 use super::super::eval::{SymbolContext, SymbolLookup, SymbolValue};
 use super::super::symbol::SymbolName;
-use super::super::symtab::LookupOperation;
+use super::super::symtab::{LookupOperation, RcBlockLocation};
 use super::super::types::{BlockIdentifier, Span};
 use super::assemble_pass1;
 use super::{assemble_nonempty_valid_input, assemble_source};
@@ -82,7 +82,8 @@ fn assemble_check_symbols(input: &str, target_address: Address, expected: &[(&st
         let context = SymbolContext::from((Script::Normal, span));
         let here = HereValue::Address(target_address);
         let mut op = LookupOperation::default();
-        match symtab.lookup_with_op(&sym, span, &here, &context, &mut op) {
+        let rc_block = RcBlockLocation::Undecided;
+        match symtab.lookup_with_op(&sym, span, &here, &rc_block, &context, &mut op) {
             Ok(got) => {
                 if got != *expected_value {
                     panic!("incorrect value for symbol {name}; expected {expected_value:?}, got {got:?}");

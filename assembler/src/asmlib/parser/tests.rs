@@ -20,7 +20,7 @@ use super::super::{
     parser::symex::{parse_multi_syllable_symex, parse_symex},
     state::NumeralMode,
     symbol::SymbolName,
-    symtab::{LookupOperation, SymbolTable},
+    symtab::{LookupOperation, RcBlockLocation, SymbolTable},
 };
 use super::*;
 
@@ -986,13 +986,19 @@ fn test_multi_syllable_symex() {
 fn program_instruction_with_opcode() {
     let mut nosyms = SymbolTable::new(None);
     let mut op = LookupOperation::default();
+    let rc_block = RcBlockLocation::Undecided;
     assert_eq!(
         parse_successfully_with(
             "²¹IOS₅₂ 30106",
             tagged_program_instruction(),
             no_state_setup
         )
-        .evaluate(&HereValue::Address(Address::ZERO), &mut nosyms, &mut op),
+        .evaluate(
+            &HereValue::Address(Address::ZERO),
+            &mut nosyms,
+            &rc_block,
+            &mut op
+        ),
         Ok(u36!(0o210452_030106))
     );
 }

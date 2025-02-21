@@ -10,6 +10,7 @@ use crate::symtab::{LookupOperation, SymbolTable};
 
 use super::ast::UntaggedProgramInstruction;
 use super::symbol::SymbolName;
+use super::symtab::RcBlockLocation;
 use super::types::{
     AssemblerFailure, BlockIdentifier, MachineLimitExceededFailure, OrderableSpan, Span,
 };
@@ -48,12 +49,12 @@ impl Display for LookupTarget {
             }
             LookupTarget::MemRef(
                 MemoryReference {
-                    block_number,
+                    block_id,
                     block_offset: _,
                 },
                 _,
             ) => {
-                write!(f, "memory block {block_number}")
+                write!(f, "{block_id}")
             }
         }
     }
@@ -61,7 +62,7 @@ impl Display for LookupTarget {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub(crate) struct MemoryReference {
-    pub(crate) block_number: usize,
+    pub(crate) block_id: BlockIdentifier,
     pub(crate) block_offset: usize,
 }
 
@@ -81,6 +82,7 @@ pub(crate) enum SymbolLookupFailureKind {
     Inconsistent(String),
     Loop { deps_in_order: Vec<SymbolName> },
     MachineLimitExceeded(MachineLimitExceededFailure),
+    RcReferenceNotValidHere,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -93,6 +95,9 @@ impl Display for SymbolLookupFailure {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         let desc = self.target.to_string();
         match self.kind() {
+            SymbolLookupFailureKind::RcReferenceNotValidHere => {
+                write!(f, "RC-block references are not allowed here")
+            }
             SymbolLookupFailureKind::Inconsistent(msg) => f.write_str(msg.as_str()),
             SymbolLookupFailureKind::Loop { deps_in_order } => {
                 let names: Vec<String> = deps_in_order.iter().map(|dep| dep.to_string()).collect();
@@ -114,6 +119,12 @@ impl From<SymbolLookupFailure> for AssemblerFailure {
         let symbol_desc: String = f.target.to_string();
         let span: Span = *f.target.span();
         match f.kind {
+            SymbolLookupFailureKind::RcReferenceNotValidHere => {
+                AssemblerFailure::InvalidProgram {
+                    span,
+                    msg: format!("definition of {symbol_desc} depends on an RC-word reference but that is not valid here",),
+                }
+            }
             SymbolLookupFailureKind::MachineLimitExceeded(limit_exceeded) => {
                 AssemblerFailure::MachineLimitExceeded(limit_exceeded)
             }
@@ -163,6 +174,7 @@ pub(crate) trait SymbolLookup {
         name: &SymbolName,
         span: Span, // TODO: use &Span?
         target_address: &HereValue,
+        rc_block: &RcBlockLocation,
         context: &SymbolContext,
         op: &mut Self::Operation<'_>,
     ) -> Result<SymbolValue, SymbolLookupFailure>;
@@ -183,6 +195,7 @@ pub(crate) trait Evaluate {
         &self,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
+        rc_block: &RcBlockLocation,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure>;
 }

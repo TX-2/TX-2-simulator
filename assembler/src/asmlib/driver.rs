@@ -23,7 +23,8 @@ use super::parser::parse_source_file;
 use super::state::NumeralMode;
 use super::symbol::SymbolName;
 use super::symtab::{
-    FinalSymbolDefinition, FinalSymbolTable, FinalSymbolType, LookupOperation, SymbolTable,
+    FinalSymbolDefinition, FinalSymbolTable, FinalSymbolType, LookupOperation, RcBlockLocation,
+    SymbolTable,
 };
 use super::types::*;
 use base::prelude::{Address, IndexBy, Unsigned18Bit, Unsigned36Bit};
@@ -514,33 +515,20 @@ fn build_binary_block(
     directive_block: &LocatedBlock,
     block_id: BlockIdentifier,
     symtab: &mut SymbolTable,
+    rc_block: &RcBlockLocation,
     final_symbols: &mut FinalSymbolTable,
     body: &str,
     listing: &mut Listing,
 ) -> Result<Vec<Unsigned36Bit>, AssemblerFailure> {
     let mut words: Vec<Unsigned36Bit> = Vec::with_capacity(directive_block.items.len());
     for (offset, statement) in directive_block.items.iter().enumerate() {
-        let bad_offset = || {
-            AssemblerFailure::MachineLimitExceeded(MachineLimitExceededFailure::BlockTooLarge {
-                block_id,
-                block_origin: directive_block.location,
-                offset,
-            })
-        };
-        let here: Address = if let Ok(h) = Unsigned18Bit::try_from(offset)
-            .map_err(|_| ())
-            .and_then(|n| offset_from_origin(&directive_block.location, n).map_err(|_| ()))
-        {
-            h
-        } else {
-            return Err(bad_offset());
-        };
+        let here: Address = directive_block.get_offset(block_id, offset)?;
 
         match statement {
             Statement::Assignment(span, symbol, definition) => {
                 let mut op = Default::default();
                 let value = definition
-                    .evaluate(&HereValue::Address(here), symtab, &mut op)
+                    .evaluate(&HereValue::Address(here), symtab, rc_block, &mut op)
                     .expect("lookup on FinalSymbolTable is infallible");
                 final_symbols.define(
                     symbol.clone(),
@@ -565,7 +553,7 @@ fn build_binary_block(
 
                 let mut op = Default::default();
                 let word = inst
-                    .evaluate(&HereValue::Address(here), symtab, &mut op)
+                    .evaluate(&HereValue::Address(here), symtab, rc_block, &mut op)
                     .expect("lookup on FinalSymbolTable is infallible");
 
                 listing.push_line(ListingLine::Instruction {
@@ -590,7 +578,7 @@ fn assemble_pass3(
 ) -> Result<(Binary, FinalSymbolTable), AssemblerFailure> {
     let span = span!(Level::ERROR, "assembly pass 3");
     let _enter = span.enter();
-
+    let rc_block_location = directive.get_rc_block_location();
     let mut binary = Binary::default();
     if let Some(address) = directive.entry_point() {
         binary.set_entry_point(address);
@@ -632,6 +620,7 @@ fn assemble_pass3(
             directive_block,
             *block_id,
             symtab,
+            &rc_block_location,
             &mut final_symbols,
             body,
             listing,

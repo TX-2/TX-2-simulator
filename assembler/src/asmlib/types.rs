@@ -87,7 +87,6 @@ pub enum MachineLimitExceededFailure {
     RcBlockTooLarge,
     BlockTooLarge {
         block_id: BlockIdentifier,
-        block_origin: Address,
         offset: usize,
     },
     /// Program size does not fit in an Unsigned18Bit quantity.
@@ -104,12 +103,11 @@ impl Display for MachineLimitExceededFailure {
                 write!(f, "there are not enough index registers to assign one as the default for the symbol {name}")
             }
             MachineLimitExceededFailure::RcBlockTooLarge => f.write_str("RC block is too large"),
-            MachineLimitExceededFailure::BlockTooLarge {
-                block_id,
-                block_origin,
-                offset,
-            } => {
-                write!(f, "{block_id} is too large; offset {offset} from block start {block_origin} does not fit in physical memory")
+            MachineLimitExceededFailure::BlockTooLarge { block_id, offset } => {
+                write!(
+                    f,
+                    "{block_id} is too large; offset {offset} does not fit in physical memory"
+                )
             }
         }
     }

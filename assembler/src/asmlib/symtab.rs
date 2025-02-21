@@ -9,8 +9,8 @@ use base::subword;
 
 use super::ast::Origin;
 use super::eval::{
-    BadSymbolDefinition, Evaluate, HereValue, LookupTarget, SymbolContext, SymbolDefinition,
-    SymbolLookup, SymbolLookupFailure, SymbolLookupFailureKind, SymbolValue,
+    BadSymbolDefinition, Evaluate, HereValue, LookupTarget, MemoryReference, SymbolContext,
+    SymbolDefinition, SymbolLookup, SymbolLookupFailure, SymbolLookupFailureKind, SymbolValue,
 };
 use super::symbol::SymbolName;
 use super::types::{offset_from_origin, BlockIdentifier, MachineLimitExceededFailure, Span};
@@ -33,6 +33,43 @@ impl Display for DefaultValueAssignmentError {
 }
 
 impl std::error::Error for DefaultValueAssignmentError {}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub(crate) struct RcReference(Unsigned18Bit);
+
+impl RcReference {
+    pub(crate) fn new(value: Unsigned18Bit) -> RcReference {
+        RcReference(value)
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub(crate) enum RcBlockLocation {
+    Undecided,
+    At(Address),
+}
+
+impl RcBlockLocation {
+    pub(crate) fn resolve(
+        &self,
+        span: &Span,
+        reference: &RcReference,
+    ) -> Result<Address, SymbolLookupFailure> {
+        match self {
+            RcBlockLocation::Undecided => {
+                let mem_ref = MemoryReference {
+                    block_id: BlockIdentifier::RcWords,
+                    block_offset: reference.0.into(),
+                };
+                Err(SymbolLookupFailure {
+                    target: LookupTarget::MemRef(mem_ref, *span),
+                    kind: SymbolLookupFailureKind::RcReferenceNotValidHere,
+                })
+            }
+            RcBlockLocation::At(addr) => Ok(addr.index_by(reference.0)),
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub(super) struct BlockPosition {
@@ -168,6 +205,7 @@ impl SymbolTable {
         name: &SymbolName,
         span: Span,
         target_address: &HereValue,
+        rc_block: &RcBlockLocation,
         _context: &SymbolContext,
         op: &mut LookupOperation,
     ) -> Result<SymbolValue, SymbolLookupFailure> {
@@ -176,6 +214,7 @@ impl SymbolTable {
             name: &SymbolName,
             span: Span,
             target_address: &HereValue,
+            rc_block: &RcBlockLocation,
             op: &mut LookupOperation,
         ) -> Result<SymbolValue, SymbolLookupFailure> {
             if let Some(def) = t.get_clone(name) {
@@ -201,7 +240,7 @@ impl SymbolTable {
                         // '#' on the right-hand-side of the
                         // assignment.
                         expression
-                            .evaluate(target_address, t, op)
+                            .evaluate(target_address, t, rc_block, op)
                             .map(SymbolValue::Final)
                     }
                     SymbolDefinition::Undefined(context_union) => {
@@ -228,7 +267,7 @@ impl SymbolTable {
                 },
             )));
         }
-        let result = body(self, name, span, target_address, op);
+        let result = body(self, name, span, target_address, rc_block, op);
         op.deps_in_order.pop();
         op.depends_on.remove(name);
         result
@@ -277,7 +316,7 @@ impl SymbolTable {
                     Some(SymbolDefinition::Equality(rhs)) => {
                         let mut new_op = LookupOperation::default();
                         let op: &mut LookupOperation = maybe_op.unwrap_or(&mut new_op);
-                        match rhs.evaluate(&HereValue::NotAllowed, self, op) {
+                        match rhs.evaluate(&HereValue::NotAllowed, self, &RcBlockLocation::Undecided, op) {
                             Ok(value) => Ok(Address::from(subword::right_half(value))),
                             Err(e) => {
                                 panic!("no code to handle symbol lookup failure in finalise_origin: {e}"); // TODO
@@ -357,7 +396,6 @@ impl SymbolTable {
                         Err(_) => Err(DefaultValueAssignmentError::MachineLimitExceeded(
                             MachineLimitExceededFailure::BlockTooLarge {
                                 block_id: previous_block,
-                                block_origin: previous_block_origin,
                                 offset: previous.block_size.into(),
                             },
                         )),
@@ -440,10 +478,11 @@ impl SymbolLookup for SymbolTable {
         name: &SymbolName,
         span: Span,
         target_address: &HereValue,
+        rc_block: &RcBlockLocation,
         context: &SymbolContext,
         op: &mut Self::Operation<'_>,
     ) -> Result<SymbolValue, SymbolLookupFailure> {
-        self.final_lookup_helper(name, span, target_address, context, op)
+        self.final_lookup_helper(name, span, target_address, rc_block, context, op)
     }
 }
 

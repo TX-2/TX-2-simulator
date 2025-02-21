@@ -17,8 +17,10 @@ use crate::symtab::LookupOperation;
 use super::eval::{Evaluate, SymbolContext, SymbolDefinition, SymbolLookup, SymbolUse};
 use super::state::NumeralMode;
 use super::symbol::SymbolName;
-use super::symtab::SymbolTable;
-use super::types::{BlockIdentifier, Span};
+use super::symtab::{RcBlockLocation, RcReference, SymbolTable};
+use super::types::{
+    offset_from_origin, AssemblerFailure, BlockIdentifier, MachineLimitExceededFailure, Span,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct Elevated<T> {
@@ -72,6 +74,7 @@ impl Evaluate for LiteralValue {
         &self,
         _target_address: &HereValue,
         _symtab: &mut SymbolTable,
+        _rc_block: &RcBlockLocation,
         _op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         Ok(self.value())
@@ -249,6 +252,7 @@ impl Evaluate for ArithmeticExpression {
         &self,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
+        rc_block: &RcBlockLocation,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         fn fold_step(
@@ -256,16 +260,17 @@ impl Evaluate for ArithmeticExpression {
             (binop, right): &(Operator, Atom),
             target_address: &HereValue,
             symtab: &mut SymbolTable,
+            rc_block: &RcBlockLocation,
             op: &mut LookupOperation,
         ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-            let right: Unsigned36Bit = right.evaluate(target_address, symtab, op)?;
+            let right: Unsigned36Bit = right.evaluate(target_address, symtab, rc_block, op)?;
             Ok(ArithmeticExpression::eval_binop(acc, binop, right))
         }
 
-        let first: Unsigned36Bit = self.first.evaluate(target_address, symtab, op)?;
+        let first: Unsigned36Bit = self.first.evaluate(target_address, symtab, rc_block, op)?;
         let result: Result<Unsigned36Bit, SymbolLookupFailure> =
             self.tail.iter().try_fold(first, |acc, curr| {
-                fold_step(acc, curr, target_address, symtab, op)
+                fold_step(acc, curr, target_address, symtab, rc_block, op)
             });
         result
     }
@@ -280,13 +285,14 @@ pub(crate) enum Atom {
     Symbol(Span, Script, SymbolName),
     Here(Script), // the special symbol '#'.
     Parens(Box<ArithmeticExpression>),
+    RcRef(Span, RcReference),
 }
 
 impl Atom {
     pub(crate) fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
         let mut result = Vec::with_capacity(1);
         match self {
-            Atom::Literal(_) | Atom::Here(_) => (),
+            Atom::Literal(_) | Atom::Here(_) | Atom::RcRef(_, _) => (),
             Atom::Symbol(span, script, symbol_name) => {
                 result.push((
                     symbol_name.clone(),
@@ -307,6 +313,7 @@ impl Evaluate for Atom {
         &self,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
+        rc_block: &RcBlockLocation,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         match self {
@@ -322,13 +329,17 @@ impl Evaluate for Atom {
             Atom::Literal(literal) => Ok(literal.value()),
             Atom::Symbol(span, elevation, name) => {
                 let context = SymbolContext::from((elevation, *span));
-                match symtab.lookup_with_op(name, *span, target_address, &context, op) {
+                match symtab.lookup_with_op(name, *span, target_address, rc_block, &context, op) {
                     Ok(SymbolValue::Final(value)) => Ok(value),
                     Err(e) => Err(e),
                 }
                 .map(|value| value.shl(elevation.shift()))
             }
-            Atom::Parens(expr) => expr.evaluate(target_address, symtab, op),
+            Atom::Parens(expr) => expr.evaluate(target_address, symtab, rc_block, op),
+            Atom::RcRef(span, rc_reference) => {
+                let addr: Address = rc_block.resolve(span, rc_reference)?;
+                Ok(Unsigned36Bit::from(addr))
+            }
         }
     }
 }
@@ -374,13 +385,18 @@ impl std::fmt::Display for Atom {
             Atom::Parens(expr) => {
                 write!(f, "({expr})")
             }
+            Atom::RcRef(_span, _rc_reference) => {
+                // The RcRef doesn't itself record the content of the
+                // {...} because that goes into the rc-block itself.
+                write!(f, "{{...}}")
+            }
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum InstructionFragment {
-    /// Arithmetic expressions are permitted in normal case accorfind
+    /// Arithmetic expressions are permitted in normal case according
     /// to the Users Handbook, but currently this implementation
     /// allows them in subscript/superscript too.
     Arithmetic(ArithmeticExpression),
@@ -405,10 +421,13 @@ impl Evaluate for InstructionFragment {
         &self,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
+        rc_block: &RcBlockLocation,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         match self {
-            InstructionFragment::Arithmetic(expr) => expr.evaluate(target_address, symtab, op),
+            InstructionFragment::Arithmetic(expr) => {
+                expr.evaluate(target_address, symtab, rc_block, op)
+            }
         }
     }
 }
@@ -547,6 +566,7 @@ impl Evaluate for UntaggedProgramInstruction {
         &self,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
+        rc_block: &RcBlockLocation,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         fn or_looked_up_value(
@@ -554,15 +574,16 @@ impl Evaluate for UntaggedProgramInstruction {
             frag: &InstructionFragment,
             target_address: &HereValue,
             symtab: &mut SymbolTable,
+            rc_block: &RcBlockLocation,
             op: &mut LookupOperation,
         ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-            Ok(accumulator | frag.evaluate(target_address, symtab, op)?)
+            Ok(accumulator | frag.evaluate(target_address, symtab, rc_block, op)?)
         }
 
         self.parts
             .iter()
             .try_fold(Unsigned36Bit::ZERO, |acc, curr| {
-                or_looked_up_value(acc, curr, target_address, symtab, op)
+                or_looked_up_value(acc, curr, target_address, symtab, rc_block, op)
             })
             .map(|word| match self.holdbit {
                 HoldBit::Hold => word | HELD_MASK,
@@ -627,13 +648,22 @@ impl Evaluate for TaggedProgramInstruction {
         &self,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
+        rc_block: &RcBlockLocation,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-        self.instruction.evaluate(target_address, symtab, op)
+        self.instruction
+            .evaluate(target_address, symtab, rc_block, op)
     }
 }
 
 const HELD_MASK: Unsigned36Bit = u36!(1 << 35);
+
+pub(crate) fn bad_offset(block_id: BlockIdentifier, offset: usize) -> AssemblerFailure {
+    AssemblerFailure::MachineLimitExceeded(MachineLimitExceededFailure::BlockTooLarge {
+        block_id,
+        offset,
+    })
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SourceFile {
@@ -661,6 +691,27 @@ impl SourceFile {
                     Some((name, span, SymbolContext::origin(block, span)))
                 }
             })
+    }
+
+    pub(crate) fn define_rc_word(
+        &mut self,
+        value: TaggedProgramInstruction,
+    ) -> Result<RcReference, AssemblerFailure> {
+        let rcblock: &mut ManuscriptBlock = self
+            .blocks
+            .entry(BlockIdentifier::RcWords)
+            .or_insert_with(|| ManuscriptBlock {
+                origin: None,
+                statements: Vec::new(),
+            });
+        let offset = rcblock.statements.len();
+        match Unsigned18Bit::try_from(offset) {
+            Ok(id) => {
+                rcblock.statements.push(Statement::Instruction(value));
+                Ok(RcReference::new(id))
+            }
+            Err(_) => Err(bad_offset(BlockIdentifier::RcWords, offset)),
+        }
     }
 
     pub(crate) fn global_symbol_definitions(
@@ -838,6 +889,13 @@ impl Directive {
         }
     }
 
+    pub(crate) fn get_rc_block_location(&self) -> RcBlockLocation {
+        match self.blocks.get(&BlockIdentifier::RcWords) {
+            Some(block) => RcBlockLocation::At(block.location),
+            None => RcBlockLocation::Undecided,
+        }
+    }
+
     pub(crate) fn entry_point(&self) -> Option<Address> {
         self.entry_point
     }
@@ -864,4 +922,21 @@ impl Block {
 pub(crate) struct LocatedBlock {
     pub(crate) location: Address,
     pub(crate) items: Vec<Statement>,
+}
+
+impl LocatedBlock {
+    pub(crate) fn get_offset(
+        &self,
+        block_id: BlockIdentifier,
+        offset: usize,
+    ) -> Result<Address, AssemblerFailure> {
+        if let Ok(h) = Unsigned18Bit::try_from(offset)
+            .map_err(|_| ())
+            .and_then(|n| offset_from_origin(&self.location, n).map_err(|_| ()))
+        {
+            Ok(h)
+        } else {
+            Err(bad_offset(block_id, offset))
+        }
+    }
 }
