@@ -8,9 +8,9 @@ use super::super::ast::{
     ManuscriptBlock, PunchCommand, SourceFile, Statement, TaggedProgramInstruction,
     UntaggedProgramInstruction,
 };
-use super::super::driver::symtab::LookupOperation;
 use super::super::eval::{SymbolContext, SymbolLookup, SymbolValue};
 use super::super::symbol::SymbolName;
+use super::super::symtab::LookupOperation;
 use super::super::types::{BlockIdentifier, Span};
 use super::assemble_pass1;
 use super::{assemble_nonempty_valid_input, assemble_source};

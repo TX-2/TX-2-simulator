@@ -7,13 +7,13 @@ use tracing::{event, Level};
 use base::prelude::*;
 use base::subword;
 
-use super::super::ast::Origin;
-use super::super::eval::{
+use super::ast::Origin;
+use super::eval::{
     BadSymbolDefinition, Evaluate, HereValue, LookupTarget, SymbolContext, SymbolDefinition,
     SymbolLookup, SymbolLookupFailure, SymbolLookupFailureKind, SymbolValue,
 };
-use super::super::symbol::SymbolName;
-use super::super::types::{offset_from_origin, BlockIdentifier, MachineLimitExceededFailure, Span};
+use super::symbol::SymbolName;
+use super::types::{offset_from_origin, BlockIdentifier, MachineLimitExceededFailure, Span};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub(crate) enum DefaultValueAssignmentError {
@@ -66,7 +66,6 @@ impl From<(SymbolDefinition, Span)> for InternalSymbolDef {
 pub(crate) struct SymbolTable {
     definitions: BTreeMap<SymbolName, InternalSymbolDef>,
     blocks: BTreeMap<BlockIdentifier, BlockPosition>,
-    // TODO: put rc_block in here?
     index_registers_used: Unsigned6Bit,
 }
 

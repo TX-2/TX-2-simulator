@@ -11,21 +11,21 @@ use base::u36;
 use chumsky::error::Rich;
 use chumsky::prelude::*;
 
-use crate::eval::SymbolLookupFailure;
-
-use super::super::ast::{
-    Atom, HoldBit, InstructionFragment, LiteralValue, ManuscriptBlock, ManuscriptMetaCommand,
-    Origin, SourceFile, Statement, TaggedProgramInstruction, UntaggedProgramInstruction,
+use super::super::{
+    ast::{
+        Atom, HoldBit, InstructionFragment, LiteralValue, ManuscriptBlock, ManuscriptMetaCommand,
+        Origin, SourceFile, Statement, TaggedProgramInstruction, UntaggedProgramInstruction,
+    },
+    eval::{Evaluate, HereValue},
+    parser::symex::{parse_multi_syllable_symex, parse_symex},
+    state::NumeralMode,
+    symbol::SymbolName,
+    symtab::{LookupOperation, SymbolTable},
 };
-use super::super::eval::{HereValue, SymbolValue};
+use super::*;
+
 #[cfg(test)]
 use super::Span;
-
-use super::super::eval::{Evaluate, SymbolContext, SymbolLookup};
-use super::super::state::NumeralMode;
-use super::super::symbol::SymbolName;
-use super::symex::{parse_multi_syllable_symex, parse_symex};
-use super::*;
 
 fn errors_as_string<T: Display>(errors: &[Rich<'_, T>]) -> String {
     let n = errors.len();
@@ -982,28 +982,10 @@ fn test_multi_syllable_symex() {
     );
 }
 
-#[derive(Default, PartialEq, Eq)]
-struct NoSymbols {}
-
-impl SymbolLookup for NoSymbols {
-    type Operation<'a> = ();
-
-    fn lookup_with_op(
-        &mut self,
-        name: &SymbolName,
-        _span: Span,
-        _target_address: &HereValue,
-        _context: &SymbolContext,
-        _op: &mut Self::Operation<'_>,
-    ) -> Result<SymbolValue, SymbolLookupFailure> {
-        panic!("no lookups are expected, but got lookup for {name}")
-    }
-}
-
 #[test]
 fn program_instruction_with_opcode() {
-    let mut nosyms = NoSymbols::default();
-    let mut op = ();
+    let mut nosyms = SymbolTable::new(None);
+    let mut op = LookupOperation::default();
     assert_eq!(
         parse_successfully_with(
             "²¹IOS₅₂ 30106",

@@ -7,6 +7,7 @@ mod eval;
 mod parser;
 mod state;
 mod symbol;
+mod symtab;
 mod types;
 
 pub use driver::*;

@@ -1,5 +1,5 @@
 mod output;
-mod symtab;
+
 #[cfg(test)]
 mod tests;
 
@@ -22,9 +22,11 @@ use super::eval::{BadSymbolDefinition, Evaluate, HereValue, SymbolDefinition};
 use super::parser::parse_source_file;
 use super::state::NumeralMode;
 use super::symbol::SymbolName;
+use super::symtab::{
+    FinalSymbolDefinition, FinalSymbolTable, FinalSymbolType, LookupOperation, SymbolTable,
+};
 use super::types::*;
 use base::prelude::{Address, IndexBy, Unsigned18Bit, Unsigned36Bit};
-use symtab::{FinalSymbolDefinition, FinalSymbolTable, FinalSymbolType, SymbolTable};
 
 #[cfg(test)]
 use base::charset::Script;
@@ -468,7 +470,7 @@ fn assign_block_positions(
     let mut origins: BTreeMap<BlockIdentifier, Option<Origin>> = BTreeMap::new();
 
     for (block_id, directive_block) in blocks.into_iter() {
-        let mut op = symtab::LookupOperation::default();
+        let mut op = LookupOperation::default();
         let address: Address = match symtab.finalise_origin(block_id, Some(&mut op)) {
             Ok(a) => a,
             Err(_) => {
