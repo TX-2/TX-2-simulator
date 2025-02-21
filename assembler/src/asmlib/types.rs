@@ -53,22 +53,18 @@ pub enum BlockIdentifier {
 impl BlockIdentifier {
     pub fn next_block(&self) -> Option<BlockIdentifier> {
         match self {
-            BlockIdentifier::Number(n) => match n.checked_add(1) {
-                None => {
-                    panic!("too many blocks");
-                }
-                Some(succ) => Some(BlockIdentifier::Number(succ)),
-            },
+            BlockIdentifier::Number(n) => Some(
+                n.checked_add(1)
+                    .map(BlockIdentifier::Number)
+                    .expect("block count should not overflow"),
+            ),
             BlockIdentifier::RcWords => None,
         }
     }
 
     pub fn previous_block(&self) -> Option<BlockIdentifier> {
         match self {
-            BlockIdentifier::Number(n) => match n.checked_sub(1) {
-                None => None,
-                Some(nn) => Some(BlockIdentifier::Number(nn)),
-            },
+            BlockIdentifier::Number(n) => n.checked_sub(1).map(BlockIdentifier::Number),
             BlockIdentifier::RcWords => {
                 unimplemented!("previous_block should not be called on the RC-words block.");
             }

@@ -518,66 +518,60 @@ fn build_binary_block(
 ) -> Result<Vec<Unsigned36Bit>, AssemblerFailure> {
     let mut words: Vec<Unsigned36Bit> = Vec::with_capacity(directive_block.items.len());
     for (offset, statement) in directive_block.items.iter().enumerate() {
-        let offset: Unsigned18Bit = if let Ok(n) = Unsigned18Bit::try_from(offset) {
-            n
-        } else {
-            return Err(AssemblerFailure::MachineLimitExceeded(
-                MachineLimitExceededFailure::BlockTooLarge {
-                    block_id,
-                    block_origin: directive_block.location,
-                    offset,
-                },
-            ));
+        let bad_offset = || {
+            AssemblerFailure::MachineLimitExceeded(MachineLimitExceededFailure::BlockTooLarge {
+                block_id,
+                block_origin: directive_block.location,
+                offset,
+            })
         };
-        match offset_from_origin(&directive_block.location, offset) {
-            Ok(here) => match statement {
-                Statement::Assignment(span, symbol, definition) => {
-                    let mut op = Default::default();
-                    let value = definition
-                        .evaluate(&HereValue::Address(here), symtab, &mut op)
-                        .expect("lookup on FinalSymbolTable is infallible");
+        let here: Address = if let Ok(h) = Unsigned18Bit::try_from(offset)
+            .map_err(|_| ())
+            .and_then(|n| offset_from_origin(&directive_block.location, n).map_err(|_| ()))
+        {
+            h
+        } else {
+            return Err(bad_offset());
+        };
+
+        match statement {
+            Statement::Assignment(span, symbol, definition) => {
+                let mut op = Default::default();
+                let value = definition
+                    .evaluate(&HereValue::Address(here), symtab, &mut op)
+                    .expect("lookup on FinalSymbolTable is infallible");
+                final_symbols.define(
+                    symbol.clone(),
+                    FinalSymbolDefinition::new(
+                        value,
+                        FinalSymbolType::Equality,
+                        extract_span(body, span).trim().to_string(),
+                    ),
+                );
+            }
+            Statement::Instruction(inst) => {
+                if let Some(tag) = inst.tag.as_ref() {
                     final_symbols.define(
-                        symbol.clone(),
+                        tag.name.clone(),
                         FinalSymbolDefinition::new(
-                            value,
-                            FinalSymbolType::Equality,
-                            extract_span(body, span).trim().to_string(),
+                            here.into(),
+                            FinalSymbolType::Tag,
+                            extract_span(body, &tag.span).trim().to_string(),
                         ),
                     );
                 }
-                Statement::Instruction(inst) => {
-                    if let Some(tag) = inst.tag.as_ref() {
-                        final_symbols.define(
-                            tag.name.clone(),
-                            FinalSymbolDefinition::new(
-                                here.into(),
-                                FinalSymbolType::Tag,
-                                extract_span(body, &tag.span).trim().to_string(),
-                            ),
-                        );
-                    }
 
-                    let mut op = Default::default();
-                    let word = inst
-                        .evaluate(&HereValue::Address(here), symtab, &mut op)
-                        .expect("lookup on FinalSymbolTable is infallible");
+                let mut op = Default::default();
+                let word = inst
+                    .evaluate(&HereValue::Address(here), symtab, &mut op)
+                    .expect("lookup on FinalSymbolTable is infallible");
 
-                    listing.push_line(ListingLine::Instruction {
-                        address: here,
-                        instruction: inst.clone(),
-                        binary: word,
-                    });
-                    words.push(word);
-                }
-            },
-            Err(AddressOverflow(base, offset)) => {
-                return Err(AssemblerFailure::MachineLimitExceeded(
-                    MachineLimitExceededFailure::BlockTooLarge {
-                        block_id,
-                        block_origin: base,
-                        offset: offset.into(),
-                    },
-                ));
+                listing.push_line(ListingLine::Instruction {
+                    address: here,
+                    instruction: inst.clone(),
+                    binary: word,
+                });
+                words.push(word);
             }
         }
     }
