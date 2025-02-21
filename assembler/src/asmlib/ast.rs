@@ -12,10 +12,12 @@ use base::charset::{subscript_char, superscript_char, Script};
 use base::prelude::*;
 
 use crate::eval::{HereValue, SymbolLookupFailure, SymbolValue};
+use crate::symtab::LookupOperation;
 
 use super::eval::{Evaluate, SymbolContext, SymbolDefinition, SymbolLookup, SymbolUse};
 use super::state::NumeralMode;
 use super::symbol::SymbolName;
+use super::symtab::SymbolTable;
 use super::types::{BlockIdentifier, Span};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -66,11 +68,11 @@ impl LiteralValue {
 }
 
 impl Evaluate for LiteralValue {
-    fn evaluate<S: SymbolLookup>(
+    fn evaluate(
         &self,
         _target_address: &HereValue,
-        _symtab: &mut S,
-        _op: &mut S::Operation<'_>,
+        _symtab: &mut SymbolTable,
+        _op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         Ok(self.value())
     }
@@ -243,18 +245,18 @@ impl ArithmeticExpression {
 }
 
 impl Evaluate for ArithmeticExpression {
-    fn evaluate<S: SymbolLookup>(
+    fn evaluate(
         &self,
         target_address: &HereValue,
-        symtab: &mut S,
-        op: &mut S::Operation<'_>,
+        symtab: &mut SymbolTable,
+        op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-        fn fold_step<S: SymbolLookup>(
+        fn fold_step(
             acc: Unsigned36Bit,
             (binop, right): &(Operator, Atom),
             target_address: &HereValue,
-            symtab: &mut S,
-            op: &mut S::Operation<'_>,
+            symtab: &mut SymbolTable,
+            op: &mut LookupOperation,
         ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
             let right: Unsigned36Bit = right.evaluate(target_address, symtab, op)?;
             Ok(ArithmeticExpression::eval_binop(acc, binop, right))
@@ -301,11 +303,11 @@ impl Atom {
 }
 
 impl Evaluate for Atom {
-    fn evaluate<S: SymbolLookup>(
+    fn evaluate(
         &self,
         target_address: &HereValue,
-        symtab: &mut S,
-        op: &mut S::Operation<'_>,
+        symtab: &mut SymbolTable,
+        op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         match self {
             Atom::Here(elevation) => match target_address {
@@ -399,11 +401,11 @@ impl InstructionFragment {
 }
 
 impl Evaluate for InstructionFragment {
-    fn evaluate<S: SymbolLookup>(
+    fn evaluate(
         &self,
         target_address: &HereValue,
-        symtab: &mut S,
-        op: &mut S::Operation<'_>,
+        symtab: &mut SymbolTable,
+        op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         match self {
             InstructionFragment::Arithmetic(expr) => expr.evaluate(target_address, symtab, op),
@@ -541,18 +543,18 @@ impl UntaggedProgramInstruction {
 }
 
 impl Evaluate for UntaggedProgramInstruction {
-    fn evaluate<S: SymbolLookup>(
+    fn evaluate(
         &self,
         target_address: &HereValue,
-        symtab: &mut S,
-        op: &mut S::Operation<'_>,
+        symtab: &mut SymbolTable,
+        op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-        fn or_looked_up_value<S: SymbolLookup>(
+        fn or_looked_up_value(
             accumulator: Unsigned36Bit,
             frag: &InstructionFragment,
             target_address: &HereValue,
-            symtab: &mut S,
-            op: &mut S::Operation<'_>,
+            symtab: &mut SymbolTable,
+            op: &mut LookupOperation,
         ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
             Ok(accumulator | frag.evaluate(target_address, symtab, op)?)
         }
@@ -621,11 +623,11 @@ impl TaggedProgramInstruction {
 }
 
 impl Evaluate for TaggedProgramInstruction {
-    fn evaluate<S: SymbolLookup>(
+    fn evaluate(
         &self,
         target_address: &HereValue,
-        symtab: &mut S,
-        op: &mut S::Operation<'_>,
+        symtab: &mut SymbolTable,
+        op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         self.instruction.evaluate(target_address, symtab, op)
     }

@@ -6,6 +6,8 @@ use base::{
     prelude::{Address, Unsigned18Bit, Unsigned36Bit},
 };
 
+use crate::symtab::{LookupOperation, SymbolTable};
+
 use super::ast::UntaggedProgramInstruction;
 use super::symbol::SymbolName;
 use super::types::{
@@ -177,11 +179,11 @@ pub(crate) enum HereValue {
 }
 
 pub(crate) trait Evaluate {
-    fn evaluate<S: SymbolLookup>(
+    fn evaluate(
         &self,
         target_address: &HereValue,
-        symtab: &mut S,
-        op: &mut S::Operation<'_>,
+        symtab: &mut SymbolTable,
+        op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure>;
 }
 
