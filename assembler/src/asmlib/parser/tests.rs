@@ -20,7 +20,7 @@ use super::super::{
     parser::symex::{parse_multi_syllable_symex, parse_symex},
     state::NumeralMode,
     symbol::SymbolName,
-    symtab::{LookupOperation, RcBlockLocation, SymbolTable},
+    symtab::{make_empty_rc_block_for_test, LookupOperation, RcBlockLocation, SymbolTable},
 };
 use super::*;
 
@@ -986,7 +986,8 @@ fn test_multi_syllable_symex() {
 fn program_instruction_with_opcode() {
     let mut nosyms = SymbolTable::new(None);
     let mut op = LookupOperation::default();
-    let rc_block = RcBlockLocation::Undecided;
+    let mut rc_block =
+        make_empty_rc_block_for_test(Address::from(Unsigned18Bit::from(0o20_000u16)));
     assert_eq!(
         parse_successfully_with(
             "²¹IOS₅₂ 30106",
@@ -996,11 +997,12 @@ fn program_instruction_with_opcode() {
         .evaluate(
             &HereValue::Address(Address::ZERO),
             &mut nosyms,
-            &rc_block,
+            &mut rc_block,
             &mut op
         ),
         Ok(u36!(0o210452_030106))
     );
+    assert!(rc_block.is_empty());
 }
 
 #[test]

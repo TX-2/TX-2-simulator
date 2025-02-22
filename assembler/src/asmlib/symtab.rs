@@ -7,10 +7,10 @@ use tracing::{event, Level};
 use base::prelude::*;
 use base::subword;
 
-use super::ast::Origin;
+use super::ast::{LocatedBlock, Origin, Statement};
 use super::eval::{
-    BadSymbolDefinition, Evaluate, HereValue, LookupTarget, MemoryReference, SymbolContext,
-    SymbolDefinition, SymbolLookup, SymbolLookupFailure, SymbolLookupFailureKind, SymbolValue,
+    BadSymbolDefinition, Evaluate, HereValue, LookupTarget, SymbolContext, SymbolDefinition,
+    SymbolLookup, SymbolLookupFailure, SymbolLookupFailureKind, SymbolValue,
 };
 use super::symbol::SymbolName;
 use super::types::{offset_from_origin, BlockIdentifier, MachineLimitExceededFailure, Span};
@@ -50,24 +50,56 @@ pub(crate) enum RcBlockLocation {
 }
 
 impl RcBlockLocation {
-    pub(crate) fn resolve(
-        &self,
-        span: &Span,
-        reference: &RcReference,
-    ) -> Result<Address, SymbolLookupFailure> {
+    fn as_here_value(&self) -> HereValue {
         match self {
-            RcBlockLocation::Undecided => {
-                let mem_ref = MemoryReference {
-                    block_id: BlockIdentifier::RcWords,
-                    block_offset: reference.0.into(),
-                };
-                Err(SymbolLookupFailure {
-                    target: LookupTarget::MemRef(mem_ref, *span),
-                    kind: SymbolLookupFailureKind::RcReferenceNotValidHere,
-                })
-            }
-            RcBlockLocation::At(addr) => Ok(addr.index_by(reference.0)),
+            RcBlockLocation::Undecided => HereValue::NotAllowed,
+            RcBlockLocation::At(addr) => HereValue::Address(*addr),
         }
+    }
+}
+
+pub(crate) trait RcAllocator {
+    fn allocate(&mut self, span: Span, value: Unsigned36Bit) -> Address;
+}
+
+pub(crate) struct RcBlock {
+    inner: LocatedBlock,
+}
+
+impl From<LocatedBlock> for RcBlock {
+    fn from(value: LocatedBlock) -> Self {
+        RcBlock { inner: value }
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn make_empty_rc_block_for_test(location: Address) -> RcBlock {
+    RcBlock {
+        inner: LocatedBlock {
+            location,
+            items: Vec::new(),
+        },
+    }
+}
+
+impl RcAllocator for RcBlock {
+    fn allocate(&mut self, span: Span, value: Unsigned36Bit) -> Address {
+        match Unsigned18Bit::try_from(self.inner.items.len()) {
+            Ok(offset) => {
+                let addr: Address = self.inner.location.index_by(offset);
+                self.inner.items.push(Statement::RcWord(span, value));
+                addr
+            }
+            Err(_) => {
+                panic!("program is too large"); // fixme: use Result
+            }
+        }
+    }
+}
+
+impl RcBlock {
+    pub(crate) fn is_empty(&self) -> bool {
+        self.inner.is_empty()
     }
 }
 
@@ -200,21 +232,21 @@ impl SymbolTable {
             });
     }
 
-    fn final_lookup_helper(
+    fn final_lookup_helper<R: RcAllocator>(
         &mut self,
         name: &SymbolName,
         span: Span,
         target_address: &HereValue,
-        rc_block: &RcBlockLocation,
+        rc_allocator: &mut R,
         _context: &SymbolContext,
         op: &mut LookupOperation,
     ) -> Result<SymbolValue, SymbolLookupFailure> {
-        fn body(
+        fn body<R: RcAllocator>(
             t: &mut SymbolTable,
             name: &SymbolName,
             span: Span,
             target_address: &HereValue,
-            rc_block: &RcBlockLocation,
+            rc_allocator: &mut R,
             op: &mut LookupOperation,
         ) -> Result<SymbolValue, SymbolLookupFailure> {
             if let Some(def) = t.get_clone(name) {
@@ -225,7 +257,7 @@ impl SymbolTable {
                         block_id,
                         block_offset,
                         span: _,
-                    } => match t.finalise_origin(block_id, Some(op)) {
+                    } => match t.finalise_origin(block_id, rc_allocator, Some(op)) {
                         Ok(address) => {
                             let computed_address: Address = address.index_by(block_offset);
                             Ok(SymbolValue::Final(computed_address.into()))
@@ -240,7 +272,7 @@ impl SymbolTable {
                         // '#' on the right-hand-side of the
                         // assignment.
                         expression
-                            .evaluate(target_address, t, rc_block, op)
+                            .evaluate(target_address, t, rc_allocator, op)
                             .map(SymbolValue::Final)
                     }
                     SymbolDefinition::Undefined(context_union) => {
@@ -267,15 +299,16 @@ impl SymbolTable {
                 },
             )));
         }
-        let result = body(self, name, span, target_address, rc_block, op);
+        let result = body(self, name, span, target_address, rc_allocator, op);
         op.deps_in_order.pop();
         op.depends_on.remove(name);
         result
     }
 
-    pub(crate) fn finalise_origin(
+    pub(crate) fn finalise_origin<R: RcAllocator>(
         &mut self,
         block_id: BlockIdentifier,
+        rc_allocator: &mut R,
         maybe_op: Option<&mut LookupOperation>,
     ) -> Result<Address, DefaultValueAssignmentError> {
         let mut newdef: Option<(SymbolName, SymbolDefinition, Span)> = None;
@@ -301,7 +334,7 @@ impl SymbolTable {
             } => {
                 let mut new_op = LookupOperation::default();
                 let op: &mut LookupOperation = maybe_op.unwrap_or(&mut new_op);
-                self.assign_default_for_block(block_id, op)
+                self.assign_default_for_block(block_id, rc_allocator, op)
             }
             BlockPosition {
                 origin: Some(Origin::Symbolic(span, symbol_name)),
@@ -316,7 +349,7 @@ impl SymbolTable {
                     Some(SymbolDefinition::Equality(rhs)) => {
                         let mut new_op = LookupOperation::default();
                         let op: &mut LookupOperation = maybe_op.unwrap_or(&mut new_op);
-                        match rhs.evaluate(&HereValue::NotAllowed, self, &RcBlockLocation::Undecided, op) {
+                        match rhs.evaluate(&HereValue::NotAllowed, self, rc_allocator, op) {
                             Ok(value) => Ok(Address::from(subword::right_half(value))),
                             Err(e) => {
                                 panic!("no code to handle symbol lookup failure in finalise_origin: {e}"); // TODO
@@ -346,14 +379,14 @@ impl SymbolTable {
                         let context = SymbolContext::origin(block_id, span);
                         let mut new_op = LookupOperation::default();
                         let op: &mut LookupOperation = maybe_op.unwrap_or(&mut new_op);
-                        let addr = self.assign_default_for_block(block_id, op)?;
+                        let addr = self.assign_default_for_block(block_id, rc_allocator, op)?;
                         newdef = Some((symbol_name.clone(), SymbolDefinition::DefaultAssigned(addr.into(), context), span));
                         Ok(addr)
                     }
                     Some(SymbolDefinition::Undefined(context)) => {
                         let mut new_op = LookupOperation::default();
                         let op: &mut LookupOperation = maybe_op.unwrap_or(&mut new_op);
-                        let addr = self.assign_default_for_block(block_id, op)?;
+                        let addr = self.assign_default_for_block(block_id, rc_allocator, op)?;
                         newdef = Some((symbol_name.clone(), SymbolDefinition::DefaultAssigned(addr.into(), context), block_span));
                         Ok(addr)
                     }
@@ -378,9 +411,10 @@ impl SymbolTable {
         })
     }
 
-    fn assign_default_for_block(
+    fn assign_default_for_block<R: RcAllocator>(
         &mut self,
         block_id: BlockIdentifier,
+        rc_allocator: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Address, DefaultValueAssignmentError> {
         let address = match block_id.previous_block() {
@@ -390,7 +424,8 @@ impl SymbolTable {
             }
             Some(previous_block) => match self.blocks.get(&previous_block).cloned() {
                 Some(previous) => {
-                    let previous_block_origin = self.finalise_origin(previous_block, Some(op))?;
+                    let previous_block_origin =
+                        self.finalise_origin(previous_block, rc_allocator, Some(op))?;
                     match offset_from_origin(&previous_block_origin, previous.block_size) {
                         Ok(addr) => Ok(addr),
                         Err(_) => Err(DefaultValueAssignmentError::MachineLimitExceeded(
@@ -473,16 +508,16 @@ impl SymbolTable {
 impl SymbolLookup for SymbolTable {
     type Operation<'a> = LookupOperation;
 
-    fn lookup_with_op(
+    fn lookup_with_op<R: RcAllocator>(
         &mut self,
         name: &SymbolName,
         span: Span,
         target_address: &HereValue,
-        rc_block: &RcBlockLocation,
+        rc_allocator: &mut R,
         context: &SymbolContext,
         op: &mut Self::Operation<'_>,
     ) -> Result<SymbolValue, SymbolLookupFailure> {
-        self.final_lookup_helper(name, span, target_address, rc_block, context, op)
+        self.final_lookup_helper(name, span, target_address, rc_allocator, context, op)
     }
 }
 

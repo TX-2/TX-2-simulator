@@ -10,7 +10,7 @@ use crate::symtab::{LookupOperation, SymbolTable};
 
 use super::ast::UntaggedProgramInstruction;
 use super::symbol::SymbolName;
-use super::symtab::RcBlockLocation;
+use super::symtab::RcAllocator;
 use super::types::{
     AssemblerFailure, BlockIdentifier, MachineLimitExceededFailure, OrderableSpan, Span,
 };
@@ -169,12 +169,12 @@ impl std::error::Error for SymbolLookupFailure {}
 pub(crate) trait SymbolLookup {
     type Operation<'a>;
 
-    fn lookup_with_op(
+    fn lookup_with_op<R: RcAllocator>(
         &mut self,
         name: &SymbolName,
         span: Span, // TODO: use &Span?
         target_address: &HereValue,
-        rc_block: &RcBlockLocation,
+        rc_allocator: &mut R,
         context: &SymbolContext,
         op: &mut Self::Operation<'_>,
     ) -> Result<SymbolValue, SymbolLookupFailure>;
@@ -191,11 +191,11 @@ pub(crate) enum HereValue {
 }
 
 pub(crate) trait Evaluate {
-    fn evaluate(
+    fn evaluate<R: RcAllocator>(
         &self,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
-        rc_block: &RcBlockLocation,
+        rc_allocator: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure>;
 }

@@ -94,6 +94,15 @@ where
             )
             .map(|expr| Atom::Parens(Box::new(expr)));
 
+        // Parse {E} where E is some expression.  Since tags are
+        // allowed inside RC-blocks, we should parse E as a
+        // TaggedProgramInstruction.  But if we try to do that without
+        // using recursive() we will blow the stack, unfortunately.
+        let register_containing = arithmetic_expression
+            .clone()
+            .delimited_by(terminal::left_brace(), terminal::right_brace())
+            .map_with(|expr, extra| Atom::RcRef(extra.span(), Box::new(expr)));
+
         // Parse a literal, symbol, #, or (recursively) an expression in parentheses.
         let atom = terminal::opcode()
             .map(Atom::from)
@@ -102,6 +111,7 @@ where
                 here(script_required).map(Atom::from),
                 symbol(script_required)
                     .map_with(move |name, extra| Atom::Symbol(extra.span(), script_required, name)),
+                register_containing,
                 parenthesised_arithmetic_expression,
             )))
             .boxed();

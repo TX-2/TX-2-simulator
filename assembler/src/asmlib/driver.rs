@@ -23,8 +23,8 @@ use super::parser::parse_source_file;
 use super::state::NumeralMode;
 use super::symbol::SymbolName;
 use super::symtab::{
-    FinalSymbolDefinition, FinalSymbolTable, FinalSymbolType, LookupOperation, RcBlockLocation,
-    SymbolTable,
+    FinalSymbolDefinition, FinalSymbolTable, FinalSymbolType, LookupOperation, RcAllocator,
+    RcBlock, SymbolTable,
 };
 use super::types::*;
 use base::prelude::{Address, IndexBy, Unsigned18Bit, Unsigned36Bit};
@@ -461,25 +461,34 @@ fn inconsistent_origin_definition(
     }
 }
 
+struct NoRcBlock {}
+
+impl RcAllocator for NoRcBlock {
+    fn allocate(&mut self, _span: Span, _value: Unsigned36Bit) -> Address {
+        panic!("Cannot allocate an RC-word before we know the address of the RC block");
+    }
+}
+
 fn assign_block_positions(
     blocks: BTreeMap<BlockIdentifier, Block>,
     maybe_entry_point: Option<Address>,
     symtab: &mut SymbolTable,
 ) -> Result<(Directive, BTreeMap<BlockIdentifier, Option<Origin>>), AssemblerFailure> {
+    let mut no_rc_block = NoRcBlock {};
     let mut output_blocks: BTreeMap<BlockIdentifier, LocatedBlock> = BTreeMap::new();
-
     let mut origins: BTreeMap<BlockIdentifier, Option<Origin>> = BTreeMap::new();
 
     for (block_id, directive_block) in blocks.into_iter() {
         let mut op = LookupOperation::default();
-        let address: Address = match symtab.finalise_origin(block_id, Some(&mut op)) {
-            Ok(a) => a,
-            Err(_) => {
-                return Err(AssemblerFailure::InternalError(format!(
-                    "starting address for {block_id} was not calculated"
-                )));
-            }
-        };
+        let address: Address =
+            match symtab.finalise_origin(block_id, &mut no_rc_block, Some(&mut op)) {
+                Ok(a) => a,
+                Err(_) => {
+                    return Err(AssemblerFailure::InternalError(format!(
+                        "starting address for {block_id} was not calculated"
+                    )));
+                }
+            };
 
         origins.insert(block_id, directive_block.origin.clone());
 
@@ -511,11 +520,11 @@ fn assign_block_positions(
     Ok((Directive::new(output_blocks, maybe_entry_point), origins))
 }
 
-fn build_binary_block(
+fn build_binary_block<R: RcAllocator>(
     directive_block: &LocatedBlock,
     block_id: BlockIdentifier,
     symtab: &mut SymbolTable,
-    rc_block: &RcBlockLocation,
+    rc_allocator: &mut R,
     final_symbols: &mut FinalSymbolTable,
     body: &str,
     listing: &mut Listing,
@@ -528,7 +537,7 @@ fn build_binary_block(
             Statement::Assignment(span, symbol, definition) => {
                 let mut op = Default::default();
                 let value = definition
-                    .evaluate(&HereValue::Address(here), symtab, rc_block, &mut op)
+                    .evaluate(&HereValue::Address(here), symtab, rc_allocator, &mut op)
                     .expect("lookup on FinalSymbolTable is infallible");
                 final_symbols.define(
                     symbol.clone(),
@@ -538,6 +547,9 @@ fn build_binary_block(
                         extract_span(body, span).trim().to_string(),
                     ),
                 );
+            }
+            Statement::RcWord(_span, value) => {
+                words.push(*value);
             }
             Statement::Instruction(inst) => {
                 if let Some(tag) = inst.tag.as_ref() {
@@ -553,7 +565,7 @@ fn build_binary_block(
 
                 let mut op = Default::default();
                 let word = inst
-                    .evaluate(&HereValue::Address(here), symtab, rc_block, &mut op)
+                    .evaluate(&HereValue::Address(here), symtab, rc_allocator, &mut op)
                     .expect("lookup on FinalSymbolTable is infallible");
 
                 listing.push_line(ListingLine::Instruction {
@@ -570,7 +582,7 @@ fn build_binary_block(
 
 /// Pass 3 generates binary code.
 fn assemble_pass3(
-    directive: Directive,
+    mut directive: Directive,
     origins: BTreeMap<BlockIdentifier, Option<Origin>>,
     symtab: &mut SymbolTable,
     body: &str,
@@ -578,15 +590,20 @@ fn assemble_pass3(
 ) -> Result<(Binary, FinalSymbolTable), AssemblerFailure> {
     let span = span!(Level::ERROR, "assembly pass 3");
     let _enter = span.enter();
-    let rc_block_location = directive.get_rc_block_location();
     let mut binary = Binary::default();
     if let Some(address) = directive.entry_point() {
         binary.set_entry_point(address);
     }
 
+    let mut rcblock: RcBlock = directive.take_rc_block();
+    let Directive {
+        blocks,
+        entry_point: _,
+    } = directive;
+
     let mut final_symbols = FinalSymbolTable::default();
 
-    for (block_id, block) in directive.blocks() {
+    for (block_id, block) in blocks.iter() {
         if let Some(Some(Origin::Symbolic(span, symbol_name))) = origins.get(block_id) {
             assert!(symtab.is_defined(symbol_name));
 
@@ -602,7 +619,7 @@ fn assemble_pass3(
     }
 
     // Emit the binary code.
-    for (block_id, directive_block) in directive.blocks() {
+    for (block_id, directive_block) in blocks.iter() {
         event!(
             Level::DEBUG,
             "{block_id} in output has address {0:#o} and length {1:#o}",
@@ -620,7 +637,7 @@ fn assemble_pass3(
             directive_block,
             *block_id,
             symtab,
-            &rc_block_location,
+            &mut rcblock,
             &mut final_symbols,
             body,
             listing,
@@ -669,8 +686,13 @@ fn fail_with_diagnostics(source_file_body: &str, errors: Vec<Rich<char>>) -> Ass
             for e in errors.iter() {
                 eprintln!("{}", e);
             }
-            let (line, column) = pos_line_column(source_file_body, first.span().start)
-                .expect("span for error message should be inside the file");
+            let span = first.span().start;
+            let (line, column) = match pos_line_column(source_file_body, span) {
+                Ok((l, c)) => (l, c),
+                Err(e) => {
+                    panic!("span {span:?} for error message {first:?} should be inside the file");
+                }
+            };
             AssemblerFailure::SyntaxError {
                 line: line as u32,
                 column: Some(column),

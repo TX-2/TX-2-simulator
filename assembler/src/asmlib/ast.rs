@@ -12,12 +12,12 @@ use base::charset::{subscript_char, superscript_char, Script};
 use base::prelude::*;
 
 use crate::eval::{HereValue, SymbolLookupFailure, SymbolValue};
-use crate::symtab::LookupOperation;
+use crate::symtab::{LookupOperation, RcAllocator, RcBlock};
 
 use super::eval::{Evaluate, SymbolContext, SymbolDefinition, SymbolLookup, SymbolUse};
 use super::state::NumeralMode;
 use super::symbol::SymbolName;
-use super::symtab::{RcBlockLocation, RcReference, SymbolTable};
+use super::symtab::{RcBlockLocation, SymbolTable};
 use super::types::{
     offset_from_origin, AssemblerFailure, BlockIdentifier, MachineLimitExceededFailure, Span,
 };
@@ -70,11 +70,11 @@ impl LiteralValue {
 }
 
 impl Evaluate for LiteralValue {
-    fn evaluate(
+    fn evaluate<R: RcAllocator>(
         &self,
         _target_address: &HereValue,
         _symtab: &mut SymbolTable,
-        _rc_block: &RcBlockLocation,
+        _rc_allocator: &mut R,
         _op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         Ok(self.value())
@@ -247,30 +247,32 @@ impl ArithmeticExpression {
     }
 }
 
+fn fold_step<R: RcAllocator>(
+    acc: Unsigned36Bit,
+    (binop, right): &(Operator, Atom),
+    target_address: &HereValue,
+    symtab: &mut SymbolTable,
+    rc_allocator: &mut R,
+    op: &mut LookupOperation,
+) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+    let right: Unsigned36Bit = right.evaluate(target_address, symtab, rc_allocator, op)?;
+    Ok(ArithmeticExpression::eval_binop(acc, binop, right))
+}
+
 impl Evaluate for ArithmeticExpression {
-    fn evaluate(
+    fn evaluate<R: RcAllocator>(
         &self,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
-        rc_block: &RcBlockLocation,
+        rc_allocator: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-        fn fold_step(
-            acc: Unsigned36Bit,
-            (binop, right): &(Operator, Atom),
-            target_address: &HereValue,
-            symtab: &mut SymbolTable,
-            rc_block: &RcBlockLocation,
-            op: &mut LookupOperation,
-        ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-            let right: Unsigned36Bit = right.evaluate(target_address, symtab, rc_block, op)?;
-            Ok(ArithmeticExpression::eval_binop(acc, binop, right))
-        }
-
-        let first: Unsigned36Bit = self.first.evaluate(target_address, symtab, rc_block, op)?;
+        let first: Unsigned36Bit = self
+            .first
+            .evaluate(target_address, symtab, rc_allocator, op)?;
         let result: Result<Unsigned36Bit, SymbolLookupFailure> =
             self.tail.iter().try_fold(first, |acc, curr| {
-                fold_step(acc, curr, target_address, symtab, rc_block, op)
+                fold_step(acc, curr, target_address, symtab, rc_allocator, op)
             });
         result
     }
@@ -285,7 +287,7 @@ pub(crate) enum Atom {
     Symbol(Span, Script, SymbolName),
     Here(Script), // the special symbol '#'.
     Parens(Box<ArithmeticExpression>),
-    RcRef(Span, RcReference),
+    RcRef(Span, Box<ArithmeticExpression>),
 }
 
 impl Atom {
@@ -309,11 +311,11 @@ impl Atom {
 }
 
 impl Evaluate for Atom {
-    fn evaluate(
+    fn evaluate<R: RcAllocator>(
         &self,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
-        rc_block: &RcBlockLocation,
+        rc_allocator: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         match self {
@@ -329,16 +331,19 @@ impl Evaluate for Atom {
             Atom::Literal(literal) => Ok(literal.value()),
             Atom::Symbol(span, elevation, name) => {
                 let context = SymbolContext::from((elevation, *span));
-                match symtab.lookup_with_op(name, *span, target_address, rc_block, &context, op) {
+                match symtab.lookup_with_op(name, *span, target_address, rc_allocator, &context, op)
+                {
                     Ok(SymbolValue::Final(value)) => Ok(value),
                     Err(e) => Err(e),
                 }
                 .map(|value| value.shl(elevation.shift()))
             }
-            Atom::Parens(expr) => expr.evaluate(target_address, symtab, rc_block, op),
-            Atom::RcRef(span, rc_reference) => {
-                let addr: Address = rc_block.resolve(span, rc_reference)?;
-                Ok(Unsigned36Bit::from(addr))
+            Atom::Parens(expr) => expr.evaluate(target_address, symtab, rc_allocator, op),
+            Atom::RcRef(span, content) => {
+                let value: Unsigned36Bit =
+                    content.evaluate(target_address, symtab, rc_allocator, op)?;
+                let addr: Address = rc_allocator.allocate(*span, value);
+                Ok(addr.into())
             }
         }
     }
@@ -417,16 +422,16 @@ impl InstructionFragment {
 }
 
 impl Evaluate for InstructionFragment {
-    fn evaluate(
+    fn evaluate<R: RcAllocator>(
         &self,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
-        rc_block: &RcBlockLocation,
+        rc_allocator: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         match self {
             InstructionFragment::Arithmetic(expr) => {
-                expr.evaluate(target_address, symtab, rc_block, op)
+                expr.evaluate(target_address, symtab, rc_allocator, op)
             }
         }
     }
@@ -562,28 +567,28 @@ impl UntaggedProgramInstruction {
 }
 
 impl Evaluate for UntaggedProgramInstruction {
-    fn evaluate(
+    fn evaluate<R: RcAllocator>(
         &self,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
-        rc_block: &RcBlockLocation,
+        rc_allocator: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-        fn or_looked_up_value(
+        fn or_looked_up_value<R: RcAllocator>(
             accumulator: Unsigned36Bit,
             frag: &InstructionFragment,
             target_address: &HereValue,
             symtab: &mut SymbolTable,
-            rc_block: &RcBlockLocation,
+            rc_allocator: &mut R,
             op: &mut LookupOperation,
         ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-            Ok(accumulator | frag.evaluate(target_address, symtab, rc_block, op)?)
+            Ok(accumulator | frag.evaluate(target_address, symtab, rc_allocator, op)?)
         }
 
         self.parts
             .iter()
             .try_fold(Unsigned36Bit::ZERO, |acc, curr| {
-                or_looked_up_value(acc, curr, target_address, symtab, rc_block, op)
+                or_looked_up_value(acc, curr, target_address, symtab, rc_allocator, op)
             })
             .map(|word| match self.holdbit {
                 HoldBit::Hold => word | HELD_MASK,
@@ -644,15 +649,15 @@ impl TaggedProgramInstruction {
 }
 
 impl Evaluate for TaggedProgramInstruction {
-    fn evaluate(
+    fn evaluate<R: RcAllocator>(
         &self,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
-        rc_block: &RcBlockLocation,
+        rc_allocator: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         self.instruction
-            .evaluate(target_address, symtab, rc_block, op)
+            .evaluate(target_address, symtab, rc_allocator, op)
     }
 }
 
@@ -693,26 +698,26 @@ impl SourceFile {
             })
     }
 
-    pub(crate) fn define_rc_word(
-        &mut self,
-        value: TaggedProgramInstruction,
-    ) -> Result<RcReference, AssemblerFailure> {
-        let rcblock: &mut ManuscriptBlock = self
-            .blocks
-            .entry(BlockIdentifier::RcWords)
-            .or_insert_with(|| ManuscriptBlock {
-                origin: None,
-                statements: Vec::new(),
-            });
-        let offset = rcblock.statements.len();
-        match Unsigned18Bit::try_from(offset) {
-            Ok(id) => {
-                rcblock.statements.push(Statement::Instruction(value));
-                Ok(RcReference::new(id))
-            }
-            Err(_) => Err(bad_offset(BlockIdentifier::RcWords, offset)),
-        }
-    }
+    //pub(crate) fn define_rc_word(
+    //    &mut self,
+    //    value: TaggedProgramInstruction,
+    //) -> Result<RcReference, AssemblerFailure> {
+    //    let rcblock: &mut ManuscriptBlock = self
+    //        .blocks
+    //        .entry(BlockIdentifier::RcWords)
+    //        .or_insert_with(|| ManuscriptBlock {
+    //            origin: None,
+    //            statements: Vec::new(),
+    //        });
+    //    let offset = rcblock.statements.len();
+    //    match Unsigned18Bit::try_from(offset) {
+    //        Ok(id) => {
+    //            rcblock.statements.push(Statement::Instruction(value));
+    //            Ok(RcReference::new(id))
+    //        }
+    //        Err(_) => Err(bad_offset(BlockIdentifier::RcWords, offset)),
+    //    }
+    //}
 
     pub(crate) fn global_symbol_definitions(
         &self,
@@ -761,11 +766,13 @@ pub(crate) enum Statement {
     // on the RHS, the value cannot be a TaggedProgramInstruction.
     Assignment(Span, SymbolName, UntaggedProgramInstruction), // User Guide calls these "equalities".
     Instruction(TaggedProgramInstruction),
+    RcWord(Span, Unsigned36Bit),
 }
 
 impl Statement {
     fn span(&self) -> Span {
         match self {
+            Statement::RcWord(span, _) => *span,
             Statement::Assignment(span, _, _) => *span,
             Statement::Instruction(TaggedProgramInstruction { tag, instruction }) => {
                 if let Some(t) = tag {
@@ -777,10 +784,10 @@ impl Statement {
         }
     }
 
-    fn memory_size(&self) -> Unsigned18Bit {
+    fn emitted_instruction_count(&self) -> Unsigned18Bit {
         match self {
             Statement::Assignment(_, _, _) => Unsigned18Bit::ZERO,
-            Statement::Instruction(_) => Unsigned18Bit::ONE,
+            Statement::Instruction(_) | Statement::RcWord(_, _) => Unsigned18Bit::ONE,
         }
     }
 
@@ -790,6 +797,7 @@ impl Statement {
         offset: Unsigned18Bit,
     ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
         match self {
+            Statement::RcWord(_, _) => Vec::new(),
             Statement::Assignment(span, symbol, expression) => {
                 vec![(
                     symbol.clone(),
@@ -854,7 +862,10 @@ impl ManuscriptBlock {
     }
 
     pub(crate) fn instruction_count(&self) -> Unsigned18Bit {
-        self.statements.iter().map(|st| st.memory_size()).sum()
+        self.statements
+            .iter()
+            .map(|st| st.emitted_instruction_count())
+            .sum()
     }
 
     pub(crate) fn origin_span(&self) -> Span {
@@ -875,7 +886,7 @@ pub(crate) struct Directive {
     // similarly for undefined origins (e.g. "FOO| JMP ..." where FOO
     // has no definition).
     pub(crate) blocks: BTreeMap<BlockIdentifier, LocatedBlock>,
-    entry_point: Option<Address>,
+    pub(crate) entry_point: Option<Address>,
 }
 
 impl Directive {
@@ -896,12 +907,57 @@ impl Directive {
         }
     }
 
+    pub(crate) fn take_rc_block(&mut self) -> RcBlock {
+        let max_occupied_addr: Option<Address> =
+            self.blocks.values().map(LocatedBlock::following_addr).max();
+        fn make_rc_block(max_occupied_addr: Option<Address>) -> LocatedBlock {
+            let rc_block_address: Address =
+                max_occupied_addr.unwrap_or_else(|| Origin::default_address());
+            LocatedBlock {
+                location: rc_block_address,
+                items: Vec::new(),
+            }
+        }
+        self.blocks
+            .remove(&BlockIdentifier::RcWords)
+            .unwrap_or_else(|| make_rc_block(max_occupied_addr))
+            .into()
+    }
+
     pub(crate) fn entry_point(&self) -> Option<Address> {
         self.entry_point
     }
 
     pub(crate) fn blocks(&self) -> impl Iterator<Item = (&BlockIdentifier, &LocatedBlock)> {
         self.blocks.iter()
+    }
+
+    pub(crate) fn blocks_mut(
+        &mut self,
+    ) -> impl Iterator<Item = (&BlockIdentifier, &mut LocatedBlock)> {
+        self.blocks.iter_mut()
+    }
+}
+
+impl RcAllocator for Directive {
+    fn allocate(&mut self, span: Span, value: Unsigned36Bit) -> Address {
+        match self.blocks.get_mut(&BlockIdentifier::RcWords) {
+            None => {
+                panic!(
+                    "precondition did not hold: no RC-word block was allocated in the directive"
+                );
+            }
+            Some(rc_word_block) => match Unsigned18Bit::try_from(rc_word_block.items.len()) {
+                Ok(offset) => {
+                    let addr = rc_word_block.location.index_by(offset);
+                    rc_word_block.items.push(Statement::RcWord(span, value));
+                    addr
+                }
+                Err(_) => {
+                    unimplemented!("handle overflow")
+                }
+            },
+        }
     }
 }
 
@@ -914,7 +970,10 @@ pub(crate) struct Block {
 
 impl Block {
     pub(crate) fn emitted_instruction_count(&self) -> Unsigned18Bit {
-        self.items.iter().map(|stmt| stmt.memory_size()).sum()
+        self.items
+            .iter()
+            .map(|stmt| stmt.emitted_instruction_count())
+            .sum()
     }
 }
 
@@ -938,5 +997,20 @@ impl LocatedBlock {
         } else {
             Err(bad_offset(block_id, offset))
         }
+    }
+
+    pub(crate) fn following_addr(&self) -> Address {
+        self.location.index_by(self.emitted_instruction_count())
+    }
+
+    pub(crate) fn emitted_instruction_count(&self) -> Unsigned18Bit {
+        self.items
+            .iter()
+            .map(|stmt| stmt.emitted_instruction_count())
+            .sum()
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.items.is_empty()
     }
 }

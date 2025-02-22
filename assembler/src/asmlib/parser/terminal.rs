@@ -865,6 +865,20 @@ where
     just('/')
 }
 
+pub(super) fn left_brace<'a, I>() -> impl Parser<'a, I, char, Extra<'a, char>> + Clone
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
+{
+    just('{')
+}
+
+pub(super) fn right_brace<'a, I>() -> impl Parser<'a, I, char, Extra<'a, char>> + Clone
+where
+    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
+{
+    just('}')
+}
+
 pub(super) fn pipe_ignored<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>> + Clone
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,

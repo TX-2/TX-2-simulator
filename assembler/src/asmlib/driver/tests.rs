@@ -10,13 +10,15 @@ use super::super::ast::{
 };
 use super::super::eval::{SymbolContext, SymbolLookup, SymbolValue};
 use super::super::symbol::SymbolName;
-use super::super::symtab::{LookupOperation, RcBlockLocation};
+use super::super::symtab::{
+    make_empty_rc_block_for_test, LookupOperation, RcAllocator, RcBlockLocation,
+};
 use super::super::types::{BlockIdentifier, Span};
 use super::assemble_pass1;
 use super::{assemble_nonempty_valid_input, assemble_source};
 use base::{
     charset::Script,
-    prelude::{u18, u36, Address, Unsigned36Bit},
+    prelude::{u18, u36, Address, Unsigned18Bit, Unsigned36Bit},
 };
 
 #[cfg(test)]
@@ -69,6 +71,14 @@ fn assemble_literal(input: &str, expected: &InstructionFragment) {
     }
 }
 
+struct RcBlockNoAlloc {}
+
+impl RcAllocator for RcBlockNoAlloc {
+    fn allocate(&mut self, span: Span, value: Unsigned36Bit) -> Address {
+        panic!("this unit test harness doesn't yet support allocating words in the RC-block");
+    }
+}
+
 #[cfg(test)]
 fn assemble_check_symbols(input: &str, target_address: Address, expected: &[(&str, SymbolValue)]) {
     use crate::eval::HereValue;
@@ -82,8 +92,9 @@ fn assemble_check_symbols(input: &str, target_address: Address, expected: &[(&st
         let context = SymbolContext::from((Script::Normal, span));
         let here = HereValue::Address(target_address);
         let mut op = LookupOperation::default();
-        let rc_block = RcBlockLocation::Undecided;
-        match symtab.lookup_with_op(&sym, span, &here, &rc_block, &context, &mut op) {
+        let mut rc_block =
+            make_empty_rc_block_for_test(Address::from(Unsigned18Bit::from(0o020_000u16)));
+        match symtab.lookup_with_op(&sym, span, &here, &mut rc_block, &context, &mut op) {
             Ok(got) => {
                 if got != *expected_value {
                     panic!("incorrect value for symbol {name}; expected {expected_value:?}, got {got:?}");
