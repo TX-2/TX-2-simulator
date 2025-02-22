@@ -660,12 +660,12 @@ fn assemble_pass3(
     Ok((binary, final_symbols))
 }
 
-fn pos_line_column(s: &str, pos: usize) -> Result<(usize, usize), ()> {
+fn pos_line_column(s: &str, pos: usize) -> (usize, usize) {
     let mut line = 1;
     let mut column = 1;
     for (i, ch) in s.chars().enumerate() {
         if i == pos {
-            return Ok((line, column));
+            break;
         }
         match ch {
             '\n' => {
@@ -677,26 +677,37 @@ fn pos_line_column(s: &str, pos: usize) -> Result<(usize, usize), ()> {
             }
         }
     }
-    Err(())
+    (line, column)
+}
+
+fn cleanup_control_chars(input: String) -> String {
+    let mut output: String = String::with_capacity(input.len());
+    for ch in input.chars() {
+        match ch {
+            '\'' | '"' => {
+                output.push(ch);
+            }
+            ch if ch.is_control() => output.extend(ch.escape_default()),
+            ch => {
+                output.push(ch);
+            }
+        }
+    }
+    output
 }
 
 fn fail_with_diagnostics(source_file_body: &str, errors: Vec<Rich<char>>) -> AssemblerFailure {
     match errors.as_slice() {
         [first, ..] => {
-            for e in errors.iter() {
-                eprintln!("{}", e);
-            }
+            //for e in errors.iter() {
+            //    eprintln!("error: {e:?}");
+            //}
             let span = first.span().start;
-            let (line, column) = match pos_line_column(source_file_body, span) {
-                Ok((l, c)) => (l, c),
-                Err(e) => {
-                    panic!("span {span:?} for error message {first:?} should be inside the file");
-                }
-            };
+            let (line, column) = pos_line_column(source_file_body, span);
             AssemblerFailure::SyntaxError {
                 line: line as u32,
                 column: Some(column),
-                msg: first.to_string(),
+                msg: cleanup_control_chars(first.to_string()),
             }
         }
         [] => {

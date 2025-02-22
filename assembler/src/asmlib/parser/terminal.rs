@@ -30,7 +30,7 @@ pub(super) fn arrow<'a, I>() -> impl Parser<'a, I, char, Extra<'a, char>> + Clon
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Clone,
 {
-    arrow_ignored().map(|_| '\u{2192}')
+    arrow_ignored().to('\u{2192}')
 }
 
 pub(super) fn hash<'a, I>(
@@ -258,6 +258,7 @@ where
             at_glyph(script_required, "8"),
             at_glyph(script_required, "9"),
         ))
+        .labelled("decimal digit")
     }
 
     choice((
@@ -440,6 +441,7 @@ where
             at_glyph(script_required, "Y"),
             at_glyph(script_required, "Z"),
         ))
+        .labelled("uppercase letter")
     }
 
     match script_required {
@@ -496,6 +498,7 @@ where
         Script::Normal => just('_').or(glyph).boxed(),
         Script::Sub | Script::Super => glyph.boxed(),
     }
+    .labelled("underscore")
 }
 
 fn overbar<'a, I>(script_required: Script) -> impl Parser<'a, I, char, Extra<'a, char>> + Clone
@@ -667,6 +670,7 @@ where
     choice((
         group0, group1, group2, group3, group4, group5, group6, group7,
     ))
+    .labelled("opcode")
 }
 
 pub(super) fn opcode<'a, I>() -> impl Parser<'a, I, LiteralValue, Extra<'a, char>> + Clone
@@ -780,7 +784,7 @@ where
         // stands for "hamburger".
         at_glyph(Script::Normal, "hamb").ignored(),
     ))
-    .map(|_| '≡')
+    .to('≡')
 }
 
 pub(super) fn tilde<'a, I>() -> impl Parser<'a, I, char, Extra<'a, char>> + Clone
@@ -827,7 +831,7 @@ pub(super) fn horizontal_whitespace0<'srcbody, I>(
 where
     I: Input<'srcbody, Token = char, Span = SimpleSpan> + StrInput<'srcbody, char> + Clone,
 {
-    ws().repeated().ignored()
+    ws().repeated().labelled("white space").ignored()
 }
 
 pub(super) fn horizontal_whitespace1<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>> + Clone
@@ -890,14 +894,14 @@ pub(super) fn comment<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>> + Clon
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + StrInput<'a, char> + Clone,
 {
-    just("**").ignore_then(none_of("\n").repeated().ignored())
+    (just("**").ignore_then(none_of("\n").repeated().ignored())).labelled("comment")
 }
 
 pub(super) fn end_of_input<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>> + Clone
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + StrInput<'a, char> + Clone,
 {
-    chumsky::prelude::end()
+    chumsky::prelude::end().labelled("end-of-input")
 }
 
 pub(super) fn logical_or<'a, I>(

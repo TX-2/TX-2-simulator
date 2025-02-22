@@ -345,6 +345,43 @@ fn test_empty_manuscript() {
 }
 
 #[test]
+fn test_blank_lines_manuscript() {
+    assert_eq!(
+        parse_successfully_with("\n\n", source_file(), no_state_setup),
+        SourceFile {
+            blocks: BTreeMap::new(),
+            macros: vec![],
+            punch: None,
+        }
+    )
+}
+
+#[test]
+fn test_comments_only_manuscript() {
+    assert_eq!(
+        parse_successfully_with(
+            concat!(
+                "** THIS PROGRAM CONTAINS ONLY BLANK LINES\n",
+                "\n",
+                "** AND SOME LINES CONTAINING ONLY SPACES\n",
+                "    \n",
+                "** OR TABS\n",
+                "\t\t\t\n",
+                "** AND SOME COMMENTS.\n",
+                "    ** SOME COMMENTS ARE PRECEDED BY BLANKS\n",
+            ),
+            source_file(),
+            no_state_setup
+        ),
+        SourceFile {
+            blocks: BTreeMap::new(),
+            macros: vec![],
+            punch: None,
+        }
+    )
+}
+
+#[test]
 fn test_comment() {
     parse_successfully_with("**THIS IS A COMMENT", terminal::comment(), no_state_setup);
 }

@@ -478,7 +478,7 @@ where
 {
     let one_end_of_line = terminal::horizontal_whitespace0()
         .then(terminal::comment().or_not())
-        .then(chumsky::text::newline())
+        .then(chumsky::text::newline().labelled("end-of-line"))
         .ignored();
 
     one_end_of_line
