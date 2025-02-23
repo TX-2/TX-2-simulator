@@ -821,10 +821,21 @@ pub(crate) struct MacroArgument {
     pub(crate) preceding_terminator: char,
 }
 
+/// As defined with ☛☛DEF, a macro's name is followed by a terminator,
+/// or by a terminator and some arguments.  We model each argument as
+/// being introduced by its preceding terminator.  If there are no
+/// arguments, MacroArguments::Zero(ch) represents that uses of the
+/// macro's name are followed by the indicated terminator character.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum MacroArguments {
+    Zero(char),
+    OneOrMore(Vec<MacroArgument>),
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct MacroDefinition {
     pub(crate) name: SymbolName, // composite character macros are not yet supported
-    pub(crate) args: Vec<MacroArgument>,
+    pub(crate) args: MacroArguments,
     // body should probably be a sequence of ManuscriptLine in order
     // to allow an origin specification to exist within a macro body.
     // But that is not supported yet.

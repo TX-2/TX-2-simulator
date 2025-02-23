@@ -228,11 +228,18 @@ where
     })
 }
 
-fn macro_arguments<'a, I>() -> impl Parser<'a, I, Vec<MacroArgument>, Extra<'a, char>>
+fn macro_arguments<'a, I>() -> impl Parser<'a, I, MacroArguments, Extra<'a, char>>
 where
     I: Input<'a, Token = char, Span = Span> + ValueInput<'a> + StrInput<'a, char> + Clone,
 {
-    macro_argument().repeated().collect()
+    choice((
+        macro_argument()
+            .repeated()
+            .at_least(1)
+            .collect::<Vec<_>>()
+            .map(|args| MacroArguments::OneOrMore(args)),
+        macro_terminator().map(|ch| MacroArguments::Zero(ch)),
+    ))
 }
 
 /// Macros are described in section 6-4 of the TX-2 User Handbook.

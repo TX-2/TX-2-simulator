@@ -1390,7 +1390,7 @@ fn test_macro_arg() {
 fn test_macro_args() {
     assert_eq!(
         parse_successfully_with("=X@hand@YZ@arr@P", macro_arguments(), no_state_setup),
-        vec![
+        MacroArguments::OneOrMore(vec![
             MacroArgument {
                 name: SymbolName::from("X".to_string()),
                 span: span(0..2),
@@ -1406,7 +1406,7 @@ fn test_macro_args() {
                 span: span(10..16),
                 preceding_terminator: '→',
             },
-        ]
+        ])
     );
 }
 
@@ -1414,15 +1414,15 @@ fn test_macro_args() {
 fn test_macro_definition_with_empty_body() {
     // TBD: where in a macro definition are comments allowed?
     let got = parse_successfully_with(
-        concat!("☛☛DEF MYMACRO\n", "☛☛EMD"), // deliberately no terminating newline, see comment in macro_definition().
+        concat!("☛☛DEF MYMACRO≡\n", "☛☛EMD"), // deliberately no terminating newline, see comment in macro_definition().
         macro_definition(),
         no_state_setup,
     );
     let expected = MacroDefinition {
         name: SymbolName::from("MYMACRO".to_string()),
-        args: Vec::new(), // no args
+        args: MacroArguments::Zero('≡'),
         body: Vec::new(), // no body
-        span: span(0..27),
+        span: span(0..30),
     };
     assert_eq!(got, expected);
 }
@@ -1441,11 +1441,11 @@ fn test_macro_definition_with_trivial_body() {
     );
     let expected = MacroDefinition {
         name: SymbolName::from("JUST".to_string()),
-        args: vec![MacroArgument {
+        args: MacroArguments::OneOrMore(vec![MacroArgument {
             name: SymbolName::from("A".to_string()),
             span: span(14..16),
             preceding_terminator: '|',
-        }],
+        }]),
         body: vec![Statement::Instruction(TaggedProgramInstruction {
             tag: None,
             instruction: UntaggedProgramInstruction {
@@ -1474,13 +1474,13 @@ fn test_macro_definition_as_entire_source_file() {
             name: SymbolName {
                 canonical: "JUST".to_string(),
             },
-            args: vec![MacroArgument {
+            args: MacroArguments::OneOrMore(vec![MacroArgument {
                 name: SymbolName {
                     canonical: "A".to_string(),
                 },
                 span: span(14..16),
                 preceding_terminator: '|',
-            }],
+            }]),
             body: vec![Statement::Instruction(TaggedProgramInstruction {
                 tag: None,
                 instruction: UntaggedProgramInstruction {
