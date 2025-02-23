@@ -31,12 +31,12 @@ PRINT->   REX₁ 777760     ** Set X₁ to -15 (decimal)
 ** TX-2 consisders words to be composed of four quarters (Q4..Q1) with
 ** Q1 as least significant.  Most instructions can operate on just
 ** some of the quarters of a word, by using the system configuration
-** value field of instructions.  These are reppresented as
+** value field of instructions.  These are represented as
 ** superscripts.  The configuration values we use here are 6
 ** (selecting Q4), 5 (Q3), 4 (Q2) and 3 (Q1).
 **
 ** The effect of a TSD instruction is to perform I/O on the unit
-** correspondig to the currently-executing sequence (here, 66).
+** corresponding to the currently-executing sequence (here, 66).
 ** Whether this is input or output depends on whether the relevant
 ** unit is an input or an output unit.  Unit 66 is the output half of
 ** the first of the system's two Lincoln Writers.
