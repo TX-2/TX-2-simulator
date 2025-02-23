@@ -112,7 +112,8 @@ fn disassemble_word(loc: Unsigned18Bit, w: Unsigned36Bit, is_origin: bool) {
             print!("{:<20}", "");
         }
     }
-    println!("|{:>012o} {:>6o}", w, loc);
+    let (left, right) = split_halves(w);
+    println!("|{:>06o} {:>06o}|{:>6o}", left, right, loc);
 }
 
 fn disassemble_chunk<R: Read>(input: &mut R, checksum: &mut Signed18Bit) -> Result<bool, Fail> {
