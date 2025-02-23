@@ -254,7 +254,8 @@ where
                 .labelled("macro body"),
         )
         .then_ignore(named_metacommand("EMD"))
-        .then_ignore(end_of_line())
+        // We don't parse end-of-line here because all metacommands are supposed
+        // to be followed by end-of-line.
         .map_with(|((name, args), body), extra| MacroDefinition {
             name,
             args,

@@ -1414,7 +1414,7 @@ fn test_macro_args() {
 fn test_macro_definition_with_empty_body() {
     // TBD: where in a macro definition are comments allowed?
     let got = parse_successfully_with(
-        concat!("☛☛DEF MYMACRO\n", "☛☛EMD\n"),
+        concat!("☛☛DEF MYMACRO\n", "☛☛EMD"), // deliberately no terminating newline, see comment in macro_definition().
         macro_definition(),
         no_state_setup,
     );
@@ -1422,7 +1422,7 @@ fn test_macro_definition_with_empty_body() {
         name: SymbolName::from("MYMACRO".to_string()),
         args: Vec::new(), // no args
         body: Vec::new(), // no body
-        span: span(0..28),
+        span: span(0..27),
     };
     assert_eq!(got, expected);
 }
@@ -1433,8 +1433,8 @@ fn test_macro_definition_with_trivial_body() {
         concat!(
             "☛☛DEF JUST|A\n",
             // This macro definition has a one-line body.
-            "A\n",
-            "☛☛EMD\n"
+            "A ** This is the only line in the body.\n",
+            "☛☛EMD" // deliberately no terminating newline, see comment in macro_definition().
         ),
         macro_definition(),
         no_state_setup,
@@ -1449,7 +1449,7 @@ fn test_macro_definition_with_trivial_body() {
         body: vec![Statement::Instruction(TaggedProgramInstruction {
             tag: None,
             instruction: UntaggedProgramInstruction {
-                span: span(17..18),
+                span: span(17..19),
                 holdbit: HoldBit::Unspecified,
                 parts: vec![InstructionFragment::Arithmetic(ArithmeticExpression::from(
                     Atom::Symbol(
@@ -1460,7 +1460,46 @@ fn test_macro_definition_with_trivial_body() {
                 ))],
             },
         })],
-        span: span(0..29),
+        span: span(0..66),
+    };
+    assert_eq!(got, expected);
+}
+
+#[test]
+fn test_macro_definition_as_entire_source_file() {
+    let got = parse_successfully_with("☛☛DEF JUST|A\nA\n☛☛EMD\n", source_file(), no_state_setup);
+    let expected = SourceFile {
+        blocks: BTreeMap::new(), // empty
+        macros: vec![MacroDefinition {
+            name: SymbolName {
+                canonical: "JUST".to_string(),
+            },
+            args: vec![MacroArgument {
+                name: SymbolName {
+                    canonical: "A".to_string(),
+                },
+                span: span(14..16),
+                preceding_terminator: '|',
+            }],
+            body: vec![Statement::Instruction(TaggedProgramInstruction {
+                tag: None,
+                instruction: UntaggedProgramInstruction {
+                    span: span(17..18),
+                    holdbit: HoldBit::Unspecified,
+                    parts: vec![InstructionFragment::Arithmetic(ArithmeticExpression::from(
+                        Atom::Symbol(
+                            span(17..18),
+                            Script::Normal,
+                            SymbolName {
+                                canonical: "A".to_string(),
+                            },
+                        ),
+                    ))],
+                },
+            })],
+            span: span(0..28),
+        }],
+        punch: None,
     };
     assert_eq!(got, expected);
 }

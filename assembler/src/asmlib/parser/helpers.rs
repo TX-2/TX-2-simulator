@@ -206,7 +206,7 @@ pub(super) fn manuscript_lines_to_blocks(
     Option<PunchCommand>,
 ) {
     let mut result: BTreeMap<BlockIdentifier, ManuscriptBlock> = BTreeMap::new();
-    let macros: Vec<MacroDefinition> = Vec::new();
+    let mut macros: Vec<MacroDefinition> = Vec::new();
     let mut current_statements: Vec<Statement> = Vec::new();
     let mut maybe_punch: Option<PunchCommand> = None;
     let mut effective_origin: Option<Origin> = None;
@@ -243,8 +243,8 @@ pub(super) fn manuscript_lines_to_blocks(
                 // were parsed following them, so no need to keep them
                 // now.
             }
-            ManuscriptLine::MetaCommand(ManuscriptMetaCommand::Macro(_)) => {
-                unimplemented!("macro definitions are not yet supported")
+            ManuscriptLine::MetaCommand(ManuscriptMetaCommand::Macro(macro_def)) => {
+                macros.push(macro_def);
             }
             ManuscriptLine::JustOrigin(new_origin) => {
                 ship_block(&current_statements, effective_origin, &mut result);
