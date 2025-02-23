@@ -20,7 +20,7 @@ use super::super::{
     parser::symex::{parse_multi_syllable_symex, parse_symex},
     state::NumeralMode,
     symbol::SymbolName,
-    symtab::{make_empty_rc_block_for_test, LookupOperation, RcBlockLocation, SymbolTable},
+    symtab::{make_empty_rc_block_for_test, LookupOperation, SymbolTable},
 };
 use super::*;
 
@@ -1039,7 +1039,6 @@ fn program_instruction_with_opcode() {
         ),
         Ok(u36!(0o210452_030106))
     );
-    assert!(rc_block.is_empty());
 }
 
 #[test]

@@ -17,7 +17,7 @@ use crate::symtab::{LookupOperation, RcAllocator, RcBlock};
 use super::eval::{Evaluate, SymbolContext, SymbolDefinition, SymbolLookup, SymbolUse};
 use super::state::NumeralMode;
 use super::symbol::SymbolName;
-use super::symtab::{RcBlockLocation, SymbolTable};
+use super::symtab::SymbolTable;
 use super::types::{
     offset_from_origin, AssemblerFailure, BlockIdentifier, MachineLimitExceededFailure, Span,
 };
@@ -911,13 +911,6 @@ impl Directive {
         }
     }
 
-    pub(crate) fn get_rc_block_location(&self) -> RcBlockLocation {
-        match self.blocks.get(&BlockIdentifier::RcWords) {
-            Some(block) => RcBlockLocation::At(block.location),
-            None => RcBlockLocation::Undecided,
-        }
-    }
-
     pub(crate) fn take_rc_block(&mut self) -> RcBlock {
         let max_occupied_addr: Option<Address> =
             self.blocks.values().map(LocatedBlock::following_addr).max();
@@ -937,16 +930,6 @@ impl Directive {
 
     pub(crate) fn entry_point(&self) -> Option<Address> {
         self.entry_point
-    }
-
-    pub(crate) fn blocks(&self) -> impl Iterator<Item = (&BlockIdentifier, &LocatedBlock)> {
-        self.blocks.iter()
-    }
-
-    pub(crate) fn blocks_mut(
-        &mut self,
-    ) -> impl Iterator<Item = (&BlockIdentifier, &mut LocatedBlock)> {
-        self.blocks.iter_mut()
     }
 }
 
@@ -1019,9 +1002,5 @@ impl LocatedBlock {
             .iter()
             .map(|stmt| stmt.emitted_instruction_count())
             .sum()
-    }
-
-    pub(crate) fn is_empty(&self) -> bool {
-        self.items.is_empty()
     }
 }

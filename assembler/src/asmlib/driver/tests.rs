@@ -10,9 +10,7 @@ use super::super::ast::{
 };
 use super::super::eval::{SymbolContext, SymbolLookup, SymbolValue};
 use super::super::symbol::SymbolName;
-use super::super::symtab::{
-    make_empty_rc_block_for_test, LookupOperation, RcAllocator, RcBlockLocation,
-};
+use super::super::symtab::{make_empty_rc_block_for_test, LookupOperation};
 use super::super::types::{BlockIdentifier, Span};
 use super::assemble_pass1;
 use super::{assemble_nonempty_valid_input, assemble_source};
@@ -68,14 +66,6 @@ fn assemble_literal(input: &str, expected: &InstructionFragment) {
         got => {
             panic!("expected one instruction containing {expected:?}\ngot items {got:?}");
         }
-    }
-}
-
-struct RcBlockNoAlloc {}
-
-impl RcAllocator for RcBlockNoAlloc {
-    fn allocate(&mut self, span: Span, value: Unsigned36Bit) -> Address {
-        panic!("this unit test harness doesn't yet support allocating words in the RC-block");
     }
 }
 

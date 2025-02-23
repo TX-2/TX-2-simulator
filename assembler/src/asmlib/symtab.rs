@@ -34,30 +34,6 @@ impl Display for DefaultValueAssignmentError {
 
 impl std::error::Error for DefaultValueAssignmentError {}
 
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub(crate) struct RcReference(Unsigned18Bit);
-
-impl RcReference {
-    pub(crate) fn new(value: Unsigned18Bit) -> RcReference {
-        RcReference(value)
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub(crate) enum RcBlockLocation {
-    Undecided,
-    At(Address),
-}
-
-impl RcBlockLocation {
-    fn as_here_value(&self) -> HereValue {
-        match self {
-            RcBlockLocation::Undecided => HereValue::NotAllowed,
-            RcBlockLocation::At(addr) => HereValue::Address(*addr),
-        }
-    }
-}
-
 pub(crate) trait RcAllocator {
     fn allocate(&mut self, span: Span, value: Unsigned36Bit) -> Address;
 }
@@ -94,12 +70,6 @@ impl RcAllocator for RcBlock {
                 panic!("program is too large"); // fixme: use Result
             }
         }
-    }
-}
-
-impl RcBlock {
-    pub(crate) fn is_empty(&self) -> bool {
-        self.inner.is_empty()
     }
 }
 

@@ -82,7 +82,6 @@ pub(crate) enum SymbolLookupFailureKind {
     Inconsistent(String),
     Loop { deps_in_order: Vec<SymbolName> },
     MachineLimitExceeded(MachineLimitExceededFailure),
-    RcReferenceNotValidHere,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -95,9 +94,6 @@ impl Display for SymbolLookupFailure {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         let desc = self.target.to_string();
         match self.kind() {
-            SymbolLookupFailureKind::RcReferenceNotValidHere => {
-                write!(f, "RC-block references are not allowed here")
-            }
             SymbolLookupFailureKind::Inconsistent(msg) => f.write_str(msg.as_str()),
             SymbolLookupFailureKind::Loop { deps_in_order } => {
                 let names: Vec<String> = deps_in_order.iter().map(|dep| dep.to_string()).collect();
@@ -119,12 +115,6 @@ impl From<SymbolLookupFailure> for AssemblerFailure {
         let symbol_desc: String = f.target.to_string();
         let span: Span = *f.target.span();
         match f.kind {
-            SymbolLookupFailureKind::RcReferenceNotValidHere => {
-                AssemblerFailure::InvalidProgram {
-                    span,
-                    msg: format!("definition of {symbol_desc} depends on an RC-word reference but that is not valid here",),
-                }
-            }
             SymbolLookupFailureKind::MachineLimitExceeded(limit_exceeded) => {
                 AssemblerFailure::MachineLimitExceeded(limit_exceeded)
             }
