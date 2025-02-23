@@ -84,9 +84,9 @@ where
     // We use recursive here to prevent the parser blowing the stack
     // when trying to parse inputs which have parentheses - that is,
     // inputs that require recursion.
-    recursive(|arithmetic_expression| {
+    recursive(|arithmetic_expr| {
         // Parse (E) where E is some expression.
-        let parenthesised_arithmetic_expression = arithmetic_expression // this is the recursive call
+        let parenthesised_arithmetic_expression = arithmetic_expr // this is the recursive call
             .clone()
             .delimited_by(
                 terminal::left_paren(script_required),
@@ -98,7 +98,7 @@ where
         // allowed inside RC-blocks, we should parse E as a
         // TaggedProgramInstruction.  But if we try to do that without
         // using recursive() we will blow the stack, unfortunately.
-        let register_containing = arithmetic_expression
+        let register_containing = arithmetic_expr
             .clone()
             .delimited_by(terminal::left_brace(), terminal::right_brace())
             .map_with(|expr, extra| Atom::RcRef(extra.span(), Box::new(expr)));
@@ -157,7 +157,7 @@ fn program_instruction_fragment<'srcbody, I>(
 where
     I: Input<'srcbody, Token = char, Span = Span> + StrInput<'srcbody, char> + Clone,
 {
-    fn frag<'a, I>(
+    fn single_script_fragment<'a, I>(
         script_required: Script,
     ) -> impl Parser<'a, I, InstructionFragment, Extra<'a, char>>
     where
@@ -168,7 +168,11 @@ where
             .map(InstructionFragment::from)
     }
 
-    choice((frag(Script::Normal), frag(Script::Super), frag(Script::Sub)))
+    choice((
+        single_script_fragment(Script::Normal),
+        single_script_fragment(Script::Super),
+        single_script_fragment(Script::Sub),
+    ))
 }
 
 fn program_instruction_fragments<'srcbody, I>(
