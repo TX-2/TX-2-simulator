@@ -28,6 +28,7 @@ use super::symtab::{
 };
 use super::types::*;
 use base::prelude::{Address, IndexBy, Unsigned18Bit, Unsigned36Bit};
+pub use output::write_user_program;
 
 #[cfg(test)]
 use base::charset::Script;
@@ -214,23 +215,27 @@ pub(crate) fn assemble_nonempty_valid_input(input: &str) -> (Directive, SymbolTa
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub(crate) struct BinaryChunk {
-    pub(crate) address: Address,
-    pub(crate) words: Vec<Unsigned36Bit>,
+pub struct BinaryChunk {
+    pub address: Address,
+    pub words: Vec<Unsigned36Bit>,
 }
 
 impl BinaryChunk {
-    fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.words.is_empty()
     }
 
     fn count_words(&self) -> usize {
         self.words.len()
     }
+
+    pub fn push(&mut self, w: Unsigned36Bit) {
+        self.words.push(w);
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub(crate) struct Binary {
+pub struct Binary {
     entry_point: Option<Address>,
     chunks: Vec<BinaryChunk>,
 }
@@ -248,7 +253,7 @@ impl Binary {
         self.entry_point = Some(address)
     }
 
-    fn add_chunk(&mut self, chunk: BinaryChunk) {
+    pub fn add_chunk(&mut self, chunk: BinaryChunk) {
         self.chunks.push(chunk)
     }
 
@@ -872,5 +877,5 @@ pub fn assemble_file(
             error: e,
         })?;
     let mut writer = BufWriter::new(output_file);
-    output::write_user_program(&user_program, &mut writer, output_file_name)
+    write_user_program(&user_program, &mut writer, output_file_name)
 }

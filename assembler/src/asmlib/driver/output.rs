@@ -156,7 +156,7 @@ fn create_begin_block(
     create_tape_block(location, &code, !empty_program)
 }
 
-pub(crate) fn write_user_program<W: Write>(
+pub fn write_user_program<W: Write>(
     binary: &Binary,
     writer: &mut W,
     output_file_name: &Path,
