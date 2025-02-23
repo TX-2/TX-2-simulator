@@ -6,6 +6,7 @@ license = "MIT"
 
 [dependencies]
 base = {path = "../base" }
+regex = "1"
 
 # Clap is dual-licensed MIT/Apache
 # https://github.com/clap-rs/clap/blob/master/LICENSE-MIT
@@ -38,3 +39,7 @@ path = "src/tx2m4as/main.rs"
 [[bin]]
 name = "tx2dis"
 path = "src/tx2dis/main.rs"
+
+[[bin]]
+name = "tx2maketape"
+path = "src/tx2maketape/main.rs"
