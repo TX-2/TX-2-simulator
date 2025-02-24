@@ -383,14 +383,21 @@ fn test_comments_only_manuscript() {
 
 #[test]
 fn test_comment() {
-    parse_successfully_with("**THIS IS A COMMENT", terminal::comment(), no_state_setup);
+    parse_successfully_with(
+        "**THIS IS A COMMENT",
+        terminal::comment(RcContext::OutsideRcBlock),
+        no_state_setup,
+    );
 }
 
 #[test]
 fn test_comment_does_not_eat_newline() {
     let comment_text = "**COMMENT";
     let comment_with_newline = format!("{comment_text}\n");
-    match parse_test_input(comment_with_newline.as_str(), terminal::comment()) {
+    match parse_test_input(
+        comment_with_newline.as_str(),
+        terminal::comment(RcContext::OutsideRcBlock),
+    ) {
         Err(_) => (), // expected outcome
         Ok(out) => {
             panic!("attempt to parse '{comment_with_newline:?}' as a comment unexpectedly succeeded (the newline was not rejected), producing {out:?}");
@@ -398,7 +405,7 @@ fn test_comment_does_not_eat_newline() {
     }
     // Verify that the above (expected) error was in fact caused by
     // the presence of the newline.
-    parse_test_input(comment_text, terminal::comment())
+    parse_test_input(comment_text, terminal::comment(RcContext::OutsideRcBlock))
         .expect("should be able to successfully parse the comment itself");
 }
 
@@ -527,6 +534,45 @@ fn test_manuscript_without_tag() {
                         }
                     }),
                 ]
+            }]),
+            macros: vec![],
+            punch: None,
+        }
+    );
+}
+
+/// Comments can appear both inside and outside RC-blocks (see TX-2
+/// User Handbook section 6-2.8 "Special Symbols").
+#[test]
+fn test_comment_in_rc_block() {
+    assert_eq!(
+        parse_successfully_with(
+            "{1 ** ONE} ** EXTERNAL COMMENT\n",
+            source_file(),
+            no_state_setup
+        ),
+        SourceFile {
+            blocks: manuscript_blocks(vec![ManuscriptBlock {
+                origin: None,
+                statements: vec![Statement::Instruction(TaggedProgramInstruction {
+                    tag: None,
+                    instruction: UntaggedProgramInstruction {
+                        span: span(0..11),
+                        holdbit: HoldBit::Unspecified,
+                        parts: vec![InstructionFragment::from(ArithmeticExpression::from(
+                            Atom::RcRef(
+                                span(0..10),
+                                Box::new(ArithmeticExpression::from(Atom::Literal(
+                                    LiteralValue::from((
+                                        span(1..2),
+                                        Script::Normal,
+                                        Unsigned36Bit::ONE
+                                    ),)
+                                ))),
+                            )
+                        ))]
+                    }
+                })]
             }]),
             macros: vec![],
             punch: None,

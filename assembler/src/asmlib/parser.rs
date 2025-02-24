@@ -17,7 +17,7 @@ use super::types::*;
 use base::charset::Script;
 use base::prelude::*;
 use helpers::Sign;
-
+use terminal::RcContext;
 pub(crate) type Extra<'a, T> = Full<Rich<'a, T>, NumeralMode, ()>;
 
 fn literal<'a, I>(
@@ -98,10 +98,16 @@ where
         // allowed inside RC-blocks, we should parse E as a
         // TaggedProgramInstruction.  But if we try to do that without
         // using recursive() we will blow the stack, unfortunately.
+        //
+        // The contents of the RC-block can be followed (inside the
+        // braces) by a comment which is terminated by the closing
+        // brace.
         let register_containing = arithmetic_expr
+            .padded_by(terminal::horizontal_whitespace0())
+            .then(terminal::comment(RcContext::InRcBlock).or_not().ignored())
             .clone()
             .delimited_by(terminal::left_brace(), terminal::right_brace())
-            .map_with(|expr, extra| Atom::RcRef(extra.span(), Box::new(expr)));
+            .map_with(|(expr, ()), extra| Atom::RcRef(extra.span(), Box::new(expr)));
 
         // Parse a literal, symbol, #, or (recursively) an expression in parentheses.
         let atom = terminal::opcode()
@@ -489,7 +495,7 @@ where
     I: Input<'a, Token = char, Span = Span> + StrInput<'a, char> + Clone,
 {
     let one_end_of_line = terminal::horizontal_whitespace0()
-        .then(terminal::comment().or_not())
+        .then(terminal::comment(RcContext::OutsideRcBlock).or_not())
         .then(chumsky::text::newline().labelled("end-of-line"))
         .ignored();
 

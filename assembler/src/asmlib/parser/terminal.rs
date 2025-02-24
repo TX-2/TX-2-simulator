@@ -890,11 +890,26 @@ where
     pipe().ignored()
 }
 
-pub(super) fn comment<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>> + Clone
+#[derive(Debug, Eq, PartialEq)]
+pub(crate) enum RcContext {
+    InRcBlock,
+    OutsideRcBlock,
+}
+
+pub(super) fn comment<'a, I>(context: RcContext) -> impl Parser<'a, I, (), Extra<'a, char>> + Clone
 where
     I: Input<'a, Token = char, Span = SimpleSpan> + StrInput<'a, char> + Clone,
 {
-    (just("**").ignore_then(none_of("\n").repeated().ignored())).labelled("comment")
+    // Comments can appear both inside and outside RC-blocks (see TX-2
+    // User Handbook section 6-2.8 "Special Symbols").
+    let terminators = match context {
+        RcContext::InRcBlock => "\n}",
+        RcContext::OutsideRcBlock => "\n",
+    };
+    (just("**")
+        .ignore_then(none_of(terminators).repeated())
+        .ignored())
+    .labelled("comment")
 }
 
 pub(super) fn end_of_input<'a, I>() -> impl Parser<'a, I, (), Extra<'a, char>> + Clone
