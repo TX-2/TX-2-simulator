@@ -563,7 +563,7 @@ impl HtmlCanvas2DPainter {
 
     fn set_up_context_defaults(context: &CanvasRenderingContext2d) {
         context.set_line_cap("round");
-        context.set_stroke_style(&("black".into()));
+        context.set_stroke_style_str("black");
     }
 
     fn fill_multiline_text(
@@ -646,7 +646,7 @@ impl HtmlCanvas2DPainter {
 
             // This calculation for x assumes Left-to-Right text.
             let text_x: f64 = f64::from(x_midline) - metrics.actual_bounding_box_right() / 2.0;
-            self.context.set_fill_style(&JsValue::from(colour));
+            self.context.set_fill_style_str(colour);
             if let Err(e) = self.context.fill_text(s, text_x, text_y) {
                 return Err(KeyPaintError::Failed(format!("fill_text failed: {e:?}")));
             }
@@ -673,8 +673,7 @@ impl KeyPainter for HtmlCanvas2DPainter {
         if self.hits_only {
             // We fill the background with a colour which never maps back
             // to a key code.
-            self.context
-                .set_fill_style(&JsValue::from(HIT_DETECTION_BACKGROUND));
+            self.context.set_fill_style_str(HIT_DETECTION_BACKGROUND);
             self.context
                 .fill_rect(0.0_f64, 0.0_f64, self.width().into(), self.height().into());
         }
@@ -691,7 +690,8 @@ impl KeyPainter for HtmlCanvas2DPainter {
         let hit_detection_colour: String = keycode.hit_detection_colour();
 
         if self.hits_only {
-            self.context.set_fill_style(&(&hit_detection_colour).into());
+            self.context
+                .set_fill_style_str(hit_detection_colour.as_str());
             self.context.fill_rect(
                 keybox.left().into(),
                 keybox.top().into(),
@@ -702,8 +702,8 @@ impl KeyPainter for HtmlCanvas2DPainter {
             return Ok(());
         }
 
-        self.context.set_fill_style(&colour.key_css_colour().into());
-        self.context.set_stroke_style(&("black".into()));
+        self.context.set_fill_style_str(colour.key_css_colour());
+        self.context.set_stroke_style_str("black");
         let label_css_color = colour.label_css_colour();
 
         self.draw_filled_stroked_rect(
