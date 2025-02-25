@@ -1,6 +1,6 @@
-///! This program converts an octal dump of a program (as shown in the
-///! right-hand columns of an assembler listing) into a tape image
-///! suitable for loading into a simulated TX-2.
+//! This program converts an octal dump of a program (as shown in the
+//! right-hand columns of an assembler listing) into a tape image
+//! suitable for loading into a simulated TX-2.
 use std::{
     error::Error,
     ffi::OsString,
