@@ -220,7 +220,7 @@ mod mref {
         }
     }
 
-    impl<'a> MemoryRead for MemoryReadRef<'a> {
+    impl MemoryRead for MemoryReadRef<'_> {
         fn get_meta_bit(&self) -> bool {
             *self.meta
         }
@@ -247,7 +247,7 @@ mod mref {
         }
     }
 
-    impl<'a> MemoryRead for MemoryWriteRef<'a> {
+    impl MemoryRead for MemoryWriteRef<'_> {
         fn get_meta_bit(&self) -> bool {
             *self.meta
         }
@@ -261,7 +261,7 @@ mod mref {
         }
     }
 
-    impl<'a> MemoryWriteRef<'a> {
+    impl MemoryWriteRef<'_> {
         pub(super) fn set_meta_bit_to_value(&mut self, value: bool) {
             *self.meta = value;
         }
