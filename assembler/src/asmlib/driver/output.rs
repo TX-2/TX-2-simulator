@@ -22,7 +22,7 @@ fn write_data<W: Write>(
             let mut buf: Vec<u8> = Vec::with_capacity(chunk.len() * 6);
             for word in chunk {
                 let unsplayed: [Unsigned6Bit; 6] = unsplay(*word);
-                buf.extend(unsplayed.into_iter().map(|u| u8::from(u) | 1 << 7));
+                buf.extend(unsplayed.into_iter().map(|u| u8::from(u) | (1 << 7)));
             }
             writer.write_all(&buf)?;
         }
