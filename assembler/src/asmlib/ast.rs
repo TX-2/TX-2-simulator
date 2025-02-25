@@ -916,7 +916,7 @@ impl Directive {
             self.blocks.values().map(LocatedBlock::following_addr).max();
         fn make_rc_block(max_occupied_addr: Option<Address>) -> LocatedBlock {
             let rc_block_address: Address =
-                max_occupied_addr.unwrap_or_else(|| Origin::default_address());
+                max_occupied_addr.unwrap_or_else(Origin::default_address);
             LocatedBlock {
                 location: rc_block_address,
                 items: Vec::new(),

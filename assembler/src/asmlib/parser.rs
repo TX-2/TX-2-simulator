@@ -247,8 +247,8 @@ where
             .repeated()
             .at_least(1)
             .collect::<Vec<_>>()
-            .map(|args| MacroArguments::OneOrMore(args)),
-        macro_terminator().map(|ch| MacroArguments::Zero(ch)),
+            .map(MacroArguments::OneOrMore),
+        macro_terminator().map(MacroArguments::Zero),
     ))
 }
 
