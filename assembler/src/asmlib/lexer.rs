@@ -9,22 +9,22 @@ mod implementation {
 
     #[derive(Debug, Logos, PartialEq)]
     pub(super) enum InnerToken {
-        #[token("\n", priority = 60)]
-        Newline,
-
-        #[regex("[*][*][^}\n]*", priority = 50)]
+        #[regex("[*][*][^}\n]*")]
         CommentStart,
 
-        #[token("{", priority = 20)]
+        #[token("\n")]
+        Newline,
+
+        #[token("{")]
         LeftBrace,
 
-        #[token("}", priority = 20)]
+        #[token("}")]
         RightBrace,
 
-        #[regex("[^ \t{}\n]+", priority = 10)]
+        #[regex("[^ \t{}\n]+")]
         Text,
 
-        #[regex("[ \t]+", priority = 5)]
+        #[regex("[ \t]+")]
         Spaces,
     }
 }
@@ -134,15 +134,6 @@ impl<'a> Lexer<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn scan(input: &str) -> Vec<Token> {
-        let mut scanner = Lexer::new(input);
-        let mut result = Vec::new();
-        while let Some(t) = scanner.next() {
-            result.push(t);
-        }
-        result
-    }
 
     fn scan_spans<'a>(input: &'a str) -> Vec<(Token, &'a str)> {
         let mut scanner = Lexer::new(input);
