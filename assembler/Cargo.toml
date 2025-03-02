@@ -14,7 +14,7 @@ regex = "1"
 clap = { version = "4", features = ["derive"] }
 
 chumsky = { version="=1.0.0-alpha.6", features=["label"] }
-logos = { version = "0.15",features=["debug"]}
+logos = { version = "0.15" }
 
 # tempfile has an "MIT or Apache-2.0" copyright license
 tempfile = "3"
