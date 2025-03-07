@@ -13,7 +13,7 @@ struct Unrecognised<'a> {
     span: Span,
 }
 
-impl<'a> Display for Unrecognised<'a> {
+impl Display for Unrecognised<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -23,7 +23,7 @@ impl<'a> Display for Unrecognised<'a> {
     }
 }
 
-impl<'a> Error for Unrecognised<'a> {}
+impl Error for Unrecognised<'_> {}
 
 mod lower {
     use std::ops::Range;
