@@ -1,11 +1,28 @@
 #![allow(dead_code)]
 // TODO: once the lexer is in use, allow the dead_code warning again.
 
-use std::ops::Range;
+use std::{error::Error, fmt::Display, ops::Range};
 
 use logos::Logos;
 
 type Span = Range<usize>;
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+struct Unrecognised<'a> {
+    content: &'a str,
+}
+
+impl<'a> Display for Unrecognised<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "'{}' is not part of the TX-2 assembler's character set",
+            self.content
+        )
+    }
+}
+
+impl<'a> Error for Unrecognised<'a> {}
 
 mod lower {
     use std::ops::Range;
@@ -64,6 +81,7 @@ mod lower {
         EndOfInput,
         Tok(super::Token),
         Text(&'a str),
+        Err(super::Unrecognised<'a>),
     }
 
     /// LowerLexer uses a Logos-generated scanner to identify braces
@@ -94,19 +112,19 @@ mod lower {
             use Lexeme::*;
 
             loop {
-                let tok = match dbg!(self.inner.next()) {
+                let tok = match self.inner.next() {
                     None => {
                         return EndOfInput;
                     }
-                    Some(Err(_)) => {
+                    Some(Result::Err(())) => {
                         if self.state.in_comment {
                             // Skip.
                             continue;
                         } else {
-                            unimplemented!(
-                                "pass through text not matched by the lower scanner? '{}'",
-                                self.inner.slice()
-                            )
+                            let e: super::Unrecognised = super::Unrecognised {
+                                content: self.inner.slice(),
+                            };
+                            return Lexeme::Err(e);
                         }
                     }
                     Some(Ok(tok)) => tok,
@@ -247,16 +265,13 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn next_upper(upper: &mut logos::Lexer<'a, Token>) -> Option<Token> {
+    fn next_upper(upper: &mut logos::Lexer<'a, Token>) -> Option<Result<Token, Unrecognised<'a>>> {
         match upper.next() {
             None => None,
-            Some(Ok(token_from_upper)) => Some(dbg!(token_from_upper)),
-            Some(Err(_)) => {
-                unimplemented!(
-                    "extend upper lexer to handle this text ('{}')",
-                    upper.slice(),
-                )
-            }
+            Some(Ok(token_from_upper)) => Some(Ok(dbg!(token_from_upper))),
+            Some(Err(_)) => Some(Err(Unrecognised {
+                content: upper.slice(),
+            })),
         }
     }
 
@@ -266,11 +281,17 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn get_next(&mut self) -> Option<Token> {
+    fn get_next(&mut self) -> Option<Result<Token, Unrecognised<'a>>> {
         use lower::Lexeme;
         if let Some(upper_lexer) = self.upper.as_mut() {
-            if let Some(t) = Lexer::next_upper(upper_lexer) {
-                return Some(t);
+            match Lexer::next_upper(upper_lexer) {
+                Some(r) => {
+                    return Some(r);
+                }
+                None => {
+                    // We have no more input from the upper lexer,
+                    // fetch more from the lower one.
+                }
             }
         }
 
@@ -278,8 +299,13 @@ impl<'a> Lexer<'a> {
         self.upper = None;
         match self.lower.next() {
             Lexeme::EndOfInput => None,
-            Lexeme::Tok(tok) => Some(tok),
-            Lexeme::Text(text) => {
+            Lexeme::Tok(tok) => Some(Ok(tok)),
+            // If the lower lexer actually returns Unrecognised, the
+            // slice in `content` is likely very short (a single
+            // character perhaps) and that is unlikely to be
+            // tokenizable.  So the upper lexer will likely also
+            // return an error for that text too.
+            Lexeme::Text(text) | Lexeme::Err(Unrecognised { content: text }) => {
                 let lexer = logos::Lexer::new(text);
                 self.upper = Some(lexer);
                 Lexer::next_upper(
@@ -293,9 +319,9 @@ impl<'a> Lexer<'a> {
 }
 
 impl<'a> Iterator for Lexer<'a> {
-    type Item = Token;
+    type Item = Result<Token, Unrecognised<'a>>;
 
-    fn next(&mut self) -> Option<Token> {
+    fn next(&mut self) -> Option<Result<Token, Unrecognised<'a>>> {
         self.get_next()
     }
 }
@@ -306,10 +332,14 @@ struct SpannedIter<'a> {
 }
 
 impl<'a> Iterator for SpannedIter<'a> {
-    type Item = (Token, Span);
+    type Item = Result<(Token, Span), Unrecognised<'a>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.lexer.next().map(|t| (t, self.lexer.span()))
+        match self.lexer.next() {
+            Some(Ok(tok)) => Some(Ok((tok, self.lexer.span()))),
+            Some(Err(e)) => Some(Err(e)),
+            None => None,
+        }
     }
 }
 
@@ -317,52 +347,57 @@ impl<'a> Iterator for SpannedIter<'a> {
 mod tests {
     use super::*;
 
-    fn scan_slices(input: &str) -> Vec<(Token, &str)> {
+    fn scan_slices(input: &str) -> Result<Vec<(Token, &str)>, Unrecognised> {
         dbg!(input);
         dbg!(input.len());
         Lexer::new(input)
             .spanned()
-            .map(|(tok, span)| (tok, &input[span]))
+            .map(|result| {
+                dbg!(match result {
+                    Ok((tok, span)) => Ok((tok, &input[span])),
+                    Err(e) => Err(e),
+                })
+            })
             .collect()
     }
 
-    fn scan_tokens_only<'a>(input: &'a str) -> Vec<Token> {
+    fn scan_tokens_only<'a>(input: &'a str) -> Result<Vec<Token>, Unrecognised<'a>> {
         Lexer::new(input).collect()
     }
 
     #[test]
     fn test_empty_input() {
-        assert_eq!(scan_slices(""), Vec::new());
+        assert_eq!(scan_slices(""), Ok(Vec::new()));
     }
 
     #[test]
     fn test_balanced_braces() {
         assert_eq!(
             scan_slices("{}"),
-            vec![(Token::LeftBrace, "{"), (Token::RightBrace, "}")]
+            Ok(vec![(Token::LeftBrace, "{"), (Token::RightBrace, "}")])
         );
     }
 
     #[test]
     fn test_comment_without_content() {
-        assert_eq!(scan_slices("**"), Vec::new());
+        assert_eq!(scan_slices("**"), Ok(Vec::new()));
     }
 
     #[test]
     fn test_comment_with_only_newline() {
-        assert_eq!(scan_slices("**\n"), vec![(Token::Newline, "\n")]);
+        assert_eq!(scan_slices("**\n"), Ok(vec![(Token::Newline, "\n")]));
     }
 
     #[test]
     fn test_comment_x() {
-        assert_eq!(scan_slices("**X\n"), vec![(Token::Newline, "\n")]);
+        assert_eq!(scan_slices("**X\n"), Ok(vec![(Token::Newline, "\n")]));
     }
 
     #[test]
     fn test_comment_with_unmatched_rbrace() {
         assert_eq!(
             scan_slices("** THIS } {HELLO} IS A } COMMENT\n"),
-            vec![(Token::Newline, "\n")]
+            Ok(vec![(Token::Newline, "\n")])
         );
     }
 
@@ -370,20 +405,23 @@ mod tests {
     fn test_unmatched_rbrace() {
         assert_eq!(
             scan_slices("}\n"),
-            vec![(Token::RightBrace, "}"), (Token::Newline, "\n")]
+            Ok(vec![(Token::RightBrace, "}"), (Token::Newline, "\n")])
         );
     }
 
     #[test]
     fn test_hand_normal() {
-        assert_eq!(scan_tokens_only("@hand@"), vec![Token::AtGlyphNormal(1..5)]);
+        assert_eq!(
+            scan_tokens_only("@hand@"),
+            Ok(vec![Token::AtGlyphNormal(1..5)])
+        );
     }
 
     #[test]
     fn test_hand_sub() {
         assert_eq!(
             scan_tokens_only("@sub_hand@"),
-            vec![Token::AtGlyphSub(5..9)]
+            Ok(vec![Token::AtGlyphSub(5..9)])
         );
     }
 
@@ -395,26 +433,29 @@ mod tests {
 
         assert_eq!(
             scan_slices(input),
-            vec![
+            Ok(vec![
                 (Token::AtGlyphNormal(1..5), "@hand@"),
                 (Token::AtGlyphNormal(7..11), "@hand@"),
-            ]
+            ])
         );
     }
 
     #[test]
     fn test_arrow_plain() {
-        assert_eq!(scan_tokens_only("->"), vec![Token::Arrow]);
+        assert_eq!(scan_tokens_only("->"), Ok(vec![Token::Arrow]));
     }
 
     #[test]
     fn test_double_arrow_plain() {
-        assert_eq!(scan_tokens_only("->->"), vec![Token::Arrow, Token::Arrow]);
+        assert_eq!(
+            scan_tokens_only("->->"),
+            Ok(vec![Token::Arrow, Token::Arrow])
+        );
     }
 
     #[test]
     fn test_arrow_as_glyph() {
-        assert_eq!(scan_tokens_only("@arr@"), vec![Token::Arrow]);
+        assert_eq!(scan_tokens_only("@arr@"), Ok(vec![Token::Arrow]));
     }
 
     #[test]
@@ -424,11 +465,11 @@ mod tests {
         // at position 0) identified by the upper lexer.
         assert_eq!(
             scan_slices("{->}"),
-            vec![
+            Ok(vec![
                 (Token::LeftBrace, "{"),
                 (Token::Arrow, "->"),
                 (Token::RightBrace, "}"),
-            ]
+            ])
         );
     }
 }
