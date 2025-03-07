@@ -10,6 +10,7 @@ type Span = Range<usize>;
 #[derive(Debug, PartialEq, Eq, Clone)]
 struct Unrecognised<'a> {
     content: &'a str,
+    span: Span,
 }
 
 impl<'a> Display for Unrecognised<'a> {
@@ -123,6 +124,7 @@ mod lower {
                         } else {
                             let e: super::Unrecognised = super::Unrecognised {
                                 content: self.inner.slice(),
+                                span: self.span(),
                             };
                             return Lexeme::Err(e);
                         }
@@ -271,6 +273,7 @@ impl<'a> Lexer<'a> {
             Some(Ok(token_from_upper)) => Some(Ok(dbg!(token_from_upper))),
             Some(Err(_)) => Some(Err(Unrecognised {
                 content: upper.slice(),
+                span: upper.span(),
             })),
         }
     }
@@ -305,7 +308,11 @@ impl<'a> Lexer<'a> {
             // character perhaps) and that is unlikely to be
             // tokenizable.  So the upper lexer will likely also
             // return an error for that text too.
-            Lexeme::Text(text) | Lexeme::Err(Unrecognised { content: text }) => {
+            Lexeme::Text(text)
+            | Lexeme::Err(Unrecognised {
+                content: text,
+                span: _,
+            }) => {
                 let lexer = logos::Lexer::new(text);
                 self.upper = Some(lexer);
                 Lexer::next_upper(
