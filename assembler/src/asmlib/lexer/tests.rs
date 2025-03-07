@@ -64,10 +64,7 @@ fn test_unmatched_rbrace() {
 
 #[test]
 fn test_hand_normal() {
-    assert_eq!(
-        scan_tokens_only("@hand@"),
-        Ok(vec![Token::AtGlyphNormal(1..5)])
-    );
+    assert_eq!(scan_tokens_only("@hand@"), Ok(vec![Token::Hand]));
 }
 
 #[test]
@@ -86,10 +83,7 @@ fn test_hand_hand_normal() {
 
     assert_eq!(
         scan_slices(input),
-        Ok(vec![
-            (Token::AtGlyphNormal(1..5), "@hand@"),
-            (Token::AtGlyphNormal(7..11), "@hand@"),
-        ])
+        Ok(vec![(Token::Hand, "@hand@"), (Token::Hand, "@hand@"),])
     );
 }
 
@@ -124,4 +118,203 @@ fn test_upper_lexer_span() {
             (Token::RightBrace, "}"),
         ])
     );
+}
+
+#[test]
+fn test_normal_digits() {
+    assert_eq!(scan_tokens_only("0"), Ok(vec![Token::NormalDigits]));
+    assert_eq!(scan_tokens_only("1"), Ok(vec![Token::NormalDigits]));
+    assert_eq!(scan_tokens_only("2"), Ok(vec![Token::NormalDigits]));
+    assert_eq!(scan_tokens_only("3"), Ok(vec![Token::NormalDigits]));
+    assert_eq!(scan_tokens_only("4"), Ok(vec![Token::NormalDigits]));
+    assert_eq!(scan_tokens_only("5"), Ok(vec![Token::NormalDigits]));
+    assert_eq!(scan_tokens_only("6"), Ok(vec![Token::NormalDigits]));
+    assert_eq!(scan_tokens_only("7"), Ok(vec![Token::NormalDigits]));
+    assert_eq!(scan_tokens_only("8"), Ok(vec![Token::NormalDigits]));
+    assert_eq!(scan_tokens_only("9"), Ok(vec![Token::NormalDigits]));
+    assert_eq!(scan_tokens_only("10"), Ok(vec![Token::NormalDigits]));
+    assert_eq!(scan_tokens_only("11"), Ok(vec![Token::NormalDigits]));
+    assert_eq!(scan_tokens_only("12"), Ok(vec![Token::NormalDigits]));
+    assert_eq!(scan_tokens_only("13"), Ok(vec![Token::NormalDigits]));
+    assert_eq!(scan_tokens_only("14"), Ok(vec![Token::NormalDigits]));
+    assert_eq!(scan_tokens_only("15"), Ok(vec![Token::NormalDigits]));
+    assert_eq!(scan_tokens_only("16"), Ok(vec![Token::NormalDigits]));
+    assert_eq!(scan_tokens_only("17"), Ok(vec![Token::NormalDigits]));
+    assert_eq!(scan_tokens_only("18"), Ok(vec![Token::NormalDigits]));
+    assert_eq!(scan_tokens_only("19"), Ok(vec![Token::NormalDigits]));
+}
+
+#[test]
+fn test_subscript_digits() {
+    assert_eq!(
+        scan_tokens_only("₀₁₂₃₄₅₆₇₈₉"),
+        Ok(vec![Token::SubscriptDigits])
+    );
+    assert_eq!(
+        scan_tokens_only("@sub_0@"),
+        Ok(vec![Token::SubscriptDigits])
+    );
+    assert_eq!(
+        scan_tokens_only("@sub_1@"),
+        Ok(vec![Token::SubscriptDigits])
+    );
+    assert_eq!(
+        scan_tokens_only("@sub_2@"),
+        Ok(vec![Token::SubscriptDigits])
+    );
+    assert_eq!(
+        scan_tokens_only("@sub_3@"),
+        Ok(vec![Token::SubscriptDigits])
+    );
+    assert_eq!(
+        scan_tokens_only("@sub_4@"),
+        Ok(vec![Token::SubscriptDigits])
+    );
+    assert_eq!(
+        scan_tokens_only("@sub_5@"),
+        Ok(vec![Token::SubscriptDigits])
+    );
+    assert_eq!(
+        scan_tokens_only("@sub_6@"),
+        Ok(vec![Token::SubscriptDigits])
+    );
+    assert_eq!(
+        scan_tokens_only("@sub_7@"),
+        Ok(vec![Token::SubscriptDigits])
+    );
+    assert_eq!(
+        scan_tokens_only("@sub_8@"),
+        Ok(vec![Token::SubscriptDigits])
+    );
+    assert_eq!(
+        scan_tokens_only("@sub_9@"),
+        Ok(vec![Token::SubscriptDigits])
+    );
+
+    assert_eq!(
+        scan_tokens_only("@sub_9@@sub_9@"),
+        Ok(vec![Token::SubscriptDigits])
+    );
+}
+
+#[test]
+fn test_superscript_digits() {
+    assert_eq!(
+        scan_tokens_only(
+            "\u{2070}\u{00B9}\u{00B2}\u{00B3}\u{2074}\u{2075}\u{2076}\u{2077}\u{2078}\u{2079}"
+        ),
+        Ok(vec![Token::SuperscriptDigits])
+    );
+    assert_eq!(
+        scan_tokens_only("@super_0@"),
+        Ok(vec![Token::SuperscriptDigits])
+    );
+    assert_eq!(
+        scan_tokens_only("@super_1@"),
+        Ok(vec![Token::SuperscriptDigits])
+    );
+    assert_eq!(
+        scan_tokens_only("@super_2@"),
+        Ok(vec![Token::SuperscriptDigits])
+    );
+    assert_eq!(
+        scan_tokens_only("@super_3@"),
+        Ok(vec![Token::SuperscriptDigits])
+    );
+    assert_eq!(
+        scan_tokens_only("@super_4@"),
+        Ok(vec![Token::SuperscriptDigits])
+    );
+    assert_eq!(
+        scan_tokens_only("@super_5@"),
+        Ok(vec![Token::SuperscriptDigits])
+    );
+    assert_eq!(
+        scan_tokens_only("@super_6@"),
+        Ok(vec![Token::SuperscriptDigits])
+    );
+    assert_eq!(
+        scan_tokens_only("@super_7@"),
+        Ok(vec![Token::SuperscriptDigits])
+    );
+    assert_eq!(
+        scan_tokens_only("@super_8@"),
+        Ok(vec![Token::SuperscriptDigits])
+    );
+    assert_eq!(
+        scan_tokens_only("@super_9@"),
+        Ok(vec![Token::SuperscriptDigits])
+    );
+
+    assert_eq!(
+        scan_tokens_only("@super_9@@super_9@"),
+        Ok(vec![Token::SuperscriptDigits])
+    );
+}
+
+#[test]
+fn test_symex_one_syllable_ae_register_names() {
+    assert_eq!(scan_tokens_only("A"), Ok(vec![Token::NormalSymexSyllable]));
+    assert_eq!(scan_tokens_only("B"), Ok(vec![Token::NormalSymexSyllable]));
+    assert_eq!(scan_tokens_only("C"), Ok(vec![Token::NormalSymexSyllable]));
+    assert_eq!(scan_tokens_only("D"), Ok(vec![Token::NormalSymexSyllable]));
+    assert_eq!(scan_tokens_only("E"), Ok(vec![Token::NormalSymexSyllable]));
+}
+
+#[test]
+fn test_symex_one_syllable_uppercase_normal() {
+    assert_eq!(scan_tokens_only("A0"), Ok(vec![Token::NormalSymexSyllable]));
+    assert_eq!(
+        scan_tokens_only("A02"),
+        Ok(vec![Token::NormalSymexSyllable])
+    );
+    assert_eq!(scan_tokens_only("BB"), Ok(vec![Token::NormalSymexSyllable]));
+    assert_eq!(scan_tokens_only("CX"), Ok(vec![Token::NormalSymexSyllable]));
+}
+
+#[test]
+fn test_symex_one_syllable_lowercase_normal() {
+    assert_eq!(
+        scan_tokens_only("xyz"),
+        Ok(vec![Token::NormalSymexSyllable])
+    );
+    assert_eq!(
+        scan_tokens_only("ijknpqtwxyz"),
+        Ok(vec![Token::NormalSymexSyllable])
+    );
+}
+
+#[test]
+fn test_symex_one_syllable_greek() {
+    assert_eq!(
+        scan_tokens_only("βαγεΔλ"),
+        Ok(vec![Token::NormalSymexSyllable])
+    );
+}
+
+#[test]
+fn test_comma() {
+    assert_eq!(scan_tokens_only(","), Ok(vec![Token::Comma]));
+}
+
+#[test]
+fn test_equals() {
+    assert_eq!(
+        scan_tokens_only("FOO BAR = 1 ** This is an equality\n"),
+        Ok(vec![
+            Token::NormalSymexSyllable,
+            Token::NormalSymexSyllable,
+            Token::Equals,
+            Token::NormalDigits,
+            Token::Newline,
+        ])
+    );
+}
+
+#[test]
+fn test_pipe() {
+    assert_eq!(
+        scan_tokens_only("    START|"),
+        Ok(vec![Token::NormalSymexSyllable, Token::Pipe,])
+    )
 }
