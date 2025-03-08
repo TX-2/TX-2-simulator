@@ -117,6 +117,7 @@ fn test_normal_digits() {
     assert_eq!(
         scan_tokens_only(" 0"),
         Ok(vec![Token::NormalDigits(NumericLiteral {
+            sign: None,
             digits: "0".to_string(),
             has_trailing_dot: false
         })])
@@ -124,6 +125,7 @@ fn test_normal_digits() {
     assert_eq!(
         scan_tokens_only(" 1"),
         Ok(vec![Token::NormalDigits(NumericLiteral {
+            sign: None,
             digits: "1".to_string(),
             has_trailing_dot: false
         })])
@@ -131,6 +133,7 @@ fn test_normal_digits() {
     assert_eq!(
         scan_tokens_only(" 2"),
         Ok(vec![Token::NormalDigits(NumericLiteral {
+            sign: None,
             digits: "2".to_string(),
             has_trailing_dot: false
         })])
@@ -138,6 +141,7 @@ fn test_normal_digits() {
     assert_eq!(
         scan_tokens_only(" 3"),
         Ok(vec![Token::NormalDigits(NumericLiteral {
+            sign: None,
             digits: "3".to_string(),
             has_trailing_dot: false
         })])
@@ -145,6 +149,7 @@ fn test_normal_digits() {
     assert_eq!(
         scan_tokens_only(" 4"),
         Ok(vec![Token::NormalDigits(NumericLiteral {
+            sign: None,
             digits: "4".to_string(),
             has_trailing_dot: false
         })])
@@ -152,6 +157,7 @@ fn test_normal_digits() {
     assert_eq!(
         scan_tokens_only(" 5"),
         Ok(vec![Token::NormalDigits(NumericLiteral {
+            sign: None,
             digits: "5".to_string(),
             has_trailing_dot: false
         })])
@@ -159,6 +165,7 @@ fn test_normal_digits() {
     assert_eq!(
         scan_tokens_only(" 6"),
         Ok(vec![Token::NormalDigits(NumericLiteral {
+            sign: None,
             digits: "6".to_string(),
             has_trailing_dot: false
         })])
@@ -166,6 +173,7 @@ fn test_normal_digits() {
     assert_eq!(
         scan_tokens_only(" 7"),
         Ok(vec![Token::NormalDigits(NumericLiteral {
+            sign: None,
             digits: "7".to_string(),
             has_trailing_dot: false
         })])
@@ -173,6 +181,7 @@ fn test_normal_digits() {
     assert_eq!(
         scan_tokens_only(" 8"),
         Ok(vec![Token::NormalDigits(NumericLiteral {
+            sign: None,
             digits: "8".to_string(),
             has_trailing_dot: false
         })])
@@ -180,6 +189,7 @@ fn test_normal_digits() {
     assert_eq!(
         scan_tokens_only(" 9"),
         Ok(vec![Token::NormalDigits(NumericLiteral {
+            sign: None,
             digits: "9".to_string(),
             has_trailing_dot: false
         })])
@@ -187,6 +197,7 @@ fn test_normal_digits() {
     assert_eq!(
         scan_tokens_only("10"),
         Ok(vec![Token::NormalDigits(NumericLiteral {
+            sign: None,
             digits: "10".to_string(),
             has_trailing_dot: false
         })])
@@ -194,6 +205,7 @@ fn test_normal_digits() {
     assert_eq!(
         scan_tokens_only("11"),
         Ok(vec![Token::NormalDigits(NumericLiteral {
+            sign: None,
             digits: "11".to_string(),
             has_trailing_dot: false
         })])
@@ -201,6 +213,7 @@ fn test_normal_digits() {
     assert_eq!(
         scan_tokens_only("12"),
         Ok(vec![Token::NormalDigits(NumericLiteral {
+            sign: None,
             digits: "12".to_string(),
             has_trailing_dot: false
         })])
@@ -208,6 +221,7 @@ fn test_normal_digits() {
     assert_eq!(
         scan_tokens_only("13"),
         Ok(vec![Token::NormalDigits(NumericLiteral {
+            sign: None,
             digits: "13".to_string(),
             has_trailing_dot: false
         })])
@@ -215,6 +229,7 @@ fn test_normal_digits() {
     assert_eq!(
         scan_tokens_only("14"),
         Ok(vec![Token::NormalDigits(NumericLiteral {
+            sign: None,
             digits: "14".to_string(),
             has_trailing_dot: false
         })])
@@ -222,6 +237,7 @@ fn test_normal_digits() {
     assert_eq!(
         scan_tokens_only("15"),
         Ok(vec![Token::NormalDigits(NumericLiteral {
+            sign: None,
             digits: "15".to_string(),
             has_trailing_dot: false
         })])
@@ -229,6 +245,7 @@ fn test_normal_digits() {
     assert_eq!(
         scan_tokens_only("16"),
         Ok(vec![Token::NormalDigits(NumericLiteral {
+            sign: None,
             digits: "16".to_string(),
             has_trailing_dot: false
         })])
@@ -236,6 +253,7 @@ fn test_normal_digits() {
     assert_eq!(
         scan_tokens_only("17"),
         Ok(vec![Token::NormalDigits(NumericLiteral {
+            sign: None,
             digits: "17".to_string(),
             has_trailing_dot: false
         })])
@@ -243,6 +261,7 @@ fn test_normal_digits() {
     assert_eq!(
         scan_tokens_only("18"),
         Ok(vec![Token::NormalDigits(NumericLiteral {
+            sign: None,
             digits: "18".to_string(),
             has_trailing_dot: false
         })])
@@ -250,6 +269,7 @@ fn test_normal_digits() {
     assert_eq!(
         scan_tokens_only("19"),
         Ok(vec![Token::NormalDigits(NumericLiteral {
+            sign: None,
             digits: "19".to_string(),
             has_trailing_dot: false
         })])
@@ -257,10 +277,31 @@ fn test_normal_digits() {
 }
 
 #[test]
-fn test_normal_digits_trailing_dot() {
+fn test_normal_digits_sign() {
+    assert_eq!(
+        scan_tokens_only("+1"),
+        Ok(vec![Token::NormalDigits(NumericLiteral {
+            sign: Some(Sign::Positive),
+            digits: "1".to_string(),
+            has_trailing_dot: false
+        })])
+    );
+    assert_eq!(
+        scan_tokens_only("-209"),
+        Ok(vec![Token::NormalDigits(NumericLiteral {
+            sign: Some(Sign::Negative),
+            digits: "209".to_string(),
+            has_trailing_dot: false
+        })])
+    );
+}
+
+#[test]
+fn test_normal_digits_trailing_dot_ascii() {
     assert_eq!(
         scan_tokens_only(" 20@dot@"),
         Ok(vec![Token::NormalDigits(NumericLiteral {
+            sign: None,
             digits: "20".to_string(),
             has_trailing_dot: true,
         })])
@@ -269,7 +310,20 @@ fn test_normal_digits_trailing_dot() {
     assert_eq!(
         scan_tokens_only(" 12."),
         Ok(vec![Token::NormalDigits(NumericLiteral {
+            sign: None,
             digits: "12".to_string(),
+            has_trailing_dot: true,
+        })])
+    );
+}
+
+#[test]
+fn test_normal_digits_trailing_centre_dot() {
+    assert_eq!(
+        scan_tokens_only("-20·"),
+        Ok(vec![Token::NormalDigits(NumericLiteral {
+            sign: Some(Sign::Negative),
+            digits: "20".to_string(),
             has_trailing_dot: true,
         })])
     );
@@ -277,6 +331,7 @@ fn test_normal_digits_trailing_dot() {
 
 fn number_without_dot(n: &str) -> NumericLiteral {
     NumericLiteral {
+        sign: None,
         digits: n.to_string(),
         has_trailing_dot: false,
     }
@@ -284,6 +339,7 @@ fn number_without_dot(n: &str) -> NumericLiteral {
 
 fn number_with_dot(n: &str) -> NumericLiteral {
     NumericLiteral {
+        sign: None,
         digits: n.to_string(),
         has_trailing_dot: true,
     }
@@ -360,6 +416,30 @@ fn test_subscript_digits() {
 }
 
 #[test]
+fn test_subscript_sign_minus() {
+    assert_eq!(
+        scan_tokens_only("₋₄"),
+        Ok(vec![Token::SubscriptDigits(NumericLiteral {
+            sign: Some(Sign::Negative),
+            digits: "4".to_string(),
+            has_trailing_dot: false,
+        })])
+    );
+}
+
+#[test]
+fn test_subscript_sign_plus() {
+    assert_eq!(
+        scan_tokens_only("₊₄"),
+        Ok(vec![Token::SubscriptDigits(NumericLiteral {
+            sign: Some(Sign::Positive),
+            digits: "4".to_string(),
+            has_trailing_dot: false,
+        })])
+    );
+}
+
+#[test]
 fn test_superscript_digits() {
     let input = "\u{2070}\u{00B9}\u{00B2}\u{00B3}\u{2074}\u{2075}\u{2076}\u{2077}\u{2078}\u{2079}";
     assert_eq!(&input[0..27], input);
@@ -413,6 +493,30 @@ fn test_superscript_digits() {
     assert_eq!(
         scan_tokens_only("@super_9@@super_9@"),
         Ok(vec![Token::SuperscriptDigits(number_without_dot("99"))])
+    );
+}
+
+#[test]
+fn test_superscript_sign_minus() {
+    assert_eq!(
+        scan_tokens_only("\u{207B}\u{2074}"),
+        Ok(vec![Token::SuperscriptDigits(NumericLiteral {
+            sign: Some(Sign::Negative),
+            digits: "4".to_string(),
+            has_trailing_dot: false,
+        })])
+    );
+}
+
+#[test]
+fn test_superscript_sign_plus() {
+    assert_eq!(
+        scan_tokens_only("\u{207A}\u{2074}"),
+        Ok(vec![Token::SuperscriptDigits(NumericLiteral {
+            sign: Some(Sign::Positive),
+            digits: "4".to_string(),
+            has_trailing_dot: false,
+        })])
     );
 }
 
@@ -472,6 +576,7 @@ fn test_equals() {
             Token::NormalSymexSyllable,
             Token::Equals,
             Token::NormalDigits(NumericLiteral {
+                sign: None,
                 digits: "1".to_string(),
                 has_trailing_dot: false
             }),

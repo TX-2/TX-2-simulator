@@ -9,7 +9,7 @@ use std::{
 };
 
 use logos::Logos;
-use regex::Regex;
+use regex::{Captures, Regex};
 
 #[cfg(test)]
 mod input_file_tests;
@@ -65,7 +65,14 @@ impl Deref for LazyRegex {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
+enum Sign {
+    Positive,
+    Negative,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub(crate) struct NumericLiteral {
+    sign: Option<Sign>,
     /// The digits comprising the literal. We don't know whether the
     /// base is decimal or octal yet.
     digits: String,
@@ -74,23 +81,57 @@ pub(crate) struct NumericLiteral {
 
 fn capture_normal_digits(lex: &mut logos::Lexer<Token>) -> NumericLiteral {
     let mut digits: String = String::with_capacity(lex.slice().len());
-    let mut has_dot = false;
+    let mut has_trailing_dot = false;
+    let mut sign: Option<Sign> = None;
+    let internal_error = |msg: String| -> ! {
+        panic!(
+            "internal error: inconsistency in numeric literal decoding for {}: {msg}",
+            lex.slice()
+        );
+    };
     for ch in lex.slice().chars() {
-        if ch.is_ascii_digit() {
-            digits.push(ch);
-        } else {
-            // Here we take advantage of the fact that however the dot
-            // is represented, it is at the end and is the only
-            // non-digit.  IOW, we rely on the correctness of the
-            // lexer's regexp for this token.
-            has_dot = true;
-            digits.shrink_to_fit();
-            break;
+        match ch {
+            '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' => {
+                digits.push(ch);
+            }
+            '+' | '-' if sign.is_some() => {
+                internal_error("numeric literal has more than one sign symbol".to_string());
+            }
+            '+' => {
+                sign = Some(Sign::Positive);
+            }
+            '-' => {
+                sign = Some(Sign::Negative);
+            }
+            '·' | '.' | '@' => {
+                // Here we take advantage of the fact that however the dot
+                // is represented, it is at the end and is the only
+                // non-digit.  IOW, we rely on the correctness of the
+                // lexer's regexp for this token.
+                has_trailing_dot = true;
+                digits.shrink_to_fit();
+                break;
+            }
+            other => {
+                internal_error(format!("did not expect to see '{other}'"));
+            }
         }
     }
     NumericLiteral {
+        sign,
         digits,
-        has_trailing_dot: has_dot,
+        has_trailing_dot,
+    }
+}
+
+fn extract_sign(cap: &Captures) -> Result<Option<Sign>, String> {
+    match (cap.name("plus").is_some(), cap.name("minus").is_some()) {
+        (true, false) => Ok(Some(Sign::Positive)),
+        (false, true) => Ok(Some(Sign::Negative)),
+        (false, false) => Ok(None),
+        (true, true) => Err(format!(
+            "expected to find a single optional leading sign in a numeric literal but found both + and -"
+        )),
     }
 }
 
@@ -102,6 +143,7 @@ fn capture_subscript_digits(lex: &mut logos::Lexer<Token>) -> NumericLiteral {
         );
     };
     const RX_PARTS: LazyRegex = LazyRegex::new(concat!(
+        "((?<plus>\u{208A})|(?<minus>\u{208B}))?",
         "(?<digits>",
         "([₀₁₂₃₄₅₆₇₈₉]",
         "|",
@@ -125,6 +167,7 @@ fn capture_subscript_digits(lex: &mut logos::Lexer<Token>) -> NumericLiteral {
         }
     };
     dbg!(&parts_cap);
+    let sign: Option<Sign> = extract_sign(&parts_cap).expect("sign should be valid if present");
     let digits_part = &parts_cap["digits"];
     let has_trailing_dot: bool = parts_cap.name("dot").is_some();
     let mut digits: String = String::with_capacity(lex.slice().len());
@@ -183,6 +226,7 @@ fn capture_subscript_digits(lex: &mut logos::Lexer<Token>) -> NumericLiteral {
         }
     }
     NumericLiteral {
+        sign,
         digits,
         has_trailing_dot,
     }
@@ -196,6 +240,7 @@ fn capture_superscript_digits(lex: &mut logos::Lexer<Token>) -> NumericLiteral {
         );
     };
     const RX_PARTS: LazyRegex = LazyRegex::new(concat!(
+        "((?<plus>\u{207A})|(?<minus>\u{207B}))?",
         "(?<digits>",
         "([\u{2070}\u{00B9}\u{00B2}\u{00B3}\u{2074}\u{2075}\u{2076}\u{2077}\u{2078}\u{2079}]",
         "|",
@@ -220,6 +265,7 @@ fn capture_superscript_digits(lex: &mut logos::Lexer<Token>) -> NumericLiteral {
     };
     dbg!(&parts_cap);
     let digits_part = &parts_cap["digits"];
+    let sign: Option<Sign> = extract_sign(&parts_cap).expect("sign should be valid if present");
     let has_trailing_dot: bool = parts_cap.name("dot").is_some();
     let mut digits: String = String::with_capacity(lex.slice().len());
     for cap in (*RX_DIGIT).captures_iter(digits_part) {
@@ -277,6 +323,7 @@ fn capture_superscript_digits(lex: &mut logos::Lexer<Token>) -> NumericLiteral {
         }
     }
     NumericLiteral {
+        sign,
         digits,
         has_trailing_dot,
     }
@@ -302,19 +349,19 @@ pub(crate) enum Token {
     Pipe,
 
     // Needs to be higher priority than NormalSymexSyllable.
-    #[regex("[0-9]+([.]|@dot@)?", capture_normal_digits, priority = 20)]
+    #[regex("[-+]?[0-9]+([.·]|@dot@)?", capture_normal_digits, priority = 20)]
     NormalDigits(NumericLiteral),
 
     // Needs to be higher priority than SubscriptSymexSyllable (when that's introduced).
     #[regex(
-        "([₀₁₂₃₄₅₆₇₈₉]|(@sub_([0-9])@))+(@sub_dot@)?",
+        "([₋₊]?[₀₁₂₃₄₅₆₇₈₉]|(@sub_([0-9])@))+(@sub_dot@)?",
         capture_subscript_digits,
         priority = 20
     )]
     SubscriptDigits(NumericLiteral),
 
     // Needs to be higher priority than SuperscriptSymexSyllable (when that's introduced).
-    #[regex("([\u{2070}\u{00B9}\u{00B2}\u{00B3}\u{2074}\u{2075}\u{2076}\u{2077}\u{2078}\u{2079}]|(@super_([0-9])@))+(@super_dot@)?", capture_superscript_digits, priority = 20)]
+    #[regex("([\u{207A}\u{207B}])?([\u{2070}\u{00B9}\u{00B2}\u{00B3}\u{2074}\u{2075}\u{2076}\u{2077}\u{2078}\u{2079}]|(@super_([0-9])@))+(@super_dot@)?", capture_superscript_digits, priority = 20)]
     SuperscriptDigits(NumericLiteral),
 
     // TODO: missing from this are: overbar, square, circle.
