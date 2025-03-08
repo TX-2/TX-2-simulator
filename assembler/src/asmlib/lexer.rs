@@ -31,29 +31,13 @@ impl Display for Unrecognised<'_> {
 
 impl Error for Unrecognised<'_> {}
 
-fn glyph_name(span: Span, prefix_len: usize) -> Span {
-    (span.start + 1 + prefix_len)..(span.end - 1)
-}
-
-fn normal_glyph_name(lex: &mut logos::Lexer<Token>) -> Span {
-    dbg!(lex.slice());
-    glyph_name(lex.span(), 0)
-}
-
-fn sub_glyph_name(lex: &mut logos::Lexer<Token>) -> Span {
-    dbg!(lex.slice());
-    glyph_name(lex.span(), 4)
-}
-
-fn super_glyph_name(lex: &mut logos::Lexer<Token>) -> Span {
-    dbg!(lex.slice());
-    glyph_name(lex.span(), 6)
-}
-
-#[test]
-fn test_glyph_name() {
-    assert_eq!(glyph_name(0..6, 0), 1..5);
-    assert_eq!(glyph_name(0..10, 4), 5..9);
+/// The reason why we can't correctly capture the span of the token in
+/// this callback is because the lexer is the "upper" lexer which only
+/// parses a limited amount of the overall input at a time.  Location
+/// 0 in the lexer's input is not location 0 in the actual input.
+fn placeholder_span(_lex: &mut logos::Lexer<Token>) -> Span {
+    let m = usize::MAX;
+    m..m
 }
 
 /// The parser consumes these tokens.
@@ -63,11 +47,9 @@ pub(crate) enum Token {
     RightBrace,
     Newline,
 
-    // Needs to be higher priority than AtGlyph*.
     #[regex("@arr@|->", priority = 20)]
     Arrow,
 
-    // Needs to be higher priority than AtGlyph*.
     #[regex("@hand@|☛", priority = 20)]
     Hand,
 
@@ -78,16 +60,20 @@ pub(crate) enum Token {
     Pipe,
 
     // Needs to be higher priority than NormalSymexSyllable.
-    #[regex("[0-9]+", priority = 20)]
-    NormalDigits,
+    #[regex("[0-9]+([.]|@dot@)?", placeholder_span, priority = 20)]
+    NormalDigits(Span),
 
     // Needs to be higher priority than SubscriptSymexSyllable (when that's introduced).
-    #[regex("([₀₁₂₃₄₅₆₇₈₉]|(@sub_([0-9])@))+", priority = 20)]
-    SubscriptDigits,
+    #[regex(
+        "([₀₁₂₃₄₅₆₇₈₉]|(@sub_([0-9])@))+(@sub_dot@)?",
+        placeholder_span,
+        priority = 20
+    )]
+    SubscriptDigits(Span),
 
     // Needs to be higher priority than SuperscriptSymexSyllable (when that's introduced).
-    #[regex("([\u{2070}\u{00B9}\u{00B2}\u{00B3}\u{2074}\u{2075}\u{2076}\u{2077}\u{2078}\u{2079}]|(@super_([0-9])@))+", priority = 20)]
-    SuperscriptDigits,
+    #[regex("([\u{2070}\u{00B9}\u{00B2}\u{00B3}\u{2074}\u{2075}\u{2076}\u{2077}\u{2078}\u{2079}]|(@super_([0-9])@))+(@super_dot@)?", placeholder_span, priority = 20)]
+    SuperscriptDigits(Span),
 
     // TODO: missing from this are: overbar, square, circle.
     #[regex(
@@ -95,15 +81,6 @@ pub(crate) enum Token {
         priority = 15
     )]
     NormalSymexSyllable,
-
-    #[regex("@super_[^@]*@", super_glyph_name, priority = 10)]
-    AtGlyphSuper(Span),
-
-    #[regex("@sub_[^@]*@", sub_glyph_name, priority = 10)]
-    AtGlyphSub(Span),
-
-    #[regex("@[^@]*@", normal_glyph_name, priority = 5)]
-    AtGlyphNormal(Span),
 
     #[token(",")]
     Comma,
@@ -130,16 +107,30 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn span(&self) -> Range<usize> {
+    fn adjust_span(&self, span: Range<usize>) -> Range<usize> {
         match self.upper.as_ref() {
-            None => self.lower.span(),
+            None => span,
             Some(upper) => {
-                let offset = self.lower.span().start;
+                let offset = span.start;
                 let upper_span = upper.span();
                 dbg!(offset);
                 dbg!(&upper_span);
                 dbg!((upper_span.start + offset)..(upper_span.end + offset))
             }
+        }
+    }
+
+    fn span(&self) -> Range<usize> {
+        self.adjust_span(self.lower.span())
+    }
+
+    fn adjust_token_span(&self, t: Token) -> Token {
+        use Token::*;
+        match t {
+            NormalDigits(_) => NormalDigits(self.span()),
+            SubscriptDigits(_) => SubscriptDigits(self.span()),
+            SuperscriptDigits(_) => SuperscriptDigits(self.span()),
+            other => other,
         }
     }
 
@@ -161,43 +152,47 @@ impl<'a> Lexer<'a> {
     }
 
     fn get_next(&mut self) -> Option<Result<Token, Unrecognised<'a>>> {
-        use lower::Lexeme;
-        if let Some(upper_lexer) = self.upper.as_mut() {
-            match Lexer::next_upper(upper_lexer) {
-                Some(r) => {
-                    return Some(r);
-                }
-                None => {
-                    // We have no more input from the upper lexer,
-                    // fetch more from the lower one.
+        let mut get_next_without_span_adjustment = || -> Option<Result<Token, Unrecognised<'a>>> {
+            use lower::Lexeme;
+            if let Some(upper_lexer) = self.upper.as_mut() {
+                match Lexer::next_upper(upper_lexer) {
+                    Some(r) => {
+                        return Some(r);
+                    }
+                    None => {
+                        // We have no more input from the upper lexer,
+                        // fetch more from the lower one.
+                    }
                 }
             }
-        }
 
-        // Fetch more text from the lower lexer.
-        self.upper = None;
-        match self.lower.next() {
-            Lexeme::EndOfInput => None,
-            Lexeme::Tok(tok) => Some(Ok(tok)),
-            // If the lower lexer actually returns Unrecognised, the
-            // slice in `content` is likely very short (a single
-            // character perhaps) and that is unlikely to be
-            // tokenizable.  So the upper lexer will likely also
-            // return an error for that text too.
-            Lexeme::Text(text)
-            | Lexeme::Err(Unrecognised {
-                content: text,
-                span: _,
-            }) => {
-                let lexer = logos::Lexer::new(text);
-                self.upper = Some(lexer);
-                Lexer::next_upper(
-                    self.upper
-                        .as_mut()
-                        .expect("the option cannot be empty, we just filled it"),
-                )
+            // Fetch more text from the lower lexer.
+            self.upper = None;
+            match self.lower.next() {
+                Lexeme::EndOfInput => None,
+                Lexeme::Tok(tok) => Some(Ok(tok)),
+                // If the lower lexer actually returns Unrecognised, the
+                // slice in `content` is likely very short (a single
+                // character perhaps) and that is unlikely to be
+                // tokenizable.  So the upper lexer will likely also
+                // return an error for that text too.
+                Lexeme::Text(text)
+                | Lexeme::Err(Unrecognised {
+                    content: text,
+                    span: _,
+                }) => {
+                    let lexer = logos::Lexer::new(text);
+                    self.upper = Some(lexer);
+                    Lexer::next_upper(
+                        self.upper
+                            .as_mut()
+                            .expect("the option cannot be empty, we just filled it"),
+                    )
+                }
             }
-        }
+        };
+
+        get_next_without_span_adjustment().map(|result| result.map(|t| self.adjust_token_span(t)))
     }
 }
 

@@ -68,14 +68,6 @@ fn test_hand_normal() {
 }
 
 #[test]
-fn test_hand_sub() {
-    assert_eq!(
-        scan_tokens_only("@sub_hand@"),
-        Ok(vec![Token::AtGlyphSub(5..9)])
-    );
-}
-
-#[test]
 fn test_hand_hand_normal() {
     let input = "@hand@@hand@";
     assert_eq!(&input[1..5], "hand");
@@ -122,133 +114,157 @@ fn test_upper_lexer_span() {
 
 #[test]
 fn test_normal_digits() {
-    assert_eq!(scan_tokens_only("0"), Ok(vec![Token::NormalDigits]));
-    assert_eq!(scan_tokens_only("1"), Ok(vec![Token::NormalDigits]));
-    assert_eq!(scan_tokens_only("2"), Ok(vec![Token::NormalDigits]));
-    assert_eq!(scan_tokens_only("3"), Ok(vec![Token::NormalDigits]));
-    assert_eq!(scan_tokens_only("4"), Ok(vec![Token::NormalDigits]));
-    assert_eq!(scan_tokens_only("5"), Ok(vec![Token::NormalDigits]));
-    assert_eq!(scan_tokens_only("6"), Ok(vec![Token::NormalDigits]));
-    assert_eq!(scan_tokens_only("7"), Ok(vec![Token::NormalDigits]));
-    assert_eq!(scan_tokens_only("8"), Ok(vec![Token::NormalDigits]));
-    assert_eq!(scan_tokens_only("9"), Ok(vec![Token::NormalDigits]));
-    assert_eq!(scan_tokens_only("10"), Ok(vec![Token::NormalDigits]));
-    assert_eq!(scan_tokens_only("11"), Ok(vec![Token::NormalDigits]));
-    assert_eq!(scan_tokens_only("12"), Ok(vec![Token::NormalDigits]));
-    assert_eq!(scan_tokens_only("13"), Ok(vec![Token::NormalDigits]));
-    assert_eq!(scan_tokens_only("14"), Ok(vec![Token::NormalDigits]));
-    assert_eq!(scan_tokens_only("15"), Ok(vec![Token::NormalDigits]));
-    assert_eq!(scan_tokens_only("16"), Ok(vec![Token::NormalDigits]));
-    assert_eq!(scan_tokens_only("17"), Ok(vec![Token::NormalDigits]));
-    assert_eq!(scan_tokens_only("18"), Ok(vec![Token::NormalDigits]));
-    assert_eq!(scan_tokens_only("19"), Ok(vec![Token::NormalDigits]));
+    assert_eq!(scan_tokens_only(" 0"), Ok(vec![Token::NormalDigits(1..2)]));
+    assert_eq!(scan_tokens_only(" 1"), Ok(vec![Token::NormalDigits(1..2)]));
+    assert_eq!(scan_tokens_only(" 2"), Ok(vec![Token::NormalDigits(1..2)]));
+    assert_eq!(scan_tokens_only(" 3"), Ok(vec![Token::NormalDigits(1..2)]));
+    assert_eq!(scan_tokens_only(" 4"), Ok(vec![Token::NormalDigits(1..2)]));
+    assert_eq!(scan_tokens_only(" 5"), Ok(vec![Token::NormalDigits(1..2)]));
+    assert_eq!(scan_tokens_only(" 6"), Ok(vec![Token::NormalDigits(1..2)]));
+    assert_eq!(scan_tokens_only(" 7"), Ok(vec![Token::NormalDigits(1..2)]));
+    assert_eq!(scan_tokens_only(" 8"), Ok(vec![Token::NormalDigits(1..2)]));
+    assert_eq!(scan_tokens_only(" 9"), Ok(vec![Token::NormalDigits(1..2)]));
+    assert_eq!(scan_tokens_only("10"), Ok(vec![Token::NormalDigits(0..2)]));
+    assert_eq!(scan_tokens_only("11"), Ok(vec![Token::NormalDigits(0..2)]));
+    assert_eq!(scan_tokens_only("12"), Ok(vec![Token::NormalDigits(0..2)]));
+    assert_eq!(scan_tokens_only("13"), Ok(vec![Token::NormalDigits(0..2)]));
+    assert_eq!(scan_tokens_only("14"), Ok(vec![Token::NormalDigits(0..2)]));
+    assert_eq!(scan_tokens_only("15"), Ok(vec![Token::NormalDigits(0..2)]));
+    assert_eq!(scan_tokens_only("16"), Ok(vec![Token::NormalDigits(0..2)]));
+    assert_eq!(scan_tokens_only("17"), Ok(vec![Token::NormalDigits(0..2)]));
+    assert_eq!(scan_tokens_only("18"), Ok(vec![Token::NormalDigits(0..2)]));
+    assert_eq!(scan_tokens_only("19"), Ok(vec![Token::NormalDigits(0..2)]));
+}
+
+#[test]
+fn test_normal_digits_trailing_dot() {
+    assert_eq!(
+        scan_tokens_only(" 0@dot@"),
+        Ok(vec![Token::NormalDigits(1..7),])
+    );
+}
+
+#[test]
+fn test_subscript_digits_trailing_dot() {
+    let input = "@sub_3@@sub_dot@";
+    assert_eq!(&input[0..16], input);
+    assert_eq!(
+        scan_tokens_only(input),
+        Ok(vec![Token::SubscriptDigits(0..16),])
+    );
 }
 
 #[test]
 fn test_subscript_digits() {
+    let input = "₀₁₂₃₄₅₆₇₈₉";
+    assert_eq!(&input[0..30], input);
     assert_eq!(
-        scan_tokens_only("₀₁₂₃₄₅₆₇₈₉"),
-        Ok(vec![Token::SubscriptDigits])
+        scan_tokens_only(input),
+        Ok(vec![Token::SubscriptDigits(0..30)])
     );
     assert_eq!(
         scan_tokens_only("@sub_0@"),
-        Ok(vec![Token::SubscriptDigits])
+        Ok(vec![Token::SubscriptDigits(0..7)])
     );
     assert_eq!(
         scan_tokens_only("@sub_1@"),
-        Ok(vec![Token::SubscriptDigits])
+        Ok(vec![Token::SubscriptDigits(0..7)])
     );
     assert_eq!(
         scan_tokens_only("@sub_2@"),
-        Ok(vec![Token::SubscriptDigits])
+        Ok(vec![Token::SubscriptDigits(0..7)])
     );
     assert_eq!(
         scan_tokens_only("@sub_3@"),
-        Ok(vec![Token::SubscriptDigits])
+        Ok(vec![Token::SubscriptDigits(0..7)])
     );
     assert_eq!(
         scan_tokens_only("@sub_4@"),
-        Ok(vec![Token::SubscriptDigits])
+        Ok(vec![Token::SubscriptDigits(0..7)])
     );
     assert_eq!(
         scan_tokens_only("@sub_5@"),
-        Ok(vec![Token::SubscriptDigits])
+        Ok(vec![Token::SubscriptDigits(0..7)])
     );
     assert_eq!(
         scan_tokens_only("@sub_6@"),
-        Ok(vec![Token::SubscriptDigits])
+        Ok(vec![Token::SubscriptDigits(0..7)])
     );
     assert_eq!(
         scan_tokens_only("@sub_7@"),
-        Ok(vec![Token::SubscriptDigits])
+        Ok(vec![Token::SubscriptDigits(0..7)])
     );
     assert_eq!(
         scan_tokens_only("@sub_8@"),
-        Ok(vec![Token::SubscriptDigits])
+        Ok(vec![Token::SubscriptDigits(0..7)])
     );
     assert_eq!(
         scan_tokens_only("@sub_9@"),
-        Ok(vec![Token::SubscriptDigits])
+        Ok(vec![Token::SubscriptDigits(0..7)])
     );
 
+    let input = "@sub_9@@sub_9@";
+    assert_eq!(input.len(), 14);
+    assert_eq!(&input[0..14], input);
     assert_eq!(
-        scan_tokens_only("@sub_9@@sub_9@"),
-        Ok(vec![Token::SubscriptDigits])
+        scan_tokens_only(input),
+        Ok(vec![Token::SubscriptDigits(0..14)])
     );
 }
 
 #[test]
 fn test_superscript_digits() {
+    let input = "\u{2070}\u{00B9}\u{00B2}\u{00B3}\u{2074}\u{2075}\u{2076}\u{2077}\u{2078}\u{2079}";
+    assert_eq!(&input[0..27], input);
     assert_eq!(
-        scan_tokens_only(
-            "\u{2070}\u{00B9}\u{00B2}\u{00B3}\u{2074}\u{2075}\u{2076}\u{2077}\u{2078}\u{2079}"
-        ),
-        Ok(vec![Token::SuperscriptDigits])
+        scan_tokens_only(input),
+        Ok(vec![Token::SuperscriptDigits(0..27)])
     );
+    let span = 0..9;
     assert_eq!(
         scan_tokens_only("@super_0@"),
-        Ok(vec![Token::SuperscriptDigits])
+        Ok(vec![Token::SuperscriptDigits(span.clone())])
     );
     assert_eq!(
         scan_tokens_only("@super_1@"),
-        Ok(vec![Token::SuperscriptDigits])
+        Ok(vec![Token::SuperscriptDigits(span.clone())])
     );
     assert_eq!(
         scan_tokens_only("@super_2@"),
-        Ok(vec![Token::SuperscriptDigits])
+        Ok(vec![Token::SuperscriptDigits(span.clone())])
     );
     assert_eq!(
         scan_tokens_only("@super_3@"),
-        Ok(vec![Token::SuperscriptDigits])
+        Ok(vec![Token::SuperscriptDigits(span.clone())])
     );
     assert_eq!(
         scan_tokens_only("@super_4@"),
-        Ok(vec![Token::SuperscriptDigits])
+        Ok(vec![Token::SuperscriptDigits(span.clone())])
     );
     assert_eq!(
         scan_tokens_only("@super_5@"),
-        Ok(vec![Token::SuperscriptDigits])
+        Ok(vec![Token::SuperscriptDigits(span.clone())])
     );
     assert_eq!(
         scan_tokens_only("@super_6@"),
-        Ok(vec![Token::SuperscriptDigits])
+        Ok(vec![Token::SuperscriptDigits(span.clone())])
     );
     assert_eq!(
         scan_tokens_only("@super_7@"),
-        Ok(vec![Token::SuperscriptDigits])
+        Ok(vec![Token::SuperscriptDigits(span.clone())])
     );
     assert_eq!(
         scan_tokens_only("@super_8@"),
-        Ok(vec![Token::SuperscriptDigits])
+        Ok(vec![Token::SuperscriptDigits(span.clone())])
     );
     assert_eq!(
         scan_tokens_only("@super_9@"),
-        Ok(vec![Token::SuperscriptDigits])
+        Ok(vec![Token::SuperscriptDigits(span.clone())])
     );
 
     assert_eq!(
         scan_tokens_only("@super_9@@super_9@"),
-        Ok(vec![Token::SuperscriptDigits])
+        Ok(vec![Token::SuperscriptDigits(0..18)])
     );
 }
 
@@ -299,13 +315,15 @@ fn test_comma() {
 
 #[test]
 fn test_equals() {
+    let input = "FOO BAR = 1 ** This is an equality\n";
+    assert_eq!(&input[10..11], "1");
     assert_eq!(
-        scan_tokens_only("FOO BAR = 1 ** This is an equality\n"),
+        scan_tokens_only(input),
         Ok(vec![
             Token::NormalSymexSyllable,
             Token::NormalSymexSyllable,
             Token::Equals,
-            Token::NormalDigits,
+            Token::NormalDigits(10..11),
             Token::Newline,
         ])
     );
