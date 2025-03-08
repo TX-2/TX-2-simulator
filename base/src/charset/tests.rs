@@ -115,6 +115,8 @@ fn round_trip() {
     must_round_trip("\u{2077}", &ulmap);
     must_round_trip("\u{2078}", &ulmap);
     must_round_trip("\u{2079}", &ulmap);
+    must_round_trip("\u{207A}", &ulmap); // U+207A, superscript plus
+    must_round_trip("\u{207B}", &ulmap); // U+207B, superscript minus
     must_round_trip("ᴬ", &ulmap);
     must_round_trip("ᴮ", &ulmap);
     must_round_trip("\u{A7F2}", &ulmap);

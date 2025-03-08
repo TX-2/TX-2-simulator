@@ -120,6 +120,7 @@ pub fn superscript_char(ch: char) -> Result<char, NoSuperscriptKnown> {
         'X' => Ok('\u{2093}'),
         'Y' | 'Z' => Err(NoSuperscriptKnown(ch)),
         '+' => Ok('\u{207A}'),
+        '-' => Ok('\u{207B}'),
         _ => Err(NoSuperscriptKnown(ch)),
     }
 }
