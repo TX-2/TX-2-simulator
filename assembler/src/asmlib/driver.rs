@@ -19,6 +19,7 @@ use tracing::{event, span, Level};
 
 use super::ast::*;
 use super::eval::{BadSymbolDefinition, Evaluate, HereValue, SymbolDefinition};
+use super::lexer;
 use super::parser::parse_source_file;
 use super::state::NumeralMode;
 use super::symbol::SymbolName;
@@ -164,7 +165,7 @@ fn convert_source_file_to_blocks(
 /// Pass 1 converts the program source into an abstract syntax representation.
 fn assemble_pass1<'a>(
     source_file_body: &'a str,
-    errors: &mut Vec<Rich<'a, char>>,
+    errors: &mut Vec<Rich<'a, lexer::Token>>,
 ) -> Result<(Option<SourceFile>, OutputOptions), AssemblerFailure> {
     let span = span!(Level::ERROR, "assembly pass 1");
     let _enter = span.enter();
@@ -270,10 +271,12 @@ struct Pass2Output<'a> {
     directive: Option<Directive>,
     origins: BTreeMap<BlockIdentifier, Option<Origin>>,
     symbols: SymbolTable,
-    errors: Vec<Rich<'a, char>>,
+    errors: Vec<Rich<'a, lexer::Token>>,
 }
 
-fn initial_symbol_table<'a>(source_file: &SourceFile) -> Result<SymbolTable, Vec<Rich<'a, char>>> {
+fn initial_symbol_table<'a>(
+    source_file: &SourceFile,
+) -> Result<SymbolTable, Vec<Rich<'a, lexer::Token>>> {
     let mut errors = Vec::new();
     let mut symtab = SymbolTable::new(source_file.blocks.values().map(|block| {
         let span: Span = block.origin_span();
@@ -701,7 +704,10 @@ fn cleanup_control_chars(input: String) -> String {
     output
 }
 
-fn fail_with_diagnostics(source_file_body: &str, errors: Vec<Rich<char>>) -> AssemblerFailure {
+fn fail_with_diagnostics(
+    source_file_body: &str,
+    errors: Vec<Rich<lexer::Token>>,
+) -> AssemblerFailure {
     match errors.as_slice() {
         [first, ..] => {
             //for e in errors.iter() {
@@ -725,7 +731,7 @@ pub(crate) fn assemble_source(
     source_file_body: &str,
     mut options: OutputOptions,
 ) -> Result<Binary, AssemblerFailure> {
-    let mut errors = Vec::new();
+    let mut errors: Vec<Rich<'_, lexer::Token>> = Vec::new();
     let (source_file, source_options) = assemble_pass1(source_file_body, &mut errors)?;
     if !errors.is_empty() {
         return Err(fail_with_diagnostics(source_file_body, errors));

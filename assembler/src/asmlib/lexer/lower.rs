@@ -17,6 +17,13 @@ pub(super) enum InnerToken {
     #[token("\n")]
     Newline,
 
+    /// We use annotations in source files where we want a comment which isn't part of
+    // the assembler syntax.  The interpretations of annotations may
+    // change in the future (but comments will not) so you should
+    // generally prefer to use a comment.
+    #[regex(r"\[[^]]*\]")]
+    Annotation,
+
     // There is no @..@ syntax for left-brace, but if there were,
     // we would need to match it here also.
     #[token("{")]
@@ -104,7 +111,7 @@ impl<'a> LowerLexer<'a> {
                 Some(Ok(tok)) => tok,
             };
             match tok {
-                InnerToken::Spaces => {
+                InnerToken::Spaces | InnerToken::Annotation => {
                     // Skip.
                 }
                 InnerToken::CommentStart => {

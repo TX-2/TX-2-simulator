@@ -382,34 +382,6 @@ fn test_comments_only_manuscript() {
 }
 
 #[test]
-fn test_comment() {
-    parse_successfully_with(
-        "**THIS IS A COMMENT",
-        terminal::comment(RcContext::OutsideRcBlock),
-        no_state_setup,
-    );
-}
-
-#[test]
-fn test_comment_does_not_eat_newline() {
-    let comment_text = "**COMMENT";
-    let comment_with_newline = format!("{comment_text}\n");
-    match parse_test_input(
-        comment_with_newline.as_str(),
-        terminal::comment(RcContext::OutsideRcBlock),
-    ) {
-        Err(_) => (), // expected outcome
-        Ok(out) => {
-            panic!("attempt to parse '{comment_with_newline:?}' as a comment unexpectedly succeeded (the newline was not rejected), producing {out:?}");
-        }
-    }
-    // Verify that the above (expected) error was in fact caused by
-    // the presence of the newline.
-    parse_test_input(comment_text, terminal::comment(RcContext::OutsideRcBlock))
-        .expect("should be able to successfully parse the comment itself");
-}
-
-#[test]
 fn test_manuscript_line_with_bare_literal() {
     assert_eq!(
         parse_successfully_with("1", manuscript_line(), no_state_setup),

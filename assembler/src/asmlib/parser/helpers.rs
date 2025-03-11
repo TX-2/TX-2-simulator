@@ -1,14 +1,26 @@
-use std::collections::{BTreeMap, HashMap};
 use std::num::IntErrorKind;
+use std::{
+    collections::{BTreeMap, HashMap},
+    fmt::{Display, Write},
+};
 
-use base::prelude::*;
+use base::{charset::Script, prelude::*};
 
 use super::super::{ast::*, state::NumeralMode, types::BlockIdentifier};
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
-pub(super) enum Sign {
+pub(crate) enum Sign {
     Plus,
     Minus,
+}
+
+impl Display for Sign {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_char(match self {
+            Sign::Plus => '+',
+            Sign::Minus => '-',
+        })
+    }
 }
 
 pub(super) fn make_u36(s: &str, radix: u32) -> Result<Unsigned36Bit, StringConversionFailed> {
@@ -46,7 +58,7 @@ fn test_make_u36() {
     assert_eq!(Ok(u36!(19)), make_u36("19", 10));
 }
 
-pub(super) fn make_num(
+pub(crate) fn make_num(
     sign: Option<Sign>,
     digits: &str,
     hasdot: bool,
@@ -67,6 +79,7 @@ pub(crate) enum DecodedOpcode {
     Invalid,
 }
 
+/// TODO: redundant if we use parser::opcode_code?
 type MapItem = (&'static str, u8);
 pub(super) fn opcode_mapping() -> [MapItem; 52] {
     [
@@ -312,4 +325,124 @@ pub(crate) fn convert_subcript_digit(ch: char) -> Result<char, ()> {
 
 pub(super) fn is_register_name(name: &str) -> bool {
     matches!(name, "A" | "B" | "C" | "D" | "E")
+}
+
+fn glyph_from_name(name: &str) -> Option<char> {
+    let ch = match name {
+        "dot" => '\u{00B7}', // centre dot, not full-stop.
+        "i" => 'i',
+        "j" => 'j',
+        "k" => 'k',
+        "n" => 'n',
+        "p" => 'p',
+        "q" => 'q',
+        "t" => 't',
+        "w" => 'w',
+        "x" => 'x',
+        "y" => 'y',
+        "z" => 'z',
+        "underscore" => '_',
+        "square" => '\u{25A1}', // Unicode white square,
+        "circle" => '\u{25CB}', // Unicode white circle,
+        "A" => 'A',
+        "B" => 'B',
+        "C" => 'C',
+        "D" => 'D',
+        "E" => 'E',
+        "F" => 'F',
+        "G" => 'G',
+        "H" => 'H',
+        "I" => 'I',
+        "J" => 'J',
+        "K" => 'K',
+        "L" => 'L',
+        "M" => 'M',
+        "N" => 'N',
+        "O" => 'O',
+        "P" => 'P',
+        "Q" => 'Q',
+        "R" => 'R',
+        "S" => 'S',
+        "T" => 'T',
+        "U" => 'U',
+        "V" => 'V',
+        "W" => 'W',
+        "X" => 'X',
+        "Y" => 'Y',
+        "Z" => 'Z',
+        "alpha" => 'α',
+        "beta" => 'β',
+        "gamma" => 'γ',
+        "delta" => 'Δ',
+        "eps" => 'ε', // epsilon
+        "lambda" => 'λ',
+        "apostrophe" => '\'',
+        "0" => '0',
+        "1" => '1',
+        "2" => '2',
+        "3" => '3',
+        "4" => '4',
+        "5" => '5',
+        "6" => '6',
+        "7" => '7',
+        "8" => '8',
+        "9" => '9',
+        "?" => '?', // usually denotes a trasncription problem.
+        "+" => '+',
+        "hamb" => '≡', // "identical to" but perhaps we should also accept (on input) ☰ (U+2630, Trigram For Heaven).
+        "times" => '×',
+        "divide" => '/',
+        "add" => '+',
+        "or" => '∨',
+        "and" => '∧',
+        "arr" => '\u{2192}',
+        "minus" => '-',
+        "hand" => '☛',
+        "pipe" => '|',
+        "rect_dash" => '\u{25A3}',
+        "circled_v" => '\u{24CB}',
+        "sup" => '\u{2283}',
+        "hash" => '#',
+        "lparen" => '(',
+        "rparen" => ')',
+        _ => {
+            return None;
+        }
+    };
+    Some(ch)
+}
+
+pub(crate) fn at_glyph(script: Script, name: &str) -> Option<char> {
+    let prefix = match script {
+        Script::Normal => "",
+        Script::Sub => "sub_",
+        Script::Super => "super_",
+    };
+    name.strip_prefix(prefix)
+        .map(|tail| glyph_from_name(tail))
+        .flatten()
+}
+
+#[test]
+fn test_at_glyph_normal() {
+    assert_eq!(at_glyph(Script::Normal, "hand"), Some('☛'));
+    assert_eq!(at_glyph(Script::Normal, "pipe"), Some('|'));
+    assert_eq!(at_glyph(Script::Normal, "sub_pipe"), None);
+    assert_eq!(at_glyph(Script::Normal, "super_pipe"), None);
+}
+
+#[test]
+fn test_at_glyph_subscript() {
+    assert_eq!(at_glyph(Script::Sub, "sub_hand"), Some('☛'));
+    assert_eq!(at_glyph(Script::Sub, "sub_pipe"), Some('|'));
+    assert_eq!(at_glyph(Script::Sub, "pipe"), None);
+    assert_eq!(at_glyph(Script::Sub, "super_pipe"), None);
+}
+
+#[test]
+fn test_at_glyph_superscript() {
+    assert_eq!(at_glyph(Script::Super, "super_hand"), Some('☛'));
+    assert_eq!(at_glyph(Script::Super, "super_pipe"), Some('|'));
+    assert_eq!(at_glyph(Script::Super, "pipe"), None);
+    assert_eq!(at_glyph(Script::Super, "sub_pipe"), None);
 }

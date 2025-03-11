@@ -522,11 +522,26 @@ fn test_superscript_sign_plus() {
 
 #[test]
 fn test_symex_one_syllable_ae_register_names() {
-    assert_eq!(scan_tokens_only("A"), Ok(vec![Token::NormalSymexSyllable]));
-    assert_eq!(scan_tokens_only("B"), Ok(vec![Token::NormalSymexSyllable]));
-    assert_eq!(scan_tokens_only("C"), Ok(vec![Token::NormalSymexSyllable]));
-    assert_eq!(scan_tokens_only("D"), Ok(vec![Token::NormalSymexSyllable]));
-    assert_eq!(scan_tokens_only("E"), Ok(vec![Token::NormalSymexSyllable]));
+    assert_eq!(
+        scan_tokens_only("A"),
+        Ok(vec![Token::NormalSymexSyllable("A".to_string())])
+    );
+    assert_eq!(
+        scan_tokens_only("B"),
+        Ok(vec![Token::NormalSymexSyllable("B".to_string())])
+    );
+    assert_eq!(
+        scan_tokens_only("C"),
+        Ok(vec![Token::NormalSymexSyllable("C".to_string())])
+    );
+    assert_eq!(
+        scan_tokens_only("D"),
+        Ok(vec![Token::NormalSymexSyllable("D".to_string())])
+    );
+    assert_eq!(
+        scan_tokens_only("E"),
+        Ok(vec![Token::NormalSymexSyllable("E".to_string())])
+    );
 }
 
 #[test]
@@ -534,21 +549,27 @@ fn test_symex_one_syllable_uppercase_normal() {
     assert_eq!(scan_tokens_only("A0"), Ok(vec![Token::NormalSymexSyllable]));
     assert_eq!(
         scan_tokens_only("A02"),
-        Ok(vec![Token::NormalSymexSyllable])
+        Ok(vec![Token::NormalSymexSyllable("A02".to_string())])
     );
-    assert_eq!(scan_tokens_only("BB"), Ok(vec![Token::NormalSymexSyllable]));
-    assert_eq!(scan_tokens_only("CX"), Ok(vec![Token::NormalSymexSyllable]));
+    assert_eq!(
+        scan_tokens_only("BB"),
+        Ok(vec![Token::NormalSymexSyllable("BB".to_string())])
+    );
+    assert_eq!(
+        scan_tokens_only("CX"),
+        Ok(vec![Token::NormalSymexSyllable("CX".to_string())])
+    );
 }
 
 #[test]
 fn test_symex_one_syllable_lowercase_normal() {
     assert_eq!(
         scan_tokens_only("xyz"),
-        Ok(vec![Token::NormalSymexSyllable])
+        Ok(vec![Token::NormalSymexSyllable("xyz".to_string())])
     );
     assert_eq!(
         scan_tokens_only("ijknpqtwxyz"),
-        Ok(vec![Token::NormalSymexSyllable])
+        Ok(vec![Token::NormalSymexSyllable("ijknpqtwxyz".to_string())])
     );
 }
 
@@ -556,7 +577,7 @@ fn test_symex_one_syllable_lowercase_normal() {
 fn test_symex_one_syllable_greek() {
     assert_eq!(
         scan_tokens_only("βαγεΔλ"),
-        Ok(vec![Token::NormalSymexSyllable])
+        Ok(vec![Token::NormalSymexSyllable("βαγεΔλ".to_string())])
     );
 }
 
@@ -572,8 +593,8 @@ fn test_equals() {
     assert_eq!(
         scan_tokens_only(input),
         Ok(vec![
-            Token::NormalSymexSyllable,
-            Token::NormalSymexSyllable,
+            Token::NormalSymexSyllable("FOO".to_string()),
+            Token::NormalSymexSyllable("BAR".to_string()),
             Token::Equals,
             Token::NormalDigits(NumericLiteral {
                 sign: None,
@@ -589,6 +610,130 @@ fn test_equals() {
 fn test_pipe() {
     assert_eq!(
         scan_tokens_only("    START|"),
-        Ok(vec![Token::NormalSymexSyllable, Token::Pipe,])
+        Ok(vec![
+            Token::NormalSymexSyllable("START".to_string()),
+            Token::Pipe,
+        ])
     )
+}
+
+#[test]
+fn test_dot() {
+    assert_eq!(scan_tokens_only("."), Ok(vec![Token::Dot,]));
+    assert_eq!(scan_tokens_only("·"), Ok(vec![Token::Dot,]));
+    assert_eq!(scan_tokens_only("@dot@"), Ok(vec![Token::Dot,]));
+}
+
+#[test]
+fn test_hold() {
+    assert_eq!(scan_tokens_only("h"), Ok(vec![Token::Hold,]));
+    assert_eq!(scan_tokens_only(":"), Ok(vec![Token::Hold,]));
+}
+
+#[test]
+fn test_nothold() {
+    assert_eq!(scan_tokens_only("@hbar@"), Ok(vec![Token::NotHold,]));
+    // U+0305 is combining overline.
+    assert_eq!(scan_tokens_only("\u{0305}h"), Ok(vec![Token::NotHold,]));
+    assert_eq!(scan_tokens_only("ℏ"), Ok(vec![Token::NotHold,]));
+}
+
+#[test]
+fn test_hold_does_not_combine_with_symex() {
+    assert_eq!(
+        scan_tokens_only("whx"),
+        Ok(vec![
+            Token::NormalSymexSyllable("w".to_string()),
+            Token::Hold, // the h
+            Token::NormalSymexSyllable("x".to_string()),
+        ])
+    );
+}
+
+#[test]
+fn test_left_paren() {
+    assert_eq!(scan_tokens_only("("), Ok(vec![Token::LeftParen,]));
+}
+
+#[test]
+fn test_right_paren() {
+    assert_eq!(scan_tokens_only(")"), Ok(vec![Token::RightParen,]));
+}
+
+#[test]
+fn test_proper_superset() {
+    assert_eq!(scan_tokens_only("⊃"), Ok(vec![Token::ProperSuperset,]));
+    // @sup@ is an important corner case, since it is distinct from
+    // (say) @sup_sup@
+    assert_eq!(scan_tokens_only("@sup@"), Ok(vec![Token::ProperSuperset,]));
+}
+
+#[test]
+fn test_identical_to() {
+    assert_eq!(scan_tokens_only("≡"), Ok(vec![Token::IdenticalTo,]));
+    assert_eq!(scan_tokens_only("@hamb@"), Ok(vec![Token::IdenticalTo,]));
+}
+
+#[test]
+fn test_tilde() {
+    assert_eq!(scan_tokens_only("~"), Ok(vec![Token::Tilde,]));
+}
+
+#[test]
+fn test_less_than() {
+    assert_eq!(scan_tokens_only("<"), Ok(vec![Token::LessThan,]));
+}
+
+#[test]
+fn test_greater_than() {
+    assert_eq!(scan_tokens_only(">"), Ok(vec![Token::GreaterThan,]));
+}
+
+#[test]
+fn test_intersection() {
+    assert_eq!(scan_tokens_only("∩"), Ok(vec![Token::Intersection,]));
+}
+
+#[test]
+fn test_union() {
+    assert_eq!(scan_tokens_only("∪"), Ok(vec![Token::Union,]));
+}
+
+#[test]
+fn test_solidus() {
+    assert_eq!(scan_tokens_only("/"), Ok(vec![Token::Solidus,]));
+}
+
+#[test]
+fn test_times() {
+    assert_eq!(scan_tokens_only("×"), Ok(vec![Token::Times,]));
+    assert_eq!(scan_tokens_only("@times@"), Ok(vec![Token::Times,]));
+}
+
+#[test]
+fn test_logical_or() {
+    assert_eq!(scan_tokens_only("∨"), Ok(vec![Token::LogicalOr,]));
+}
+
+#[test]
+fn test_logical_and() {
+    assert_eq!(scan_tokens_only("∧"), Ok(vec![Token::LogicalAnd,]));
+}
+
+#[test]
+fn test_plus() {
+    assert_eq!(scan_tokens_only("+"), Ok(vec![Token::Plus,]));
+}
+
+#[test]
+fn test_minus() {
+    assert_eq!(scan_tokens_only("-"), Ok(vec![Token::Minus,]));
+}
+
+#[test]
+fn test_annotations_are_ignored() {
+    assert_eq!(
+        scan_tokens_only("->[THIS IS AN ANNOTATION]->"),
+        Ok(vec![Token::Arrow, Token::Arrow,])
+    );
 }

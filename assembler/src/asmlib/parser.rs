@@ -1,4 +1,6 @@
-mod helpers;
+use std::ops::{Range, Shl};
+
+pub(crate) mod helpers;
 mod symex;
 mod terminal;
 #[cfg(test)]
@@ -6,8 +8,9 @@ mod tests;
 
 use chumsky::error::Rich;
 use chumsky::extra::Full;
-use chumsky::input::ValueInput;
-use chumsky::prelude::{choice, recursive, Input, IterParser};
+use chumsky::input::{BorrowInput, Stream, ValueInput};
+use chumsky::prelude::{choice, just, one_of, recursive, Input, IterParser, SimpleSpan};
+use chumsky::select;
 use chumsky::Parser;
 
 use super::ast::*;
@@ -17,8 +20,6 @@ use super::symbol::SymbolName;
 use super::types::*;
 use base::charset::Script;
 use base::prelude::*;
-use helpers::Sign;
-use terminal::RcContext;
 
 pub(crate) type Extra<'a> = Full<Rich<'a, lexer::Token>, NumeralMode, ()>;
 use lexer::Token as Tok;
@@ -27,20 +28,25 @@ fn literal<'a, I>(script_required: Script) -> impl Parser<'a, I, LiteralValue, E
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a> + Clone,
 {
-    let opt_sign = choice((
-        terminal::plus(script_required).to(Sign::Plus),
-        terminal::minus(script_required).to(Sign::Minus),
-    ))
-    .or_not()
-    .labelled("sign");
-    let maybe_dot = terminal::dot(script_required).or_not().map(|x| x.is_some());
+    let parser = match script_required {
+        Script::Normal => select! {
+            Tok::NormalDigits(n) => n,
+        }
+        .boxed(),
+        Script::Super => select! {
+            Tok::SuperscriptDigits(n) => n,
+        }
+        .boxed(),
+        Script::Sub => select! {
+            Tok::SubscriptDigits(n) => n,
+        }
+        .boxed(),
+    };
 
-    opt_sign
-        .then(terminal::digit1(script_required))
-        .then(maybe_dot)
-        .try_map_with(move |((maybe_sign, digits), hasdot), extra| {
+    parser
+        .try_map_with(move |number, extra| {
             let mode: &NumeralMode = extra.state();
-            match helpers::make_num(maybe_sign, &digits, hasdot, mode) {
+            match number.make_num(mode) {
                 Ok(value) => Ok(LiteralValue::from((extra.span(), script_required, value))),
                 Err(e) => Err(Rich::custom(extra.span(), e.to_string())),
             }
@@ -52,7 +58,92 @@ fn here<'a, I>(script_required: Script) -> impl Parser<'a, I, Atom, Extra<'a>> +
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a> + Clone,
 {
-    terminal::hash(script_required).to(Atom::Here(script_required))
+    select! {
+        Tok::Hash(script) if script == script_required => Atom::Here(script_required),
+    }
+}
+
+/// TODO: redundant if we use helpers::opcode_mapping.
+fn opcode_code(s: &str) -> Option<Unsigned6Bit> {
+    match s {
+        "IOS" => Some(u6!(0o4)),
+        "JMP" => Some(u6!(0o5)),
+        "JPX" => Some(u6!(0o6)),
+        "JNX" => Some(u6!(0o7)),
+        "AUX" => Some(u6!(0o10)),
+        "RSX" => Some(u6!(0o11)),
+        "SKX" => Some(u6!(0o12)),
+        "REX" => Some(u6!(0o12)),
+        "SEX" => Some(u6!(0o12)),
+        "EXX" => Some(u6!(0o14)),
+        "ADX" => Some(u6!(0o15)),
+        "DPX" => Some(u6!(0o16)),
+        "SKM" => Some(u6!(0o17)),
+        "LDE" => Some(u6!(0o20)),
+        "SPF" => Some(u6!(0o21)),
+        "SPG" => Some(u6!(0o22)),
+        "LDA" => Some(u6!(0o24)),
+        "LDB" => Some(u6!(0o25)),
+        "LDC" => Some(u6!(0o26)),
+        "LDD" => Some(u6!(0o27)),
+        "STE" => Some(u6!(0o30)),
+        "FLF" => Some(u6!(0o31)),
+        "FLG" => Some(u6!(0o32)),
+        "STA" => Some(u6!(0o34)),
+        "STB" => Some(u6!(0o35)),
+        "STC" => Some(u6!(0o36)),
+        "STD" => Some(u6!(0o37)),
+        "ITE" => Some(u6!(0o40)),
+        "ITA" => Some(u6!(0o41)),
+        "UNA" => Some(u6!(0o42)),
+        "SED" => Some(u6!(0o43)),
+        "JOV" => Some(u6!(0o45)),
+        "JPA" => Some(u6!(0o46)),
+        "JNA" => Some(u6!(0o47)),
+        "EXA" => Some(u6!(0o54)),
+        "INS" => Some(u6!(0o55)),
+        "COM" => Some(u6!(0o56)),
+        "TSD" => Some(u6!(0o57)),
+        "CYA" => Some(u6!(0o60)),
+        "CYB" => Some(u6!(0o61)),
+        "CAB" => Some(u6!(0o62)),
+        "NOA" => Some(u6!(0o64)),
+        "DSA" => Some(u6!(0o65)),
+        "NAB" => Some(u6!(0o66)),
+        "ADD" => Some(u6!(0o67)),
+        "SCA" => Some(u6!(0o70)),
+        "SCB" => Some(u6!(0o71)),
+        "SAB" => Some(u6!(0o72)),
+        "TLY" => Some(u6!(0o74)),
+        "DIV" => Some(u6!(0o75)),
+        "MUL" => Some(u6!(0o76)),
+        "SUB" => Some(u6!(0o77)),
+        _ => None,
+    }
+}
+
+pub(super) fn opcode<'a, I>() -> impl Parser<'a, I, LiteralValue, Extra<'a>> + Clone
+where
+    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a> + Clone,
+{
+    fn opcode_to_literal(code: Unsigned6Bit, span: Span) -> LiteralValue {
+        // Some opcodes automatically set the hold bit, so do that
+        // here.
+        let bits = Unsigned36Bit::from(code)
+            .shl(24)
+            .bitor(helpers::opcode_auto_hold_bit(code));
+        LiteralValue::from((span, Script::Normal, bits))
+    }
+
+    symex::symex_syllable(Script::Normal)
+        .try_map_with(|mnemonic, extra| match opcode_code(mnemonic.as_str()) {
+            Some(code) => Ok(opcode_to_literal(code, extra.span())),
+            None => Err(Rich::custom(
+                extra.span(),
+                format!("'{mnemonic}' is not an opcode mnemonic"),
+            )),
+        })
+        .labelled("opcode")
 }
 
 fn build_arithmetic_expression(
@@ -89,29 +180,20 @@ where
         // Parse (E) where E is some expression.
         let parenthesised_arithmetic_expression = arithmetic_expr // this is the recursive call
             .clone()
-            .delimited_by(
-                terminal::left_paren(script_required),
-                terminal::right_paren(script_required),
-            )
+            .delimited_by(just(Tok::LeftParen), just(Tok::RightParen))
             .map(|expr| Atom::Parens(Box::new(expr)));
 
         // Parse {E} where E is some expression.  Since tags are
         // allowed inside RC-blocks, we should parse E as a
         // TaggedProgramInstruction.  But if we try to do that without
         // using recursive() we will blow the stack, unfortunately.
-        //
-        // The contents of the RC-block can be followed (inside the
-        // braces) by a comment which is terminated by the closing
-        // brace.
         let register_containing = arithmetic_expr
-            .padded_by(terminal::horizontal_whitespace0())
-            .then(terminal::comment(RcContext::InRcBlock).or_not().ignored())
             .clone()
-            .delimited_by(terminal::left_brace(), terminal::right_brace())
-            .map_with(|(expr, ()), extra| Atom::RcRef(extra.span(), Box::new(expr)));
+            .delimited_by(just(Tok::LeftBrace), just(Tok::RightBrace))
+            .map_with(|expr, extra| Atom::RcRef(extra.span(), Box::new(expr)));
 
         // Parse a literal, symbol, #, or (recursively) an expression in parentheses.
-        let atom = terminal::opcode()
+        let atom = opcode()
             .map(Atom::from)
             .or(choice((
                 literal(script_required).map(Atom::from),
@@ -124,9 +206,7 @@ where
             .boxed();
 
         // Parse an arithmetic operator (e.g. plus, times) followed by an atom.
-        let operator_with_atom = terminal::operator(script_required)
-            .padded_by(terminal::horizontal_whitespace0())
-            .then(atom.clone().padded_by(terminal::horizontal_whitespace0()));
+        let operator_with_atom = terminal::operator(script_required).then(atom.clone());
 
         // An arithmetic expression is an atom followed by zero or
         // more pairs of (arithmetic operator, atom).
@@ -148,32 +228,22 @@ fn tag_definition<'a, I>() -> impl Parser<'a, I, Tag, Extra<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a> + Clone,
 {
-    let arrow = terminal::arrow_ignored().padded_by(terminal::horizontal_whitespace0());
     symbol(Script::Normal)
         .map_with(|name, extra| Tag {
             name,
             span: extra.span(),
         })
-        .then_ignore(arrow)
-        .then_ignore(terminal::horizontal_whitespace0())
+        .then_ignore(just(Tok::Arrow))
         .labelled("tag definition")
 }
 
 fn program_instruction_fragment<'srcbody, I>(
 ) -> impl Parser<'srcbody, I, InstructionFragment, Extra<'srcbody>>
 where
-    I: Input<'srcbody, Token = Tok, Span = Span> + Clone,
+    I: Input<'srcbody, Token = Tok, Span = Span> + ValueInput<'srcbody> + Clone,
 {
-    fn single_script_fragment<'a, I>(
-        script_required: Script,
-    ) -> impl Parser<'a, I, InstructionFragment, Extra<'a>>
-    where
-        I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a> + Clone,
-    {
-        arithmetic_expression(script_required)
-            .padded_by(terminal::horizontal_whitespace0())
-            .map(InstructionFragment::from)
-    }
+    let single_script_fragment =
+        |script_required| arithmetic_expression(script_required).map(InstructionFragment::from);
 
     choice((
         single_script_fragment(Script::Normal),
@@ -185,7 +255,7 @@ where
 fn program_instruction_fragments<'srcbody, I>(
 ) -> impl Parser<'srcbody, I, Vec<InstructionFragment>, Extra<'srcbody>>
 where
-    I: Input<'srcbody, Token = Tok, Span = Span> + Clone,
+    I: Input<'srcbody, Token = Tok, Span = Span> + ValueInput<'srcbody> + Clone,
 {
     program_instruction_fragment()
         .repeated()
@@ -207,22 +277,22 @@ where
     // We use a centre dot for the dot symbol because otherwise the
     // low position of "." makes it look like part of a subscript.
     choice((
-        terminal::hand(),
-        terminal::dot(Script::Normal),
-        terminal::equals(),
-        terminal::arrow(),
-        terminal::pipe(),
-        terminal::proper_superset(),
-        terminal::identical_to(),
-        terminal::tilde(),
-        terminal::less_than(),
-        terminal::greater_than(),
-        terminal::intersection(),
-        terminal::union(),
-        terminal::solidus(),
-        terminal::times(Script::Normal).map(|_| '\u{00D7}'),
-        terminal::logical_or(Script::Normal).map(|_| '\u{2228}'),
-        terminal::logical_and(Script::Normal).map(|_| '\u{2227}'),
+        just(Tok::Hand).to('☛'),
+        just(Tok::Dot).to('·'),
+        just(Tok::Equals).to('='),
+        just(Tok::Arrow).to('→'),
+        just(Tok::Pipe).to('|'),
+        just(Tok::ProperSuperset).to('⊃'),
+        just(Tok::IdenticalTo).to('≡'),
+        just(Tok::Tilde).to('~'),
+        just(Tok::LessThan).to('<'),
+        just(Tok::GreaterThan).to('>'),
+        just(Tok::Intersection).to('∩'),
+        just(Tok::Union).to('∪'),
+        just(Tok::Solidus).to('/'),
+        just(Tok::Times).to('×'),
+        just(Tok::LogicalOr).to('∨'),
+        just(Tok::LogicalAnd).to('∧'),
     ))
 }
 
@@ -258,10 +328,9 @@ fn macro_definition<'a, I>() -> impl Parser<'a, I, MacroDefinition, Extra<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a> + Clone,
 {
-    (named_metacommand("DEF").then(terminal::horizontal_whitespace1()))
+    named_metacommand("DEF")
         .ignore_then(
-            symbol(Script::Normal) // the macro's name
-                .padded_by(terminal::horizontal_whitespace0()),
+            symbol(Script::Normal), // the macro's name
         )
         .then(macro_arguments())
         .then_ignore(end_of_line())
@@ -282,13 +351,29 @@ where
         })
 }
 
-fn named_metacommand<'a, I>(name: &'static str) -> impl Parser<'a, I, (), Extra<'a>>
+fn named_metacommand<'a, I>(canonical_name: &'static str) -> impl Parser<'a, I, (), Extra<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a> + Clone,
 {
-    terminal::metacommand_name()
-        .filter(move |n| *n == name)
+    fn name_match(actual: &str, canonical: &'static str) -> bool {
+        match canonical {
+            "DECIMAL" => matches!(actual, "DECIMAL" | "DECIMA" | "DECIM" | "DECI" | "DEC"),
+            "OCTAL" => matches!(actual, "OCTAL" | "OCTA" | "OCT" | "OC"),
+            "PUNCH" => matches!(actual, "PUNCH" | "PUNC" | "PUN" | "PU"),
+            "DEF" => actual == canonical,
+            "EMD" => matches!(actual, "EMD" | "EM"),
+            _ => {
+                unreachable!("unknown metacommand name {canonical}")
+            }
+        }
+    }
+    let matching_metacommand_name = select! {
+        Tok::NormalSymexSyllable(name) if name_match(name.as_str(), canonical_name) => (),
+    };
+
+    just([Tok::Hand, Tok::Hand])
         .ignored()
+        .then_ignore(matching_metacommand_name)
 }
 
 fn metacommand<'a, I>() -> impl Parser<'a, I, ManuscriptMetaCommand, Extra<'a>>
@@ -304,7 +389,6 @@ where
         // states that this should be an honest tag.  We currently
         // accept only numeric literals.
         named_metacommand("PUNCH")
-            .then(terminal::horizontal_whitespace1())
             .ignore_then(literal(Script::Normal).or_not())
             .try_map(|aa, span| match helpers::punch_address(aa) {
                 Ok(punch) => Ok(ManuscriptMetaCommand::Punch(punch)),
@@ -338,10 +422,12 @@ fn untagged_program_instruction<'a, I>() -> impl Parser<'a, I, UntaggedProgramIn
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a> + Clone,
 {
-    let maybe_hold = terminal::hold()
-        .or_not()
-        .padded_by(terminal::horizontal_whitespace0())
-        .labelled("instruction hold bit");
+    let maybe_hold = choice((
+        one_of(Tok::Hold).to(HoldBit::Hold),
+        just(Tok::NotHold).to(HoldBit::NotHold),
+    ))
+    .or_not()
+    .labelled("instruction hold bit");
     maybe_hold.then(program_instruction_fragments()).map_with(
         |(maybe_hold, parts): (Option<HoldBit>, Vec<InstructionFragment>), extra| {
             UntaggedProgramInstruction {
@@ -379,9 +465,8 @@ where
     where
         I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a> + Clone,
     {
-        terminal::horizontal_whitespace0()
-            .ignore_then(symex::parse_symex(Script::Normal))
-            .then_ignore(terminal::equals_ignored().padded_by(terminal::horizontal_whitespace0()))
+        symex::parse_symex(Script::Normal)
+            .then_ignore(just(Tok::Equals))
             .then(untagged_program_instruction())
     }
 
@@ -458,9 +543,11 @@ where
                     .map_with(|sym, extra| Origin::Symbolic(extra.span(), sym))
                     .labelled("symbolic address expression")
             }
+
+            // An origin specification is an expression followed by a
+            // (normal-case) pipe symbol.
             choice((literal_address_expression(), symbolic_address_expression()))
-                .padded_by(terminal::horizontal_whitespace0())
-                .then_ignore(terminal::pipe_ignored())
+                .then_ignore(just(Tok::Pipe))
         }
 
         let optional_origin_with_statement = origin()
@@ -489,10 +576,7 @@ fn end_of_line<'a, I>() -> impl Parser<'a, I, (), Extra<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + Clone,
 {
-    let one_end_of_line = terminal::horizontal_whitespace0()
-        .then(terminal::comment(RcContext::OutsideRcBlock).or_not())
-        .then(chumsky::text::newline().labelled("end-of-line"))
-        .ignored();
+    let one_end_of_line = just(Tok::Newline).labelled("end-of-line").ignored();
 
     one_end_of_line
         .repeated()
@@ -534,18 +618,62 @@ where
             },
         )
     }
-    source_file_as_blocks().then_ignore(terminal::end_of_input())
+    source_file_as_blocks()
+}
+
+pub(crate) fn tokenize_and_parse_with<'a, P, I, T>(
+    input: &'a str,
+    setup: fn(&mut NumeralMode),
+    parser: P,
+) -> (Option<T>, Vec<Rich<'a, Tok>>)
+where
+    P: Parser<'a, I, T, Extra<'a>>,
+    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a> + Clone,
+{
+    let mut state = NumeralMode::default();
+    setup(&mut state);
+
+    // These conversions are adapted from the Logos example in the
+    // Chumsky documentation.
+    let scanner = lexer::Lexer::new(input).spanned();
+    let tokens: Vec<(Tok, SimpleSpan)> = scanner
+        .map(
+            |item: (Result<Tok, lexer::Unrecognised<'a>>, Range<usize>)| -> (Tok, Span) {
+                match item {
+                    (Ok(tok), span) => {
+                        // Turn the `Range<usize>` spans logos gives us into
+                        // chumsky's `SimpleSpan` via `Into`, because it's
+                        // easier to work with
+                        (tok, span.into())
+                    }
+                    (Err(e), span) => {
+                        // Convert logos errors into tokens. We want parsing to
+                        // be recoverable and not fail at the lexing stage, so we
+                        // have a dedicated `Token::Error` variant that
+                        // represents a token error that was previously
+                        // encountered
+                        (Tok::Error(e.to_string()), span.into())
+                    }
+                }
+            },
+        )
+        .collect();
+    let end_span: SimpleSpan = SimpleSpan::new(
+        0,
+        tokens.iter().map(|(_, span)| span.end).max().unwrap_or(0),
+    );
+    let token_stream = tokens.into().map(end_span, |x| x);
+    parser
+        .parse_with_state(token_stream, &mut state)
+        .into_output_errors()
 }
 
 pub(crate) fn parse_source_file(
     source_file_body: &str,
     setup: fn(&mut NumeralMode),
-) -> (Option<SourceFile>, Vec<Rich<'_, char>>) {
-    let mut state = NumeralMode::default();
-    setup(&mut state);
-    source_file()
-        .parse_with_state(source_file_body, &mut state)
-        .into_output_errors()
+) -> (Option<SourceFile>, Vec<Rich<'_, Tok>>) {
+    let parser = source_file();
+    tokenize_and_parse_with(source_file_body, setup, parser)
 }
 
 // Local Variables:

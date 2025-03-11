@@ -28,6 +28,56 @@ pub(crate) struct Elevated<T> {
     script: Script,
 }
 
+trait AsStr {
+    fn as_str(&self) -> &str;
+}
+
+impl AsStr for &str {
+    fn as_str(&self) -> &str {
+        self
+    }
+}
+
+impl AsStr for String {
+    fn as_str(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl<T: AsStr> Display for Elevated<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self.script {
+            Script::Normal => write!(f, "{}", &self.inner.as_str()),
+            Script::Super => {
+                for ch in self.inner.as_str().chars() {
+                    match superscript_char(ch) {
+                        Ok(superchar) => {
+                            f.write_char(superchar)?;
+                        }
+                        Err(_) => {
+                            todo!("find superscript variant of {ch}")
+                        }
+                    }
+                }
+                Ok(())
+            }
+            Script::Sub => {
+                for ch in self.inner.as_str().chars() {
+                    match subscript_char(ch) {
+                        Ok(subchar) => {
+                            f.write_char(subchar)?;
+                        }
+                        Err(_) => {
+                            todo!("find subscript variant of {ch}")
+                        }
+                    }
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
 impl<T> From<(Script, T)> for Elevated<T> {
     fn from((script, inner): (Script, T)) -> Elevated<T> {
         Elevated { inner, script }

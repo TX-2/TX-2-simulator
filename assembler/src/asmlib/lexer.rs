@@ -3,13 +3,20 @@
 
 use std::{
     error::Error,
-    fmt::Display,
+    fmt::{Display, Write},
     ops::{Deref, Range},
     sync::OnceLock,
 };
 
 use logos::Logos;
 use regex::{Captures, Regex};
+
+use super::{
+    ast::{elevate, elevate_normal, elevate_sub, elevate_super},
+    parser::helpers::{self, Sign},
+    state::NumeralMode,
+};
+use base::{charset::Script, error::StringConversionFailed, Unsigned36Bit};
 
 #[cfg(test)]
 mod input_file_tests;
@@ -65,18 +72,45 @@ impl Deref for LazyRegex {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-enum Sign {
-    Positive,
-    Negative,
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
 pub(crate) struct NumericLiteral {
     sign: Option<Sign>,
     /// The digits comprising the literal. We don't know whether the
     /// base is decimal or octal yet.
     digits: String,
     has_trailing_dot: bool,
+}
+
+impl Display for NumericLiteral {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(sign) = self.sign.as_ref() {
+            write!(f, "{}", sign)?;
+        }
+        f.write_str(self.digits.as_str())?;
+        if self.has_trailing_dot {
+            f.write_char('·')?;
+        }
+        Ok(())
+    }
+}
+
+impl NumericLiteral {
+    pub(crate) fn make_num(
+        &self,
+        mode: &NumeralMode,
+    ) -> Result<Unsigned36Bit, StringConversionFailed> {
+        helpers::make_num(self.sign, self.digits.as_str(), self.has_trailing_dot, mode)
+    }
+}
+
+fn capture_glyph_script(lex: &mut logos::Lexer<Token>) -> Script {
+    let s = lex.slice();
+    if s.starts_with("@sup_") {
+        Script::Super
+    } else if s.starts_with("@sub_") {
+        Script::Sub
+    } else {
+        Script::Normal
+    }
 }
 
 fn capture_normal_digits(lex: &mut logos::Lexer<Token>) -> NumericLiteral {
@@ -98,10 +132,10 @@ fn capture_normal_digits(lex: &mut logos::Lexer<Token>) -> NumericLiteral {
                 internal_error("numeric literal has more than one sign symbol".to_string());
             }
             '+' => {
-                sign = Some(Sign::Positive);
+                sign = Some(Sign::Plus);
             }
             '-' => {
-                sign = Some(Sign::Negative);
+                sign = Some(Sign::Minus);
             }
             '·' | '.' | '@' => {
                 // Here we take advantage of the fact that however the dot
@@ -126,9 +160,9 @@ fn capture_normal_digits(lex: &mut logos::Lexer<Token>) -> NumericLiteral {
 
 fn extract_sign(cap: &Captures) -> Result<Option<Sign>, String> {
     match (cap.name("plus").is_some(), cap.name("minus").is_some()) {
-        (true, false) => Ok(Some(Sign::Positive)),
-        (false, true) => Ok(Some(Sign::Negative)),
         (false, false) => Ok(None),
+        (false, true) => Ok(Some(Sign::Minus)),
+        (true, false) => Ok(Some(Sign::Plus)),
         (true, true) => Err(format!(
             "expected to find a single optional leading sign in a numeric literal but found both + and -"
         )),
@@ -329,12 +363,66 @@ fn capture_superscript_digits(lex: &mut logos::Lexer<Token>) -> NumericLiteral {
     }
 }
 
+fn capture_name(lex: &mut logos::Lexer<Token>) -> String {
+    const RX_GREEK_GLYPHS: LazyRegex =
+        LazyRegex::new("(@(?<glyph>alpha|beta|gamma|delta|eps|lambda)@|[^@]+");
+    let slice = lex.slice();
+    let mut name: String = String::with_capacity(slice.len());
+    for cap in (*RX_GREEK_GLYPHS).captures_iter(slice) {
+        if let Some(got) = cap.name("glyph") {
+            let glyph_name = got.as_str();
+            match helpers::at_glyph(Script::Normal, glyph_name) {
+                None => {
+                    panic!("lexer matched glyph {glyph_name} but this is not a known glyph");
+                }
+                Some(representation) => {
+                    name.push(representation);
+                }
+            }
+        } else if let Some(m) = cap.get(0) {
+            name.push_str(m.as_str());
+        } else {
+            // If there is a match, cap.get(0) is never None (per the
+            // Regex crate documentation).
+            unreachable!()
+        }
+    }
+    name
+}
+
 /// The parser consumes these tokens.
 #[derive(Debug, PartialEq, Eq, Logos, Clone)]
 pub(crate) enum Token {
+    // In order for the parser to recover from tokenization errors, we
+    // need to be able to emit an error token.
+    Error(String),
+
     LeftBrace,
     RightBrace,
     Newline,
+
+    /// The parser currently only handled parenthesised expressions in
+    /// normal script.
+    #[token("(")]
+    LeftParen,
+
+    /// The parser currently only handled parenthesised expressions in
+    /// normal script.
+    #[token(")")]
+    RightParen,
+
+    /// Accept either 'h' or ':' signalling the hold bit (of the
+    /// instruction word) should be set.  The documentation seems to
+    /// use both, though perhaps ':' is the older usage.
+    ///
+    /// While h is indeed a letter, it is not one of the letters which
+    /// can form part of a symex.  See the TX-2 Users Handbook,
+    /// section 6-3.2, "RULES FOR SYMEX FORMATION".
+    #[regex("h|:")]
+    Hold,
+
+    #[regex("\u{0305}h|ℏ|@hbar@")] // U+0305 is combining overline.
+    NotHold,
 
     #[regex("@arr@|->", priority = 20)]
     Arrow,
@@ -342,11 +430,62 @@ pub(crate) enum Token {
     #[regex("@hand@|☛", priority = 20)]
     Hand,
 
+    #[regex("[.·]|@dot@")]
+    Dot,
+
+    #[regex(
+        "#|@hash@|@sub_hash@|@super_hash@",
+        capture_glyph_script,
+        priority = 20
+    )]
+    Hash(Script),
+
     #[token("=")]
     Equals,
 
     #[token("|")]
     Pipe,
+
+    #[regex("⊃|@sup@")]
+    ProperSuperset,
+
+    #[regex("≡|@hamb@")]
+    IdenticalTo,
+
+    #[token("~")]
+    Tilde,
+
+    #[token("<")]
+    LessThan,
+
+    #[token(">")]
+    GreaterThan,
+
+    #[token("∩")]
+    Intersection,
+
+    #[token("∪")]
+    Union,
+
+    /// Solidus is often called "slash" but people often confuse slash
+    /// and backslash.  So we don't call it either.
+    #[token("/")]
+    Solidus,
+
+    #[token("+")]
+    Plus,
+
+    #[token("-")]
+    Minus,
+
+    #[regex("×|@times@")]
+    Times,
+
+    #[token("∨")]
+    LogicalOr,
+
+    #[token("∧")]
+    LogicalAnd,
 
     // Needs to be higher priority than NormalSymexSyllable.
     #[regex("[-+]?[0-9]+([.·]|@dot@)?", capture_normal_digits, priority = 20)]
@@ -365,14 +504,66 @@ pub(crate) enum Token {
     SuperscriptDigits(NumericLiteral),
 
     // TODO: missing from this are: overbar, square, circle.
+    /// The rules concerning which characters can be part of a symex
+    /// are given in the TX-2 Users Handbook, section 6-3.2, "RULES
+    /// FOR SYMEX FORMATION".
     #[regex(
         "([0-9A-ZαβγΔελijknpqtwxyz.'_]|(@(alpha|beta|gamma|delta|eps|lambda)@))+",
+        capture_name,
         priority = 15
     )]
-    NormalSymexSyllable,
+    NormalSymexSyllable(String),
 
     #[token(",")]
     Comma,
+}
+
+impl Display for Token {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Token::Error(msg) => write!(f, "(error: {msg})"),
+            Token::LeftBrace => f.write_char('{'),
+            Token::RightBrace => f.write_char('}'),
+            Token::Newline => f.write_char('\n'),
+            Token::LeftParen => f.write_char('('),
+            Token::RightParen => f.write_char(')'),
+            Token::Hold => f.write_char('h'),
+            Token::NotHold => f.write_char('ℏ'),
+            Token::Arrow => f.write_str("->"),
+            Token::Hand => f.write_char('☛'),
+            Token::Dot => f.write_char('·'),
+            Token::Hash(script) => {
+                let el = elevate(*script, "#");
+                write!(f, "{el}")
+            }
+            Token::Equals => f.write_char('='),
+            Token::Pipe => f.write_char('|'),
+            Token::ProperSuperset => f.write_char('⊃'),
+            Token::IdenticalTo => f.write_char('≡'),
+            Token::Tilde => f.write_char('~'),
+            Token::LessThan => f.write_char('<'),
+            Token::GreaterThan => f.write_char('>'),
+            Token::Intersection => f.write_char('∩'),
+            Token::Union => f.write_char('∪'),
+            Token::Solidus => f.write_char('/'),
+            Token::Plus => f.write_char('+'),
+            Token::Minus => f.write_char('-'),
+            Token::Times => f.write_char('×'),
+            Token::LogicalOr => f.write_char('∨'),
+            Token::LogicalAnd => f.write_char('∧'),
+            Token::NormalDigits(numeric_literal) => {
+                write!(f, "{}", elevate_normal(numeric_literal.to_string()))
+            }
+            Token::SubscriptDigits(numeric_literal) => {
+                write!(f, "{}", elevate_sub(numeric_literal.to_string()))
+            }
+            Token::SuperscriptDigits(numeric_literal) => {
+                write!(f, "{}", elevate_super(numeric_literal.to_string()))
+            }
+            Token::NormalSymexSyllable(s) => f.write_str(s),
+            Token::Comma => f.write_char(','),
+        }
+    }
 }
 
 /// This is the primary lexer (and the only one accessible outside
@@ -418,18 +609,26 @@ impl<'a> Lexer<'a> {
         t
     }
 
+    // TODO: now that we return an error token to report a problem, We
+    // no longer need the return type to be Option<Result<...>>.
     fn next_upper(upper: &mut logos::Lexer<'a, Token>) -> Option<Result<Token, Unrecognised<'a>>> {
         match upper.next() {
             None => None,
             Some(Ok(token_from_upper)) => Some(Ok(token_from_upper)),
-            Some(Err(_)) => Some(Err(Unrecognised {
-                content: upper.slice(),
-                span: upper.span(),
-            })),
+            Some(Err(_)) => {
+                // Instead of returning Err we return an error token
+                // in order to allow the parser to attempt recovery.
+                let msg: String = Unrecognised {
+                    content: upper.slice(),
+                    span: upper.span(),
+                }
+                .to_string();
+                Some(Ok(Token::Error(msg)))
+            }
         }
     }
 
-    fn spanned(&self) -> SpannedIter<'a> {
+    pub(crate) fn spanned(&self) -> SpannedIter<'a> {
         SpannedIter {
             lexer: self.clone(),
         }
@@ -494,12 +693,12 @@ struct SpannedIter<'a> {
 }
 
 impl<'a> Iterator for SpannedIter<'a> {
-    type Item = Result<(Token, Span), Unrecognised<'a>>;
+    type Item = (Result<Token, Unrecognised<'a>>, Span);
 
     fn next(&mut self) -> Option<Self::Item> {
+        let span = self.lexer.span();
         match self.lexer.next() {
-            Some(Ok(tok)) => Some(Ok((tok, self.lexer.span()))),
-            Some(Err(e)) => Some(Err(e)),
+            Some(result) => Some((result, span)),
             None => None,
         }
     }
