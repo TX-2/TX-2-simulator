@@ -1,4 +1,4 @@
-use std::ops::{Range, Shl};
+use std::ops::{Deref, Range, Shl};
 
 pub(crate) mod helpers;
 mod symex;
@@ -8,7 +8,8 @@ mod tests;
 
 use chumsky::error::Rich;
 use chumsky::extra::Full;
-use chumsky::input::{BorrowInput, Stream, ValueInput};
+use chumsky::input::{Stream, ValueInput};
+use chumsky::inspector::SimpleState;
 use chumsky::prelude::{choice, just, one_of, recursive, Input, IterParser, SimpleSpan};
 use chumsky::select;
 use chumsky::Parser;
@@ -21,12 +22,12 @@ use super::types::*;
 use base::charset::Script;
 use base::prelude::*;
 
-pub(crate) type Extra<'a> = Full<Rich<'a, lexer::Token>, NumeralMode, ()>;
+pub(crate) type Extra<'a> = Full<Rich<'a, lexer::Token>, SimpleState<NumeralMode>, ()>;
 use lexer::Token as Tok;
 
 fn literal<'a, I>(script_required: Script) -> impl Parser<'a, I, LiteralValue, Extra<'a>> + Clone
 where
-    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a> + Clone,
+    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
     let parser = match script_required {
         Script::Normal => select! {
@@ -45,7 +46,8 @@ where
 
     parser
         .try_map_with(move |number, extra| {
-            let mode: &NumeralMode = extra.state();
+            let state: &SimpleState<NumeralMode> = extra.state();
+            let mode: &NumeralMode = state.deref();
             match number.make_num(mode) {
                 Ok(value) => Ok(LiteralValue::from((extra.span(), script_required, value))),
                 Err(e) => Err(Rich::custom(extra.span(), e.to_string())),
@@ -56,7 +58,7 @@ where
 
 fn here<'a, I>(script_required: Script) -> impl Parser<'a, I, Atom, Extra<'a>> + Clone
 where
-    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a> + Clone,
+    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
     select! {
         Tok::Hash(script) if script == script_required => Atom::Here(script_required),
@@ -124,7 +126,7 @@ fn opcode_code(s: &str) -> Option<Unsigned6Bit> {
 
 pub(super) fn opcode<'a, I>() -> impl Parser<'a, I, LiteralValue, Extra<'a>> + Clone
 where
-    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a> + Clone,
+    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
     fn opcode_to_literal(code: Unsigned6Bit, span: Span) -> LiteralValue {
         // Some opcodes automatically set the hold bit, so do that
@@ -171,7 +173,7 @@ fn arithmetic_expression<'a, I>(
     script_required: Script,
 ) -> impl Parser<'a, I, ArithmeticExpression, Extra<'a>> + Clone
 where
-    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a> + Clone,
+    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
     // We use recursive here to prevent the parser blowing the stack
     // when trying to parse inputs which have parentheses - that is,
@@ -215,9 +217,9 @@ where
     })
 }
 
-fn symbol<'a, I>(script_required: Script) -> impl Parser<'a, I, SymbolName, Extra<'a>> + Clone
+fn symbol<'a, I>(script_required: Script) -> impl Parser<'a, I, SymbolName, Extra<'a>>
 where
-    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a> + Clone,
+    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
     symex::parse_symex(script_required)
         .map(SymbolName::from)
@@ -226,7 +228,7 @@ where
 
 fn tag_definition<'a, I>() -> impl Parser<'a, I, Tag, Extra<'a>>
 where
-    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a> + Clone,
+    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
     symbol(Script::Normal)
         .map_with(|name, extra| Tag {
@@ -240,7 +242,7 @@ where
 fn program_instruction_fragment<'srcbody, I>(
 ) -> impl Parser<'srcbody, I, InstructionFragment, Extra<'srcbody>>
 where
-    I: Input<'srcbody, Token = Tok, Span = Span> + ValueInput<'srcbody> + Clone,
+    I: Input<'srcbody, Token = Tok, Span = Span> + ValueInput<'srcbody>,
 {
     let single_script_fragment =
         |script_required| arithmetic_expression(script_required).map(InstructionFragment::from);
@@ -255,7 +257,7 @@ where
 fn program_instruction_fragments<'srcbody, I>(
 ) -> impl Parser<'srcbody, I, Vec<InstructionFragment>, Extra<'srcbody>>
 where
-    I: Input<'srcbody, Token = Tok, Span = Span> + ValueInput<'srcbody> + Clone,
+    I: Input<'srcbody, Token = Tok, Span = Span> + ValueInput<'srcbody>,
 {
     program_instruction_fragment()
         .repeated()
@@ -267,7 +269,7 @@ where
 /// Macro terminators are described in section 6-4.5 of the TX-2 User Handbook.
 fn macro_terminator<'a, I>() -> impl Parser<'a, I, char, Extra<'a>>
 where
-    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a> + Clone,
+    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
     // This list of 16 allowed terminators is exhaustive, see section
     // 6-4.5 of the TX-2 User Handbook.
@@ -298,7 +300,7 @@ where
 
 fn macro_argument<'a, I>() -> impl Parser<'a, I, MacroArgument, Extra<'a>>
 where
-    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a> + Clone,
+    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
     (macro_terminator().then(symbol(Script::Normal))).map_with(|(terminator, symbol), extra| {
         MacroArgument {
@@ -311,7 +313,7 @@ where
 
 fn macro_arguments<'a, I>() -> impl Parser<'a, I, MacroArguments, Extra<'a>>
 where
-    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a> + Clone,
+    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
     choice((
         macro_argument()
@@ -326,7 +328,7 @@ where
 /// Macros are described in section 6-4 of the TX-2 User Handbook.
 fn macro_definition<'a, I>() -> impl Parser<'a, I, MacroDefinition, Extra<'a>>
 where
-    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a> + Clone,
+    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
     named_metacommand("DEF")
         .ignore_then(
@@ -353,7 +355,7 @@ where
 
 fn named_metacommand<'a, I>(canonical_name: &'static str) -> impl Parser<'a, I, (), Extra<'a>>
 where
-    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a> + Clone,
+    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
     fn name_match(actual: &str, canonical: &'static str) -> bool {
         match canonical {
@@ -378,11 +380,11 @@ where
 
 fn metacommand<'a, I>() -> impl Parser<'a, I, ManuscriptMetaCommand, Extra<'a>>
 where
-    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a> + Clone,
+    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
     fn punch<'a, I>() -> impl Parser<'a, I, ManuscriptMetaCommand, Extra<'a>>
     where
-        I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a> + Clone,
+        I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
     {
         // We currently have a limitation in the interpretation of
         // "AA" in the PUNCH metacommand.  The documentation clearly
@@ -399,7 +401,7 @@ where
 
     fn base_change<'a, I>() -> impl Parser<'a, I, ManuscriptMetaCommand, Extra<'a>>
     where
-        I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a> + Clone,
+        I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
     {
         choice((
             choice((named_metacommand("DECIMAL"), named_metacommand("DEC")))
@@ -420,7 +422,7 @@ where
 
 fn untagged_program_instruction<'a, I>() -> impl Parser<'a, I, UntaggedProgramInstruction, Extra<'a>>
 where
-    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a> + Clone,
+    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
     let maybe_hold = choice((
         one_of(Tok::Hold).to(HoldBit::Hold),
@@ -441,7 +443,7 @@ where
 
 fn tagged_program_instruction<'a, I>() -> impl Parser<'a, I, TaggedProgramInstruction, Extra<'a>>
 where
-    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a> + Clone,
+    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
     tag_definition()
         .or_not()
@@ -456,14 +458,14 @@ where
 
 fn statement<'a, I>() -> impl Parser<'a, I, Statement, Extra<'a>>
 where
-    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a> + Clone,
+    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
     /// Assginments are called "equalities" in the TX-2 Users Handbook.
     /// See section 6-2.2, "SYMEX DEFINITON - TAGS - EQUALITIES -
     /// AUTOMATIC ASSIGNMENT".
     fn assignment<'a, I>() -> impl Parser<'a, I, (SymbolName, UntaggedProgramInstruction), Extra<'a>>
     where
-        I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a> + Clone,
+        I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
     {
         symex::parse_symex(Script::Normal)
             .then_ignore(just(Tok::Equals))
@@ -481,7 +483,7 @@ where
 
 fn manuscript_line<'a, I>() -> impl Parser<'a, I, ManuscriptLine, Extra<'a>>
 where
-    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a> + Clone,
+    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
     fn execute_metacommand(state: &mut NumeralMode, cmd: &ManuscriptMetaCommand) {
         match cmd {
@@ -496,7 +498,7 @@ where
 
     fn parse_and_execute_metacommand<'a, I>() -> impl Parser<'a, I, ManuscriptLine, Extra<'a>>
     where
-        I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a> + Clone,
+        I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
     {
         metacommand()
             .map_with(|cmd, extra| {
@@ -512,11 +514,11 @@ where
 
     fn line<'a, I>() -> impl Parser<'a, I, ManuscriptLine, Extra<'a>>
     where
-        I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a> + Clone,
+        I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
     {
         fn origin<'a, I>() -> impl Parser<'a, I, Origin, Extra<'a>>
         where
-            I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a> + Clone,
+            I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
         {
             /// An address expression is a literal value or a symex.  That is I
             /// think it's not required that an arithmetic expression
@@ -524,7 +526,7 @@ where
             /// "<something>|").
             fn literal_address_expression<'a, I>() -> impl Parser<'a, I, Origin, Extra<'a>>
             where
-                I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a> + Clone,
+                I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
             {
                 // We should eventually support symexes here.
                 literal(Script::Normal)
@@ -537,7 +539,7 @@ where
 
             fn symbolic_address_expression<'a, I>() -> impl Parser<'a, I, Origin, Extra<'a>>
             where
-                I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a> + Clone,
+                I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
             {
                 symbol(Script::Normal)
                     .map_with(|sym, extra| Origin::Symbolic(extra.span(), sym))
@@ -574,7 +576,7 @@ where
 
 fn end_of_line<'a, I>() -> impl Parser<'a, I, (), Extra<'a>>
 where
-    I: Input<'a, Token = Tok, Span = Span> + Clone,
+    I: Input<'a, Token = Tok, Span = Span>,
 {
     let one_end_of_line = just(Tok::Newline).labelled("end-of-line").ignored();
 
@@ -587,7 +589,7 @@ where
 
 fn terminated_manuscript_line<'a, I>() -> impl Parser<'a, I, Option<ManuscriptLine>, Extra<'a>>
 where
-    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a> + Clone,
+    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
     // If we support INSERT, DELETE, REPLACE, we will need to
     // separate the processing of the metacommands and the
@@ -597,13 +599,13 @@ where
 
 pub(crate) fn source_file<'a, I>() -> impl Parser<'a, I, SourceFile, Extra<'a>>
 where
-    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a> + Clone,
+    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
     // Parse a manuscript (which is a sequence of metacommands, macros
     // and assembly-language instructions).
     fn source_file_as_blocks<'a, I>() -> impl Parser<'a, I, SourceFile, Extra<'a>>
     where
-        I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a> + Clone,
+        I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
     {
         terminated_manuscript_line().repeated().collect().map(
             |lines: Vec<Option<ManuscriptLine>>| {
@@ -621,16 +623,23 @@ where
     source_file_as_blocks()
 }
 
-pub(crate) fn tokenize_and_parse_with<'a, P, I, T>(
+type Mig<I, O> = chumsky::input::MappedInput<
+    Tok,
+    SimpleSpan,
+    chumsky::input::Stream<std::vec::IntoIter<(Tok, SimpleSpan)>>,
+    fn(I) -> O,
+>;
+type Mi = Mig<(Tok, SimpleSpan), (Tok, SimpleSpan)>;
+
+pub(crate) fn tokenize_and_parse_with<'a, P, T>(
     input: &'a str,
     setup: fn(&mut NumeralMode),
     parser: P,
 ) -> (Option<T>, Vec<Rich<'a, Tok>>)
 where
-    P: Parser<'a, I, T, Extra<'a>>,
-    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a> + Clone,
+    P: Parser<'a, Mi, T, Extra<'a>>,
 {
-    let mut state = NumeralMode::default();
+    let mut state = SimpleState::from(NumeralMode::default());
     setup(&mut state);
 
     // These conversions are adapted from the Logos example in the
@@ -662,7 +671,8 @@ where
         0,
         tokens.iter().map(|(_, span)| span.end).max().unwrap_or(0),
     );
-    let token_stream = tokens.into().map(end_span, |x| x);
+    let token_stream: Mi =
+        Stream::from_iter(tokens.into_iter()).map(end_span, |unchanged| unchanged);
     parser
         .parse_with_state(token_stream, &mut state)
         .into_output_errors()

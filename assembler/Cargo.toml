@@ -13,7 +13,9 @@ regex = "1"
 # https://github.com/clap-rs/clap/blob/master/LICENSE-APACHE
 clap = { version = "4", features = ["derive"] }
 
-chumsky = { version="=1.0.0-alpha.6", features=["label"] }
+chumsky = { version="=1.0.0-alpha.8"}
+# features=["label"]
+
 logos = { version = "0.15" }
 
 # tempfile has an "MIT or Apache-2.0" copyright license

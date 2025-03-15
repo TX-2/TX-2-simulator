@@ -32,7 +32,7 @@ pub(super) fn symex_syllable<'a, I>(
     script_required: Script,
 ) -> impl Parser<'a, I, String, Extra<'a>> + Clone
 where
-    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a> + Clone,
+    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
     match script_required {
         Script::Normal => select! {
@@ -47,7 +47,7 @@ fn parse_symex_non_reserved_syllable<'a, I>(
     script_required: Script,
 ) -> impl Parser<'a, I, String, Extra<'a>> + Clone
 where
-    I: Input<'a, Token = Tok, Span = SimpleSpan> + ValueInput<'a> + Clone,
+    I: Input<'a, Token = Tok, Span = SimpleSpan> + ValueInput<'a>,
 {
     let opcode_mapper = helpers::OpcodeMapper::default();
     symex_syllable(script_required).try_map(move |syllable, span| {
@@ -64,9 +64,9 @@ where
 
 pub(super) fn parse_multi_syllable_symex<'a, I>(
     script_required: Script,
-) -> impl Parser<'a, I, String, Extra<'a>> + Clone
+) -> impl Parser<'a, I, String, Extra<'a>>
 where
-    I: Input<'a, Token = Tok, Span = SimpleSpan> + ValueInput<'a> + Clone,
+    I: Input<'a, Token = Tok, Span = SimpleSpan> + ValueInput<'a>,
 {
     parse_symex_non_reserved_syllable(script_required)
         .foldl(symex_syllable(script_required).repeated(), concat_strings)
@@ -75,9 +75,9 @@ where
 
 pub(super) fn parse_symex<'a, I>(
     script_required: Script,
-) -> impl Parser<'a, I, SymbolName, Extra<'a>> + Clone
+) -> impl Parser<'a, I, SymbolName, Extra<'a>>
 where
-    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a> + Clone,
+    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
     choice((
         parse_multi_syllable_symex(script_required),
@@ -91,7 +91,7 @@ pub(super) fn parse_symex_reserved_syllable<'a, I>(
     script_required: Script,
 ) -> impl Parser<'a, I, String, Extra<'a>> + Clone
 where
-    I: Input<'a, Token = Tok, Span = SimpleSpan> + ValueInput<'a> + Clone,
+    I: Input<'a, Token = Tok, Span = SimpleSpan> + ValueInput<'a>,
 {
     let opcode_mapper = helpers::OpcodeMapper::default();
     symex_syllable(script_required)

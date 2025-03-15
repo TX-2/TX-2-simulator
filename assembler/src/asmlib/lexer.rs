@@ -688,7 +688,7 @@ impl<'a> Iterator for Lexer<'a> {
 }
 
 #[derive(Debug, Clone)]
-struct SpannedIter<'a> {
+pub(crate) struct SpannedIter<'a> {
     lexer: Lexer<'a>,
 }
 

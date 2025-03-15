@@ -19,7 +19,7 @@ pub(super) fn operator<'a, I>(
     script_required: Script,
 ) -> impl Parser<'a, I, Operator, Extra<'a>> + Clone
 where
-    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a> + Clone,
+    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
     match script_required {
         Script::Normal => select! {
