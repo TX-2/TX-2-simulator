@@ -280,7 +280,7 @@ where
     // low position of "." makes it look like part of a subscript.
     choice((
         just(Tok::Hand).to('☛'),
-        just(Tok::Dot).to('·'),
+        just(Tok::Dot(Script::Normal)).to(lexer::DOT_CHAR),
         just(Tok::Equals).to('='),
         just(Tok::Arrow).to('→'),
         just(Tok::Pipe).to('|'),
@@ -293,8 +293,8 @@ where
         just(Tok::Union).to('∪'),
         just(Tok::Solidus).to('/'),
         just(Tok::Times).to('×'),
-        just(Tok::LogicalOr).to('∨'),
-        just(Tok::LogicalAnd).to('∧'),
+        just(Tok::LogicalOr(Script::Normal)).to('∨'),
+        just(Tok::LogicalAnd(Script::Normal)).to('∧'),
     ))
 }
 
@@ -330,7 +330,7 @@ fn macro_definition<'a, I>() -> impl Parser<'a, I, MacroDefinition, Extra<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
-    named_metacommand("DEF")
+    named_metacommand(Metacommand::DefineMacro)
         .ignore_then(
             symbol(Script::Normal), // the macro's name
         )
@@ -342,7 +342,7 @@ where
                 .collect::<Vec<_>>()
                 .labelled("macro body"),
         )
-        .then_ignore(named_metacommand("EMD"))
+        .then_ignore(named_metacommand(Metacommand::EndMacroDefinition))
         // We don't parse end-of-line here because all metacommands are supposed
         // to be followed by end-of-line.
         .map_with(|((name, args), body), extra| MacroDefinition {
@@ -353,24 +353,34 @@ where
         })
 }
 
-fn named_metacommand<'a, I>(canonical_name: &'static str) -> impl Parser<'a, I, (), Extra<'a>>
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+enum Metacommand {
+    Decimal,
+    Octal,
+    Punch,
+    DefineMacro,
+    EndMacroDefinition,
+}
+
+fn named_metacommand<'a, I>(which: Metacommand) -> impl Parser<'a, I, (), Extra<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
-    fn name_match(actual: &str, canonical: &'static str) -> bool {
-        match canonical {
-            "DECIMAL" => matches!(actual, "DECIMAL" | "DECIMA" | "DECIM" | "DECI" | "DEC"),
-            "OCTAL" => matches!(actual, "OCTAL" | "OCTA" | "OCT" | "OC"),
-            "PUNCH" => matches!(actual, "PUNCH" | "PUNC" | "PUN" | "PU"),
-            "DEF" => actual == canonical,
-            "EMD" => matches!(actual, "EMD" | "EM"),
-            _ => {
-                unreachable!("unknown metacommand name {canonical}")
+    let name_match = move |actual: &str| -> bool {
+        dbg!(actual);
+        match which {
+            Metacommand::Decimal => {
+                matches!(actual, "DECIMAL" | "DECIMA" | "DECIM" | "DECI" | "DEC")
             }
+            Metacommand::Octal => matches!(actual, "OCTAL" | "OCTA" | "OCT" | "OC"),
+            Metacommand::Punch => matches!(actual, "PUNCH" | "PUNC" | "PUN" | "PU"),
+            Metacommand::DefineMacro => actual == "DEF",
+            Metacommand::EndMacroDefinition => matches!(actual, "EMD" | "EM"),
         }
-    }
+    };
+
     let matching_metacommand_name = select! {
-        Tok::NormalSymexSyllable(name) if name_match(name.as_str(), canonical_name) => (),
+        Tok::NormalSymexSyllable(name) if name_match(name.as_str()) => (),
     };
 
     just([Tok::Hand, Tok::Hand])
@@ -390,7 +400,7 @@ where
         // "AA" in the PUNCH metacommand.  The documentation clearly
         // states that this should be an honest tag.  We currently
         // accept only numeric literals.
-        named_metacommand("PUNCH")
+        named_metacommand(Metacommand::Punch)
             .ignore_then(literal(Script::Normal).or_not())
             .try_map(|aa, span| match helpers::punch_address(aa) {
                 Ok(punch) => Ok(ManuscriptMetaCommand::Punch(punch)),
@@ -404,9 +414,9 @@ where
         I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
     {
         choice((
-            choice((named_metacommand("DECIMAL"), named_metacommand("DEC")))
+            named_metacommand(Metacommand::Decimal)
                 .to(ManuscriptMetaCommand::BaseChange(NumeralMode::Decimal)),
-            choice((named_metacommand("OCTAL"), named_metacommand("OCT")))
+            named_metacommand(Metacommand::Octal)
                 .to(ManuscriptMetaCommand::BaseChange(NumeralMode::Octal)),
         ))
         .labelled("base-change metacommand")
@@ -629,7 +639,7 @@ type Mig<I, O> = chumsky::input::MappedInput<
     chumsky::input::Stream<std::vec::IntoIter<(Tok, SimpleSpan)>>,
     fn(I) -> O,
 >;
-type Mi = Mig<(Tok, SimpleSpan), (Tok, SimpleSpan)>;
+pub(crate) type Mi = Mig<(Tok, SimpleSpan), (Tok, SimpleSpan)>;
 
 pub(crate) fn tokenize_and_parse_with<'a, P, T>(
     input: &'a str,

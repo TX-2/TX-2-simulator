@@ -188,7 +188,7 @@ fn assemble_pass1<'a>(
 /// assemble_pass1, assemble_pass2.
 #[cfg(test)]
 pub(crate) fn assemble_nonempty_valid_input(input: &str) -> (Directive, SymbolTable) {
-    let mut errors: Vec<Rich<'_, char>> = Vec::new();
+    let mut errors: Vec<Rich<'_, lexer::Token>> = Vec::new();
     let result: Result<(Option<SourceFile>, OutputOptions), AssemblerFailure> =
         assemble_pass1(input, &mut errors);
     if !errors.is_empty() {

@@ -21,7 +21,9 @@ pub(super) enum InnerToken {
     // the assembler syntax.  The interpretations of annotations may
     // change in the future (but comments will not) so you should
     // generally prefer to use a comment.
-    #[regex(r"\[[^]]*\]")]
+    //
+    // Should be higher-priority than Text.
+    #[regex(r"\[[^]]*\]", priority = 5)]
     Annotation,
 
     // There is no @..@ syntax for left-brace, but if there were,
@@ -32,7 +34,10 @@ pub(super) enum InnerToken {
     #[token("}")]
     RightBrace,
 
-    #[regex("[^ \t{}\n]+", priority = 3)]
+    // The Regex crate allows escaping in character classes, which is
+    // something we need to do to use '[' in a (negated in this case)
+    // character class.
+    #[regex("[^ \\[\t{}\n]+", priority = 3)]
     Text,
 
     #[regex("[ \t]+")]
@@ -57,6 +62,7 @@ impl State {
 }
 
 /// This is the output of LowerLexer.
+#[derive(Debug, PartialEq, Eq)]
 pub(super) enum Lexeme<'a> {
     EndOfInput,
     Tok(super::Token),
@@ -163,4 +169,22 @@ impl<'a> LowerLexer<'a> {
             }
         }
     }
+}
+
+#[test]
+fn test_annotations_are_ignored() {
+    let input = "->[THIS IS AN ANNOTATION]";
+    let mut lex = LowerLexer::new(input);
+    assert_eq!(lex.next(), Lexeme::Text("->"));
+    assert_eq!(lex.next(), Lexeme::EndOfInput);
+}
+
+#[test]
+fn test_span() {
+    let input = "XZ Y";
+    let mut lex = LowerLexer::new(input);
+    assert_eq!(lex.next(), Lexeme::Text("XZ"));
+    assert_eq!(&input[lex.span()], "XZ");
+    assert_eq!(lex.next(), Lexeme::Text("Y"));
+    assert_eq!(&input[lex.span()], "Y");
 }

@@ -40,10 +40,10 @@ fn errors_as_string<T: Display>(errors: &[Rich<'_, T>]) -> String {
 #[cfg(test)]
 fn parse_test_input<'a, I, O, P>(input_text: I, parser: P) -> Result<O, String>
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a>,
-    P: Parser<'a, I, O, Extra<'a, char>>,
+    I: Input<'a, Token = Tok, Span = SimpleSpan> + ValueInput<'a>,
+    P: Parser<'a, I, O, Extra<'a>>,
 {
-    let mut state = Default::default();
+    let mut state: SimpleState<NumeralMode> = SimpleState::from(NumeralMode::default());
     let (output, errors) = parser
         .parse_with_state(input_text, &mut state)
         .into_output_errors();
@@ -57,20 +57,21 @@ where
     }
 }
 
+type StateInitFn = fn(s: &mut NumeralMode);
+
 #[cfg(test)]
-pub(crate) fn parse_successfully_with<'a, I, O, P, M>(input: I, parser: P, mut state_setup: M) -> O
+pub(crate) fn parse_successfully_with<'a, O, P>(
+    input: &'a str,
+    parser: P,
+    state_setup: StateInitFn,
+) -> O
 where
-    I: Input<'a, Token = char, Span = SimpleSpan> + ValueInput<'a> + Display + Clone + Debug,
-    P: Parser<'a, I, O, Extra<'a, char>>,
-    M: FnMut(&mut NumeralMode),
+    P: Parser<'a, super::Mi, O, Extra<'a>>,
     O: Debug,
 {
     dbg!(&input);
-    let mut state = Default::default();
-    state_setup(&mut state);
-    let (output, errors) = parser
-        .parse_with_state(input.clone(), &mut state)
-        .into_output_errors();
+
+    let (output, errors) = tokenize_and_parse_with(input, state_setup, parser);
     if !errors.is_empty() {
         dbg!(&output);
         panic!(
@@ -164,9 +165,9 @@ fn test_superscript_literal_dec_defaultmode() {
     // A trailing dot on a number indicates decimal base (unless there
     // was a previous ☛☛DECIMAL).
     assert_eq!(
-        parse_successfully_with("³⁶̇ ", literal(Script::Super), no_state_setup),
+        parse_successfully_with("³⁶@sup_dot@", literal(Script::Super), no_state_setup),
         LiteralValue::from((
-            span(0..8),
+            span(0..14),
             Script::Super,
             Unsigned36Bit::from(36_u32), // decimal
         ))
@@ -299,10 +300,9 @@ fn test_program_instruction() {
 #[test]
 fn test_parse_symex() {
     for (input, expected) in [
+        ("Q", "Q"),
         ("SOMENAME", "SOMENAME"),
         ("SOME NAME", "SOMENAME"),
-        ("Q", "Q"),
-        ("@Q@", "Q"),
         // OK to use a reserved identifier if it is not the first
         // syllable in the symex.
         ("TEST A", "TESTA"),
@@ -310,17 +310,19 @@ fn test_parse_symex() {
         ("ATEST", "ATEST"),
         // Otherwise, the reserved identifier is the whole of it.
         ("B", "B"),
-        ("@B@", "B"),
         // A symex can contain digits and can even start with one.
+        ("HOP2", "HOP2"),
         ("HOP2IT", "HOP2IT"),
+        ("HOP 2", "HOP2"),
+        ("HOP 2@dot@", "HOP2·"),
         ("HOP 2 IT", "HOP2IT"),
-        ("HOP @2@ IT", "HOP2IT"),
         ("4REAL", "4REAL"),
         // Some lower case letters are supported
         ("j2", "j2"),
         // Dot, underscore
-        ("@dot@q", "\u{00B7}q"),
-        ("@dot@_q", "\u{00B7}_q"),
+        ("@dot@x", "\u{00B7}x"),
+        ("q@dot@q", "q\u{00B7}q"),
+        ("@dot@_X", "\u{00B7}_X"),
         // Single quotes are allowed too
         ("SCRATCH 'N' SNIFF", "SCRATCH'N'SNIFF"),
         ("SCRATCH @apostrophe@N@apostrophe@ SNIFF", "SCRATCH'N'SNIFF"),
@@ -484,7 +486,7 @@ fn test_manuscript_without_tag() {
                     Statement::Instruction(TaggedProgramInstruction {
                         tag: None,
                         instruction: UntaggedProgramInstruction {
-                            span: span(0..4),
+                            span: span(0..3),
                             holdbit: HoldBit::Unspecified,
                             parts: vec![InstructionFragment::from((
                                 span(0..3),
@@ -529,7 +531,7 @@ fn test_comment_in_rc_block() {
                 statements: vec![Statement::Instruction(TaggedProgramInstruction {
                     tag: None,
                     instruction: UntaggedProgramInstruction {
-                        span: span(0..11),
+                        span: span(0..10),
                         holdbit: HoldBit::Unspecified,
                         parts: vec![InstructionFragment::from(ArithmeticExpression::from(
                             Atom::RcRef(
@@ -593,7 +595,7 @@ fn test_manuscript_with_single_syllable_tag() {
                         span: span(0..6),
                     }),
                     instruction: UntaggedProgramInstruction {
-                        span: span(12..16),
+                        span: span(12..15),
                         holdbit: HoldBit::Unspecified,
                         parts: vec![InstructionFragment::from((
                             span(12..15),
@@ -624,7 +626,7 @@ fn test_manuscript_with_origin() {
                 statements: vec![Statement::Instruction(TaggedProgramInstruction {
                     tag: None,
                     instruction: UntaggedProgramInstruction {
-                        span: span(5..10),
+                        span: span(6..9),
                         holdbit: HoldBit::Unspecified,
                         parts: vec![InstructionFragment::from((
                             span(6..9),
@@ -678,7 +680,7 @@ fn test_multi_syllable_tag() {
                 span: span(0..9),
             }),
             instruction: UntaggedProgramInstruction {
-                span: span(11..15),
+                span: span(11..14),
                 holdbit: HoldBit::Unspecified,
                 parts: vec![InstructionFragment::Arithmetic(ArithmeticExpression::from(
                     Atom::from(LiteralValue::from((
@@ -712,7 +714,7 @@ fn test_manuscript_with_multi_syllable_tag() {
                         span: span(0..9),
                     }),
                     instruction: UntaggedProgramInstruction {
-                        span: span(11..15),
+                        span: span(11..14),
                         holdbit: HoldBit::Unspecified,
                         parts: vec![InstructionFragment::from((
                             span(11..14),
@@ -902,13 +904,13 @@ fn test_assignment_lines() {
                     ),
                     assignment_of_literal(
                         "BAR",
-                        span(6..18),
+                        span(10..17),
                         LiteralValue::from((span(16..17), Script::Normal, u36!(1))),
                     ),
                     Statement::Instruction(TaggedProgramInstruction {
                         tag: None,
                         instruction: UntaggedProgramInstruction {
-                            span: span(19..21),
+                            span: span(19..20),
                             holdbit: HoldBit::Unspecified,
                             parts: vec![atom_to_fragment(Atom::Literal(LiteralValue::from((
                                 span(19..20),
@@ -1004,7 +1006,7 @@ fn test_opcode() {
         operand_address: OperandAddress::Direct(Address::ZERO),
     });
     assert_eq!(
-        parse_successfully_with("AUX", super::terminal::opcode(), no_state_setup),
+        parse_successfully_with("AUX", super::opcode(), no_state_setup),
         LiteralValue::from((span(0..3), Script::Normal, expected_instruction.bits(),))
     );
 }
@@ -1060,30 +1062,6 @@ fn program_instruction_with_opcode() {
 }
 
 #[test]
-fn test_hold() {
-    assert_eq!(
-        parse_successfully_with("h", terminal::hold(), no_state_setup),
-        HoldBit::Hold
-    );
-    assert_eq!(
-        parse_successfully_with(":", terminal::hold(), no_state_setup),
-        HoldBit::Hold
-    );
-}
-
-#[test]
-fn not_hold() {
-    assert_eq!(
-        parse_successfully_with("ℏ", terminal::hold(), no_state_setup),
-        HoldBit::NotHold
-    );
-    assert_eq!(
-        parse_successfully_with("̅h", terminal::hold(), no_state_setup),
-        HoldBit::NotHold
-    );
-}
-
-#[test]
 fn test_end_of_line() {
     fn good(s: &str) {
         parse_successfully_with(s, end_of_line(), no_state_setup);
@@ -1127,7 +1105,6 @@ fn test_subs() {
         let s = format!("X{ch}");
         check(&s, &s);
     }
-    check("@y@", "y");
     // @dot@ expands to a center dot, not a full stop as in Jurij's script.
     check("@dot@", "·");
     // untested: @+@, @hamb@, @times@, @arr@, @hand@, @pipe@, @rect_dash@, @circled_v@, @sup@, @minus@
@@ -1156,8 +1133,8 @@ fn test_greek_letters() {
 #[test]
 fn test_annotation() {
     assert_eq!(
-        parse_successfully_with("[hello]", terminal::annotation(), no_state_setup),
-        "hello".to_string()
+        parse_successfully_with("[hello] FOO", parse_symex(Script::Normal), no_state_setup),
+        SymbolName::from("FOO".to_string()),
     );
 }
 
@@ -1189,7 +1166,7 @@ fn test_logical_or_glyph_subscript() {
 fn test_logical_or_glyph_superscript() {
     assert_eq!(
         parse_successfully_with(
-            "@super_or@",
+            "@sup_or@",
             terminal::operator(Script::Super),
             no_state_setup
         ),
@@ -1466,7 +1443,7 @@ fn test_macro_definition_with_trivial_body() {
         body: vec![Statement::Instruction(TaggedProgramInstruction {
             tag: None,
             instruction: UntaggedProgramInstruction {
-                span: span(17..19),
+                span: span(17..18),
                 holdbit: HoldBit::Unspecified,
                 parts: vec![InstructionFragment::Arithmetic(ArithmeticExpression::from(
                     Atom::Symbol(

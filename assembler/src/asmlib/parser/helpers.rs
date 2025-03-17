@@ -1,3 +1,6 @@
+#![allow(dead_code)]
+// TODO: once we've resolved all the test compilation errors, resinstate the dead_code warning.
+
 use std::num::IntErrorKind;
 use std::{
     collections::{BTreeMap, HashMap},

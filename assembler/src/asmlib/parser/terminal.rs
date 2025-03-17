@@ -1,3 +1,6 @@
+#![allow(dead_code)]
+// TODO: once we've resolved all the test compilation errors, resinstate the dead_code warning.
+
 /// terminal contains all the terminals of the grammar; that is, the
 /// lowest-level symbols not defined in terms of anything else in the
 /// grammar.
@@ -21,18 +24,18 @@ pub(super) fn operator<'a, I>(
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
-    match script_required {
-        Script::Normal => select! {
-            Tok::LogicalOr => Operator::LogicalOr,
-            Tok::LogicalAnd => Operator::LogicalAnd,
-            Tok::Plus => Operator::Add,
-            Tok::Minus => Operator::Subtract,
-            Tok::Times => Operator::Multiply,
-            // Solidus ("/") is used for divide.  See section 6-2.7
-            // "Word Assembly" for details.
-            Tok::Solidus => Operator::Divide,
-        },
-        _ => unimplemented!("binary operators in superscript or subscript"),
+    select! {
+        // Solidus ("/") is used for divide.  See section 6-2.7
+        // "Word Assembly" for details.
+        // TODO: support subscript/superscript for '/'
+        Tok::Solidus if script_required == Script::Normal => Operator::Divide,
+        Tok::Plus(Script::Normal) => Operator::Add,
+        // TODO: support subscript/superscript for times
+        Tok::Times if script_required == Script::Normal => Operator::Multiply,
+        Tok::LogicalOr(got) if got == script_required => Operator::LogicalOr,
+        Tok::LogicalAnd(got) if got == script_required => Operator::LogicalAnd,
+        Tok::Minus(got) if script_required == got => Operator::Subtract,
+        Tok::Plus(got) if script_required == got => Operator::Add,
     }
     .labelled("arithmetic operator")
 }

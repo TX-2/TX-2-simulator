@@ -257,8 +257,8 @@ fn test_normal_hash_value() {
 
 #[test]
 fn test_super_hash_value() {
-    let program = assemble_source(concat!("1| @super_hash@\n",), Default::default())
-        .expect("program is valid");
+    let program =
+        assemble_source(concat!("1| @sup_hash@\n",), Default::default()).expect("program is valid");
     assert_eq!(program.chunks[0].address, Address::from(u18!(0o1)));
     assert_eq!(program.chunks[0].words[0], u36!(1).shl(30));
 }
@@ -287,8 +287,8 @@ fn test_assign_hash_value() {
         concat!(
             "         FOO = #\n",
             "       START = 100\n",
-            "START| @super_1@ FOO\n",
-            "       @super_2@ FOO\n",
+            "START| @sup_1@ FOO\n",
+            "       @sup_2@ FOO\n",
         ),
         Default::default(),
     )

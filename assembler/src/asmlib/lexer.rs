@@ -4,8 +4,7 @@
 use std::{
     error::Error,
     fmt::{Display, Write},
-    ops::{Deref, Range},
-    sync::OnceLock,
+    ops::Range,
 };
 
 use logos::Logos;
@@ -16,15 +15,24 @@ use super::{
     parser::helpers::{self, Sign},
     state::NumeralMode,
 };
-use base::{charset::Script, error::StringConversionFailed, Unsigned36Bit};
+use base::{
+    charset::{subscript_char, superscript_char, Script},
+    error::StringConversionFailed,
+    Unsigned36Bit,
+};
 
 #[cfg(test)]
 mod input_file_tests;
 mod lower;
+mod rx;
 #[cfg(test)]
 mod tests;
 
+use rx::LazyRegex;
 type Span = Range<usize>;
+
+pub(crate) const DOT_CHAR: char = '·';
+pub(crate) const DOT_STR: &str = "·";
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub(crate) struct Unrecognised<'a> {
@@ -44,33 +52,6 @@ impl Display for Unrecognised<'_> {
 
 impl Error for Unrecognised<'_> {}
 
-struct LazyRegex {
-    once: OnceLock<Regex>,
-    pattern: &'static str,
-}
-
-impl LazyRegex {
-    const fn new(pattern: &'static str) -> Self {
-        LazyRegex {
-            once: OnceLock::new(),
-            pattern,
-        }
-    }
-}
-
-impl Deref for LazyRegex {
-    type Target = Regex;
-
-    fn deref(&self) -> &Regex {
-        self.once.get_or_init(|| match Regex::new(self.pattern) {
-            Ok(r) => r,
-            Err(e) => {
-                panic!("'{}' is not a valid regular expression: {e}", self.pattern,);
-            }
-        })
-    }
-}
-
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub(crate) struct NumericLiteral {
     sign: Option<Sign>,
@@ -87,7 +68,7 @@ impl Display for NumericLiteral {
         }
         f.write_str(self.digits.as_str())?;
         if self.has_trailing_dot {
-            f.write_char('·')?;
+            f.write_char(DOT_CHAR)?;
         }
         Ok(())
     }
@@ -100,6 +81,44 @@ impl NumericLiteral {
     ) -> Result<Unsigned36Bit, StringConversionFailed> {
         helpers::make_num(self.sign, self.digits.as_str(), self.has_trailing_dot, mode)
     }
+
+    pub(crate) fn has_trailing_dot(&self) -> bool {
+        self.has_trailing_dot
+    }
+
+    pub(crate) fn sign(&self) -> Option<&Sign> {
+        self.sign.as_ref()
+    }
+
+    pub(crate) fn take_digits(self) -> String {
+        self.digits
+    }
+}
+
+fn determine_string_script(s: &str) -> Result<Script, ()> {
+    fn combine(first: Option<Script>, second: Script) -> Result<Script, ()> {
+        match first {
+            Some(f) if f != second => Err(()),
+            _ => Ok(second),
+        }
+    }
+    let mut decision: Option<Script> = None;
+    for ch in s.chars() {
+        let current: Script = if unsubscript_char(ch).is_some() {
+            Script::Sub
+        } else if unsuperscript_char(ch).is_some() {
+            Script::Super
+        } else {
+            Script::Normal
+        };
+        dbg!(ch);
+        dbg!(current);
+        decision = Some(combine(decision, current)?);
+    }
+    match decision {
+        Some(d) => Ok(d),
+        None => Err(()),
+    }
 }
 
 fn capture_glyph_script(lex: &mut logos::Lexer<Token>) -> Script {
@@ -108,8 +127,18 @@ fn capture_glyph_script(lex: &mut logos::Lexer<Token>) -> Script {
         Script::Super
     } else if s.starts_with("@sub_") {
         Script::Sub
-    } else {
+    } else if s.starts_with("@") {
         Script::Normal
+    } else {
+        // It's not a glyph.  So we need to figure it out by examining
+        // the string.
+        dbg!(&s);
+        match determine_string_script(s) {
+            Ok(script) => script,
+            Err(_) => {
+                panic!("token matching should only include characters with a consistent script, but '{s}' wasn't like that");
+            }
+        }
     }
 }
 
@@ -137,7 +166,7 @@ fn capture_normal_digits(lex: &mut logos::Lexer<Token>) -> NumericLiteral {
             '-' => {
                 sign = Some(Sign::Minus);
             }
-            '·' | '.' | '@' => {
+            DOT_CHAR | '.' | '@' => {
                 // Here we take advantage of the fact that however the dot
                 // is represented, it is at the end and is the only
                 // non-digit.  IOW, we rely on the correctness of the
@@ -278,14 +307,14 @@ fn capture_superscript_digits(lex: &mut logos::Lexer<Token>) -> NumericLiteral {
         "(?<digits>",
         "([\u{2070}\u{00B9}\u{00B2}\u{00B3}\u{2074}\u{2075}\u{2076}\u{2077}\u{2078}\u{2079}]",
         "|",
-        "(@super_[0-9]@)",
+        "(@sup_[0-9]@)",
         ")+)",
-        "(?<dot>@super_dot@)?",
+        "(?<dot>@sup_dot@)?",
     ));
     const RX_DIGIT: LazyRegex = LazyRegex::new(concat!(
-        "(?<sub>[\u{2070}\u{00B9}\u{00B2}\u{00B3}\u{2074}\u{2075}\u{2076}\u{2077}\u{2078}\u{2079}])",
+        "(?<sup>[\u{2070}\u{00B9}\u{00B2}\u{00B3}\u{2074}\u{2075}\u{2076}\u{2077}\u{2078}\u{2079}])",
         "|",
-        "(@super_(?<markup_digit>[0-9])@)",
+        "(@sup_(?<markup_digit>[0-9])@)",
     ));
     let parts_cap = match (*RX_PARTS).captures(lex.slice()) {
         Some(cap) => cap,
@@ -303,7 +332,7 @@ fn capture_superscript_digits(lex: &mut logos::Lexer<Token>) -> NumericLiteral {
     let has_trailing_dot: bool = parts_cap.name("dot").is_some();
     let mut digits: String = String::with_capacity(lex.slice().len());
     for cap in (*RX_DIGIT).captures_iter(digits_part) {
-        if let Some(got) = cap.name("sub") {
+        if let Some(got) = cap.name("sup") {
             match got.as_str() {
                 "\u{2070}" => {
                     digits.push('0');
@@ -365,7 +394,7 @@ fn capture_superscript_digits(lex: &mut logos::Lexer<Token>) -> NumericLiteral {
 
 fn capture_name(lex: &mut logos::Lexer<Token>) -> String {
     const RX_GREEK_GLYPHS: LazyRegex =
-        LazyRegex::new("(@(?<glyph>alpha|beta|gamma|delta|eps|lambda)@|[^@]+");
+        LazyRegex::new("(@(?<glyph>alpha|beta|gamma|delta|eps|lambda|apostrophe)@|[^@])+");
     let slice = lex.slice();
     let mut name: String = String::with_capacity(slice.len());
     for cap in (*RX_GREEK_GLYPHS).captures_iter(slice) {
@@ -388,6 +417,190 @@ fn capture_name(lex: &mut logos::Lexer<Token>) -> String {
         }
     }
     name
+}
+
+fn unsubscript_char(ch: char) -> Option<char> {
+    match ch {
+        '\u{2080}' => Some('0'),
+        '\u{2081}' => Some('1'),
+        '\u{2082}' => Some('2'),
+        '\u{2083}' => Some('3'),
+        '\u{2084}' => Some('4'),
+        '\u{2085}' => Some('5'),
+        '\u{2086}' => Some('6'),
+        '\u{2087}' => Some('7'),
+        '\u{2088}' => Some('8'),
+        '\u{2089}' => Some('9'),
+        '\u{208A}' => Some('+'),
+        '\u{208B}' => Some('-'),
+        '\u{208C}' => Some('='),
+        '\u{208D}' => Some('('),
+        '\u{208E}' => Some(')'),
+        // Unicode seems to have no subscript majuscule letters.
+        '\u{2090}' => Some('a'),
+        '\u{2091}' => Some('e'),
+        '\u{2095}' => Some('h'), // not valid in a symex
+        '\u{1D62}' => Some('i'),
+        '\u{2C7C}' => Some('j'),
+        '\u{2096}' => Some('k'),
+        '\u{2097}' => Some('l'), // l is not actually in the TX-2 character set
+        '\u{2098}' => Some('m'), // m is not actually in the TX-2 character set
+        '\u{2099}' => Some('n'),
+        '\u{2092}' => Some('o'),
+        '\u{209A}' => Some('p'),
+        // Nothing for q; there is no Unicode superscript q character.  While U+107A5 does exist,
+        // it is a modifier, so we'd need a leading space.
+        '\u{209B}' => Some('s'), // s is not actually in the TX-2 character set
+        '\u{209C}' => Some('t'),
+        // There seems to be no subscript w in Unicode
+        '\u{2093}' => Some('x'),
+        // There seems to be no subscript y in Unicode
+        // There seems to be no subscript z in Unicode
+        _ => None,
+    }
+}
+
+fn unsuperscript_char(ch: char) -> Option<char> {
+    match ch {
+        '⁰' => Some('0'),
+        '¹' => Some('1'),
+        '²' => Some('2'),
+        '³' => Some('3'),
+        '⁴' => Some('4'),
+        '⁵' => Some('5'),
+        '⁶' => Some('6'),
+        '⁷' => Some('7'),
+        '⁸' => Some('8'),
+        '⁹' => Some('9'),
+        'ᴬ' => Some('A'),
+        'ᴮ' => Some('B'),
+        'ᶜ' | '\u{A7F2}' => Some('C'),
+        'ᴰ' => Some('D'),
+        'ᴱ' => Some('E'),
+        'ꟳ' => Some('F'),
+        'ᴳ' => Some('G'),
+        'ᴴ' => Some('H'),
+        'ᴵ' => Some('I'),
+        'ᴶ' => Some('J'),
+        'ᴷ' => Some('K'),
+        'ᴸ' => Some('L'),
+        'ᴹ' => Some('M'),
+        'ᴺ' => Some('N'),
+        'ᴼ' => Some('O'),
+        'ᴾ' => Some('P'),
+        'ꟴ' => Some('Q'),
+        'ᴿ' => Some('R'),
+        'ˢ' => Some('S'),
+        'ᵀ' => Some('T'),
+        'ᵁ' => Some('U'),
+        'ⱽ' => Some('V'),
+        'ᵂ' => Some('W'),
+        // No x, y, z
+        // No αβγΔελ
+        'ⁱ' => Some('i'),
+        'ʲ' => Some('j'),
+        'ᵏ' => Some('k'),
+        'ⁿ' => Some('n'),
+        'ᵖ' => Some('p'),
+        // No q
+        'ᵗ' => Some('t'),
+        'ʷ' => Some('w'),
+        'ˣ' => Some('x'),
+        'ʸ' => Some('y'),
+        'ᶻ' => Some('z'),
+        '⁻' => Some('-'),
+        '⁺' => Some('+'),
+        _ => None,
+    }
+}
+
+fn decode_glyphs_by_regex(tokname: &'static str, rx: &Regex, text: &str, script: Script) -> String {
+    fn identity_char(ch: char) -> Option<char> {
+        Some(ch)
+    }
+
+    let mut name: String = String::with_capacity(text.len());
+    let transformer = match script {
+        Script::Sub => unsubscript_char,
+        Script::Super => unsuperscript_char,
+        Script::Normal => identity_char,
+    };
+
+    let mut tail = text;
+    while let Some(cap) = rx.captures(tail) {
+        let m0 = cap.get(0).expect("regex capture group 0 always succeeds");
+        let prefix = &tail[0..(m0.start())];
+        if !prefix.is_empty() {
+            panic!(
+                "failed to decode '{tail}': the initial prefix '{prefix}' of it did not match {rx}"
+            );
+        }
+
+        if let Some(got) = cap.name("glyphname") {
+            let glyph_name = got.as_str();
+            match helpers::at_glyph(Script::Normal, glyph_name) {
+                None => {
+                    panic!("lexer matched glyph {glyph_name} but this is not a known glyph");
+                }
+                Some(representation) => {
+                    name.push(representation);
+                }
+            }
+        } else if let Some(m) = cap.get(0) {
+            let fragment = m.as_str();
+            for (i, ch) in fragment.chars().enumerate() {
+                match transformer(ch) {
+                    Some(ch) => {
+                        name.push(ch);
+                    }
+                    None => {
+                        panic!("while decoding '{text}' as token {tokname}, the lexer accepts '{ch}' at offset {i} in '{fragment}' but the lexer's decoder doesn't know what to do with it (so the lexer token matching rule is probably wrong)");
+                    }
+                }
+            }
+        } else {
+            // If there is a match, cap.get(0) is never None (per the
+            // Regex crate documentation).
+            unreachable!()
+        }
+        tail = &tail[(m0.end())..];
+    }
+    if !tail.is_empty() {
+        panic!("failed to decode '{tail}': it did not match {rx}");
+    } else {
+        name
+    }
+}
+
+fn capture_possible_subscript_glyphs(lex: &mut logos::Lexer<Token>) -> String {
+    dbg!(&lex.slice());
+    const RX_GLYPHS: LazyRegex = LazyRegex::new("(@sub_(?<glyphname>[^@]+)@)|(?<asis>[^@])");
+    decode_glyphs_by_regex(
+        "SubscriptSymexSyllable",
+        &*RX_GLYPHS,
+        lex.slice(),
+        Script::Sub,
+    )
+}
+
+fn capture_possible_superscript_glyphs(lex: &mut logos::Lexer<Token>) -> String {
+    const RX_GLYPHS: LazyRegex = LazyRegex::new("(@sup_(?<glyphname>[^@]+)@)|(?<asis>[^@])");
+    decode_glyphs_by_regex(
+        "SuperscriptSymexSyllable",
+        &*RX_GLYPHS,
+        lex.slice(),
+        Script::Super,
+    )
+}
+
+fn capture_possible_normal_glyphs(lex: &mut logos::Lexer<Token>) -> String {
+    const RX_GLYPHS: LazyRegex = LazyRegex::new("(@(?<glyphname>[^@]+)@)|(?<asis>[^@])");
+    decode_glyphs_by_regex(
+        "NormalSymexSyllable",
+        &*RX_GLYPHS,
+        lex.slice(),
+        Script::Normal,
+    )
 }
 
 /// The parser consumes these tokens.
@@ -430,14 +643,7 @@ pub(crate) enum Token {
     #[regex("@hand@|☛", priority = 20)]
     Hand,
 
-    #[regex("[.·]|@dot@")]
-    Dot,
-
-    #[regex(
-        "#|@hash@|@sub_hash@|@super_hash@",
-        capture_glyph_script,
-        priority = 20
-    )]
+    #[regex("#|@hash@|@sub_hash@|@sup_hash@", capture_glyph_script, priority = 20)]
     Hash(Script),
 
     #[token("=")]
@@ -472,26 +678,29 @@ pub(crate) enum Token {
     #[token("/")]
     Solidus,
 
-    #[token("+")]
-    Plus,
+    #[regex("[₊+⁺]|@plus@|@sub_plus@|@sup_plus@", capture_glyph_script)]
+    Plus(Script),
 
-    #[token("-")]
-    Minus,
+    #[regex("[-₋⁻]|@minus@|@sub_minus@|@sup_minus@", capture_glyph_script)]
+    Minus(Script),
 
     #[regex("×|@times@")]
     Times,
 
-    #[token("∨")]
-    LogicalOr,
+    #[regex("∨|@sub_or@|@or@|@sup_or@", capture_glyph_script)]
+    LogicalOr(Script),
 
-    #[token("∧")]
-    LogicalAnd,
+    #[regex("∧|@sub_and|@and@|@sup_and@", capture_glyph_script)]
+    LogicalAnd(Script),
 
-    // Needs to be higher priority than NormalSymexSyllable.
+    // Needs to be higher priority than NormalSymexSyllable.  If you
+    // change the representation of the dot in the token definition,
+    // please also change both DOT_CHAR and the definition of the Dot
+    // token.
     #[regex("[-+]?[0-9]+([.·]|@dot@)?", capture_normal_digits, priority = 20)]
     NormalDigits(NumericLiteral),
 
-    // Needs to be higher priority than SubscriptSymexSyllable (when that's introduced).
+    // Needs to be higher priority than SubscriptSymexSyllable.
     #[regex(
         "([₋₊]?[₀₁₂₃₄₅₆₇₈₉]|(@sub_([0-9])@))+(@sub_dot@)?",
         capture_subscript_digits,
@@ -499,20 +708,46 @@ pub(crate) enum Token {
     )]
     SubscriptDigits(NumericLiteral),
 
-    // Needs to be higher priority than SuperscriptSymexSyllable (when that's introduced).
-    #[regex("([\u{207A}\u{207B}])?([\u{2070}\u{00B9}\u{00B2}\u{00B3}\u{2074}\u{2075}\u{2076}\u{2077}\u{2078}\u{2079}]|(@super_([0-9])@))+(@super_dot@)?", capture_superscript_digits, priority = 20)]
+    // Needs to be higher priority than SuperscriptSymexSyllable.
+    #[regex("([\u{207A}\u{207B}])?([\u{2070}\u{00B9}\u{00B2}\u{00B3}\u{2074}\u{2075}\u{2076}\u{2077}\u{2078}\u{2079}]|(@sup_([0-9])@))+(@sup_dot@)?", capture_superscript_digits, priority = 20)]
     SuperscriptDigits(NumericLiteral),
 
     // TODO: missing from this are: overbar, square, circle.
     /// The rules concerning which characters can be part of a symex
     /// are given in the TX-2 Users Handbook, section 6-3.2, "RULES
     /// FOR SYMEX FORMATION".
+    ///
+    /// We so not accept dot as part of this token becuase it behaves
+    /// differently in some circumstances (it is a macro terminator).
+    /// However it is part of a valid symex also, and so we will need
+    /// to parse it as such.
     #[regex(
-        "([0-9A-ZαβγΔελijknpqtwxyz.'_]|(@(alpha|beta|gamma|delta|eps|lambda)@))+",
-        capture_name,
+        "([0-9A-ZαβγΔελijknpqtwxyz'_]|(@(alpha|beta|gamma|delta|eps|lambda|apostrophe)@))+",
+        capture_possible_normal_glyphs,
         priority = 15
     )]
     NormalSymexSyllable(String),
+
+    // No support for superscript apostrophe, underscore.
+    #[regex(
+        "([ᴬᴮᴰᴱᴳᴴᴵᴶᴷᴸᴹᴺᴼᴾᴿᵀᵁⱽᵂ⁰¹²³⁴⁵⁶⁷⁸⁹ⁱʲᵏⁿᵖᵗʷˣʸᶻ]|ꟲ|ꟳ|ꟴ|(@sup_([0-9A-Zijknpqtwxyz]|alpha|beta|gamma|delta|eps|lambda|apostrophe)@))+",
+        capture_possible_superscript_glyphs,
+        priority = 15
+    )]
+    SuperscriptSymexSyllable(String),
+
+    // No support for superscript apostrophe, underscore.
+    #[regex(
+        "([₀₁₂₃₄₅₆₇₈₉]|(@sub_([0-9A-Zijknpqtwxyz]|alpha|beta|gamma|delta|eps|lambda|apostrophe)@))+",
+        capture_possible_subscript_glyphs,
+        priority = 15
+    )]
+    SubscriptSymexSyllable(String),
+
+    // If change the representation of the dot in the token
+    // definition, please also change DOT_CHAR.
+    #[regex("[.·̇]|@sub_dot@|@sup_dot@|@dot@", capture_glyph_script, priority = 13)]
+    Dot(Script),
 
     #[token(",")]
     Comma,
@@ -520,6 +755,11 @@ pub(crate) enum Token {
 
 impl Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut write_elevated = |script: &Script, s: &str| -> std::fmt::Result {
+            let el = elevate(*script, s);
+            write!(f, "{el}")
+        };
+
         match self {
             Token::Error(msg) => write!(f, "(error: {msg})"),
             Token::LeftBrace => f.write_char('{'),
@@ -531,11 +771,8 @@ impl Display for Token {
             Token::NotHold => f.write_char('ℏ'),
             Token::Arrow => f.write_str("->"),
             Token::Hand => f.write_char('☛'),
-            Token::Dot => f.write_char('·'),
-            Token::Hash(script) => {
-                let el = elevate(*script, "#");
-                write!(f, "{el}")
-            }
+            Token::Dot(script) => write_elevated(script, DOT_STR),
+            Token::Hash(script) => write_elevated(script, "#"),
             Token::Equals => f.write_char('='),
             Token::Pipe => f.write_char('|'),
             Token::ProperSuperset => f.write_char('⊃'),
@@ -546,11 +783,11 @@ impl Display for Token {
             Token::Intersection => f.write_char('∩'),
             Token::Union => f.write_char('∪'),
             Token::Solidus => f.write_char('/'),
-            Token::Plus => f.write_char('+'),
-            Token::Minus => f.write_char('-'),
+            Token::Plus(script) => write_elevated(script, "+"),
+            Token::Minus(script) => write_elevated(script, "-"),
             Token::Times => f.write_char('×'),
-            Token::LogicalOr => f.write_char('∨'),
-            Token::LogicalAnd => f.write_char('∧'),
+            Token::LogicalOr(script) => write_elevated(script, "∨"),
+            Token::LogicalAnd(script) => write_elevated(script, "∧"),
             Token::NormalDigits(numeric_literal) => {
                 write!(f, "{}", elevate_normal(numeric_literal.to_string()))
             }
@@ -561,6 +798,40 @@ impl Display for Token {
                 write!(f, "{}", elevate_super(numeric_literal.to_string()))
             }
             Token::NormalSymexSyllable(s) => f.write_str(s),
+            Token::SuperscriptSymexSyllable(s) => {
+                for ch in s.chars() {
+                    match superscript_char(ch) {
+                        Ok(sup_ch) => f.write_char(sup_ch),
+                        Err(_) => match ch {
+                            'α' => f.write_str("@sup_alpha@"),
+                            'β' => f.write_str("@sup_beta@"),
+                            'γ' => f.write_str("@sup_gamma@"),
+                            'Δ' => f.write_str("@sup_delta@"),
+                            'ε' => f.write_str("@sup_eps@"),
+                            'λ' => f.write_str("@sup_lambda@"),
+                            _ => write!(f, "@sup_{ch}@"),
+                        },
+                    }?;
+                }
+                Ok(())
+            }
+            Token::SubscriptSymexSyllable(s) => {
+                for ch in s.chars() {
+                    match subscript_char(ch) {
+                        Ok(sup_ch) => f.write_char(sup_ch),
+                        Err(_) => match ch {
+                            'α' => f.write_str("@sub_alpha@"),
+                            'β' => f.write_str("@sub_beta@"),
+                            'γ' => f.write_str("@sub_gamma@"),
+                            'Δ' => f.write_str("@sub_delta@"),
+                            'ε' => f.write_str("@sub_eps@"),
+                            'λ' => f.write_str("@sub_lambda@"),
+                            _ => write!(f, "@sub_{ch}@"),
+                        },
+                    }?;
+                }
+                Ok(())
+            }
             Token::Comma => f.write_char(','),
         }
     }
@@ -593,9 +864,7 @@ impl<'a> Lexer<'a> {
             Some(upper) => {
                 let offset = span.start;
                 let upper_span = upper.span();
-                dbg!(offset);
-                dbg!(&upper_span);
-                dbg!((upper_span.start + offset)..(upper_span.end + offset))
+                (upper_span.start + offset)..(upper_span.end + offset)
             }
         }
     }
@@ -615,7 +884,7 @@ impl<'a> Lexer<'a> {
         match upper.next() {
             None => None,
             Some(Ok(token_from_upper)) => Some(Ok(token_from_upper)),
-            Some(Err(_)) => {
+            Some(Err(())) => {
                 // Instead of returning Err we return an error token
                 // in order to allow the parser to attempt recovery.
                 let msg: String = Unrecognised {
@@ -696,10 +965,7 @@ impl<'a> Iterator for SpannedIter<'a> {
     type Item = (Result<Token, Unrecognised<'a>>, Span);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let span = self.lexer.span();
-        match self.lexer.next() {
-            Some(result) => Some((result, span)),
-            None => None,
-        }
+        let token = self.lexer.next();
+        token.map(|t| (t, self.lexer.span()))
     }
 }
