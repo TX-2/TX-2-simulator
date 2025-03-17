@@ -229,7 +229,7 @@ fn capture_subscript_digits(lex: &mut logos::Lexer<Token>) -> NumericLiteral {
             ));
         }
     };
-    dbg!(&parts_cap);
+
     let sign: Option<Sign> = extract_sign(&parts_cap).expect("sign should be valid if present");
     let digits_part = &parts_cap["digits"];
     let has_trailing_dot: bool = parts_cap.name("dot").is_some();
@@ -326,7 +326,6 @@ fn capture_superscript_digits(lex: &mut logos::Lexer<Token>) -> NumericLiteral {
             ));
         }
     };
-    dbg!(&parts_cap);
     let digits_part = &parts_cap["digits"];
     let sign: Option<Sign> = extract_sign(&parts_cap).expect("sign should be valid if present");
     let has_trailing_dot: bool = parts_cap.name("dot").is_some();
@@ -573,7 +572,6 @@ fn decode_glyphs_by_regex(tokname: &'static str, rx: &Regex, text: &str, script:
 }
 
 fn capture_possible_subscript_glyphs(lex: &mut logos::Lexer<Token>) -> String {
-    dbg!(&lex.slice());
     const RX_GLYPHS: LazyRegex = LazyRegex::new("(@sub_(?<glyphname>[^@]+)@)|(?<asis>[^@])");
     decode_glyphs_by_regex(
         "SubscriptSymexSyllable",
@@ -637,7 +635,7 @@ pub(crate) enum Token {
     #[regex("\u{0305}h|ℏ|@hbar@")] // U+0305 is combining overline.
     NotHold,
 
-    #[regex("@arr@|->", priority = 20)]
+    #[regex("@arr@|->|\u{2192}", priority = 20)]
     Arrow,
 
     #[regex("@hand@|☛", priority = 20)]

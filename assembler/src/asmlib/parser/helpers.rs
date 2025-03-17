@@ -330,6 +330,105 @@ pub(super) fn is_register_name(name: &str) -> bool {
     matches!(name, "A" | "B" | "C" | "D" | "E")
 }
 
+#[test]
+fn test_name_from_glyph_roundtrips() {
+    for initial in '#'..'☛' {
+        match name_from_glyph(initial) {
+            Some(name) => match glyph_from_name(name) {
+                Some(returned) => {
+                    assert_eq!(initial, returned,
+                                   "Character '{initial}' mapped to glyph name '{name}' but '{name}' maps to character '{returned}'");
+                }
+                None => {
+                    panic!("Character '{initial}' mapped to glyph name '{name}' but '{name}' maps to nothing");
+                }
+            },
+            None => (),
+        }
+    }
+}
+
+pub(crate) fn name_from_glyph(ch: char) -> Option<&'static str> {
+    match ch {
+        '#' => Some("hash"),
+        '(' => Some("lparen"),
+        ')' => Some("rparen"),
+        '+' => Some("+"),
+        '-' => Some("minus"),
+        '/' => Some("divide"),
+        '0' => Some("0"),
+        '1' => Some("1"),
+        '2' => Some("2"),
+        '3' => Some("3"),
+        '4' => Some("4"),
+        '5' => Some("5"),
+        '6' => Some("6"),
+        '7' => Some("7"),
+        '8' => Some("8"),
+        '9' => Some("9"),
+        '?' => Some("?"),
+        'A' => Some("A"),
+        'B' => Some("B"),
+        'C' => Some("C"),
+        'D' => Some("D"),
+        'E' => Some("E"),
+        'F' => Some("F"),
+        'G' => Some("G"),
+        'H' => Some("H"),
+        'I' => Some("I"),
+        'J' => Some("J"),
+        'K' => Some("K"),
+        'L' => Some("L"),
+        'M' => Some("M"),
+        'N' => Some("N"),
+        'O' => Some("O"),
+        'P' => Some("P"),
+        'Q' => Some("Q"),
+        'R' => Some("R"),
+        'S' => Some("S"),
+        'T' => Some("T"),
+        'U' => Some("U"),
+        'V' => Some("V"),
+        'W' => Some("W"),
+        'X' => Some("X"),
+        'Y' => Some("Y"),
+        'Z' => Some("Z"),
+        '\'' => Some("apostrophe"),
+        '\u{00B7}' => Some("dot"),
+        '\u{2192}' => Some("arr"),
+        '\u{2283}' => Some("sup"),
+        '\u{24CB}' => Some("circled_v"),
+        '\u{25A1}' => Some("square"),
+        '\u{25A3}' => Some("rect_dash"),
+        '\u{25CB}' => Some("circle"),
+        '_' => Some("underscore"),
+        'i' => Some("i"),
+        'j' => Some("j"),
+        'k' => Some("k"),
+        'n' => Some("n"),
+        'p' => Some("p"),
+        'q' => Some("q"),
+        't' => Some("t"),
+        'w' => Some("w"),
+        'x' => Some("x"),
+        'y' => Some("y"),
+        'z' => Some("z"),
+        '|' => Some("pipe"),
+        '×' => Some("times"),
+        'Δ' => Some("delta"),
+        'α' => Some("alpha"),
+        'β' => Some("beta"),
+        'γ' => Some("gamma"),
+        'ε' => Some("eps"),
+        'λ' => Some("lambda"),
+        '∧' => Some("and"),
+        '∨' => Some("or"),
+        '≡' => Some("hamb"),
+        '☛' => Some("hand"),
+        _ => None,
+    }
+}
+
 fn glyph_from_name(name: &str) -> Option<char> {
     let ch = match name {
         "dot" => '\u{00B7}', // centre dot, not full-stop.

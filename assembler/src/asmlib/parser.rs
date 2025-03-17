@@ -138,7 +138,8 @@ where
     }
 
     symex::symex_syllable(Script::Normal)
-        .try_map_with(|mnemonic, extra| match opcode_code(mnemonic.as_str()) {
+        .filter(|mnemonic| opcode_code(mnemonic).is_some())
+        .try_map_with(|mnemonic, extra| match opcode_code(&mnemonic.as_str()) {
             Some(code) => Ok(opcode_to_literal(code, extra.span())),
             None => Err(Rich::custom(
                 extra.span(),
@@ -187,7 +188,8 @@ where
                 just(Tok::LeftParen(script_required)),
                 just(Tok::RightParen(script_required)),
             )
-            .map(move |expr| Atom::Parens(script_required, Box::new(expr)));
+            .map(move |expr| Atom::Parens(script_required, Box::new(expr)))
+            .labelled("parenthesised arithmetic expression");
 
         // Parse {E} where E is some expression.  Since tags are
         // allowed inside RC-blocks, we should parse E as a
@@ -196,13 +198,14 @@ where
         let register_containing = arithmetic_expr
             .clone()
             .delimited_by(just(Tok::LeftBrace), just(Tok::RightBrace))
-            .map_with(|expr, extra| Atom::RcRef(extra.span(), Box::new(expr)));
+            .map_with(|expr, extra| Atom::RcRef(extra.span(), Box::new(expr)))
+            .labelled("RC-word");
 
         // Parse a literal, symbol, #, or (recursively) an expression in parentheses.
         let atom = choice((
-            opcode().map(Atom::from),
             literal(script_required).map(Atom::from),
             here(script_required).map(Atom::from),
+            opcode().map(Atom::from),
             symbol(script_required)
                 .map_with(move |name, extra| Atom::Symbol(extra.span(), script_required, name)),
             register_containing,
@@ -370,7 +373,6 @@ where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
     let name_match = move |actual: &str| -> bool {
-        dbg!(actual);
         match which {
             Metacommand::Decimal => {
                 matches!(actual, "DECIMAL" | "DECIMA" | "DECIM" | "DECI" | "DEC")
@@ -480,9 +482,10 @@ where
     where
         I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
     {
-        symex::parse_symex(Script::Normal)
+        (symex::parse_symex(Script::Normal)
             .then_ignore(just(Tok::Equals))
-            .then(untagged_program_instruction())
+            .then(untagged_program_instruction()))
+        .labelled("equality (assignment)")
     }
 
     choice((
@@ -563,6 +566,7 @@ where
             // (normal-case) pipe symbol.
             choice((literal_address_expression(), symbolic_address_expression()))
                 .then_ignore(just(Tok::Pipe))
+                .labelled("origin specification")
         }
 
         let optional_origin_with_statement = origin()

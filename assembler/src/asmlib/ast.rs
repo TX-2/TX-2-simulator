@@ -15,6 +15,7 @@ use crate::eval::{HereValue, SymbolLookupFailure, SymbolValue};
 use crate::symtab::{LookupOperation, RcAllocator, RcBlock};
 
 use super::eval::{Evaluate, SymbolContext, SymbolDefinition, SymbolLookup, SymbolUse};
+use super::parser::helpers;
 use super::state::NumeralMode;
 use super::symbol::SymbolName;
 use super::symtab::SymbolTable;
@@ -148,7 +149,21 @@ impl std::fmt::Display for LiteralValue {
     }
 }
 
-// TODO: avoid the panics from this function.
+fn write_glyph_name(f: &mut Formatter<'_>, elevation: &Script, ch: char) -> fmt::Result {
+    let prefix: &'static str = match elevation {
+        Script::Sub => "sub_",
+        Script::Super => "sup_",
+        Script::Normal => "",
+    };
+    let name: &'static str = match helpers::name_from_glyph(ch) {
+        Some(n) => n,
+        None => {
+            panic!("There is no glyph name for character '{ch}'");
+        }
+    };
+    write!(f, "@{prefix}{name}@")
+}
+
 fn format_elevated_chars(f: &mut Formatter<'_>, elevation: &Script, s: &str) -> fmt::Result {
     match elevation {
         Script::Normal => {
@@ -160,8 +175,8 @@ fn format_elevated_chars(f: &mut Formatter<'_>, elevation: &Script, s: &str) -> 
                     Ok(superchar) => {
                         f.write_char(superchar)?;
                     }
-                    Err(e) => {
-                        panic!("cannot find superscript equivalent of '{ch}': {e}");
+                    Err(_) => {
+                        write_glyph_name(f, elevation, ch)?;
                     }
                 }
             }
@@ -172,8 +187,8 @@ fn format_elevated_chars(f: &mut Formatter<'_>, elevation: &Script, s: &str) -> 
                     Ok(sub) => {
                         f.write_char(sub)?;
                     }
-                    Err(e) => {
-                        panic!("cannot find superscript equivalent of '{ch}': {e}");
+                    Err(_) => {
+                        write_glyph_name(f, elevation, ch)?;
                     }
                 }
             }

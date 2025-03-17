@@ -329,7 +329,7 @@ fn test_addition_on_constants() {
     assert_eq!(program1.chunks[0].words[0], u36!(0o10));
 
     let program2 =
-        assemble_source("100| 6 @add@ 2\n", Default::default()).expect("program is valid");
+        assemble_source("100| 6 @plus@ 2\n", Default::default()).expect("program is valid");
     assert_eq!(program2.chunks[0].words[0], u36!(0o10));
 }
 
