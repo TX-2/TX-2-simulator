@@ -178,12 +178,16 @@ where
     // We use recursive here to prevent the parser blowing the stack
     // when trying to parse inputs which have parentheses - that is,
     // inputs that require recursion.
-    recursive(|arithmetic_expr| {
+    recursive(move |arithmetic_expr| {
         // Parse (E) where E is some expression.
+        // TODO: use `script_required`
         let parenthesised_arithmetic_expression = arithmetic_expr // this is the recursive call
             .clone()
-            .delimited_by(just(Tok::LeftParen), just(Tok::RightParen))
-            .map(|expr| Atom::Parens(Box::new(expr)));
+            .delimited_by(
+                just(Tok::LeftParen(script_required)),
+                just(Tok::RightParen(script_required)),
+            )
+            .map(move |expr| Atom::Parens(script_required, Box::new(expr)));
 
         // Parse {E} where E is some expression.  Since tags are
         // allowed inside RC-blocks, we should parse E as a
@@ -195,17 +199,16 @@ where
             .map_with(|expr, extra| Atom::RcRef(extra.span(), Box::new(expr)));
 
         // Parse a literal, symbol, #, or (recursively) an expression in parentheses.
-        let atom = opcode()
-            .map(Atom::from)
-            .or(choice((
-                literal(script_required).map(Atom::from),
-                here(script_required).map(Atom::from),
-                symbol(script_required)
-                    .map_with(move |name, extra| Atom::Symbol(extra.span(), script_required, name)),
-                register_containing,
-                parenthesised_arithmetic_expression,
-            )))
-            .boxed();
+        let atom = choice((
+            opcode().map(Atom::from),
+            literal(script_required).map(Atom::from),
+            here(script_required).map(Atom::from),
+            symbol(script_required)
+                .map_with(move |name, extra| Atom::Symbol(extra.span(), script_required, name)),
+            register_containing,
+            parenthesised_arithmetic_expression,
+        ))
+        .boxed();
 
         // Parse an arithmetic operator (e.g. plus, times) followed by an atom.
         let operator_with_atom = terminal::operator(script_required).then(atom.clone());

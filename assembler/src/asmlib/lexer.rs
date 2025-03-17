@@ -616,13 +616,13 @@ pub(crate) enum Token {
 
     /// The parser currently only handled parenthesised expressions in
     /// normal script.
-    #[token("(")]
-    LeftParen,
+    #[regex(r"\(|@lparen@|@sub_lparen@|@sup_lparen@", capture_glyph_script)]
+    LeftParen(Script),
 
     /// The parser currently only handled parenthesised expressions in
     /// normal script.
-    #[token(")")]
-    RightParen,
+    #[regex(r"\)|@rparen@|@sub_rparen@|@sup_rparen@", capture_glyph_script)]
+    RightParen(Script),
 
     /// Accept either 'h' or ':' signalling the hold bit (of the
     /// instruction word) should be set.  The documentation seems to
@@ -765,8 +765,8 @@ impl Display for Token {
             Token::LeftBrace => f.write_char('{'),
             Token::RightBrace => f.write_char('}'),
             Token::Newline => f.write_char('\n'),
-            Token::LeftParen => f.write_char('('),
-            Token::RightParen => f.write_char(')'),
+            Token::LeftParen(script) => write_elevated(script, "("),
+            Token::RightParen(script) => write_elevated(script, ")"),
             Token::Hold => f.write_char('h'),
             Token::NotHold => f.write_char('ℏ'),
             Token::Arrow => f.write_str("->"),

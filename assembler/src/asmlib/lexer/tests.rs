@@ -29,7 +29,7 @@ fn test_lexer_next_newline_rparen() {
     let mut lex = Lexer::new(input);
     assert_eq!(lex.next(), Some(Ok(Token::Newline)));
     assert_eq!(lex.span(), 0..1);
-    assert_eq!(lex.next(), Some(Ok(Token::RightParen)));
+    assert_eq!(lex.next(), Some(Ok(Token::RightParen(Script::Normal))));
     assert_eq!(lex.span(), 1..2);
     assert_eq!(lex.next(), None);
 }
@@ -681,12 +681,53 @@ fn test_hold_does_not_combine_with_symex() {
 
 #[test]
 fn test_left_paren() {
-    assert_eq!(scan_tokens_only("("), Ok(vec![Token::LeftParen,]));
+    assert_eq!(
+        scan_tokens_only("("),
+        Ok(vec![Token::LeftParen(Script::Normal),])
+    );
+    assert_eq!(
+        scan_tokens_only("@lparen@"),
+        Ok(vec![Token::LeftParen(Script::Normal),])
+    );
+    assert_eq!(
+        scan_tokens_only("@sub_lparen@"),
+        Ok(vec![Token::LeftParen(Script::Sub),])
+    );
+    assert_eq!(
+        scan_tokens_only("@sup_lparen@"),
+        Ok(vec![Token::LeftParen(Script::Super),])
+    );
 }
 
 #[test]
 fn test_right_paren() {
-    assert_eq!(scan_tokens_only(")"), Ok(vec![Token::RightParen,]));
+    let input = ")";
+    assert_eq!(
+        scan_tokens_only(input),
+        Ok(vec![Token::RightParen(Script::Normal)]),
+        "failed to correctly parse '{input}'",
+    );
+
+    let input = "@rparen@";
+    assert_eq!(
+        scan_tokens_only(input),
+        Ok(vec![Token::RightParen(Script::Normal),]),
+        "failed to correctly parse '{input}'",
+    );
+
+    let input = "@sub_rparen@";
+    assert_eq!(
+        scan_tokens_only(input),
+        Ok(vec![Token::RightParen(Script::Sub),]),
+        "failed to correctly parse '{input}'",
+    );
+
+    let input = "@sup_rparen@";
+    assert_eq!(
+        scan_tokens_only(input),
+        Ok(vec![Token::RightParen(Script::Super),]),
+        "failed to correctly parse '{input}'",
+    );
 }
 
 #[test]

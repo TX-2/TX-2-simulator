@@ -336,7 +336,7 @@ pub(crate) enum Atom {
     Literal(LiteralValue),
     Symbol(Span, Script, SymbolName),
     Here(Script), // the special symbol '#'.
-    Parens(Box<ArithmeticExpression>),
+    Parens(Script, Box<ArithmeticExpression>),
     RcRef(Span, Box<ArithmeticExpression>),
 }
 
@@ -352,7 +352,7 @@ impl Atom {
                     SymbolUse::Reference(SymbolContext::from((script, *span))),
                 ));
             }
-            Atom::Parens(expr) => {
+            Atom::Parens(_script, expr) => {
                 result.extend(expr.symbol_uses());
             }
         }
@@ -388,7 +388,7 @@ impl Evaluate for Atom {
                 }
                 .map(|value| value.shl(elevation.shift()))
             }
-            Atom::Parens(expr) => expr.evaluate(target_address, symtab, rc_allocator, op),
+            Atom::Parens(_script, expr) => expr.evaluate(target_address, symtab, rc_allocator, op),
             Atom::RcRef(span, content) => {
                 let value: Unsigned36Bit =
                     content.evaluate(target_address, symtab, rc_allocator, op)?;
@@ -437,9 +437,7 @@ impl std::fmt::Display for Atom {
             Atom::Symbol(_span, elevation, name) => {
                 elevated_string(&name.to_string(), elevation).fmt(f)
             }
-            Atom::Parens(expr) => {
-                write!(f, "({expr})")
-            }
+            Atom::Parens(script, expr) => elevated_string(&expr.to_string(), script).fmt(f),
             Atom::RcRef(_span, _rc_reference) => {
                 // The RcRef doesn't itself record the content of the
                 // {...} because that goes into the rc-block itself.

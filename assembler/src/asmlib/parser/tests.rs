@@ -1207,9 +1207,12 @@ fn test_arithmetic_expression_two_atoms() {
 fn test_parenthesised_expression() {
     assert_eq!(
         parse_successfully_with("(1)", arithmetic_expression(Script::Normal), no_state_setup),
-        ArithmeticExpression::from(Atom::Parens(Box::new(ArithmeticExpression::from(
-            Atom::from(LiteralValue::from((span(1..2), Script::Normal, u36!(1))))
-        ))))
+        ArithmeticExpression::from(Atom::Parens(
+            Script::Normal,
+            Box::new(ArithmeticExpression::from(Atom::from(LiteralValue::from(
+                (span(1..2), Script::Normal, u36!(1))
+            ))))
+        ))
     );
 }
 
