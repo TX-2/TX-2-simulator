@@ -205,30 +205,42 @@ fn test_subscript_literal_dec() {
 }
 
 #[test]
-fn test_program_instruction_fragment() {
+fn test_program_instruction_fragments() {
     assert_eq!(
-        parse_successfully_with("₃₁", program_instruction_fragment(), no_state_setup),
-        InstructionFragment::from((span(0..6), Script::Sub, Unsigned36Bit::from(0o31_u32),))
+        parse_successfully_with("₃₁", program_instruction_fragments(), no_state_setup),
+        vec![InstructionFragment::from((
+            span(0..6),
+            Script::Sub,
+            Unsigned36Bit::from(0o31_u32),
+        ))],
     );
     assert_eq!(
-        parse_successfully_with("⁶³", program_instruction_fragment(), no_state_setup),
-        InstructionFragment::from((span(0..5), Script::Super, Unsigned36Bit::from(0o63_u32),))
+        parse_successfully_with("⁶³", program_instruction_fragments(), no_state_setup),
+        vec![InstructionFragment::from((
+            span(0..5),
+            Script::Super,
+            Unsigned36Bit::from(0o63_u32),
+        ))]
     );
     assert_eq!(
-        parse_successfully_with("6510", program_instruction_fragment(), no_state_setup),
-        InstructionFragment::from((span(0..4), Script::Normal, Unsigned36Bit::from(0o6510_u32),))
+        parse_successfully_with("6510", program_instruction_fragments(), no_state_setup),
+        vec![InstructionFragment::from((
+            span(0..4),
+            Script::Normal,
+            Unsigned36Bit::from(0o6510_u32),
+        ))]
     );
 }
 
 #[test]
 fn test_assemble_octal_literal() {
     assert_eq!(
-        parse_successfully_with(" 177777 ", program_instruction_fragment(), no_state_setup),
-        InstructionFragment::from((
+        parse_successfully_with(" 177777 ", program_instruction_fragments(), no_state_setup),
+        vec![InstructionFragment::from((
             span(1..7),
             Script::Normal,
             Unsigned36Bit::from(0o177777_u32)
-        )),
+        )),]
     );
 }
 
@@ -992,8 +1004,16 @@ fn test_opcode() {
         operand_address: OperandAddress::Direct(Address::ZERO),
     });
     assert_eq!(
-        parse_successfully_with("AUX", super::opcode(), no_state_setup),
-        LiteralValue::from((span(0..3), Script::Normal, expected_instruction.bits(),))
+        parse_successfully_with(
+            "AUX",
+            super::arithmetic_expression(Script::Normal),
+            no_state_setup
+        ),
+        ArithmeticExpression::from(Atom::Literal(LiteralValue::from((
+            span(0..3),
+            Script::Normal,
+            expected_instruction.bits(),
+        ))))
     );
 }
 

@@ -181,12 +181,6 @@ where
         .labelled("opcode")
 }
 
-fn build_arithmetic_expression(
-    (head, tail): (Atom, Vec<(Operator, Atom)>),
-) -> ArithmeticExpression {
-    ArithmeticExpression::with_tail(head, tail)
-}
-
 /// Parse a sequence of values (symbolic or literal) and arithmetic
 /// operators.
 ///
@@ -251,7 +245,7 @@ where
         // An arithmetic expression is an atom followed by zero or
         // more pairs of (arithmetic operator, atom).
         atom.then(operator_with_atom.repeated().collect())
-            .map(build_arithmetic_expression)
+            .map(|(head, tail)| ArithmeticExpression::with_tail(head, tail))
     })
 }
 
@@ -277,26 +271,22 @@ where
         .labelled("tag definition")
 }
 
-fn program_instruction_fragment<'srcbody, I>(
-) -> impl Parser<'srcbody, I, InstructionFragment, Extra<'srcbody>>
-where
-    I: Input<'srcbody, Token = Tok, Span = Span> + ValueInput<'srcbody>,
-{
-    let single_script_fragment =
-        |script_required| arithmetic_expression(script_required).map(InstructionFragment::from);
-
-    choice((
-        single_script_fragment(Script::Normal),
-        single_script_fragment(Script::Super),
-        single_script_fragment(Script::Sub),
-    ))
-}
-
 fn program_instruction_fragments<'srcbody, I>(
 ) -> impl Parser<'srcbody, I, Vec<InstructionFragment>, Extra<'srcbody>>
 where
     I: Input<'srcbody, Token = Tok, Span = Span> + ValueInput<'srcbody>,
 {
+    let program_instruction_fragment = || {
+        let single_script_fragment =
+            |script_required| arithmetic_expression(script_required).map(InstructionFragment::from);
+
+        choice((
+            single_script_fragment(Script::Normal),
+            single_script_fragment(Script::Super),
+            single_script_fragment(Script::Sub),
+        ))
+    };
+
     program_instruction_fragment()
         .repeated()
         .at_least(1)
