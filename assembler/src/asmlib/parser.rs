@@ -230,7 +230,6 @@ where
             // inputs that require recursion.
             recursive(move |arithmetic_expr| {
                 // Parse (E) where E is some expression.
-                // TODO: use `script_required`
                 let parenthesised_arithmetic_expression = arithmetic_expr // this is the recursive call
                     .clone()
                     .delimited_by(
