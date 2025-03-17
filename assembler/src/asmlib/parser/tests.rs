@@ -514,11 +514,13 @@ fn test_comment_in_rc_block() {
                         parts: vec![InstructionFragment::from(ArithmeticExpression::from(
                             Atom::RcRef(
                                 span(0..10),
-                                Box::new(InstructionFragment::Arithmetic(
-                                    ArithmeticExpression::from(Atom::Literal(LiteralValue::from(
-                                        (span(1..2), Script::Normal, Unsigned36Bit::ONE),
-                                    )))
-                                ))
+                                vec![InstructionFragment::Arithmetic(ArithmeticExpression::from(
+                                    Atom::Literal(LiteralValue::from((
+                                        span(1..2),
+                                        Script::Normal,
+                                        Unsigned36Bit::ONE
+                                    ),))
+                                ))]
                             )
                         ))]
                     }

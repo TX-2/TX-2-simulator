@@ -352,7 +352,7 @@ pub(crate) enum Atom {
     Symbol(Span, Script, SymbolName),
     Here(Script), // the special symbol '#'.
     Parens(Script, Box<ArithmeticExpression>),
-    RcRef(Span, Box<InstructionFragment>),
+    RcRef(Span, Vec<InstructionFragment>),
 }
 
 impl Atom {
@@ -404,9 +404,14 @@ impl Evaluate for Atom {
                 .map(|value| value.shl(elevation.shift()))
             }
             Atom::Parens(_script, expr) => expr.evaluate(target_address, symtab, rc_allocator, op),
-            Atom::RcRef(span, content) => {
-                let value: Unsigned36Bit =
-                    content.evaluate(target_address, symtab, rc_allocator, op)?;
+            Atom::RcRef(span, fragments) => {
+                let value: Unsigned36Bit = evaluate_instruction_fragments(
+                    fragments,
+                    target_address,
+                    symtab,
+                    rc_allocator,
+                    op,
+                )?;
                 let addr: Address = rc_allocator.allocate(*span, value);
                 Ok(addr.into())
             }
@@ -629,6 +634,29 @@ impl UntaggedProgramInstruction {
     }
 }
 
+fn evaluate_instruction_fragments<R: RcAllocator>(
+    parts: &[InstructionFragment],
+    target_address: &HereValue,
+    symtab: &mut SymbolTable,
+    rc_allocator: &mut R,
+    op: &mut LookupOperation,
+) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+    fn or_looked_up_value<R: RcAllocator>(
+        accumulator: Unsigned36Bit,
+        frag: &InstructionFragment,
+        target_address: &HereValue,
+        symtab: &mut SymbolTable,
+        rc_allocator: &mut R,
+        op: &mut LookupOperation,
+    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+        Ok(accumulator | frag.evaluate(target_address, symtab, rc_allocator, op)?)
+    }
+
+    parts.iter().try_fold(Unsigned36Bit::ZERO, |acc, curr| {
+        or_looked_up_value(acc, curr, target_address, symtab, rc_allocator, op)
+    })
+}
+
 impl Evaluate for UntaggedProgramInstruction {
     fn evaluate<R: RcAllocator>(
         &self,
@@ -637,27 +665,18 @@ impl Evaluate for UntaggedProgramInstruction {
         rc_allocator: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-        fn or_looked_up_value<R: RcAllocator>(
-            accumulator: Unsigned36Bit,
-            frag: &InstructionFragment,
-            target_address: &HereValue,
-            symtab: &mut SymbolTable,
-            rc_allocator: &mut R,
-            op: &mut LookupOperation,
-        ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-            Ok(accumulator | frag.evaluate(target_address, symtab, rc_allocator, op)?)
-        }
-
-        self.parts
-            .iter()
-            .try_fold(Unsigned36Bit::ZERO, |acc, curr| {
-                or_looked_up_value(acc, curr, target_address, symtab, rc_allocator, op)
-            })
-            .map(|word| match self.holdbit {
-                HoldBit::Hold => word | HELD_MASK,
-                HoldBit::NotHold => word & !HELD_MASK,
-                HoldBit::Unspecified => word,
-            })
+        evaluate_instruction_fragments(
+            self.parts.as_slice(),
+            target_address,
+            symtab,
+            rc_allocator,
+            op,
+        )
+        .map(|word| match self.holdbit {
+            HoldBit::Hold => word | HELD_MASK,
+            HoldBit::NotHold => word & !HELD_MASK,
+            HoldBit::Unspecified => word,
+        })
     }
 }
 

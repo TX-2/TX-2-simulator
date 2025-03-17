@@ -208,7 +208,7 @@ fn program_instruction_fragments<'srcbody, I>(
 where
     I: Input<'srcbody, Token = Tok, Span = Span> + ValueInput<'srcbody>,
 {
-    let instruction_fragment = recursive(move |program_instruction_fragment| {
+    recursive(move |program_instruction_fragments| {
         // Parse a sequence of values (symbolic or literal) and arithmetic
         // operators.
         //
@@ -244,10 +244,10 @@ where
                 // allowed inside RC-blocks, we should parse E as a
                 // TaggedProgramInstruction.  But if we try to do that without
                 // using recursive() we will blow the stack, unfortunately.
-                let register_containing = program_instruction_fragment
+                let register_containing = program_instruction_fragments
                     .clone()
                     .delimited_by(just(Tok::LeftBrace), just(Tok::RightBrace))
-                    .map_with(|fragment, extra| Atom::RcRef(extra.span(), Box::new(fragment)))
+                    .map_with(|fragments, extra| Atom::RcRef(extra.span(), fragments))
                     .labelled("RC-word");
 
                 // Parse a literal, symbol, #, or (recursively) an expression in parentheses.
@@ -281,13 +281,11 @@ where
             single_script_fragment(Script::Super),
             single_script_fragment(Script::Sub),
         ))
-    });
-
-    instruction_fragment
         .repeated()
         .at_least(1)
         .collect()
         .labelled("program instruction")
+    })
 }
 
 /// Macro terminators are described in section 6-4.5 of the TX-2 User Handbook.
