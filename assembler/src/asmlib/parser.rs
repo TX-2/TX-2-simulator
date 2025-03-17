@@ -171,7 +171,7 @@ where
 
     symex::symex_syllable(Script::Normal)
         .filter(|mnemonic| opcode_code(mnemonic).is_some())
-        .try_map_with(|mnemonic, extra| match opcode_code(&mnemonic.as_str()) {
+        .try_map_with(|mnemonic, extra| match opcode_code(mnemonic.as_str()) {
             Some(code) => Ok(opcode_to_literal(code, extra.span())),
             None => Err(Rich::custom(
                 extra.span(),
@@ -720,8 +720,7 @@ where
         0,
         tokens.iter().map(|(_, span)| span.end).max().unwrap_or(0),
     );
-    let token_stream: Mi =
-        Stream::from_iter(tokens.into_iter()).map(end_span, |unchanged| unchanged);
+    let token_stream: Mi = Stream::from_iter(tokens).map(end_span, |unchanged| unchanged);
     parser
         .parse_with_state(token_stream, &mut state)
         .into_output_errors()

@@ -186,9 +186,9 @@ fn extract_sign(cap: &Captures) -> Result<Option<Sign>, String> {
         (false, false) => Ok(None),
         (false, true) => Ok(Some(Sign::Minus)),
         (true, false) => Ok(Some(Sign::Plus)),
-        (true, true) => Err(format!(
+        (true, true) => Err(
             "expected to find a single optional leading sign in a numeric literal but found both + and -"
-        )),
+                .to_string()),
     }
 }
 
@@ -199,7 +199,7 @@ fn capture_subscript_digits(lex: &mut logos::Lexer<Token>) -> NumericLiteral {
             lex.slice()
         );
     };
-    const RX_PARTS: LazyRegex = LazyRegex::new(concat!(
+    static CAPTURE_SUBSCRIPT_DIGITS_RX_PARTS: LazyRegex = LazyRegex::new(concat!(
         "((?<plus>\u{208A})|(?<minus>\u{208B}))?",
         "(?<digits>",
         "([₀₁₂₃₄₅₆₇₈₉]",
@@ -208,18 +208,18 @@ fn capture_subscript_digits(lex: &mut logos::Lexer<Token>) -> NumericLiteral {
         ")+)",
         "(?<dot>@sub_dot@)?",
     ));
-    const RX_DIGIT: LazyRegex = LazyRegex::new(concat!(
+    static RX_DIGIT: LazyRegex = LazyRegex::new(concat!(
         "(?<sub>[₀₁₂₃₄₅₆₇₈₉])",
         "|",
         "(@sub_(?<markup_digit>[0-9])@)",
     ));
-    let parts_cap = match (*RX_PARTS).captures(lex.slice()) {
+    let parts_cap = match (*CAPTURE_SUBSCRIPT_DIGITS_RX_PARTS).captures(lex.slice()) {
         Some(cap) => cap,
         None => {
             internal_error(format!(
                 "token {} does not match parts regex {}",
                 lex.slice(),
-                RX_PARTS.as_str()
+                CAPTURE_SUBSCRIPT_DIGITS_RX_PARTS.as_str()
             ));
         }
     };
@@ -294,7 +294,7 @@ fn capture_superscript_digits(lex: &mut logos::Lexer<Token>) -> NumericLiteral {
             lex.slice()
         );
     };
-    const RX_PARTS: LazyRegex = LazyRegex::new(concat!(
+    static RX_PARTS: LazyRegex = LazyRegex::new(concat!(
         "((?<plus>\u{207A})|(?<minus>\u{207B}))?",
         "(?<digits>",
         "([\u{2070}\u{00B9}\u{00B2}\u{00B3}\u{2074}\u{2075}\u{2076}\u{2077}\u{2078}\u{2079}]",
@@ -303,7 +303,7 @@ fn capture_superscript_digits(lex: &mut logos::Lexer<Token>) -> NumericLiteral {
         ")+)",
         "(?<dot>@sup_dot@)?",
     ));
-    const RX_DIGIT: LazyRegex = LazyRegex::new(concat!(
+    static RX_DIGIT: LazyRegex = LazyRegex::new(concat!(
         "(?<sup>[\u{2070}\u{00B9}\u{00B2}\u{00B3}\u{2074}\u{2075}\u{2076}\u{2077}\u{2078}\u{2079}])",
         "|",
         "(@sup_(?<markup_digit>[0-9])@)",
@@ -382,7 +382,7 @@ fn capture_superscript_digits(lex: &mut logos::Lexer<Token>) -> NumericLiteral {
 }
 
 fn capture_name(lex: &mut logos::Lexer<Token>) -> String {
-    const RX_GREEK_GLYPHS: LazyRegex =
+    static RX_GREEK_GLYPHS: LazyRegex =
         LazyRegex::new("(@(?<glyph>alpha|beta|gamma|delta|eps|lambda|apostrophe)@|[^@])+");
     let slice = lex.slice();
     let mut name: String = String::with_capacity(slice.len());
@@ -562,30 +562,30 @@ fn decode_glyphs_by_regex(tokname: &'static str, rx: &Regex, text: &str, script:
 }
 
 fn capture_possible_subscript_glyphs(lex: &mut logos::Lexer<Token>) -> String {
-    const RX_GLYPHS: LazyRegex = LazyRegex::new("(@sub_(?<glyphname>[^@]+)@)|(?<asis>[^@])");
+    static RX_GLYPHS: LazyRegex = LazyRegex::new("(@sub_(?<glyphname>[^@]+)@)|(?<asis>[^@])");
     decode_glyphs_by_regex(
         "SubscriptSymexSyllable",
-        &*RX_GLYPHS,
+        &RX_GLYPHS,
         lex.slice(),
         Script::Sub,
     )
 }
 
 fn capture_possible_superscript_glyphs(lex: &mut logos::Lexer<Token>) -> String {
-    const RX_GLYPHS: LazyRegex = LazyRegex::new("(@sup_(?<glyphname>[^@]+)@)|(?<asis>[^@])");
+    static RX_GLYPHS: LazyRegex = LazyRegex::new("(@sup_(?<glyphname>[^@]+)@)|(?<asis>[^@])");
     decode_glyphs_by_regex(
         "SuperscriptSymexSyllable",
-        &*RX_GLYPHS,
+        &RX_GLYPHS,
         lex.slice(),
         Script::Super,
     )
 }
 
 fn capture_possible_normal_glyphs(lex: &mut logos::Lexer<Token>) -> String {
-    const RX_GLYPHS: LazyRegex = LazyRegex::new("(@(?<glyphname>[^@]+)@)|(?<asis>[^@])");
+    static RX_GLYPHS: LazyRegex = LazyRegex::new("(@(?<glyphname>[^@]+)@)|(?<asis>[^@])");
     decode_glyphs_by_regex(
         "NormalSymexSyllable",
-        &*RX_GLYPHS,
+        &RX_GLYPHS,
         lex.slice(),
         Script::Normal,
     )

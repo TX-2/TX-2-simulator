@@ -520,9 +520,7 @@ pub(crate) fn at_glyph(script: Script, name: &str) -> Option<char> {
         Script::Sub => "sub_",
         Script::Super => "super_",
     };
-    name.strip_prefix(prefix)
-        .map(|tail| glyph_from_name(tail))
-        .flatten()
+    name.strip_prefix(prefix).and_then(glyph_from_name)
 }
 
 #[test]
