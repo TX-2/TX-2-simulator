@@ -352,7 +352,7 @@ pub(crate) enum Atom {
     Symbol(Span, Script, SymbolName),
     Here(Script), // the special symbol '#'.
     Parens(Script, Box<ArithmeticExpression>),
-    RcRef(Span, Box<ArithmeticExpression>),
+    RcRef(Span, Box<InstructionFragment>),
 }
 
 impl Atom {

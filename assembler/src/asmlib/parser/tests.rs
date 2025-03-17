@@ -5,7 +5,7 @@ use std::{collections::BTreeMap, fmt::Debug};
 use base::prelude::*;
 use base::u36;
 
-use chumsky::prelude::*;
+use chumsky::{error::Rich, input::ValueInput, prelude::Input, Parser};
 
 use super::super::{
     ast::{
@@ -514,13 +514,11 @@ fn test_comment_in_rc_block() {
                         parts: vec![InstructionFragment::from(ArithmeticExpression::from(
                             Atom::RcRef(
                                 span(0..10),
-                                Box::new(ArithmeticExpression::from(Atom::Literal(
-                                    LiteralValue::from((
-                                        span(1..2),
-                                        Script::Normal,
-                                        Unsigned36Bit::ONE
-                                    ),)
-                                ))),
+                                Box::new(InstructionFragment::Arithmetic(
+                                    ArithmeticExpression::from(Atom::Literal(LiteralValue::from(
+                                        (span(1..2), Script::Normal, Unsigned36Bit::ONE),
+                                    )))
+                                ))
                             )
                         ))]
                     }
@@ -994,6 +992,36 @@ fn test_metacommand_octal() {
     );
 }
 
+type Extra<'a> = super::Extra<'a>;
+fn extract_sole_expr<'a>(
+    mut frags: Vec<InstructionFragment>,
+    span: Span,
+) -> Result<ArithmeticExpression, Rich<'a, Tok>> {
+    if let Some(InstructionFragment::Arithmetic(expr)) = frags.pop() {
+        if frags.is_empty() {
+            Ok(expr)
+        } else {
+            Err(Rich::custom(span, "too many fragments".to_string()))
+        }
+    } else {
+        Err(Rich::custom(
+            span,
+            "expected one fragment, not zero".to_string(),
+        ))
+    }
+}
+
+/// This is just a convenience function so that our tests'
+/// expected-values don't have to contain so much boiler-plate.
+fn arithmetic_expression<'a, I>(
+    _script_required: Script,
+) -> impl Parser<'a, I, ArithmeticExpression, Extra<'a>>
+where
+    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
+{
+    program_instruction_fragments().try_map(extract_sole_expr)
+}
+
 #[test]
 fn test_opcode() {
     let expected_instruction = Instruction::from(&SymbolicInstruction {
@@ -1006,14 +1034,16 @@ fn test_opcode() {
     assert_eq!(
         parse_successfully_with(
             "AUX",
-            super::arithmetic_expression(Script::Normal),
+            super::program_instruction_fragments(),
             no_state_setup
         ),
-        ArithmeticExpression::from(Atom::Literal(LiteralValue::from((
-            span(0..3),
-            Script::Normal,
-            expected_instruction.bits(),
-        ))))
+        vec![InstructionFragment::Arithmetic(ArithmeticExpression::from(
+            Atom::Literal(LiteralValue::from((
+                span(0..3),
+                Script::Normal,
+                expected_instruction.bits(),
+            )))
+        ))],
     );
 }
 

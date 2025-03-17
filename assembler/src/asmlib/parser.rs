@@ -181,74 +181,6 @@ where
         .labelled("opcode")
 }
 
-/// Parse a sequence of values (symbolic or literal) and arithmetic
-/// operators.
-///
-/// BAT² is not an identifier but a sequence[1] whose value is
-/// computed by OR-ing the value of the symex BAT with the value of
-/// the literal "²" (which is 2<<30, or 0o20_000_000_000).  But BAT²
-/// is itself not an arithmetic_expression (because there is a script
-/// change).
-///
-/// You could argue that (BAT²) should be parsed as an atom.  Right
-/// now that doesn't work because all the elements of an expression
-/// (i.e. everything within the parens) need to have the same script.
-///
-/// [1] I use "sequence" in the paragraph above to avoid saying
-/// "expression" or "instruction fragment".
-fn arithmetic_expression<'a, I>(
-    script_required: Script,
-) -> impl Parser<'a, I, ArithmeticExpression, Extra<'a>> + Clone
-where
-    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
-{
-    // We use recursive here to prevent the parser blowing the stack
-    // when trying to parse inputs which have parentheses - that is,
-    // inputs that require recursion.
-    recursive(move |arithmetic_expr| {
-        // Parse (E) where E is some expression.
-        // TODO: use `script_required`
-        let parenthesised_arithmetic_expression = arithmetic_expr // this is the recursive call
-            .clone()
-            .delimited_by(
-                just(Tok::LeftParen(script_required)),
-                just(Tok::RightParen(script_required)),
-            )
-            .map(move |expr| Atom::Parens(script_required, Box::new(expr)))
-            .labelled("parenthesised arithmetic expression");
-
-        // Parse {E} where E is some expression.  Since tags are
-        // allowed inside RC-blocks, we should parse E as a
-        // TaggedProgramInstruction.  But if we try to do that without
-        // using recursive() we will blow the stack, unfortunately.
-        let register_containing = arithmetic_expr
-            .clone()
-            .delimited_by(just(Tok::LeftBrace), just(Tok::RightBrace))
-            .map_with(|expr, extra| Atom::RcRef(extra.span(), Box::new(expr)))
-            .labelled("RC-word");
-
-        // Parse a literal, symbol, #, or (recursively) an expression in parentheses.
-        let atom = choice((
-            literal(script_required).map(Atom::from),
-            here(script_required).map(Atom::from),
-            opcode().map(Atom::from),
-            symbol(script_required)
-                .map_with(move |name, extra| Atom::Symbol(extra.span(), script_required, name)),
-            register_containing,
-            parenthesised_arithmetic_expression,
-        ))
-        .boxed();
-
-        // Parse an arithmetic operator (e.g. plus, times) followed by an atom.
-        let operator_with_atom = terminal::operator(script_required).then(atom.clone());
-
-        // An arithmetic expression is an atom followed by zero or
-        // more pairs of (arithmetic operator, atom).
-        atom.then(operator_with_atom.repeated().collect())
-            .map(|(head, tail)| ArithmeticExpression::with_tail(head, tail))
-    })
-}
-
 fn symbol<'a, I>(script_required: Script) -> impl Parser<'a, I, SymbolName, Extra<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
@@ -276,18 +208,82 @@ fn program_instruction_fragments<'srcbody, I>(
 where
     I: Input<'srcbody, Token = Tok, Span = Span> + ValueInput<'srcbody>,
 {
-    let program_instruction_fragment = || {
+    let instruction_fragment = recursive(move |program_instruction_fragment| {
+        // Parse a sequence of values (symbolic or literal) and arithmetic
+        // operators.
+        //
+        // BAT² is not an identifier but a sequence[1] whose value is
+        // computed by OR-ing the value of the symex BAT with the value of
+        // the literal "²" (which is 2<<30, or 0o20_000_000_000).  But BAT²
+        // is itself not an arithmetic_expression (because there is a script
+        // change).
+        //
+        // You could argue that (BAT²) should be parsed as an atom.  Right
+        // now that doesn't work because all the elements of an expression
+        // (i.e. everything within the parens) need to have the same script.
+        //
+        // [1] I use "sequence" in the paragraph above to avoid saying
+        // "expression" or "instruction fragment".
+        let arith_expr = |script_required: Script| {
+            // We use recursive here to prevent the parser blowing the stack
+            // when trying to parse inputs which have parentheses - that is,
+            // inputs that require recursion.
+            recursive(move |arithmetic_expr| {
+                // Parse (E) where E is some expression.
+                // TODO: use `script_required`
+                let parenthesised_arithmetic_expression = arithmetic_expr // this is the recursive call
+                    .clone()
+                    .delimited_by(
+                        just(Tok::LeftParen(script_required)),
+                        just(Tok::RightParen(script_required)),
+                    )
+                    .map(move |expr| Atom::Parens(script_required, Box::new(expr)))
+                    .labelled("parenthesised arithmetic expression");
+
+                // Parse {E} where E is some expression.  Since tags are
+                // allowed inside RC-blocks, we should parse E as a
+                // TaggedProgramInstruction.  But if we try to do that without
+                // using recursive() we will blow the stack, unfortunately.
+                let register_containing = program_instruction_fragment
+                    .clone()
+                    .delimited_by(just(Tok::LeftBrace), just(Tok::RightBrace))
+                    .map_with(|fragment, extra| Atom::RcRef(extra.span(), Box::new(fragment)))
+                    .labelled("RC-word");
+
+                // Parse a literal, symbol, #, or (recursively) an expression in parentheses.
+                let atom = choice((
+                    literal(script_required).map(Atom::from),
+                    here(script_required).map(Atom::from),
+                    opcode().map(Atom::from),
+                    symbol(script_required).map_with(move |name, extra| {
+                        Atom::Symbol(extra.span(), script_required, name)
+                    }),
+                    register_containing,
+                    parenthesised_arithmetic_expression,
+                ))
+                .boxed();
+
+                // Parse an arithmetic operator (e.g. plus, times) followed by an atom.
+                let operator_with_atom = terminal::operator(script_required).then(atom.clone());
+
+                // An arithmetic expression is an atom followed by zero or
+                // more pairs of (arithmetic operator, atom).
+                atom.then(operator_with_atom.repeated().collect())
+                    .map(|(head, tail)| ArithmeticExpression::with_tail(head, tail))
+            })
+        };
+
         let single_script_fragment =
-            |script_required| arithmetic_expression(script_required).map(InstructionFragment::from);
+            |script_required| arith_expr.clone()(script_required).map(InstructionFragment::from);
 
         choice((
             single_script_fragment(Script::Normal),
             single_script_fragment(Script::Super),
             single_script_fragment(Script::Sub),
         ))
-    };
+    });
 
-    program_instruction_fragment()
+    instruction_fragment
         .repeated()
         .at_least(1)
         .collect()
