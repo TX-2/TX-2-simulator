@@ -1,14 +1,10 @@
 #[cfg(test)]
 use std::ops::Range;
-use std::{
-    collections::BTreeMap,
-    fmt::{Debug, Display},
-};
+use std::{collections::BTreeMap, fmt::Debug};
 
 use base::prelude::*;
 use base::u36;
 
-use chumsky::error::Rich;
 use chumsky::prelude::*;
 
 use super::super::{
@@ -26,36 +22,6 @@ use super::*;
 
 #[cfg(test)]
 use super::Span;
-
-fn errors_as_string<T: Display>(errors: &[Rich<'_, T>]) -> String {
-    let n = errors.len();
-    errors
-        .iter()
-        .enumerate()
-        .map(|(i, e)| (i + 1, e))
-        .map(|(i, e)| format!("error {i}/{n}: {e}\n"))
-        .collect::<String>()
-}
-
-#[cfg(test)]
-fn parse_test_input<'a, I, O, P>(input_text: I, parser: P) -> Result<O, String>
-where
-    I: Input<'a, Token = Tok, Span = SimpleSpan> + ValueInput<'a>,
-    P: Parser<'a, I, O, Extra<'a>>,
-{
-    let mut state: SimpleState<NumeralMode> = SimpleState::from(NumeralMode::default());
-    let (output, errors) = parser
-        .parse_with_state(input_text, &mut state)
-        .into_output_errors();
-    if !errors.is_empty() {
-        Err(errors_as_string(errors.as_slice()))
-    } else {
-        match output {
-            Some(out) => Ok(out),
-            None => Err("the parser generated no output".to_string()),
-        }
-    }
-}
 
 type StateInitFn = fn(s: &mut NumeralMode);
 
