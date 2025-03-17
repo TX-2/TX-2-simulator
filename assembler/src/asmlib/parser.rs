@@ -1,4 +1,7 @@
-use std::ops::{Deref, Range, Shl};
+use std::{
+    fmt::Debug,
+    ops::{Deref, Range, Shl},
+};
 
 pub(crate) mod helpers;
 mod symex;
@@ -21,6 +24,7 @@ use super::symbol::SymbolName;
 use super::types::*;
 use base::charset::Script;
 use base::prelude::*;
+use helpers::Sign;
 
 pub(crate) type Extra<'a> = Full<Rich<'a, lexer::Token>, SimpleState<NumeralMode>, ()>;
 use lexer::Token as Tok;
@@ -29,7 +33,14 @@ fn literal<'a, I>(script_required: Script) -> impl Parser<'a, I, LiteralValue, E
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
-    let parser = match script_required {
+    let maybe_sign = choice((
+        just(Tok::Plus(script_required)).to(Sign::Plus),
+        just(Tok::Minus(script_required)).to(Sign::Minus),
+    ))
+    .map_with(|maybe_sign, extra| (maybe_sign, extra.span()))
+    .or_not();
+
+    let digits = match script_required {
         Script::Normal => select! {
             Tok::NormalDigits(n) => n,
         }
@@ -42,13 +53,34 @@ where
             Tok::SubscriptDigits(n) => n,
         }
         .boxed(),
-    };
+    }
+    .map_with(|digits, extra| (digits, extra.span()));
 
-    parser
-        .try_map_with(move |number, extra| {
+    // We want to accept "-1" as a signed number, but not "- 1".  So
+    // we reject tokens which have a gap between them.  This also
+    // means there cannot be an annotation between them, despite the
+    // fact that annotations are supposed to be otherwise invisible.
+    fn immediately_adjoining<T: Debug, U: Debug>(found: &(Option<(T, Span)>, (U, Span))) -> bool {
+        match found.0.as_ref() {
+            Some((_, sign_span)) => sign_span.end == found.1 .1.start,
+            _ => true,
+        }
+    }
+
+    fn discard_spans<T, U>(spanned: (Option<(T, Span)>, (U, Span))) -> (Option<T>, U) {
+        (spanned.0.map(|x| x.0), spanned.1 .0)
+    }
+
+    let signed_number = maybe_sign
+        .then(digits)
+        .filter(immediately_adjoining)
+        .map(discard_spans);
+
+    signed_number
+        .try_map_with(move |(maybe_sign, number), extra| {
             let state: &SimpleState<NumeralMode> = extra.state();
             let mode: &NumeralMode = state.deref();
-            match number.make_num(mode) {
+            match number.make_num(maybe_sign, mode) {
                 Ok(value) => Ok(LiteralValue::from((extra.span(), script_required, value))),
                 Err(e) => Err(Rich::custom(extra.span(), e.to_string())),
             }

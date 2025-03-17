@@ -54,7 +54,6 @@ impl Error for Unrecognised<'_> {}
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub(crate) struct NumericLiteral {
-    sign: Option<Sign>,
     /// The digits comprising the literal. We don't know whether the
     /// base is decimal or octal yet.
     digits: String,
@@ -63,9 +62,6 @@ pub(crate) struct NumericLiteral {
 
 impl Display for NumericLiteral {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(sign) = self.sign.as_ref() {
-            write!(f, "{}", sign)?;
-        }
         f.write_str(self.digits.as_str())?;
         if self.has_trailing_dot {
             f.write_char(DOT_CHAR)?;
@@ -77,17 +73,19 @@ impl Display for NumericLiteral {
 impl NumericLiteral {
     pub(crate) fn make_num(
         &self,
+        maybe_sign: Option<Sign>,
         mode: &NumeralMode,
     ) -> Result<Unsigned36Bit, StringConversionFailed> {
-        helpers::make_num(self.sign, self.digits.as_str(), self.has_trailing_dot, mode)
+        helpers::make_num(
+            maybe_sign,
+            self.digits.as_str(),
+            self.has_trailing_dot,
+            mode,
+        )
     }
 
     pub(crate) fn has_trailing_dot(&self) -> bool {
         self.has_trailing_dot
-    }
-
-    pub(crate) fn sign(&self) -> Option<&Sign> {
-        self.sign.as_ref()
     }
 
     pub(crate) fn take_digits(self) -> String {
@@ -111,8 +109,6 @@ fn determine_string_script(s: &str) -> Result<Script, ()> {
         } else {
             Script::Normal
         };
-        dbg!(ch);
-        dbg!(current);
         decision = Some(combine(decision, current)?);
     }
     match decision {
@@ -132,7 +128,6 @@ fn capture_glyph_script(lex: &mut logos::Lexer<Token>) -> Script {
     } else {
         // It's not a glyph.  So we need to figure it out by examining
         // the string.
-        dbg!(&s);
         match determine_string_script(s) {
             Ok(script) => script,
             Err(_) => {
@@ -181,7 +176,6 @@ fn capture_normal_digits(lex: &mut logos::Lexer<Token>) -> NumericLiteral {
         }
     }
     NumericLiteral {
-        sign,
         digits,
         has_trailing_dot,
     }
@@ -230,7 +224,6 @@ fn capture_subscript_digits(lex: &mut logos::Lexer<Token>) -> NumericLiteral {
         }
     };
 
-    let sign: Option<Sign> = extract_sign(&parts_cap).expect("sign should be valid if present");
     let digits_part = &parts_cap["digits"];
     let has_trailing_dot: bool = parts_cap.name("dot").is_some();
     let mut digits: String = String::with_capacity(lex.slice().len());
@@ -289,7 +282,6 @@ fn capture_subscript_digits(lex: &mut logos::Lexer<Token>) -> NumericLiteral {
         }
     }
     NumericLiteral {
-        sign,
         digits,
         has_trailing_dot,
     }
@@ -327,7 +319,6 @@ fn capture_superscript_digits(lex: &mut logos::Lexer<Token>) -> NumericLiteral {
         }
     };
     let digits_part = &parts_cap["digits"];
-    let sign: Option<Sign> = extract_sign(&parts_cap).expect("sign should be valid if present");
     let has_trailing_dot: bool = parts_cap.name("dot").is_some();
     let mut digits: String = String::with_capacity(lex.slice().len());
     for cap in (*RX_DIGIT).captures_iter(digits_part) {
@@ -385,7 +376,6 @@ fn capture_superscript_digits(lex: &mut logos::Lexer<Token>) -> NumericLiteral {
         }
     }
     NumericLiteral {
-        sign,
         digits,
         has_trailing_dot,
     }
@@ -694,20 +684,22 @@ pub(crate) enum Token {
     // Needs to be higher priority than NormalSymexSyllable.  If you
     // change the representation of the dot in the token definition,
     // please also change both DOT_CHAR and the definition of the Dot
-    // token.
-    #[regex("[-+]?[0-9]+([.·]|@dot@)?", capture_normal_digits, priority = 20)]
+    // token.  Any unary "-" is handled in the parser.
+    #[regex("[0-9]+([.·]|@dot@)?", capture_normal_digits, priority = 20)]
     NormalDigits(NumericLiteral),
 
     // Needs to be higher priority than SubscriptSymexSyllable.
+    // Any unary "-" is handled in the parser.
     #[regex(
-        "([₋₊]?[₀₁₂₃₄₅₆₇₈₉]|(@sub_([0-9])@))+(@sub_dot@)?",
+        "([₀₁₂₃₄₅₆₇₈₉]|(@sub_([0-9])@))+(@sub_dot@)?",
         capture_subscript_digits,
         priority = 20
     )]
     SubscriptDigits(NumericLiteral),
 
     // Needs to be higher priority than SuperscriptSymexSyllable.
-    #[regex("([\u{207A}\u{207B}])?([\u{2070}\u{00B9}\u{00B2}\u{00B3}\u{2074}\u{2075}\u{2076}\u{2077}\u{2078}\u{2079}]|(@sup_([0-9])@))+(@sup_dot@)?", capture_superscript_digits, priority = 20)]
+    // Any unary "-" is handled in the parser.
+    #[regex("([\u{2070}\u{00B9}\u{00B2}\u{00B3}\u{2074}\u{2075}\u{2076}\u{2077}\u{2078}\u{2079}]|(@sup_([0-9])@))+(@sup_dot@)?", capture_superscript_digits, priority = 20)]
     SuperscriptDigits(NumericLiteral),
 
     // TODO: missing from this are: overbar, square, circle.

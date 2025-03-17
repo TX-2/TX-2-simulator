@@ -668,26 +668,6 @@ fn assemble_pass3(
     Ok((binary, final_symbols))
 }
 
-fn pos_line_column(s: &str, pos: usize) -> (usize, usize) {
-    let mut line = 1;
-    let mut column = 1;
-    for (i, ch) in s.chars().enumerate() {
-        if i == pos {
-            break;
-        }
-        match ch {
-            '\n' => {
-                column = 1;
-                line += 1;
-            }
-            _ => {
-                column += 1;
-            }
-        }
-    }
-    (line, column)
-}
-
 fn cleanup_control_chars(input: String) -> String {
     let mut output: String = String::with_capacity(input.len());
     for ch in input.chars() {
@@ -713,11 +693,8 @@ fn fail_with_diagnostics(
             //for e in errors.iter() {
             //    eprintln!("error: {e:?}");
             //}
-            let span = first.span().start;
-            let (line, column) = pos_line_column(source_file_body, span);
             AssemblerFailure::SyntaxError {
-                line: line as u32,
-                column: Some(column),
+                location: LineAndColumn::from((source_file_body, first.span())),
                 msg: cleanup_control_chars(first.to_string()),
             }
         }
@@ -852,7 +829,6 @@ pub fn assemble_file(
         .map_err(|e| AssemblerFailure::IoErrorOnInput {
             filename: input_file_name.to_owned(),
             error: e,
-            line_number: None,
         })?;
 
     let source_file_body: String = {
@@ -862,7 +838,6 @@ pub fn assemble_file(
                 return Err(AssemblerFailure::IoErrorOnInput {
                     filename: input_file_name.to_owned(),
                     error: e,
-                    line_number: None,
                 })
             }
             Ok(_) => body,

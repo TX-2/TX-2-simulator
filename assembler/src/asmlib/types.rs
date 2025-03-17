@@ -11,7 +11,48 @@ use base::prelude::{Address, Unsigned18Bit};
 
 /// LineNumber values are usually derived from
 /// LocatedSpan::line_location() which returns a u32.
-pub(crate) type LineNumber = u32;
+#[derive(Debug, PartialEq, Eq, Hash)]
+pub struct LineAndColumn {
+    line: u32,
+    column: u32,
+    span: Span,
+}
+
+impl Display for LineAndColumn {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "line {}, column {}", self.line, self.column)
+    }
+}
+
+impl From<(&str, &Span)> for LineAndColumn {
+    fn from((body, span): (&str, &Span)) -> Self {
+        const START_COL: u32 = 1;
+        const START_LINE: u32 = 1;
+
+        let mut line = START_LINE;
+        let mut column = START_COL;
+        let pos = span.start;
+        for (i, ch) in body.chars().enumerate() {
+            if i == pos {
+                break;
+            }
+            match ch {
+                '\n' => {
+                    column = START_COL;
+                    line += 1;
+                }
+                _ => {
+                    column += 1;
+                }
+            }
+        }
+        LineAndColumn {
+            span: *span,
+            line,
+            column,
+        }
+    }
+}
 
 pub(crate) type Span = SimpleSpan;
 
@@ -123,7 +164,6 @@ pub enum AssemblerFailure {
     IoErrorOnInput {
         filename: OsString,
         error: IoError,
-        line_number: Option<LineNumber>,
     },
     IoErrorOnOutput {
         filename: PathBuf,
@@ -135,8 +175,7 @@ pub enum AssemblerFailure {
     },
     // TODO: InvalidProgram perhaps should be an enum which includes SyntaxError.
     SyntaxError {
-        line: LineNumber,
-        column: Option<usize>,
+        location: LineAndColumn,
         msg: String,
     },
     MachineLimitExceeded(MachineLimitExceededFailure),
@@ -171,16 +210,9 @@ impl Display for AssemblerFailure {
             AssemblerFailure::IoErrorOnStdout { error } => {
                 write!(f, "error writing on stdout: {}", error)
             }
-            AssemblerFailure::IoErrorOnInput {
-                filename,
-                error,
-                line_number,
-            } => {
+            AssemblerFailure::IoErrorOnInput { filename, error } => {
                 f.write_str("I/O error reading input file ")?;
                 write_os_string(f, filename)?;
-                if let Some(n) = line_number {
-                    write!(f, " at line {}", n)?;
-                }
                 write!(f, ": {}", error)
             }
             AssemblerFailure::IoErrorOnOutput { filename, error } => {
@@ -190,16 +222,9 @@ impl Display for AssemblerFailure {
                     filename.display(),
                 )
             }
-            AssemblerFailure::SyntaxError { line, column, msg } => match column {
-                Some(col) => {
-                    // We count columns from 0 in the implementation, but 1 in error
-                    // messages.
-                    write!(f, "line {}, column {}: {}", line, col + 1, msg)
-                }
-                None => {
-                    write!(f, "line {}: {}", line, msg)
-                }
-            },
+            AssemblerFailure::SyntaxError { location, msg } => {
+                write!(f, "{}: {}", location, msg)
+            }
             AssemblerFailure::InvalidProgram { span: _, msg } => {
                 // TODO: converting a span into line and column
                 // numbers requires access to the text of the input.

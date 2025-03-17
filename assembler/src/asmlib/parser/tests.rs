@@ -695,6 +695,26 @@ fn test_multi_syllable_tag() {
 }
 
 #[test]
+fn test_infix_minus_interpreted_as_subtraction() {
+    let head = Atom::Literal(LiteralValue::from((span(0..1), Script::Normal, u36!(4))));
+    for (input, rhs_span) in [("4 - 2", 4..5), ("4-2", 2..3), ("4 -2", 3..4)] {
+        let tail = vec![(
+            Operator::Subtract,
+            Atom::Literal(LiteralValue::from((
+                span(rhs_span),
+                Script::Normal,
+                u36!(2),
+            ))),
+        )];
+        assert_eq!(
+            parse_successfully_with(input, arithmetic_expression(Script::Normal), no_state_setup),
+            ArithmeticExpression::with_tail(head.clone(), tail),
+            "incorrect parse for '{input}'"
+        );
+    }
+}
+
+#[test]
 fn test_manuscript_with_multi_syllable_tag() {
     assert_eq!(
         parse_successfully_with(

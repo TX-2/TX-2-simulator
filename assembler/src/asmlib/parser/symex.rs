@@ -3,7 +3,7 @@ use chumsky::input::ValueInput;
 use chumsky::prelude::*;
 use chumsky::Parser;
 
-use super::super::lexer::{NumericLiteral, DOT_CHAR, DOT_STR};
+use super::super::lexer::{DOT_CHAR, DOT_STR};
 use super::super::symbol::SymbolName;
 use super::helpers::{self, DecodedOpcode};
 use super::{Extra, Span, Tok};
@@ -35,21 +35,17 @@ pub(super) fn digits_as_symex<'a, I>(
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
-    fn accept(literal: &NumericLiteral) -> bool {
-        literal.sign().is_none()
-    }
-
     let digits_as_symex = match script_required {
         Script::Normal => select! {
-            Tok::NormalDigits(literal) if accept(&literal) => literal,
+            Tok::NormalDigits(literal) => literal,
         }
         .boxed(),
         Script::Super => select! {
-            Tok::SuperscriptDigits(literal) if accept(&literal) => literal,
+            Tok::SuperscriptDigits(literal) => literal,
         }
         .boxed(),
         Script::Sub => select! {
-            Tok::SubscriptDigits(literal) if accept(&literal) => literal,
+            Tok::SubscriptDigits(literal) => literal,
         }
         .boxed(),
     };
