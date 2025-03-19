@@ -1538,3 +1538,35 @@ fn test_macro_definition_as_entire_source_file() {
     };
     assert_eq!(got, expected);
 }
+
+#[test]
+fn test_asterisk_for_deferred_addressing() {
+    // This instruction is taken from the code for Leonard
+    // Kleinrock's network simulation, at address 200762.
+    assert_eq!(
+        parse_successfully_with(
+            "@sup_1@DPX@sub_0@ *B",
+            program_instruction_fragments(),
+            no_state_setup
+        ),
+        vec![
+            InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::Literal(
+                LiteralValue::from((span(0..7), Script::Super, u36!(0o1)))
+            ))),
+            InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::Literal(
+                LiteralValue::from((span(7..10), Script::Normal, u36!(0o1600000000)))
+            ))),
+            InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::Literal(
+                LiteralValue::from((span(10..17), Script::Sub, Unsigned36Bit::ZERO))
+            ),)),
+            InstructionFragment::DeferredAddressing,
+            InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::Symbol(
+                span(19..20),
+                Script::Normal,
+                SymbolName {
+                    canonical: "B".to_string()
+                }
+            ),)),
+        ]
+    );
+}

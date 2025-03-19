@@ -473,6 +473,7 @@ pub(crate) enum InstructionFragment {
     /// to the Users Handbook, but currently this implementation
     /// allows them in subscript/superscript too.
     Arithmetic(ArithmeticExpression),
+    DeferredAddressing,
     // TODO: subscript/superscript atom (if the `Arithmetic` variant
     // disallows subscript/superscript).
 }
@@ -484,6 +485,7 @@ impl InstructionFragment {
             InstructionFragment::Arithmetic(expr) => {
                 result.extend(expr.symbol_uses());
             }
+            InstructionFragment::DeferredAddressing => (),
         }
         result.into_iter()
     }
@@ -501,6 +503,7 @@ impl Evaluate for InstructionFragment {
             InstructionFragment::Arithmetic(expr) => {
                 expr.evaluate(target_address, symtab, rc_allocator, op)
             }
+            InstructionFragment::DeferredAddressing => Ok(DEFER_BIT),
         }
     }
 }

@@ -637,6 +637,16 @@ pub(crate) enum Token {
     #[token("=")]
     Equals,
 
+    /// Asterisk is used quite heavily (indicating deferred addressing)
+    /// but while the TX-2 supports superscript and subscript
+    /// asterisks, they don't seem to be used.  They are not valid as
+    /// part of a symex (see User handbook, section 6-2.3) and are not
+    /// macro terminators (6-4.5).  However, they are valid as part of
+    /// a superposed character sequence making up a compound-character
+    /// macro name.
+    #[token("*")]
+    Asterisk,
+
     #[token("|")]
     Pipe,
 
@@ -761,6 +771,7 @@ impl Display for Token {
             Token::NotHold => f.write_char('ℏ'),
             Token::Arrow => f.write_str("->"),
             Token::Hand => f.write_char('☛'),
+            Token::Asterisk => f.write_char('*'),
             Token::Dot(script) => write_elevated(script, DOT_STR),
             Token::Hash(script) => write_elevated(script, "#"),
             Token::Equals => f.write_char('='),

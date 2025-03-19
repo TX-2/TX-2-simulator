@@ -49,6 +49,10 @@ use super::subword;
 
 mod format;
 
+pub const DEFER_BIT: Unsigned36Bit = Unsigned36Bit {
+    bits: 0o400_000_u64,
+};
+
 /// `Quarter` describes which quarter of a word an SKM instruction
 /// will operate on.  See the [`index_address_to_bit_selection`]
 /// function.
@@ -199,7 +203,7 @@ impl Inst for Instruction {
     }
 
     fn is_deferred_addressing(&self) -> bool {
-        self.0 & 0o400_000_u64 != 0
+        self.0 & DEFER_BIT != 0
     }
 
     fn operand_address(&self) -> OperandAddress {
@@ -619,6 +623,22 @@ mod tests {
                 index: Unsigned6Bit::ONE,
                 opcode: Opcode::Jpx,
                 configuration: config_value(30),
+                held: false,
+            })
+        );
+    }
+
+    #[test]
+    fn test_disassemble_dpx() {
+        // This instruction is taken from the code for Leonard
+        // Kleinrock's network simulation, at address 200762.
+        assert_eq!(
+            disassemble_word(u36!(0o011_600_777_605_u64)),
+            Ok(SymbolicInstruction {
+                operand_address: OperandAddress::Deferred(addr(0o377605)),
+                index: Unsigned6Bit::try_from(0_u8).unwrap(),
+                opcode: Opcode::Dpx,
+                configuration: config_value(1),
                 held: false,
             })
         );
