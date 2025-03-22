@@ -191,10 +191,25 @@ pub enum Colour {
     Red,
 }
 
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+pub enum LwCase {
+    Lower,
+    Upper,
+}
+
+impl LwCase {
+    fn as_str(&self) -> &'static str {
+        match self {
+            LwCase::Lower => "lower",
+            LwCase::Upper => "upper",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct LincolnState {
     pub script: Script,
-    pub uppercase: bool,
+    pub case: LwCase,
     pub colour: Colour,
 }
 
@@ -212,7 +227,7 @@ impl Default for LincolnState {
         // User Handbook.
         Self {
             script: Script::Normal,
-            uppercase: false,
+            case: LwCase::Lower,
             colour: Colour::Black,
         }
     }
@@ -233,7 +248,7 @@ impl LincolnState {
     /// other direction.
     fn on_carriage_return(&mut self) {
         self.script = Script::Normal;
-        self.uppercase = false;
+        self.case = LwCase::Lower;
     }
 }
 
@@ -245,11 +260,7 @@ impl From<&LincolnState> for LincolnStateTextInfo {
                 Script::Super => "Superscript",
                 Script::Sub => "Subscript",
             },
-            case: if state.uppercase {
-                "Uppercase"
-            } else {
-                "Lower case"
-            },
+            case: state.case.as_str(),
             colour: match state.colour {
                 Colour::Black => "Black",
                 Colour::Red => "Red",
@@ -302,7 +313,10 @@ fn unprintable(c: Unsigned6Bit, state: LincolnState) -> DescribedChar {
     }
 }
 fn bycase(lower: char, upper: char, state: &LincolnState) -> Option<char> {
-    Some(if state.uppercase { upper } else { lower })
+    Some(match state.case {
+        LwCase::Upper => upper,
+        LwCase::Lower => lower,
+    })
 }
 
 /// Perform any state changes implied by a character code.
@@ -327,10 +341,10 @@ pub fn lincoln_writer_state_update(lin_ch: Unsigned6Bit, state: &mut LincolnStat
             state.colour = Colour::Red;
         }
         0o74 => {
-            state.uppercase = false;
+            state.case = LwCase::Lower;
         }
         0o75 => {
-            state.uppercase = true;
+            state.case = LwCase::Upper;
         }
         _ => (),
     }
@@ -618,12 +632,12 @@ impl UnicodeToLincolnMapping {
     pub fn new() -> UnicodeToLincolnMapping {
         let mut m: HashMap<char, LincChar> = HashMap::new();
         for script in [Script::Normal, Script::Super, Script::Sub] {
-            for uppercase in [false, true] {
+            for case in [LwCase::Lower, LwCase::Upper] {
                 for value in 0..=0o77 {
                     if let Ok(ch) = Unsigned6Bit::try_from(value) {
                         let mut state = LincolnState {
                             script,
-                            uppercase,
+                            case,
                             colour: Colour::Black,
                         };
                         if let Some(DescribedChar {
@@ -650,7 +664,7 @@ impl UnicodeToLincolnMapping {
         s: &str,
     ) -> Result<Vec<Unsigned6Bit>, UnicodeToLincolnConversionFailure> {
         let mut result: Vec<Unsigned6Bit> = Vec::with_capacity(s.len());
-        let mut current_uppercase: Option<bool> = None;
+        let mut current_case: Option<LwCase> = None;
         let mut current_script: Option<Script> = None;
 
         for ch in s.chars() {
@@ -659,15 +673,14 @@ impl UnicodeToLincolnMapping {
                     return Err(UnicodeToLincolnConversionFailure::NoMapping(ch));
                 }
                 Some(lch) => {
-                    if Some(lch.state.uppercase) == current_uppercase {
+                    if Some(lch.state.case) == current_case {
                         // Nothing to do
                     } else {
-                        result.push(if lch.state.uppercase {
-                            u6!(0o75)
-                        } else {
-                            u6!(0o74)
+                        result.push(match lch.state.case {
+                            LwCase::Upper => u6!(0o75),
+                            LwCase::Lower => u6!(0o74),
                         });
-                        current_uppercase = Some(lch.state.uppercase);
+                        current_case = Some(lch.state.case);
                     }
 
                     if Some(lch.state.script) == current_script {

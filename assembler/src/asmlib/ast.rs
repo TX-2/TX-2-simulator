@@ -15,91 +15,13 @@ use crate::eval::{HereValue, SymbolLookupFailure, SymbolValue};
 use crate::symtab::{LookupOperation, RcAllocator, RcBlock};
 
 use super::eval::{Evaluate, SymbolContext, SymbolDefinition, SymbolLookup, SymbolUse};
-use super::parser::helpers;
+use super::glyph;
 use super::state::NumeralMode;
 use super::symbol::SymbolName;
 use super::symtab::SymbolTable;
 use super::types::{
     offset_from_origin, AssemblerFailure, BlockIdentifier, MachineLimitExceededFailure, Span,
 };
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct Elevated<T> {
-    inner: T,
-    script: Script,
-}
-
-trait AsStr {
-    fn as_str(&self) -> &str;
-}
-
-impl AsStr for &str {
-    fn as_str(&self) -> &str {
-        self
-    }
-}
-
-impl AsStr for String {
-    fn as_str(&self) -> &str {
-        self.as_str()
-    }
-}
-
-impl<T: AsStr> Display for Elevated<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self.script {
-            Script::Normal => write!(f, "{}", &self.inner.as_str()),
-            Script::Super => {
-                for ch in self.inner.as_str().chars() {
-                    match superscript_char(ch) {
-                        Ok(superchar) => {
-                            f.write_char(superchar)?;
-                        }
-                        Err(_) => {
-                            todo!("find superscript variant of {ch}")
-                        }
-                    }
-                }
-                Ok(())
-            }
-            Script::Sub => {
-                for ch in self.inner.as_str().chars() {
-                    match subscript_char(ch) {
-                        Ok(subchar) => {
-                            f.write_char(subchar)?;
-                        }
-                        Err(_) => {
-                            todo!("find subscript variant of {ch}")
-                        }
-                    }
-                }
-                Ok(())
-            }
-        }
-    }
-}
-
-impl<T> From<(Script, T)> for Elevated<T> {
-    fn from((script, inner): (Script, T)) -> Elevated<T> {
-        Elevated { inner, script }
-    }
-}
-
-pub(crate) fn elevate<T>(script: Script, inner: T) -> Elevated<T> {
-    Elevated { script, inner }
-}
-
-pub(crate) fn elevate_super<T>(inner: T) -> Elevated<T> {
-    elevate(Script::Super, inner)
-}
-
-pub(crate) fn elevate_sub<T>(inner: T) -> Elevated<T> {
-    elevate(Script::Sub, inner)
-}
-
-pub(crate) fn elevate_normal<T>(inner: T) -> Elevated<T> {
-    elevate(Script::Normal, inner)
-}
 
 /// Eventually we will support symbolic expressions.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -155,7 +77,7 @@ fn write_glyph_name(f: &mut Formatter<'_>, elevation: &Script, ch: char) -> fmt:
         Script::Super => "sup_",
         Script::Normal => "",
     };
-    let name: &'static str = match helpers::name_from_glyph(ch) {
+    let name: &'static str = match glyph::name_from_glyph(ch) {
         Some(n) => n,
         None => {
             panic!("There is no glyph name for character '{ch}'");

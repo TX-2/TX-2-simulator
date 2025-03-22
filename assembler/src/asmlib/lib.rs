@@ -4,6 +4,7 @@
 mod ast;
 mod driver;
 mod eval;
+mod glyph;
 mod lexer;
 mod parser;
 mod state;

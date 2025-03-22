@@ -11,7 +11,7 @@ use logos::Logos;
 use regex::{Captures, Regex};
 
 use super::{
-    ast::{elevate, elevate_normal, elevate_sub, elevate_super},
+    glyph::{self, elevate, elevate_normal, elevate_sub, elevate_super},
     parser::helpers::{self, Sign},
     state::NumeralMode,
 };
@@ -389,7 +389,7 @@ fn capture_name(lex: &mut logos::Lexer<Token>) -> String {
     for cap in (*RX_GREEK_GLYPHS).captures_iter(slice) {
         if let Some(got) = cap.name("glyph") {
             let glyph_name = got.as_str();
-            match helpers::at_glyph(Script::Normal, glyph_name) {
+            match glyph::at_glyph(Script::Normal, glyph_name) {
                 None => {
                     panic!("lexer matched glyph {glyph_name} but this is not a known glyph");
                 }
@@ -521,13 +521,13 @@ fn decode_glyphs_by_regex(tokname: &'static str, rx: &Regex, text: &str, script:
         let prefix = &tail[0..(m0.start())];
         if !prefix.is_empty() {
             panic!(
-                "failed to decode '{tail}': the initial prefix '{prefix}' of it did not match {rx}"
+                "while scanning token '{tokname}', failed to decode '{tail}' in script {script:?}: the initial prefix '{prefix}' of it did not match {rx}; original input was '{text}'"
             );
         }
 
         if let Some(got) = cap.name("glyphname") {
             let glyph_name = got.as_str();
-            match helpers::at_glyph(Script::Normal, glyph_name) {
+            match glyph::at_glyph(Script::Normal, glyph_name) {
                 None => {
                     panic!("lexer matched glyph {glyph_name} but this is not a known glyph");
                 }

@@ -96,7 +96,9 @@ use wasm_bindgen::prelude::*;
 use web_sys::{CanvasRenderingContext2d, TextMetrics};
 
 #[cfg(test)]
-use base::charset::{lincoln_char_to_described_char, Colour, DescribedChar, LincolnState, Script};
+use base::charset::{
+    lincoln_char_to_described_char, Colour, DescribedChar, LincolnState, LwCase, Script,
+};
 #[cfg(test)]
 use base::Unsigned6Bit;
 
@@ -1982,9 +1984,9 @@ fn known_keys_consistent_with_base_charset() {
     // implementation are consistent with the code concersion logic in
     // lincoln_char_to_described_char().
     for key in all_keys() {
-        let (uppercase, code) = match key.code {
-            Code::Near(code) => (false, code),
-            Code::Far(code) => (true, code),
+        let (case, code) = match key.code {
+            Code::Near(code) => (LwCase::Lower, code),
+            Code::Far(code) => (LwCase::Upper, code),
             Code::Unknown => {
                 event!(
                     Level::WARN,
@@ -1996,7 +1998,7 @@ fn known_keys_consistent_with_base_charset() {
         let mut state = LincolnState {
             script: Script::Normal,
             colour: Colour::Black,
-            uppercase,
+            case,
         };
         let code: Unsigned6Bit = match <Unsigned6Bit as std::convert::TryFrom<u8>>::try_from(code) {
             Ok(x) => x,
