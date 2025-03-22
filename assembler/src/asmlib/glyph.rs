@@ -17,6 +17,16 @@ pub(crate) struct Elevated<T> {
     script: Script,
 }
 
+impl<T> Elevated<T> {
+    pub(crate) fn script(&self) -> Script {
+        self.script
+    }
+
+    pub(crate) fn get(&self) -> &T {
+        &self.inner
+    }
+}
+
 trait AsStr {
     fn as_str(&self) -> &str;
 }
@@ -92,14 +102,21 @@ pub(crate) fn elevate_normal<T>(inner: T) -> Elevated<T> {
 #[test]
 fn test_name_from_glyph_roundtrips() {
     for initial in '#'..'☛' {
-        match name_from_glyph(initial) {
+        let canonical = canonicalise_char(initial);
+        let ch = if canonical != initial {
+            // We don't expect alternate versions to round-trip.
+            canonical
+        } else {
+            initial
+        };
+        match name_from_glyph(ch) {
             Some(name) => match glyph_from_name(name) {
                 Some(returned) => {
-                    assert_eq!(initial, returned,
-                                   "Character '{initial}' mapped to glyph name '{name}' but '{name}' maps to character '{returned}'");
+                    assert_eq!(ch, returned,
+                               "Character '{initial}' (canonically '{canonical}' mapped to glyph name '{name}' but '{name}' maps to character '{returned}'");
                 }
                 None => {
-                    panic!("Character '{initial}' mapped to glyph name '{name}' but '{name}' maps to nothing");
+                    panic!("Character '{initial}' (canonically '{canonical}') mapped to glyph name '{name}' but '{name}' maps to nothing");
                 }
             },
             None => (),
@@ -238,23 +255,36 @@ impl Display for NotInCharacterSet {
 
 impl Error for NotInCharacterSet {}
 
+pub(crate) fn glyph_of_char(mut ch: char) -> Option<Elevated<&'static Glyph>> {
+    // TODO: address the performance implications (of the
+    // linear-time loop) here
+    ch = canonicalise_char(ch);
+    for g in ALL_GLYPHS {
+        if Some(ch) == g.subscript {
+            return Some(elevate_sub(g));
+        } else if Some(ch) == g.superscript {
+            return Some(elevate_super(g));
+        } else if Some(ch) == g.normal {
+            return Some(elevate_normal(g));
+        }
+    }
+    None
+}
+
 impl TryFrom<char> for Elevated<&'static Glyph> {
     type Error = NotInCharacterSet;
 
     fn try_from(ch: char) -> Result<Self, Self::Error> {
-        // TODO: address the performance implications (of the
-        // linear-time loop) here
-        for g in ALL_GLYPHS {
-            if Some(ch) == g.subscript {
-                return Ok(elevate_sub(g));
-            } else if Some(ch) == g.superscript {
-                return Ok(elevate_super(g));
-            } else if Some(ch) == g.normal {
-                return Ok(elevate_normal(g));
-            }
+        match glyph_of_char(ch) {
+            Some(found) => Ok(found),
+            None => Err(NotInCharacterSet(ch)),
         }
-        Err(NotInCharacterSet(ch))
     }
+}
+
+#[test]
+fn test_glyph_of_dot() {
+    assert_eq!(glyph_of_char('.'), glyph_of_char('·'));
 }
 
 const fn code_point_of_shape(g: GlyphShape) -> (LwCase, Unsigned6Bit) {
@@ -509,7 +539,7 @@ const ALL_GLYPHS: &[Glyph] = &[
         shape: GlyphShape::C,
         name: "C",
         normal: Some('C'),
-        superscript: Some('ᶜ'),
+        superscript: Some('ᶜ'), // U+1D9C, but problem: there is also ꟲ (U+A7F2)
         ..GDEF
     },
     Glyph {
@@ -677,24 +707,30 @@ const ALL_GLYPHS: &[Glyph] = &[
         shape: GlyphShape::LeftParen,
         name: "lparen",
         normal: Some('('),
+        subscript: Some('₍'),
         ..GDEF
     },
     Glyph {
         shape: GlyphShape::RightParen,
         name: "rparen",
         normal: Some(')'),
+        subscript: Some('₎'),
         ..GDEF
     },
     Glyph {
         shape: GlyphShape::Add,
         name: "add", // following sub.py
-        normal: Some(')'),
+        normal: Some('+'),
+        superscript: Some('⁺'),
+        subscript: Some('₊'),
         ..GDEF
     },
     Glyph {
         shape: GlyphShape::Minus,
         name: "minus", // following sub.py
         normal: Some('-'),
+        superscript: Some('⁻'),
+        subscript: Some('₋'),
         ..GDEF
     },
     Glyph {
@@ -709,7 +745,7 @@ const ALL_GLYPHS: &[Glyph] = &[
         // This is a centre dot, not a period.  We use a centre dot so
         // that it's not confused with a subscript dot.
         normal: Some('\u{00B7}'), // ·
-        subscript: Some('.'),     // perhaps confusingly, an ASCII period / full stop
+        subscript: None,
         superscript: None,
     },
     // CARRIAGE RETURN is missing.
@@ -847,7 +883,7 @@ const ALL_GLYPHS: &[Glyph] = &[
         name: "n",
         normal: Some('n'),
         superscript: Some('ⁿ'),
-        subscript: None,
+        subscript: Some('ₙ'), // U+2099
         ..GDEF
     },
     Glyph {
@@ -882,8 +918,8 @@ const ALL_GLYPHS: &[Glyph] = &[
         shape: GlyphShape::t,
         name: "t",
         normal: Some('t'),
-        superscript: Some('ᵗ'),
-        subscript: None,
+        superscript: Some('ᵗ'), // U+1D57
+        subscript: Some('ₜ'),   // U+209C
         ..GDEF
     },
     Glyph {
@@ -899,7 +935,7 @@ const ALL_GLYPHS: &[Glyph] = &[
         name: "x",
         normal: Some('x'),
         superscript: Some('ˣ'),
-        subscript: None,
+        subscript: Some('ₓ'), // U+2093
         ..GDEF
     },
     Glyph {
@@ -907,7 +943,7 @@ const ALL_GLYPHS: &[Glyph] = &[
         name: "i",
         normal: Some('i'),
         superscript: Some('ⁱ'),
-        subscript: None,
+        subscript: Some('ᵢ'),
         ..GDEF
     },
     Glyph {
@@ -954,8 +990,8 @@ const ALL_GLYPHS: &[Glyph] = &[
         shape: GlyphShape::j,
         name: "j",
         normal: Some('j'),
-        superscript: Some('ʲ'),
-        subscript: None,
+        superscript: Some('ʲ'), // U+02B2
+        subscript: Some('ⱼ'),   // U+2C7C
         ..GDEF
     },
     Glyph {
@@ -963,7 +999,7 @@ const ALL_GLYPHS: &[Glyph] = &[
         name: "k",
         normal: Some('k'),
         superscript: Some('ᵏ'),
-        subscript: None,
+        subscript: Some('ₖ'), // U+2096
         ..GDEF
     },
     Glyph {
@@ -986,7 +1022,7 @@ const ALL_GLYPHS: &[Glyph] = &[
         name: "p",
         normal: Some('p'),
         superscript: Some('ᵖ'),
-        subscript: None,
+        subscript: Some('ₚ'), // U+209A
         ..GDEF
     },
     Glyph {
@@ -1065,6 +1101,7 @@ const ALL_GLYPHS: &[Glyph] = &[
         shape: GlyphShape::Equals,
         name: "equals",
         normal: Some('='),
+        subscript: Some('₌'),
         ..GDEF
     },
     Glyph {
@@ -1110,13 +1147,23 @@ impl Default for GlyphMapByChar {
     }
 }
 
-impl GlyphMapByChar {
-    fn get(&self, ch: &char) -> Option<&Elevated<&'static Glyph>> {
-        self.mapping.get(ch)
+fn canonicalise_char(ch: char) -> char {
+    match ch {
+        '\u{A7F2}' => '\u{1D9C}', // ꟲ -> ᶜ
+        '.' => '\u{00B7}',        // . -> ·
+        _ => ch,
     }
 }
 
-pub(crate) fn name_from_glyph(ch: char) -> Option<&'static str> {
+impl GlyphMapByChar {
+    fn get(&self, ch: &char) -> Option<&Elevated<&'static Glyph>> {
+        let ch: char = canonicalise_char(*ch);
+        self.mapping.get(&ch)
+    }
+}
+
+pub(crate) fn name_from_glyph(mut ch: char) -> Option<&'static str> {
+    ch = canonicalise_char(ch);
     ALL_GLYPHS
         .iter()
         .find(|g| g.normal == Some(ch))
@@ -1165,4 +1212,113 @@ fn test_at_glyph_superscript() {
     assert_eq!(at_glyph(Script::Super, "super_pipe"), Some('|'));
     assert_eq!(at_glyph(Script::Super, "pipe"), None);
     assert_eq!(at_glyph(Script::Super, "sub_pipe"), None);
+}
+
+pub(crate) fn unsubscript_char(mut ch: char) -> Option<char> {
+    ch = canonicalise_char(ch);
+    ALL_GLYPHS.iter().find_map(|g| {
+        if g.subscript == Some(ch) {
+            g.normal
+        } else {
+            None
+        }
+    })
+}
+
+pub(crate) fn unsuperscript_char(mut ch: char) -> Option<char> {
+    ch = canonicalise_char(ch);
+    ALL_GLYPHS.iter().find_map(|g| {
+        if g.superscript == Some(ch) {
+            g.normal
+        } else {
+            None
+        }
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_unsubscript_char() {
+        assert_eq!(unsubscript_char('₁'), Some('1'));
+        assert_eq!(unsubscript_char('₂'), Some('2'));
+        assert_eq!(unsubscript_char('₃'), Some('3'));
+        assert_eq!(unsubscript_char('₄'), Some('4'));
+        assert_eq!(unsubscript_char('₅'), Some('5'));
+        assert_eq!(unsubscript_char('₆'), Some('6'));
+        assert_eq!(unsubscript_char('₇'), Some('7'));
+        assert_eq!(unsubscript_char('₈'), Some('8'));
+        assert_eq!(unsubscript_char('₈'), Some('8'));
+        assert_eq!(unsubscript_char('₉'), Some('9'));
+
+        assert_eq!(unsubscript_char('\u{208A}'), Some('+'));
+        assert_eq!(unsubscript_char('\u{208B}'), Some('-'));
+        assert_eq!(unsubscript_char('\u{208C}'), Some('='));
+        assert_eq!(unsubscript_char('\u{208D}'), Some('('));
+        assert_eq!(unsubscript_char('\u{208E}'), Some(')'));
+
+        assert_eq!(unsubscript_char('\u{1D62}'), Some('i'));
+        assert_eq!(unsubscript_char('\u{2C7C}'), Some('j'));
+        assert_eq!(unsubscript_char('\u{2093}'), Some('x'));
+
+        assert_eq!(unsubscript_char('\u{2095}'), Some('h'));
+        assert_eq!(unsubscript_char('\u{2096}'), Some('k'));
+        assert_eq!(unsubscript_char('\u{2099}'), Some('n'));
+        assert_eq!(unsubscript_char('\u{209A}'), Some('p'));
+        assert_eq!(unsubscript_char('\u{209C}'), Some('t'));
+        assert_eq!(unsubscript_char('\u{2093}'), Some('x'));
+
+        // Characters which actually aren't subscripts should result in
+        // None.
+        assert_eq!(unsubscript_char('x'), None);
+    }
+
+    #[test]
+    fn test_unsuperscript_char() {
+        assert_eq!(unsuperscript_char('⁰'), Some('0'));
+        assert_eq!(unsuperscript_char('¹'), Some('1'));
+        assert_eq!(unsuperscript_char('²'), Some('2'));
+        assert_eq!(unsuperscript_char('³'), Some('3'));
+        assert_eq!(unsuperscript_char('⁴'), Some('4'));
+        assert_eq!(unsuperscript_char('⁵'), Some('5'));
+        assert_eq!(unsuperscript_char('⁶'), Some('6'));
+        assert_eq!(unsuperscript_char('⁷'), Some('7'));
+        assert_eq!(unsuperscript_char('⁸'), Some('8'));
+        assert_eq!(unsuperscript_char('⁹'), Some('9'));
+        assert_eq!(unsuperscript_char('ᴬ'), Some('A'));
+        assert_eq!(unsuperscript_char('ᴮ'), Some('B'));
+        assert_eq!(unsuperscript_char('ᶜ'), Some('C'));
+        assert_eq!(unsuperscript_char('ᴰ'), Some('D'));
+        assert_eq!(unsuperscript_char('ᴱ'), Some('E'));
+        // No F
+        assert_eq!(unsuperscript_char('ᴳ'), Some('G'));
+        assert_eq!(unsuperscript_char('ᴴ'), Some('H'));
+        assert_eq!(unsuperscript_char('ᴵ'), Some('I'));
+        assert_eq!(unsuperscript_char('ᴶ'), Some('J'));
+        assert_eq!(unsuperscript_char('ᴷ'), Some('K'));
+        assert_eq!(unsuperscript_char('ᴸ'), Some('L'));
+        assert_eq!(unsuperscript_char('ᴹ'), Some('M'));
+        assert_eq!(unsuperscript_char('ᴺ'), Some('N'));
+        assert_eq!(unsuperscript_char('ᴼ'), Some('O'));
+        assert_eq!(unsuperscript_char('ᴾ'), Some('P'));
+        assert_eq!(unsuperscript_char('ᴿ'), Some('R'));
+        assert_eq!(unsuperscript_char('ˢ'), Some('S'));
+        assert_eq!(unsuperscript_char('ᵀ'), Some('T'));
+        assert_eq!(unsuperscript_char('ᵁ'), Some('U'));
+        assert_eq!(unsuperscript_char('ⱽ'), Some('V'));
+        assert_eq!(unsuperscript_char('ᵂ'), Some('W'));
+        // No XYZ
+        assert_eq!(unsuperscript_char('ⁱ'), Some('i'));
+        assert_eq!(unsuperscript_char('ʲ'), Some('j'));
+        assert_eq!(unsuperscript_char('ᵏ'), Some('k'));
+        assert_eq!(unsuperscript_char('ⁿ'), Some('n'));
+        assert_eq!(unsuperscript_char('ᵖ'), Some('p'));
+        assert_eq!(unsuperscript_char('ᵗ'), Some('t'));
+        assert_eq!(unsuperscript_char('ʷ'), Some('w'));
+        assert_eq!(unsuperscript_char('ˣ'), Some('x'));
+        assert_eq!(unsuperscript_char('ʸ'), Some('y'));
+        assert_eq!(unsuperscript_char('ᶻ'), Some('z'));
+    }
 }

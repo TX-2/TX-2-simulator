@@ -11,7 +11,10 @@ use logos::Logos;
 use regex::{Captures, Regex};
 
 use super::{
-    glyph::{self, elevate, elevate_normal, elevate_sub, elevate_super},
+    glyph::{
+        self, elevate, elevate_normal, elevate_sub, elevate_super, glyph_of_char, unsubscript_char,
+        unsuperscript_char,
+    },
     parser::helpers::{self, Sign},
     state::NumeralMode,
 };
@@ -102,18 +105,18 @@ fn determine_string_script(s: &str) -> Result<Script, ()> {
     }
     let mut decision: Option<Script> = None;
     for ch in s.chars() {
-        let current: Script = if unsubscript_char(ch).is_some() {
-            Script::Sub
-        } else if unsuperscript_char(ch).is_some() {
-            Script::Super
-        } else {
-            Script::Normal
+        match glyph_of_char(ch) {
+            Some(elevated) => {
+                decision = Some(combine(decision, elevated.script())?);
+            }
+            None => {
+                return Err(());
+            }
         };
-        decision = Some(combine(decision, current)?);
     }
     match decision {
         Some(d) => Ok(d),
-        None => Err(()),
+        None => Err(()), // e.g. empty string
     }
 }
 
@@ -406,101 +409,6 @@ fn capture_name(lex: &mut logos::Lexer<Token>) -> String {
         }
     }
     name
-}
-
-fn unsubscript_char(ch: char) -> Option<char> {
-    match ch {
-        '\u{2080}' => Some('0'),
-        '\u{2081}' => Some('1'),
-        '\u{2082}' => Some('2'),
-        '\u{2083}' => Some('3'),
-        '\u{2084}' => Some('4'),
-        '\u{2085}' => Some('5'),
-        '\u{2086}' => Some('6'),
-        '\u{2087}' => Some('7'),
-        '\u{2088}' => Some('8'),
-        '\u{2089}' => Some('9'),
-        '\u{208A}' => Some('+'),
-        '\u{208B}' => Some('-'),
-        '\u{208C}' => Some('='),
-        '\u{208D}' => Some('('),
-        '\u{208E}' => Some(')'),
-        // Unicode seems to have no subscript majuscule letters.
-        '\u{2090}' => Some('a'),
-        '\u{2091}' => Some('e'),
-        '\u{2095}' => Some('h'), // not valid in a symex
-        '\u{1D62}' => Some('i'),
-        '\u{2C7C}' => Some('j'),
-        '\u{2096}' => Some('k'),
-        '\u{2097}' => Some('l'), // l is not actually in the TX-2 character set
-        '\u{2098}' => Some('m'), // m is not actually in the TX-2 character set
-        '\u{2099}' => Some('n'),
-        '\u{2092}' => Some('o'),
-        '\u{209A}' => Some('p'),
-        // Nothing for q; there is no Unicode superscript q character.  While U+107A5 does exist,
-        // it is a modifier, so we'd need a leading space.
-        '\u{209B}' => Some('s'), // s is not actually in the TX-2 character set
-        '\u{209C}' => Some('t'),
-        // There seems to be no subscript w in Unicode
-        '\u{2093}' => Some('x'),
-        // There seems to be no subscript y in Unicode
-        // There seems to be no subscript z in Unicode
-        _ => None,
-    }
-}
-
-fn unsuperscript_char(ch: char) -> Option<char> {
-    match ch {
-        '⁰' => Some('0'),
-        '¹' => Some('1'),
-        '²' => Some('2'),
-        '³' => Some('3'),
-        '⁴' => Some('4'),
-        '⁵' => Some('5'),
-        '⁶' => Some('6'),
-        '⁷' => Some('7'),
-        '⁸' => Some('8'),
-        '⁹' => Some('9'),
-        'ᴬ' => Some('A'),
-        'ᴮ' => Some('B'),
-        'ᶜ' | '\u{A7F2}' => Some('C'),
-        'ᴰ' => Some('D'),
-        'ᴱ' => Some('E'),
-        'ꟳ' => Some('F'),
-        'ᴳ' => Some('G'),
-        'ᴴ' => Some('H'),
-        'ᴵ' => Some('I'),
-        'ᴶ' => Some('J'),
-        'ᴷ' => Some('K'),
-        'ᴸ' => Some('L'),
-        'ᴹ' => Some('M'),
-        'ᴺ' => Some('N'),
-        'ᴼ' => Some('O'),
-        'ᴾ' => Some('P'),
-        'ꟴ' => Some('Q'),
-        'ᴿ' => Some('R'),
-        'ˢ' => Some('S'),
-        'ᵀ' => Some('T'),
-        'ᵁ' => Some('U'),
-        'ⱽ' => Some('V'),
-        'ᵂ' => Some('W'),
-        // No x, y, z
-        // No αβγΔελ
-        'ⁱ' => Some('i'),
-        'ʲ' => Some('j'),
-        'ᵏ' => Some('k'),
-        'ⁿ' => Some('n'),
-        'ᵖ' => Some('p'),
-        // No q
-        'ᵗ' => Some('t'),
-        'ʷ' => Some('w'),
-        'ˣ' => Some('x'),
-        'ʸ' => Some('y'),
-        'ᶻ' => Some('z'),
-        '⁻' => Some('-'),
-        '⁺' => Some('+'),
-        _ => None,
-    }
 }
 
 fn decode_glyphs_by_regex(tokname: &'static str, rx: &Regex, text: &str, script: Script) -> String {
