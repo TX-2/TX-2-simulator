@@ -18,6 +18,7 @@ use chumsky::select;
 use chumsky::Parser;
 
 use super::ast::*;
+use super::glyph::Unrecognised;
 use super::lexer::{self};
 use super::state::NumeralMode;
 use super::symbol::SymbolName;
@@ -680,7 +681,7 @@ where
     let scanner = lexer::Lexer::new(input).spanned();
     let tokens: Vec<(Tok, SimpleSpan)> = scanner
         .map(
-            |item: (Result<Tok, lexer::Unrecognised<'a>>, Range<usize>)| -> (Tok, Span) {
+            |item: (Result<Tok, Unrecognised>, Range<usize>)| -> (Tok, Span) {
                 match item {
                     (Ok(tok), span) => {
                         // Turn the `Range<usize>` spans logos gives us into

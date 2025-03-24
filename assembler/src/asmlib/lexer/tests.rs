@@ -4,12 +4,12 @@ fn is_error_token(t: &Token) -> bool {
     matches!(t, Token::Error(_))
 }
 
-fn scan_slices<'a>(input: &'a str) -> Result<Vec<(Token, &'a str)>, Unrecognised<'a>> {
+fn scan_slices<'a>(input: &'a str) -> Result<Vec<(Token, &'a str)>, Unrecognised> {
     dbg!(input);
     dbg!(input.len());
 
     let mapping =
-        |(r, span): (Result<Token, Unrecognised<'a>>, Span)| -> Result<(Token, &str), Unrecognised<'a>> {
+        |(r, span): (Result<Token, Unrecognised>, Span)| -> Result<(Token, &str), Unrecognised> {
             match r {
                 Ok(t) => Ok((t, &input[span])),
                 Err(e) => Err(e),
@@ -19,7 +19,7 @@ fn scan_slices<'a>(input: &'a str) -> Result<Vec<(Token, &'a str)>, Unrecognised
     Lexer::new(input).spanned().map(mapping).collect()
 }
 
-fn scan_tokens_only<'a>(input: &'a str) -> Result<Vec<Token>, Unrecognised<'a>> {
+fn scan_tokens_only<'a>(input: &'a str) -> Result<Vec<Token>, Unrecognised> {
     Lexer::new(input).collect()
 }
 

@@ -6,10 +6,29 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter, Write};
 
-use base::{
-    charset::{subscript_char, superscript_char, LwCase, Script},
-    u6, Unsigned6Bit,
-};
+use base::charset::{subscript_char, superscript_char, Script};
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub(crate) enum Unrecognised {
+    InvalidChar(char),
+    UnrecognisedGlyph(String),
+}
+
+impl Display for Unrecognised {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Unrecognised::InvalidChar(ch) => write!(
+                f,
+                "'{ch}' is not part of the TX-2 assembler's character set"
+            ),
+            Unrecognised::UnrecognisedGlyph(name) => {
+                write!(f, "'@{name}@' is not a recognised glyph name")
+            }
+        }
+    }
+}
+
+impl Error for Unrecognised {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct Elevated<T> {
@@ -110,7 +129,7 @@ fn test_name_from_glyph_roundtrips() {
             initial
         };
         match name_from_glyph(ch) {
-            Some(name) => match glyph_from_name(name) {
+            Some(name) => match char_from_glyph_name(name) {
                 Some(returned) => {
                     assert_eq!(ch, returned,
                                "Character '{initial}' (canonically '{canonical}' mapped to glyph name '{name}' but '{name}' maps to character '{returned}'");
@@ -126,11 +145,25 @@ fn test_name_from_glyph_roundtrips() {
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct Glyph {
-    shape: GlyphShape,
-    name: &'static str,
-    normal: Option<char>,
-    superscript: Option<char>,
-    subscript: Option<char>,
+    pub(crate) shape: GlyphShape,
+    pub(crate) name: &'static str,
+    pub(crate) normal: Option<char>,
+    pub(crate) superscript: Option<char>,
+    pub(crate) subscript: Option<char>,
+}
+
+impl Glyph {
+    pub(crate) fn shape(&self) -> GlyphShape {
+        self.shape
+    }
+
+    pub(crate) fn get_char(&self, script: Script) -> Option<char> {
+        match script {
+            Script::Normal => self.normal,
+            Script::Super => self.superscript,
+            Script::Sub => self.subscript,
+        }
+    }
 }
 
 mod shape {
@@ -238,7 +271,7 @@ mod shape {
         Asterisk,
     }
 }
-use shape::GlyphShape;
+pub(crate) use shape::GlyphShape;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub(crate) struct NotInCharacterSet(pub char);
@@ -255,30 +288,37 @@ impl Display for NotInCharacterSet {
 
 impl Error for NotInCharacterSet {}
 
-pub(crate) fn glyph_of_char(mut ch: char) -> Option<Elevated<&'static Glyph>> {
+pub(crate) fn glyph_of_char(original: char) -> Result<Elevated<&'static Glyph>, Unrecognised> {
     // TODO: address the performance implications (of the
     // linear-time loop) here
-    ch = canonicalise_char(ch);
+    let ch: char = canonicalise_char(original);
     for g in ALL_GLYPHS {
-        if Some(ch) == g.subscript {
-            return Some(elevate_sub(g));
+        // Note that the space character has the same representation
+        // in normal script as other scripts, so the order in which we
+        // perform these comparisons is important.  In other words, we
+        // have a convention that space is always deemed to be in
+        // normal script.
+        //
+        // However, when we parse multi-syllable symexes
+        // (e.g. "YOGIFOO BAR") in superscript, we should not deem the
+        // space to signify a script change (that is, it doesn't end
+        // the symex after YOGIFOO).
+        if Some(ch) == g.normal {
+            return Ok(elevate_normal(g));
+        } else if Some(ch) == g.subscript {
+            return Ok(elevate_sub(g));
         } else if Some(ch) == g.superscript {
-            return Some(elevate_super(g));
-        } else if Some(ch) == g.normal {
-            return Some(elevate_normal(g));
+            return Ok(elevate_super(g));
         }
     }
-    None
+    Err(Unrecognised::InvalidChar(original))
 }
 
 impl TryFrom<char> for Elevated<&'static Glyph> {
     type Error = NotInCharacterSet;
 
     fn try_from(ch: char) -> Result<Self, Self::Error> {
-        match glyph_of_char(ch) {
-            Some(found) => Ok(found),
-            None => Err(NotInCharacterSet(ch)),
-        }
+        glyph_of_char(ch).map_err(|_| NotInCharacterSet(ch))
     }
 }
 
@@ -287,136 +327,138 @@ fn test_glyph_of_dot() {
     assert_eq!(glyph_of_char('.'), glyph_of_char('·'));
 }
 
-const fn code_point_of_shape(g: GlyphShape) -> (LwCase, Unsigned6Bit) {
-    // Information taken from the character set table from page 2 of
-    // the documentation on the Lincoln Writer channels (65, 66).
-    // TX-2 Users Handbook, July 1961.
-    const L: LwCase = LwCase::Lower;
-    const U: LwCase = LwCase::Upper;
-    match g {
-        GlyphShape::Digit0 => (L, u6!(0)),
-        GlyphShape::Digit1 => (L, u6!(1)),
-        GlyphShape::Digit2 => (L, u6!(2)),
-        GlyphShape::Digit3 => (L, u6!(3)),
-        GlyphShape::Digit4 => (L, u6!(4)),
-        GlyphShape::Digit5 => (L, u6!(5)),
-        GlyphShape::Digit6 => (L, u6!(6)),
-        GlyphShape::Digit7 => (L, u6!(7)),
-        GlyphShape::Digit8 => (L, u6!(0o10)),
-        GlyphShape::Digit9 => (L, u6!(0o11)),
-        GlyphShape::Underscore => (L, u6!(0o12)),
-        GlyphShape::Circle => (L, u6!(0o13)),
-        GlyphShape::A => (L, u6!(0o20)),
-        GlyphShape::B => (L, u6!(0o21)),
-        GlyphShape::C => (L, u6!(0o22)),
-        GlyphShape::D => (L, u6!(0o23)),
-        GlyphShape::E => (L, u6!(0o24)),
-        GlyphShape::F => (L, u6!(0o25)),
-        GlyphShape::G => (L, u6!(0o26)),
-        GlyphShape::H => (L, u6!(0o27)),
-        GlyphShape::I => (L, u6!(0o30)),
-        GlyphShape::J => (L, u6!(0o31)),
-        GlyphShape::K => (L, u6!(0o32)),
-        GlyphShape::L => (L, u6!(0o33)),
-        GlyphShape::M => (L, u6!(0o34)),
-        GlyphShape::N => (L, u6!(0o35)),
-        GlyphShape::O => (L, u6!(0o36)),
-        GlyphShape::P => (L, u6!(0o37)),
-        GlyphShape::Q => (L, u6!(0o40)),
-        GlyphShape::R => (L, u6!(0o41)),
-        GlyphShape::S => (L, u6!(0o42)),
-        GlyphShape::T => (L, u6!(0o43)),
-        GlyphShape::U => (L, u6!(0o44)),
-        GlyphShape::V => (L, u6!(0o45)),
-        GlyphShape::W => (L, u6!(0o46)),
-        GlyphShape::X => (L, u6!(0o47)),
-        GlyphShape::Y => (L, u6!(0o50)),
-        GlyphShape::Z => (L, u6!(0o51)),
-        GlyphShape::LeftParen => (L, u6!(0o52)),
-        GlyphShape::RightParen => (L, u6!(0o53)),
-        GlyphShape::Add => (L, u6!(0o54)),
-        GlyphShape::Minus => (L, u6!(0o55)),
-        GlyphShape::Comma => (L, u6!(0o56)),
-        GlyphShape::Dot => (L, u6!(0o57)),
-        GlyphShape::Tab => (L, u6!(0o61)),
-        GlyphShape::Backspace => (L, u6!(0o62)),
-        // 0o63 is COLOR BLACK
-        //
-        // 0o64 is SUPER
-        //
-        // 0o65 is NORMAL
-        //
-        // 0o66 is SUB
-        //
-        // 0o67 is COLOR RED
-        GlyphShape::Space => (L, u6!(0o70)),
-        // 0o71 is WORD EXAM
-        //
-        // 0o72 is LINE FEED DOWN
-        //
-        // 0o73 is LINE FEED UP
-        //
-        // 0o74 is LOWER CASE
-        //
-        // 0o75 is UPPER CASE
-        //
-        // 0o76 is STOP
-        //
-        // 0o77 is NULLIFY
-        GlyphShape::Hand => (U, u6!(0)),
-        GlyphShape::Sigma => (U, u6!(1)),
-        GlyphShape::Pipe => (U, u6!(2)),
-        GlyphShape::DoublePipe => (U, u6!(3)),
-        GlyphShape::Solidus => (U, u6!(4)),
-        GlyphShape::Times => (U, u6!(5)),
-        GlyphShape::Hash => (U, u6!(6)),
-        GlyphShape::Arrow => (U, u6!(7)),
-        GlyphShape::LessThan => (U, u6!(0o10)),
-        GlyphShape::GreaterThan => (U, u6!(0o11)),
-        GlyphShape::Overbar => (U, u6!(0o12)),
-        GlyphShape::Square => (U, u6!(0o13)),
-        // 0o14 is "READ IN"
-        //
-        // 0o15 is "BEGIN"
-        //
-        // 0o16 is "NO"
-        //
-        // 0o17 is "YES"
-        GlyphShape::n => (U, u6!(0o20)),
-        GlyphShape::SubsetOf => (U, u6!(0o21)),
-        GlyphShape::Or => (U, u6!(0o22)),
-        GlyphShape::q => (U, u6!(0o23)),
-        GlyphShape::Gamma => (U, u6!(0o24)),
-        GlyphShape::t => (U, u6!(0o25)),
-        GlyphShape::w => (U, u6!(0o26)),
-        GlyphShape::x => (U, u6!(0o27)),
-        GlyphShape::i => (U, u6!(0o30)),
-        GlyphShape::y => (U, u6!(0o31)),
-        GlyphShape::z => (U, u6!(0o32)),
-        GlyphShape::Query => (U, u6!(0o33)),
-        GlyphShape::Union => (U, u6!(0o34)),
-        GlyphShape::Intersection => (U, u6!(0o35)),
-        GlyphShape::j => (U, u6!(0o36)),
-        GlyphShape::k => (U, u6!(0o37)),
-        GlyphShape::Alpha => (U, u6!(0o40)),
-        GlyphShape::Delta => (U, u6!(0o41)),
-        GlyphShape::p => (U, u6!(0o42)),
-        GlyphShape::Epsilon => (U, u6!(0o43)),
-        GlyphShape::h => (U, u6!(0o44)),
-        GlyphShape::SupersetOf => (U, u6!(0o45)),
-        GlyphShape::Beta => (U, u6!(0o46)),
-        GlyphShape::And => (U, u6!(0o47)),
-        GlyphShape::Lambda => (U, u6!(0o50)),
-        GlyphShape::Tilde => (U, u6!(0o51)),
-        GlyphShape::LeftBrace => (U, u6!(0o52)),
-        GlyphShape::RightBrace => (U, u6!(0o53)),
-        GlyphShape::IdenticalTo => (U, u6!(0o54)), // @hamb@
-        GlyphShape::Equals => (U, u6!(0o55)),
-        GlyphShape::Apostrophe => (U, u6!(0o56)),
-        GlyphShape::Asterisk => (U, u6!(0o57)),
-        // Code points 0o60 to 0o77 are non-graphinc characters.
-    }
-}
+//const fn code_point_of_shape(g: GlyphShape) -> (LwCase, Unsigned6Bit) {
+//     use base::charset::LwCase;
+//     use base::Pu6, Unsigned6Bit};
+//    // Information taken from the character set table from page 2 of
+//    // the documentation on the Lincoln Writer channels (65, 66).
+//    // TX-2 Users Handbook, July 1961.
+//    const L: LwCase = LwCase::Lower;
+//    const U: LwCase = LwCase::Upper;
+//    match g {
+//        GlyphShape::Digit0 => (L, u6!(0)),
+//        GlyphShape::Digit1 => (L, u6!(1)),
+//        GlyphShape::Digit2 => (L, u6!(2)),
+//        GlyphShape::Digit3 => (L, u6!(3)),
+//        GlyphShape::Digit4 => (L, u6!(4)),
+//        GlyphShape::Digit5 => (L, u6!(5)),
+//        GlyphShape::Digit6 => (L, u6!(6)),
+//        GlyphShape::Digit7 => (L, u6!(7)),
+//        GlyphShape::Digit8 => (L, u6!(0o10)),
+//        GlyphShape::Digit9 => (L, u6!(0o11)),
+//        GlyphShape::Underscore => (L, u6!(0o12)),
+//        GlyphShape::Circle => (L, u6!(0o13)),
+//        GlyphShape::A => (L, u6!(0o20)),
+//        GlyphShape::B => (L, u6!(0o21)),
+//        GlyphShape::C => (L, u6!(0o22)),
+//        GlyphShape::D => (L, u6!(0o23)),
+//        GlyphShape::E => (L, u6!(0o24)),
+//        GlyphShape::F => (L, u6!(0o25)),
+//        GlyphShape::G => (L, u6!(0o26)),
+//        GlyphShape::H => (L, u6!(0o27)),
+//        GlyphShape::I => (L, u6!(0o30)),
+//        GlyphShape::J => (L, u6!(0o31)),
+//        GlyphShape::K => (L, u6!(0o32)),
+//        GlyphShape::L => (L, u6!(0o33)),
+//        GlyphShape::M => (L, u6!(0o34)),
+//        GlyphShape::N => (L, u6!(0o35)),
+//        GlyphShape::O => (L, u6!(0o36)),
+//        GlyphShape::P => (L, u6!(0o37)),
+//        GlyphShape::Q => (L, u6!(0o40)),
+//        GlyphShape::R => (L, u6!(0o41)),
+//        GlyphShape::S => (L, u6!(0o42)),
+//        GlyphShape::T => (L, u6!(0o43)),
+//        GlyphShape::U => (L, u6!(0o44)),
+//        GlyphShape::V => (L, u6!(0o45)),
+//        GlyphShape::W => (L, u6!(0o46)),
+//        GlyphShape::X => (L, u6!(0o47)),
+//        GlyphShape::Y => (L, u6!(0o50)),
+//        GlyphShape::Z => (L, u6!(0o51)),
+//        GlyphShape::LeftParen => (L, u6!(0o52)),
+//        GlyphShape::RightParen => (L, u6!(0o53)),
+//        GlyphShape::Add => (L, u6!(0o54)),
+//        GlyphShape::Minus => (L, u6!(0o55)),
+//        GlyphShape::Comma => (L, u6!(0o56)),
+//        GlyphShape::Dot => (L, u6!(0o57)),
+//        GlyphShape::Tab => (L, u6!(0o61)),
+//        GlyphShape::Backspace => (L, u6!(0o62)),
+//        // 0o63 is COLOR BLACK
+//        //
+//        // 0o64 is SUPER
+//        //
+//        // 0o65 is NORMAL
+//        //
+//        // 0o66 is SUB
+//        //
+//        // 0o67 is COLOR RED
+//        GlyphShape::Space => (L, u6!(0o70)),
+//        // 0o71 is WORD EXAM
+//        //
+//        // 0o72 is LINE FEED DOWN
+//        //
+//        // 0o73 is LINE FEED UP
+//        //
+//        // 0o74 is LOWER CASE
+//        //
+//        // 0o75 is UPPER CASE
+//        //
+//        // 0o76 is STOP
+//        //
+//        // 0o77 is NULLIFY
+//        GlyphShape::Hand => (U, u6!(0)),
+//        GlyphShape::Sigma => (U, u6!(1)),
+//        GlyphShape::Pipe => (U, u6!(2)),
+//        GlyphShape::DoublePipe => (U, u6!(3)),
+//        GlyphShape::Solidus => (U, u6!(4)),
+//        GlyphShape::Times => (U, u6!(5)),
+//        GlyphShape::Hash => (U, u6!(6)),
+//        GlyphShape::Arrow => (U, u6!(7)),
+//        GlyphShape::LessThan => (U, u6!(0o10)),
+//        GlyphShape::GreaterThan => (U, u6!(0o11)),
+//        GlyphShape::Overbar => (U, u6!(0o12)),
+//        GlyphShape::Square => (U, u6!(0o13)),
+//        // 0o14 is "READ IN"
+//        //
+//        // 0o15 is "BEGIN"
+//        //
+//        // 0o16 is "NO"
+//        //
+//        // 0o17 is "YES"
+//        GlyphShape::n => (U, u6!(0o20)),
+//        GlyphShape::SubsetOf => (U, u6!(0o21)),
+//        GlyphShape::Or => (U, u6!(0o22)),
+//        GlyphShape::q => (U, u6!(0o23)),
+//        GlyphShape::Gamma => (U, u6!(0o24)),
+//        GlyphShape::t => (U, u6!(0o25)),
+//        GlyphShape::w => (U, u6!(0o26)),
+//        GlyphShape::x => (U, u6!(0o27)),
+//        GlyphShape::i => (U, u6!(0o30)),
+//        GlyphShape::y => (U, u6!(0o31)),
+//        GlyphShape::z => (U, u6!(0o32)),
+//        GlyphShape::Query => (U, u6!(0o33)),
+//        GlyphShape::Union => (U, u6!(0o34)),
+//        GlyphShape::Intersection => (U, u6!(0o35)),
+//        GlyphShape::j => (U, u6!(0o36)),
+//        GlyphShape::k => (U, u6!(0o37)),
+//        GlyphShape::Alpha => (U, u6!(0o40)),
+//        GlyphShape::Delta => (U, u6!(0o41)),
+//        GlyphShape::p => (U, u6!(0o42)),
+//        GlyphShape::Epsilon => (U, u6!(0o43)),
+//        GlyphShape::h => (U, u6!(0o44)),
+//        GlyphShape::SupersetOf => (U, u6!(0o45)),
+//        GlyphShape::Beta => (U, u6!(0o46)),
+//        GlyphShape::And => (U, u6!(0o47)),
+//        GlyphShape::Lambda => (U, u6!(0o50)),
+//        GlyphShape::Tilde => (U, u6!(0o51)),
+//        GlyphShape::LeftBrace => (U, u6!(0o52)),
+//        GlyphShape::RightBrace => (U, u6!(0o53)),
+//        GlyphShape::IdenticalTo => (U, u6!(0o54)), // @hamb@
+//        GlyphShape::Equals => (U, u6!(0o55)),
+//        GlyphShape::Apostrophe => (U, u6!(0o56)),
+//        GlyphShape::Asterisk => (U, u6!(0o57)),
+//        // Code points 0o60 to 0o77 are non-graphinc characters.
+//    }
+//}
 
 const GDEF: Glyph = Glyph {
     shape: GlyphShape::Hand,
@@ -1170,12 +1212,26 @@ pub(crate) fn name_from_glyph(mut ch: char) -> Option<&'static str> {
         .map(|g| g.name)
 }
 
-fn glyph_from_name(name: &str) -> Option<char> {
+fn char_from_glyph_name(name: &str) -> Option<char> {
     ALL_GLYPHS
         .iter()
         .find(|g| g.name == name)
         .map(|g| g.normal)
         .flatten()
+}
+
+pub(crate) fn glyph_from_name(name: &str) -> Option<Elevated<&'static Glyph>> {
+    let (script, glyph_base_name) = if let Some(suffix) = name.strip_prefix("sub_") {
+        (Script::Sub, suffix)
+    } else if let Some(suffix) = name.strip_prefix("sup_") {
+        (Script::Super, suffix)
+    } else {
+        (Script::Normal, name)
+    };
+    ALL_GLYPHS
+        .iter()
+        .find(|g| g.name == glyph_base_name)
+        .map(|g| elevate(script, g))
 }
 
 pub(crate) fn at_glyph(script: Script, name: &str) -> Option<char> {
@@ -1185,7 +1241,7 @@ pub(crate) fn at_glyph(script: Script, name: &str) -> Option<char> {
         Script::Super => "super_",
     };
     match name.strip_prefix(prefix) {
-        Some(name) => glyph_from_name(name),
+        Some(name) => char_from_glyph_name(name),
         None => None,
     }
 }

@@ -2,6 +2,8 @@ use std::ops::Range;
 
 use logos::Logos;
 
+use super::super::glyph::Unrecognised;
+
 /// InnerToken is the result of a "partial" lexer which only
 /// identifies enough tokens to determine whether we're inside an
 /// RC-block or a comment.  We do this in order to handle
@@ -67,7 +69,7 @@ pub(super) enum Lexeme<'a> {
     EndOfInput,
     Tok(super::Token),
     Text(&'a str),
-    Err(super::Unrecognised<'a>),
+    Err(Unrecognised),
 }
 
 /// LowerLexer uses a Logos-generated scanner to identify braces
@@ -107,11 +109,14 @@ impl<'a> LowerLexer<'a> {
                         // Skip.
                         continue;
                     } else {
-                        let e: super::Unrecognised = super::Unrecognised {
-                            content: self.inner.slice(),
-                            span: self.span(),
-                        };
-                        return Lexeme::Err(e);
+                        match self.inner.slice().chars().next() {
+                            Some(ch) => {
+                                return Lexeme::Err(Unrecognised::InvalidChar(ch));
+                            }
+                            None => {
+                                panic!("LowerLexer::next(): got error on zero-length content");
+                            }
+                        }
                     }
                 }
                 Some(Ok(tok)) => tok,
