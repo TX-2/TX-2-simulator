@@ -570,7 +570,8 @@ pub(crate) enum Token {
     #[token("/")]
     Solidus,
 
-    #[regex("[₊+⁺]|@plus@|@sub_plus@|@sup_plus@", capture_glyph_script)]
+    // @plus@ is actually not the correct glyph name, following sub.py.
+    #[regex("[₊+⁺]|@add@|@sub_add@|@sup_add@", capture_glyph_script)]
     Plus(Script),
 
     #[regex("[-₋⁻]|@minus@|@sub_minus@|@sup_minus@", capture_glyph_script)]
@@ -640,6 +641,15 @@ pub(crate) enum Token {
 
     // If change the representation of the dot in the token
     // definition, please also change DOT_CHAR.
+    //
+    // The Dot token requires care in handling.  It is valid at the
+    // end of a numeric literal (where it signals use of the alternate
+    // base).  It is also valid in a symex.  But, it is also a macro
+    // terminator.  To handle these complexities, we include the dot
+    // in numeric literals (inside which spaces are not allowed).  But
+    // we do not allow Dot inside Symex syllables - with the idea that
+    // this will help us to correctly process them when used as macro
+    // terminators.
     #[regex("[.·̇]|@sub_dot@|@sup_dot@|@dot@", capture_glyph_script, priority = 13)]
     Dot(Script),
 
@@ -732,7 +742,6 @@ impl Display for Token {
     }
 }
 
-//ub(crate) use lexer_impl_old::*;
 pub(crate) use lexer_impl_old::*;
 pub(crate) type Lexer<'a> = OldLexer<'a>;
 
@@ -1259,6 +1268,9 @@ mod lexer_impl_new {
         };
         let merged_span = current_span.start..incoming_span.end;
         match current {
+            Token::Minus(Script::Normal) if incoming == Token::GreaterThan => {
+                TokenMergeResult::Merged(Token::Arrow, merged_span)
+            }
             Token::SuperscriptSymexSyllable(mut existing) => match incoming {
                 Token::SuperscriptSymexSyllable(incoming) => {
                     existing.push_str(&incoming);
@@ -1333,7 +1345,7 @@ mod lexer_impl_new {
                 }
                 Token::Dot(Script::Normal) if !existing.has_trailing_dot => {
                     existing.has_trailing_dot = true;
-                    TokenMergeResult::Merged(Token::SuperscriptDigits(existing), merged_span)
+                    TokenMergeResult::Merged(Token::NormalDigits(existing), merged_span)
                 }
                 Token::NormalSymexSyllable(sym) => {
                     let mut s: String = existing.digits;
@@ -1377,7 +1389,7 @@ mod lexer_impl_new {
                 }
                 Token::Dot(Script::Sub) if !existing.has_trailing_dot => {
                     existing.has_trailing_dot = true;
-                    TokenMergeResult::Merged(Token::SuperscriptDigits(existing), merged_span)
+                    TokenMergeResult::Merged(Token::SubscriptDigits(existing), merged_span)
                 }
                 Token::SubscriptSymexSyllable(sym) => {
                     let mut s: String = existing.digits;

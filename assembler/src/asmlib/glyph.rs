@@ -150,6 +150,15 @@ pub(crate) struct Glyph {
     pub(crate) normal: Option<char>,
     pub(crate) superscript: Option<char>,
     pub(crate) subscript: Option<char>,
+    // When advance is false, this glyph does not advance the
+    // carriage.  This appears to be true for character codes 0o12 and
+    // 0o13 (in both upper and lower case).  We should provide a
+    // reference for this, but just now I'm taking this info from the
+    // code in base/src/charset.rs which deals with these character
+    // codes.
+    //
+    // We try to use combining characters for these.
+    pub(crate) advance: bool,
 }
 
 impl Glyph {
@@ -466,6 +475,7 @@ const GDEF: Glyph = Glyph {
     normal: None,
     superscript: None,
     subscript: None,
+    advance: true,
 };
 
 const ALL_GLYPHS: &[Glyph] = &[
@@ -478,6 +488,7 @@ const ALL_GLYPHS: &[Glyph] = &[
         normal: Some('0'),
         superscript: Some('⁰'),
         subscript: Some('₀'),
+        ..GDEF
     },
     Glyph {
         shape: GlyphShape::Digit1,
@@ -485,6 +496,7 @@ const ALL_GLYPHS: &[Glyph] = &[
         normal: Some('1'),
         subscript: Some('₁'),
         superscript: Some('¹'),
+        ..GDEF
     },
     Glyph {
         shape: GlyphShape::Digit2,
@@ -492,6 +504,7 @@ const ALL_GLYPHS: &[Glyph] = &[
         normal: Some('2'),
         subscript: Some('₂'),
         superscript: Some('²'),
+        ..GDEF
     },
     Glyph {
         shape: GlyphShape::Digit3,
@@ -499,6 +512,7 @@ const ALL_GLYPHS: &[Glyph] = &[
         normal: Some('3'),
         subscript: Some('₃'),
         superscript: Some('³'),
+        ..GDEF
     },
     Glyph {
         shape: GlyphShape::Digit4,
@@ -506,6 +520,7 @@ const ALL_GLYPHS: &[Glyph] = &[
         normal: Some('4'),
         subscript: Some('₄'),
         superscript: Some('⁴'),
+        ..GDEF
     },
     Glyph {
         shape: GlyphShape::Digit5,
@@ -513,6 +528,7 @@ const ALL_GLYPHS: &[Glyph] = &[
         normal: Some('5'),
         subscript: Some('₅'),
         superscript: Some('⁵'),
+        ..GDEF
     },
     Glyph {
         shape: GlyphShape::Digit6,
@@ -520,6 +536,7 @@ const ALL_GLYPHS: &[Glyph] = &[
         normal: Some('6'),
         subscript: Some('₆'),
         superscript: Some('⁶'),
+        ..GDEF
     },
     Glyph {
         shape: GlyphShape::Digit7,
@@ -527,6 +544,7 @@ const ALL_GLYPHS: &[Glyph] = &[
         normal: Some('7'),
         subscript: Some('₇'),
         superscript: Some('⁷'),
+        ..GDEF
     },
     Glyph {
         shape: GlyphShape::Digit8,
@@ -547,13 +565,21 @@ const ALL_GLYPHS: &[Glyph] = &[
     Glyph {
         shape: GlyphShape::Underscore,
         name: "underscore",
-        normal: Some('_'),
+        // This character does not advance the carriage, so instead of
+        // representing it with ASCII \x5F (underscore) we use a
+        // combining low line.
+        normal: Some('\u{0332}'), // U+0332, combining low line
+        advance: false,
         ..GDEF
     },
     Glyph {
         shape: GlyphShape::Circle,
         name: "circle",
-        normal: Some('\u{25CB}'), // Unicode white circle, ○
+        // U+25CB, Unicode white circle, '○', advances the cursor
+        // position, which the Lincoln Writer code (0o13) doesn't do.
+        // So we use a combining character.
+        normal: Some('\u{20DD}'), // U+20DD, combining enclosing circle
+        advance: false,
         ..GDEF
     },
     // 0o14 is "READ IN"
@@ -789,6 +815,7 @@ const ALL_GLYPHS: &[Glyph] = &[
         normal: Some('\u{00B7}'), // ·
         subscript: None,
         superscript: None,
+        ..GDEF
     },
     // CARRIAGE RETURN is missing.
     Glyph {
@@ -819,6 +846,7 @@ const ALL_GLYPHS: &[Glyph] = &[
         normal: Some(' '),
         subscript: Some(' '),
         superscript: Some(' '),
+        ..GDEF
     },
     // 0o71 is WORD EXAM
     //
@@ -900,18 +928,23 @@ const ALL_GLYPHS: &[Glyph] = &[
     Glyph {
         shape: GlyphShape::Overbar,
         name: "overbar",
-        // The best fit seems to be "\u{0305}, Unicode "Combining
-        // overline U+0305".  But that's a two-character sequence.
-        normal: None,
+        // This character does not advance the carriage, so we use a
+        // combining character for it.
+        normal: Some('\u{0305}'), // U+0305, combining overline
         superscript: None,
         subscript: None,
+        advance: false,
     },
     Glyph {
         shape: GlyphShape::Square,
         name: "square",
-        normal: Some('□'),
+        // This character does not advance the carriage, so instead of
+        // using a character like U+25A1 ('□'), we use a combining
+        // character.
+        normal: Some('\u{20DE}'), // U+20DE, combining enclosing square
         subscript: None,
         superscript: None,
+        advance: false,
     },
     // 0o14 is "READ IN"
     //
@@ -1193,6 +1226,12 @@ fn canonicalise_char(ch: char) -> char {
     match ch {
         '\u{A7F2}' => '\u{1D9C}', // ꟲ -> ᶜ
         '.' => '\u{00B7}',        // . -> ·
+
+        // The TX-2 character set doesn't include ':', but some of the
+        // older sources use ':' to signal that the hold bit should be
+        // set in an instruction.  In the Users Handbook (in 1961 at
+        // least) this function is performed by 'h'.
+        ':' => 'h',
         _ => ch,
     }
 }

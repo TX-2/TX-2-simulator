@@ -297,11 +297,13 @@ fn test_parse_symex() {
         ("4REAL", "4REAL"),
         // Some lower case letters are supported
         ("j2", "j2"),
-        // Dot, underscore
+        // Dot.  We don't use underscore because on the Lincoln Writer
+        // this character does not advance the carriage.  IOW it
+        // generates a combined symex.
         ("@dot@x", "\u{00B7}x"),
         ("q@dot@q", "q\u{00B7}q"),
-        ("@dot@_X", "\u{00B7}_X"),
         // Single quotes are allowed too
+        ("@dot@'X", "\u{00B7}'X"),
         ("SCRATCH 'N' SNIFF", "SCRATCH'N'SNIFF"),
         ("SCRATCH @apostrophe@N@apostrophe@ SNIFF", "SCRATCH'N'SNIFF"),
         ("F '", "F'"),

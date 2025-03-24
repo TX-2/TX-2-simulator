@@ -848,7 +848,7 @@ fn test_subscript_plus_unicode() {
 #[test]
 fn test_subscript_plus_named_glyph() {
     assert_eq!(
-        scan_tokens_only("@sub_plus@"),
+        scan_tokens_only("@sub_add@"), // @sub_plus@ is not a valid glyph name
         Ok(vec![Token::Plus(Script::Sub),])
     );
 }
@@ -1012,6 +1012,14 @@ fn test_xdot() {
     assert_eq!(
         scan_tokens_only(input),
         Ok(vec![
+            // Dot can actually be part of a symex, so in principle,
+            // these should not be separate tokens.
+            //
+            // However, we handle dot specially (i.e. in the parser)
+            // because it can also be a macro terminator.
+            //
+            // See Users Handbook, section 6-2.3, "RULES FOR SYMEX
+            // FORMATION".
             Token::SuperscriptSymexSyllable("X".to_string()),
             Token::Dot(Script::Super)
         ]),
