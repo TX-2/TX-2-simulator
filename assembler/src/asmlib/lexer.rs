@@ -917,7 +917,7 @@ mod lexer_impl_new {
         }
 
         fn get_next_char(&mut self) -> Option<char> {
-            match dbg!(self.it.next()) {
+            match self.it.next() {
                 None => None,
                 Some((i, ch)) => {
                     self.pos = i;
@@ -1250,8 +1250,6 @@ mod lexer_impl_new {
         current: (Result<Token, Unrecognised>, Span),
         incoming: (Result<Token, Unrecognised>, Span),
     ) -> TokenMergeResult {
-        dbg!(&current);
-        dbg!(&incoming);
         // We never merge errors with non-errors, so eliminate those
         // cases and, when both inputs are Ok variants, unwrap.
         let ((current, current_span), (incoming, incoming_span)) = match (current, incoming) {
@@ -1432,7 +1430,7 @@ mod lexer_impl_new {
             use super::Token;
             loop {
                 let maybe_spanned_new_token: Option<(Result<Token, Unrecognised>, Span)> =
-                    match dbg!(self.inner.next()) {
+                    match self.inner.next() {
                         None => None,
                         Some(Err(Unrecognised::InvalidChar('ℏ'))) => {
                             // ℏ is Unicode code point U+210F.  There
@@ -1531,7 +1529,6 @@ mod lexer_impl_new {
         // These glyphs are a single token because they are both valid
         // in a symex and are both in superscript.
         let input = "@sup_eps@ᵂ";
-        dbg!(input.len());
         let mut lex = GlyphTokenizer::new(input);
         assert_eq!(
             lex.get_next_spanned_token(),
