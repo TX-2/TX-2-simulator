@@ -742,8 +742,8 @@ impl Display for Token {
     }
 }
 
-pub(crate) use lexer_impl_old::*;
-pub(crate) type Lexer<'a> = OldLexer<'a>;
+pub(crate) use lexer_impl_new::*;
+pub(crate) type Lexer<'a> = NewLexer<'a>;
 
 mod lexer_impl_old {
     use std::ops::Range;
