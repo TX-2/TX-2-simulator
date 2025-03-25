@@ -1,3 +1,4 @@
+use super::super::glyph::Unrecognised;
 use super::*;
 
 fn is_error_token(t: &Token) -> bool {

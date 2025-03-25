@@ -118,31 +118,6 @@ pub(crate) fn elevate_normal<T>(inner: T) -> Elevated<T> {
     elevate(Script::Normal, inner)
 }
 
-#[test]
-fn test_name_from_glyph_roundtrips() {
-    for initial in '#'..'☛' {
-        let canonical = canonicalise_char(initial);
-        let ch = if canonical != initial {
-            // We don't expect alternate versions to round-trip.
-            canonical
-        } else {
-            initial
-        };
-        match name_from_glyph(ch) {
-            Some(name) => match char_from_glyph_name(name) {
-                Some(returned) => {
-                    assert_eq!(ch, returned,
-                               "Character '{initial}' (canonically '{canonical}' mapped to glyph name '{name}' but '{name}' maps to character '{returned}'");
-                }
-                None => {
-                    panic!("Character '{initial}' (canonically '{canonical}') mapped to glyph name '{name}' but '{name}' maps to nothing");
-                }
-            },
-            None => (),
-        }
-    }
-}
-
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct Glyph {
     pub(crate) shape: GlyphShape,
@@ -1236,27 +1211,12 @@ fn canonicalise_char(ch: char) -> char {
     }
 }
 
-impl GlyphMapByChar {
-    fn get(&self, ch: &char) -> Option<&Elevated<&'static Glyph>> {
-        let ch: char = canonicalise_char(*ch);
-        self.mapping.get(&ch)
-    }
-}
-
 pub(crate) fn name_from_glyph(mut ch: char) -> Option<&'static str> {
     ch = canonicalise_char(ch);
     ALL_GLYPHS
         .iter()
         .find(|g| g.normal == Some(ch))
         .map(|g| g.name)
-}
-
-fn char_from_glyph_name(name: &str) -> Option<char> {
-    ALL_GLYPHS
-        .iter()
-        .find(|g| g.name == name)
-        .map(|g| g.normal)
-        .flatten()
 }
 
 pub(crate) fn glyph_from_name(name: &str) -> Option<Elevated<&'static Glyph>> {
@@ -1271,149 +1231,4 @@ pub(crate) fn glyph_from_name(name: &str) -> Option<Elevated<&'static Glyph>> {
         .iter()
         .find(|g| g.name == glyph_base_name)
         .map(|g| elevate(script, g))
-}
-
-pub(crate) fn at_glyph(script: Script, name: &str) -> Option<char> {
-    let prefix = match script {
-        Script::Normal => "",
-        Script::Sub => "sub_",
-        Script::Super => "super_",
-    };
-    match name.strip_prefix(prefix) {
-        Some(name) => char_from_glyph_name(name),
-        None => None,
-    }
-}
-
-#[test]
-fn test_at_glyph_normal() {
-    assert_eq!(at_glyph(Script::Normal, "hand"), Some('☛'));
-    assert_eq!(at_glyph(Script::Normal, "pipe"), Some('|'));
-    assert_eq!(at_glyph(Script::Normal, "sub_pipe"), None);
-    assert_eq!(at_glyph(Script::Normal, "super_pipe"), None);
-}
-
-#[test]
-fn test_at_glyph_subscript() {
-    assert_eq!(at_glyph(Script::Sub, "sub_hand"), Some('☛'));
-    assert_eq!(at_glyph(Script::Sub, "sub_pipe"), Some('|'));
-    assert_eq!(at_glyph(Script::Sub, "pipe"), None);
-    assert_eq!(at_glyph(Script::Sub, "super_pipe"), None);
-}
-
-#[test]
-fn test_at_glyph_superscript() {
-    assert_eq!(at_glyph(Script::Super, "super_hand"), Some('☛'));
-    assert_eq!(at_glyph(Script::Super, "super_pipe"), Some('|'));
-    assert_eq!(at_glyph(Script::Super, "pipe"), None);
-    assert_eq!(at_glyph(Script::Super, "sub_pipe"), None);
-}
-
-pub(crate) fn unsubscript_char(mut ch: char) -> Option<char> {
-    ch = canonicalise_char(ch);
-    ALL_GLYPHS.iter().find_map(|g| {
-        if g.subscript == Some(ch) {
-            g.normal
-        } else {
-            None
-        }
-    })
-}
-
-pub(crate) fn unsuperscript_char(mut ch: char) -> Option<char> {
-    ch = canonicalise_char(ch);
-    ALL_GLYPHS.iter().find_map(|g| {
-        if g.superscript == Some(ch) {
-            g.normal
-        } else {
-            None
-        }
-    })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_unsubscript_char() {
-        assert_eq!(unsubscript_char('₁'), Some('1'));
-        assert_eq!(unsubscript_char('₂'), Some('2'));
-        assert_eq!(unsubscript_char('₃'), Some('3'));
-        assert_eq!(unsubscript_char('₄'), Some('4'));
-        assert_eq!(unsubscript_char('₅'), Some('5'));
-        assert_eq!(unsubscript_char('₆'), Some('6'));
-        assert_eq!(unsubscript_char('₇'), Some('7'));
-        assert_eq!(unsubscript_char('₈'), Some('8'));
-        assert_eq!(unsubscript_char('₈'), Some('8'));
-        assert_eq!(unsubscript_char('₉'), Some('9'));
-
-        assert_eq!(unsubscript_char('\u{208A}'), Some('+'));
-        assert_eq!(unsubscript_char('\u{208B}'), Some('-'));
-        assert_eq!(unsubscript_char('\u{208C}'), Some('='));
-        assert_eq!(unsubscript_char('\u{208D}'), Some('('));
-        assert_eq!(unsubscript_char('\u{208E}'), Some(')'));
-
-        assert_eq!(unsubscript_char('\u{1D62}'), Some('i'));
-        assert_eq!(unsubscript_char('\u{2C7C}'), Some('j'));
-        assert_eq!(unsubscript_char('\u{2093}'), Some('x'));
-
-        assert_eq!(unsubscript_char('\u{2095}'), Some('h'));
-        assert_eq!(unsubscript_char('\u{2096}'), Some('k'));
-        assert_eq!(unsubscript_char('\u{2099}'), Some('n'));
-        assert_eq!(unsubscript_char('\u{209A}'), Some('p'));
-        assert_eq!(unsubscript_char('\u{209C}'), Some('t'));
-        assert_eq!(unsubscript_char('\u{2093}'), Some('x'));
-
-        // Characters which actually aren't subscripts should result in
-        // None.
-        assert_eq!(unsubscript_char('x'), None);
-    }
-
-    #[test]
-    fn test_unsuperscript_char() {
-        assert_eq!(unsuperscript_char('⁰'), Some('0'));
-        assert_eq!(unsuperscript_char('¹'), Some('1'));
-        assert_eq!(unsuperscript_char('²'), Some('2'));
-        assert_eq!(unsuperscript_char('³'), Some('3'));
-        assert_eq!(unsuperscript_char('⁴'), Some('4'));
-        assert_eq!(unsuperscript_char('⁵'), Some('5'));
-        assert_eq!(unsuperscript_char('⁶'), Some('6'));
-        assert_eq!(unsuperscript_char('⁷'), Some('7'));
-        assert_eq!(unsuperscript_char('⁸'), Some('8'));
-        assert_eq!(unsuperscript_char('⁹'), Some('9'));
-        assert_eq!(unsuperscript_char('ᴬ'), Some('A'));
-        assert_eq!(unsuperscript_char('ᴮ'), Some('B'));
-        assert_eq!(unsuperscript_char('ᶜ'), Some('C'));
-        assert_eq!(unsuperscript_char('ᴰ'), Some('D'));
-        assert_eq!(unsuperscript_char('ᴱ'), Some('E'));
-        // No F
-        assert_eq!(unsuperscript_char('ᴳ'), Some('G'));
-        assert_eq!(unsuperscript_char('ᴴ'), Some('H'));
-        assert_eq!(unsuperscript_char('ᴵ'), Some('I'));
-        assert_eq!(unsuperscript_char('ᴶ'), Some('J'));
-        assert_eq!(unsuperscript_char('ᴷ'), Some('K'));
-        assert_eq!(unsuperscript_char('ᴸ'), Some('L'));
-        assert_eq!(unsuperscript_char('ᴹ'), Some('M'));
-        assert_eq!(unsuperscript_char('ᴺ'), Some('N'));
-        assert_eq!(unsuperscript_char('ᴼ'), Some('O'));
-        assert_eq!(unsuperscript_char('ᴾ'), Some('P'));
-        assert_eq!(unsuperscript_char('ᴿ'), Some('R'));
-        assert_eq!(unsuperscript_char('ˢ'), Some('S'));
-        assert_eq!(unsuperscript_char('ᵀ'), Some('T'));
-        assert_eq!(unsuperscript_char('ᵁ'), Some('U'));
-        assert_eq!(unsuperscript_char('ⱽ'), Some('V'));
-        assert_eq!(unsuperscript_char('ᵂ'), Some('W'));
-        // No XYZ
-        assert_eq!(unsuperscript_char('ⁱ'), Some('i'));
-        assert_eq!(unsuperscript_char('ʲ'), Some('j'));
-        assert_eq!(unsuperscript_char('ᵏ'), Some('k'));
-        assert_eq!(unsuperscript_char('ⁿ'), Some('n'));
-        assert_eq!(unsuperscript_char('ᵖ'), Some('p'));
-        assert_eq!(unsuperscript_char('ᵗ'), Some('t'));
-        assert_eq!(unsuperscript_char('ʷ'), Some('w'));
-        assert_eq!(unsuperscript_char('ˣ'), Some('x'));
-        assert_eq!(unsuperscript_char('ʸ'), Some('y'));
-        assert_eq!(unsuperscript_char('ᶻ'), Some('z'));
-    }
 }

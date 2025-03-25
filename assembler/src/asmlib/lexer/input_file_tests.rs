@@ -2,7 +2,8 @@ use std::fs::OpenOptions;
 use std::io::{BufReader, Read};
 use std::path::PathBuf;
 
-use super::{Lexer, Token, Unrecognised};
+use super::super::glyph::Unrecognised;
+use super::{Lexer, Token};
 
 fn get_test_input_file_name(relative_to_manifest: &str) -> PathBuf {
     let mut location = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
