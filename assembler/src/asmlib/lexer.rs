@@ -59,7 +59,7 @@ impl NumericLiteral {
 
     pub(crate) fn append_digits_of_literal(&mut self, other: NumericLiteral) {
         assert!(!other.has_trailing_dot);
-        self.digits.extend(other.digits.chars());
+        self.digits.push_str(&other.digits);
     }
 
     pub(crate) fn has_trailing_dot(&self) -> bool {
@@ -326,21 +326,15 @@ mod lexer_impl_new {
         fn next_named_glyph(&mut self) -> Option<Result<Elevated<&'static Glyph>, Unrecognised>> {
             let mut name: String = String::with_capacity(10);
             let mut got_anything = false;
-            loop {
-                match self.get_next_char() {
-                    Some(ch) => {
-                        got_anything = true;
-                        if ch == '@' {
-                            break;
-                        } else {
-                            name.push(ch);
-                        }
-                    }
-                    None => {
-                        break;
-                    }
+            while let Some(ch) = self.get_next_char() {
+                got_anything = true;
+                if ch == '@' {
+                    break;
+                } else {
+                    name.push(ch);
                 }
             }
+
             // If the input was @@, (that is, the glyph name is
             // zero-length) name is empty but got_anything is
             // (correctly) true.
@@ -355,7 +349,7 @@ mod lexer_impl_new {
         }
     }
 
-    impl<'a> Iterator for GlyphRecognizer<'a> {
+    impl Iterator for GlyphRecognizer<'_> {
         type Item = Result<Elevated<&'static Glyph>, Unrecognised>;
 
         fn next(&mut self) -> Option<Self::Item> {
@@ -671,7 +665,7 @@ mod lexer_impl_new {
                 }
                 Token::SuperscriptSymexSyllable(sym) => {
                     let mut s: String = existing.digits;
-                    s.extend(sym.chars());
+                    s.push_str(&sym);
                     TokenMergeResult::Merged(Token::SuperscriptSymexSyllable(s), merged_span)
                 }
                 other => TokenMergeResult::Failed {
@@ -724,7 +718,7 @@ mod lexer_impl_new {
                 }
                 Token::NormalSymexSyllable(sym) => {
                     let mut s: String = existing.digits;
-                    s.extend(sym.chars());
+                    s.push_str(&sym);
                     TokenMergeResult::Merged(Token::NormalSymexSyllable(s), merged_span)
                 }
                 other => TokenMergeResult::Failed {
@@ -764,7 +758,7 @@ mod lexer_impl_new {
                 }
                 Token::SubscriptSymexSyllable(sym) => {
                     let mut s: String = existing.digits;
-                    s.extend(sym.chars());
+                    s.push_str(&sym);
                     TokenMergeResult::Merged(Token::SubscriptSymexSyllable(s), merged_span)
                 }
                 other => TokenMergeResult::Failed {
@@ -1039,7 +1033,7 @@ mod lexer_impl_new {
         }
     }
 
-    impl<'a> Iterator for NewLexer<'a> {
+    impl Iterator for NewLexer<'_> {
         type Item = Result<Token, Unrecognised>;
 
         fn next(&mut self) -> Option<Result<Token, Unrecognised>> {
@@ -1058,7 +1052,7 @@ mod lexer_impl_new {
         }
     }
 
-    impl<'a> Iterator for SpannedIter<'a> {
+    impl Iterator for SpannedIter<'_> {
         type Item = (Result<Token, Unrecognised>, Span);
 
         fn next(&mut self) -> Option<Self::Item> {
