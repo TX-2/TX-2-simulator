@@ -1,6 +1,3 @@
-#![allow(dead_code)]
-// TODO: once we've resolved all the test compilation errors, resinstate the dead_code warning.
-
 use std::num::IntErrorKind;
 use std::{
     collections::{BTreeMap, HashMap},
@@ -291,38 +288,6 @@ pub(super) fn opcode_auto_hold_bit(opcode: Unsigned6Bit) -> u64 {
         1 << 35
     } else {
         0
-    }
-}
-
-pub(crate) fn convert_superscript_digit(ch: char) -> Result<char, ()> {
-    match ch {
-        '\u{2070}' => Ok('0'),
-        '\u{00B9}' => Ok('1'),
-        '\u{00B2}' => Ok('2'),
-        '\u{00B3}' => Ok('3'),
-        '\u{2074}' => Ok('4'),
-        '\u{2075}' => Ok('5'),
-        '\u{2076}' => Ok('6'),
-        '\u{2077}' => Ok('7'),
-        '\u{2078}' => Ok('8'),
-        '\u{2079}' => Ok('9'),
-        _ => Err(()),
-    }
-}
-
-pub(crate) fn convert_subcript_digit(ch: char) -> Result<char, ()> {
-    match ch {
-        '\u{2080}' => Ok('0'),
-        '\u{2081}' => Ok('1'),
-        '\u{2082}' => Ok('2'),
-        '\u{2083}' => Ok('3'),
-        '\u{2084}' => Ok('4'),
-        '\u{2085}' => Ok('5'),
-        '\u{2086}' => Ok('6'),
-        '\u{2087}' => Ok('7'),
-        '\u{2088}' => Ok('8'),
-        '\u{2089}' => Ok('9'),
-        _ => Err(()),
     }
 }
 

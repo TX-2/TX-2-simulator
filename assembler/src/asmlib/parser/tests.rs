@@ -1184,7 +1184,7 @@ fn test_annotation() {
 #[test]
 fn test_logical_or_naked() {
     assert_eq!(
-        parse_successfully_with("∨", terminal::operator(Script::Normal), no_state_setup),
+        parse_successfully_with("∨", operator(Script::Normal), no_state_setup),
         Operator::LogicalOr
     );
 }
@@ -1192,7 +1192,7 @@ fn test_logical_or_naked() {
 #[test]
 fn test_logical_or_glyph_normal() {
     assert_eq!(
-        parse_successfully_with("@or@", terminal::operator(Script::Normal), no_state_setup),
+        parse_successfully_with("@or@", operator(Script::Normal), no_state_setup),
         Operator::LogicalOr
     );
 }
@@ -1200,7 +1200,7 @@ fn test_logical_or_glyph_normal() {
 #[test]
 fn test_logical_or_glyph_subscript() {
     assert_eq!(
-        parse_successfully_with("@sub_or@", terminal::operator(Script::Sub), no_state_setup),
+        parse_successfully_with("@sub_or@", operator(Script::Sub), no_state_setup),
         Operator::LogicalOr
     );
 }
@@ -1208,11 +1208,7 @@ fn test_logical_or_glyph_subscript() {
 #[test]
 fn test_logical_or_glyph_superscript() {
     assert_eq!(
-        parse_successfully_with(
-            "@sup_or@",
-            terminal::operator(Script::Super),
-            no_state_setup
-        ),
+        parse_successfully_with("@sup_or@", operator(Script::Super), no_state_setup),
         Operator::LogicalOr
     );
 }

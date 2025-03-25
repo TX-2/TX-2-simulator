@@ -5,7 +5,6 @@ use std::{
 
 pub(crate) mod helpers;
 mod symex;
-mod terminal;
 #[cfg(test)]
 mod tests;
 
@@ -204,6 +203,28 @@ where
         .labelled("tag definition")
 }
 
+pub(super) fn operator<'a, I>(
+    script_required: Script,
+) -> impl Parser<'a, I, Operator, Extra<'a>> + Clone
+where
+    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
+{
+    select! {
+        // Solidus ("/") is used for divide.  See section 6-2.7
+        // "Word Assembly" for details.
+        // TODO: support subscript/superscript for '/'
+        Tok::Solidus if script_required == Script::Normal => Operator::Divide,
+        Tok::Plus(Script::Normal) => Operator::Add,
+        // TODO: support subscript/superscript for times
+        Tok::Times if script_required == Script::Normal => Operator::Multiply,
+        Tok::LogicalOr(got) if got == script_required => Operator::LogicalOr,
+        Tok::LogicalAnd(got) if got == script_required => Operator::LogicalAnd,
+        Tok::Minus(got) if script_required == got => Operator::Subtract,
+        Tok::Plus(got) if script_required == got => Operator::Add,
+    }
+    .labelled("arithmetic operator")
+}
+
 fn program_instruction_fragments<'srcbody, I>(
 ) -> impl Parser<'srcbody, I, Vec<InstructionFragment>, Extra<'srcbody>>
 where
@@ -264,7 +285,7 @@ where
                 .boxed();
 
                 // Parse an arithmetic operator (e.g. plus, times) followed by an atom.
-                let operator_with_atom = terminal::operator(script_required).then(atom.clone());
+                let operator_with_atom = operator(script_required).then(atom.clone());
 
                 // An arithmetic expression is an atom followed by zero or
                 // more pairs of (arithmetic operator, atom).
