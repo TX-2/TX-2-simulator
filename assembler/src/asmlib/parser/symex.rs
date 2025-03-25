@@ -35,22 +35,10 @@ pub(super) fn digits_as_symex<'a, I>(
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
-    let digits_as_symex = match script_required {
-        Script::Normal => select! {
-            Tok::NormalDigits(literal) => literal,
-        }
-        .boxed(),
-        Script::Super => select! {
-            Tok::SuperscriptDigits(literal) => literal,
-        }
-        .boxed(),
-        Script::Sub => select! {
-            Tok::SubscriptDigits(literal) => literal,
-        }
-        .boxed(),
-    };
-
-    digits_as_symex.map(|literal| {
+    select! {
+        Tok::Digits(script, literal) if script == script_required => literal,
+    }
+    .map(|literal| {
         let maybe_dot: Option<char> = if literal.has_trailing_dot() {
             Some(DOT_CHAR)
         } else {

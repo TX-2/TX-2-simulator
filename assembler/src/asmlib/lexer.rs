@@ -4,7 +4,7 @@ use std::{
 };
 
 use super::{
-    glyph::{self, elevate, elevate_normal, elevate_sub, elevate_super},
+    glyph::{self, elevate},
     parser::helpers::{self, Sign},
     state::NumeralMode,
 };
@@ -149,19 +149,8 @@ pub(crate) enum Token {
 
     LogicalAnd(Script),
 
-    // Needs to be higher priority than NormalSymexSyllable.  If you
-    // change the representation of the dot in the token definition,
-    // please also change both DOT_CHAR and the definition of the Dot
-    // token.  Any unary "-" is handled in the parser.
-    NormalDigits(NumericLiteral),
-
-    // Needs to be higher priority than SubscriptSymexSyllable.
     // Any unary "-" is handled in the parser.
-    SubscriptDigits(NumericLiteral),
-
-    // Needs to be higher priority than SuperscriptSymexSyllable.
-    // Any unary "-" is handled in the parser.
-    SuperscriptDigits(NumericLiteral),
+    Digits(Script, NumericLiteral),
 
     // TODO: missing from this are: overbar, square, circle.
     /// The rules concerning which characters can be part of a symex
@@ -232,14 +221,8 @@ impl Display for Token {
             Token::Times => f.write_char('×'),
             Token::LogicalOr(script) => write_elevated(script, "∨"),
             Token::LogicalAnd(script) => write_elevated(script, "∧"),
-            Token::NormalDigits(numeric_literal) => {
-                write!(f, "{}", elevate_normal(numeric_literal.to_string()))
-            }
-            Token::SubscriptDigits(numeric_literal) => {
-                write!(f, "{}", elevate_sub(numeric_literal.to_string()))
-            }
-            Token::SuperscriptDigits(numeric_literal) => {
-                write!(f, "{}", elevate_super(numeric_literal.to_string()))
+            Token::Digits(script, numeric_literal) => {
+                write!(f, "{}", elevate(*script, numeric_literal.to_string()))
             }
             Token::NormalSymexSyllable(s) => f.write_str(s),
             Token::SuperscriptSymexSyllable(s) => {
@@ -448,12 +431,7 @@ mod lexer_impl_new {
                 },
                 has_trailing_dot: false,
             };
-            let f = match script {
-                Script::Super => super::Token::SuperscriptDigits,
-                Script::Normal => super::Token::NormalDigits,
-                Script::Sub => super::Token::SubscriptDigits,
-            };
-            f(literal)
+            super::Token::Digits(script, literal)
         };
         let make_symex = || -> Option<Token> {
             let f = match script {
@@ -640,7 +618,7 @@ mod lexer_impl_new {
                     existing.push_str(&incoming);
                     TokenMergeResult::Merged(Token::SuperscriptSymexSyllable(existing), merged_span)
                 }
-                Token::SuperscriptDigits(literal) => {
+                Token::Digits(Script::Super, literal) => {
                     existing.push_str(&literal.digits);
                     if literal.has_trailing_dot {
                         existing.push(DOT_CHAR);
@@ -649,27 +627,6 @@ mod lexer_impl_new {
                 }
                 other => TokenMergeResult::Failed {
                     current: Ok(Token::SuperscriptSymexSyllable(existing)),
-                    current_span,
-                    incoming: Ok(other),
-                    incoming_span,
-                },
-            },
-            Token::SuperscriptDigits(mut existing) => match incoming {
-                Token::SuperscriptDigits(incoming) => {
-                    existing.append_digits_of_literal(incoming);
-                    TokenMergeResult::Merged(Token::SuperscriptDigits(existing), merged_span)
-                }
-                Token::Dot(Script::Super) if !existing.has_trailing_dot => {
-                    existing.has_trailing_dot = true;
-                    TokenMergeResult::Merged(Token::SuperscriptDigits(existing), merged_span)
-                }
-                Token::SuperscriptSymexSyllable(sym) => {
-                    let mut s: String = existing.digits;
-                    s.push_str(&sym);
-                    TokenMergeResult::Merged(Token::SuperscriptSymexSyllable(s), merged_span)
-                }
-                other => TokenMergeResult::Failed {
-                    current: Ok(Token::SuperscriptDigits(existing)),
                     current_span,
                     incoming: Ok(other),
                     incoming_span,
@@ -693,7 +650,7 @@ mod lexer_impl_new {
                     existing.push_str(&incoming);
                     TokenMergeResult::Merged(Token::NormalSymexSyllable(existing), merged_span)
                 }
-                Token::NormalDigits(literal) => {
+                Token::Digits(Script::Normal, literal) => {
                     existing.push_str(&literal.digits);
                     if literal.has_trailing_dot {
                         existing.push(DOT_CHAR);
@@ -707,22 +664,24 @@ mod lexer_impl_new {
                     incoming_span,
                 },
             },
-            Token::NormalDigits(mut existing) => match incoming {
-                Token::NormalDigits(incoming) => {
+            Token::Digits(left_script, mut existing) => match incoming {
+                Token::Digits(right_script, incoming) if left_script == right_script => {
                     existing.append_digits_of_literal(incoming);
-                    TokenMergeResult::Merged(Token::NormalDigits(existing), merged_span)
+                    TokenMergeResult::Merged(Token::Digits(left_script, existing), merged_span)
                 }
-                Token::Dot(Script::Normal) if !existing.has_trailing_dot => {
+                Token::Dot(right_script)
+                    if left_script == right_script && !existing.has_trailing_dot =>
+                {
                     existing.has_trailing_dot = true;
-                    TokenMergeResult::Merged(Token::NormalDigits(existing), merged_span)
+                    TokenMergeResult::Merged(Token::Digits(left_script, existing), merged_span)
                 }
-                Token::NormalSymexSyllable(sym) => {
+                Token::NormalSymexSyllable(sym) if left_script == Script::Normal => {
                     let mut s: String = existing.digits;
                     s.push_str(&sym);
                     TokenMergeResult::Merged(Token::NormalSymexSyllable(s), merged_span)
                 }
                 other => TokenMergeResult::Failed {
-                    current: Ok(Token::NormalDigits(existing)),
+                    current: Ok(Token::Digits(left_script, existing)),
                     current_span,
                     incoming: Ok(other),
                     incoming_span,
@@ -733,7 +692,7 @@ mod lexer_impl_new {
                     existing.push_str(&incoming);
                     TokenMergeResult::Merged(Token::SubscriptSymexSyllable(existing), merged_span)
                 }
-                Token::SubscriptDigits(literal) => {
+                Token::Digits(Script::Sub, literal) => {
                     existing.push_str(&literal.digits);
                     if literal.has_trailing_dot {
                         existing.push(DOT_CHAR);
@@ -742,27 +701,6 @@ mod lexer_impl_new {
                 }
                 other => TokenMergeResult::Failed {
                     current: Ok(Token::SubscriptSymexSyllable(existing)),
-                    current_span,
-                    incoming: Ok(other),
-                    incoming_span,
-                },
-            },
-            Token::SubscriptDigits(mut existing) => match incoming {
-                Token::SubscriptDigits(incoming) => {
-                    existing.append_digits_of_literal(incoming);
-                    TokenMergeResult::Merged(Token::SubscriptDigits(existing), merged_span)
-                }
-                Token::Dot(Script::Sub) if !existing.has_trailing_dot => {
-                    existing.has_trailing_dot = true;
-                    TokenMergeResult::Merged(Token::SubscriptDigits(existing), merged_span)
-                }
-                Token::SubscriptSymexSyllable(sym) => {
-                    let mut s: String = existing.digits;
-                    s.push_str(&sym);
-                    TokenMergeResult::Merged(Token::SubscriptSymexSyllable(s), merged_span)
-                }
-                other => TokenMergeResult::Failed {
-                    current: Ok(Token::SubscriptDigits(existing)),
                     current_span,
                     incoming: Ok(other),
                     incoming_span,

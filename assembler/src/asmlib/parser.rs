@@ -40,19 +40,8 @@ where
     .map_with(|maybe_sign, extra| (maybe_sign, extra.span()))
     .or_not();
 
-    let digits = match script_required {
-        Script::Normal => select! {
-            Tok::NormalDigits(n) => n,
-        }
-        .boxed(),
-        Script::Super => select! {
-            Tok::SuperscriptDigits(n) => n,
-        }
-        .boxed(),
-        Script::Sub => select! {
-            Tok::SubscriptDigits(n) => n,
-        }
-        .boxed(),
+    let digits = select! {
+        Tok::Digits(script, n) if script == script_required => n,
     }
     .map_with(|digits, extra| (digits, extra.span()));
 

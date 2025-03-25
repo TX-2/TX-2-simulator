@@ -150,143 +150,203 @@ fn test_upper_lexer_span() {
 fn test_normal_digits() {
     assert_eq!(
         scan_tokens_only(" 0"),
-        Ok(vec![Token::NormalDigits(NumericLiteral {
-            digits: "0".to_string(),
-            has_trailing_dot: false
-        })])
+        Ok(vec![Token::Digits(
+            Script::Normal,
+            NumericLiteral {
+                digits: "0".to_string(),
+                has_trailing_dot: false
+            }
+        )])
     );
     assert_eq!(
         scan_tokens_only(" 1"),
-        Ok(vec![Token::NormalDigits(NumericLiteral {
-            digits: "1".to_string(),
-            has_trailing_dot: false
-        })])
+        Ok(vec![Token::Digits(
+            Script::Normal,
+            NumericLiteral {
+                digits: "1".to_string(),
+                has_trailing_dot: false
+            }
+        )])
     );
     assert_eq!(
         scan_tokens_only(" 2"),
-        Ok(vec![Token::NormalDigits(NumericLiteral {
-            digits: "2".to_string(),
-            has_trailing_dot: false
-        })])
+        Ok(vec![Token::Digits(
+            Script::Normal,
+            NumericLiteral {
+                digits: "2".to_string(),
+                has_trailing_dot: false
+            }
+        )])
     );
     assert_eq!(
         scan_tokens_only(" 3"),
-        Ok(vec![Token::NormalDigits(NumericLiteral {
-            digits: "3".to_string(),
-            has_trailing_dot: false
-        })])
+        Ok(vec![Token::Digits(
+            Script::Normal,
+            NumericLiteral {
+                digits: "3".to_string(),
+                has_trailing_dot: false
+            }
+        )])
     );
     assert_eq!(
         scan_tokens_only(" 4"),
-        Ok(vec![Token::NormalDigits(NumericLiteral {
-            digits: "4".to_string(),
-            has_trailing_dot: false
-        })])
+        Ok(vec![Token::Digits(
+            Script::Normal,
+            NumericLiteral {
+                digits: "4".to_string(),
+                has_trailing_dot: false
+            }
+        )])
     );
     assert_eq!(
         scan_tokens_only(" 5"),
-        Ok(vec![Token::NormalDigits(NumericLiteral {
-            digits: "5".to_string(),
-            has_trailing_dot: false
-        })])
+        Ok(vec![Token::Digits(
+            Script::Normal,
+            NumericLiteral {
+                digits: "5".to_string(),
+                has_trailing_dot: false
+            }
+        )])
     );
     assert_eq!(
         scan_tokens_only(" 6"),
-        Ok(vec![Token::NormalDigits(NumericLiteral {
-            digits: "6".to_string(),
-            has_trailing_dot: false
-        })])
+        Ok(vec![Token::Digits(
+            Script::Normal,
+            NumericLiteral {
+                digits: "6".to_string(),
+                has_trailing_dot: false
+            }
+        )])
     );
     assert_eq!(
         scan_tokens_only(" 7"),
-        Ok(vec![Token::NormalDigits(NumericLiteral {
-            digits: "7".to_string(),
-            has_trailing_dot: false
-        })])
+        Ok(vec![Token::Digits(
+            Script::Normal,
+            NumericLiteral {
+                digits: "7".to_string(),
+                has_trailing_dot: false
+            }
+        )])
     );
     assert_eq!(
         scan_tokens_only(" 8"),
-        Ok(vec![Token::NormalDigits(NumericLiteral {
-            digits: "8".to_string(),
-            has_trailing_dot: false
-        })])
+        Ok(vec![Token::Digits(
+            Script::Normal,
+            NumericLiteral {
+                digits: "8".to_string(),
+                has_trailing_dot: false
+            }
+        )])
     );
     assert_eq!(
         scan_tokens_only(" 9"),
-        Ok(vec![Token::NormalDigits(NumericLiteral {
-            digits: "9".to_string(),
-            has_trailing_dot: false
-        })])
+        Ok(vec![Token::Digits(
+            Script::Normal,
+            NumericLiteral {
+                digits: "9".to_string(),
+                has_trailing_dot: false
+            }
+        )])
     );
     assert_eq!(
         scan_tokens_only("10"),
-        Ok(vec![Token::NormalDigits(NumericLiteral {
-            digits: "10".to_string(),
-            has_trailing_dot: false
-        })])
+        Ok(vec![Token::Digits(
+            Script::Normal,
+            NumericLiteral {
+                digits: "10".to_string(),
+                has_trailing_dot: false
+            }
+        )])
     );
     assert_eq!(
         scan_tokens_only("11"),
-        Ok(vec![Token::NormalDigits(NumericLiteral {
-            digits: "11".to_string(),
-            has_trailing_dot: false
-        })])
+        Ok(vec![Token::Digits(
+            Script::Normal,
+            NumericLiteral {
+                digits: "11".to_string(),
+                has_trailing_dot: false
+            }
+        )])
     );
     assert_eq!(
         scan_tokens_only("12"),
-        Ok(vec![Token::NormalDigits(NumericLiteral {
-            digits: "12".to_string(),
-            has_trailing_dot: false
-        })])
+        Ok(vec![Token::Digits(
+            Script::Normal,
+            NumericLiteral {
+                digits: "12".to_string(),
+                has_trailing_dot: false
+            }
+        )])
     );
     assert_eq!(
         scan_tokens_only("13"),
-        Ok(vec![Token::NormalDigits(NumericLiteral {
-            digits: "13".to_string(),
-            has_trailing_dot: false
-        })])
+        Ok(vec![Token::Digits(
+            Script::Normal,
+            NumericLiteral {
+                digits: "13".to_string(),
+                has_trailing_dot: false
+            }
+        )])
     );
     assert_eq!(
         scan_tokens_only("14"),
-        Ok(vec![Token::NormalDigits(NumericLiteral {
-            digits: "14".to_string(),
-            has_trailing_dot: false
-        })])
+        Ok(vec![Token::Digits(
+            Script::Normal,
+            NumericLiteral {
+                digits: "14".to_string(),
+                has_trailing_dot: false
+            }
+        )])
     );
     assert_eq!(
         scan_tokens_only("15"),
-        Ok(vec![Token::NormalDigits(NumericLiteral {
-            digits: "15".to_string(),
-            has_trailing_dot: false
-        })])
+        Ok(vec![Token::Digits(
+            Script::Normal,
+            NumericLiteral {
+                digits: "15".to_string(),
+                has_trailing_dot: false
+            }
+        )])
     );
     assert_eq!(
         scan_tokens_only("16"),
-        Ok(vec![Token::NormalDigits(NumericLiteral {
-            digits: "16".to_string(),
-            has_trailing_dot: false
-        })])
+        Ok(vec![Token::Digits(
+            Script::Normal,
+            NumericLiteral {
+                digits: "16".to_string(),
+                has_trailing_dot: false
+            }
+        )])
     );
     assert_eq!(
         scan_tokens_only("17"),
-        Ok(vec![Token::NormalDigits(NumericLiteral {
-            digits: "17".to_string(),
-            has_trailing_dot: false
-        })])
+        Ok(vec![Token::Digits(
+            Script::Normal,
+            NumericLiteral {
+                digits: "17".to_string(),
+                has_trailing_dot: false
+            }
+        )])
     );
     assert_eq!(
         scan_tokens_only("18"),
-        Ok(vec![Token::NormalDigits(NumericLiteral {
-            digits: "18".to_string(),
-            has_trailing_dot: false
-        })])
+        Ok(vec![Token::Digits(
+            Script::Normal,
+            NumericLiteral {
+                digits: "18".to_string(),
+                has_trailing_dot: false
+            }
+        )])
     );
     assert_eq!(
         scan_tokens_only("19"),
-        Ok(vec![Token::NormalDigits(NumericLiteral {
-            digits: "19".to_string(),
-            has_trailing_dot: false
-        })])
+        Ok(vec![Token::Digits(
+            Script::Normal,
+            NumericLiteral {
+                digits: "19".to_string(),
+                has_trailing_dot: false
+            }
+        )])
     );
 }
 
@@ -297,15 +357,21 @@ fn test_arithemetic_expression_plus() {
     assert_eq!(
         scan_tokens_only("1+2"),
         Ok(vec![
-            Token::NormalDigits(NumericLiteral {
-                digits: "1".to_string(),
-                has_trailing_dot: false
-            }),
+            Token::Digits(
+                Script::Normal,
+                NumericLiteral {
+                    digits: "1".to_string(),
+                    has_trailing_dot: false
+                }
+            ),
             Token::Plus(Script::Normal),
-            Token::NormalDigits(NumericLiteral {
-                digits: "2".to_string(),
-                has_trailing_dot: false
-            })
+            Token::Digits(
+                Script::Normal,
+                NumericLiteral {
+                    digits: "2".to_string(),
+                    has_trailing_dot: false
+                }
+            )
         ])
     );
 }
@@ -317,15 +383,21 @@ fn test_arithemetic_expression_minus() {
     assert_eq!(
         scan_tokens_only("2-1"),
         Ok(vec![
-            Token::NormalDigits(NumericLiteral {
-                digits: "2".to_string(),
-                has_trailing_dot: false
-            }),
+            Token::Digits(
+                Script::Normal,
+                NumericLiteral {
+                    digits: "2".to_string(),
+                    has_trailing_dot: false
+                }
+            ),
             Token::Minus(Script::Normal),
-            Token::NormalDigits(NumericLiteral {
-                digits: "1".to_string(),
-                has_trailing_dot: false
-            })
+            Token::Digits(
+                Script::Normal,
+                NumericLiteral {
+                    digits: "1".to_string(),
+                    has_trailing_dot: false
+                }
+            )
         ])
     );
 }
@@ -336,20 +408,26 @@ fn test_normal_digits_sign() {
         scan_tokens_only("+1"),
         Ok(vec![
             Token::Plus(Script::Normal),
-            Token::NormalDigits(NumericLiteral {
-                digits: "1".to_string(),
-                has_trailing_dot: false
-            })
+            Token::Digits(
+                Script::Normal,
+                NumericLiteral {
+                    digits: "1".to_string(),
+                    has_trailing_dot: false
+                }
+            )
         ])
     );
     assert_eq!(
         scan_tokens_only("-209"),
         Ok(vec![
             Token::Minus(Script::Normal),
-            Token::NormalDigits(NumericLiteral {
-                digits: "209".to_string(),
-                has_trailing_dot: false
-            })
+            Token::Digits(
+                Script::Normal,
+                NumericLiteral {
+                    digits: "209".to_string(),
+                    has_trailing_dot: false
+                }
+            )
         ])
     );
 }
@@ -358,18 +436,24 @@ fn test_normal_digits_sign() {
 fn test_normal_digits_trailing_dot_ascii() {
     assert_eq!(
         scan_tokens_only(" 20@dot@"),
-        Ok(vec![Token::NormalDigits(NumericLiteral {
-            digits: "20".to_string(),
-            has_trailing_dot: true,
-        })])
+        Ok(vec![Token::Digits(
+            Script::Normal,
+            NumericLiteral {
+                digits: "20".to_string(),
+                has_trailing_dot: true,
+            }
+        )])
     );
 
     assert_eq!(
         scan_tokens_only(" 12."),
-        Ok(vec![Token::NormalDigits(NumericLiteral {
-            digits: "12".to_string(),
-            has_trailing_dot: true,
-        })])
+        Ok(vec![Token::Digits(
+            Script::Normal,
+            NumericLiteral {
+                digits: "12".to_string(),
+                has_trailing_dot: true,
+            }
+        )])
     );
 }
 
@@ -377,17 +461,23 @@ fn test_normal_digits_trailing_dot_ascii() {
 fn test_normal_digits_trailing_centre_dot() {
     assert_eq!(
         scan_tokens_only("20·"),
-        Ok(vec![Token::NormalDigits(NumericLiteral {
-            digits: "20".to_string(),
-            has_trailing_dot: true,
-        })])
+        Ok(vec![Token::Digits(
+            Script::Normal,
+            NumericLiteral {
+                digits: "20".to_string(),
+                has_trailing_dot: true,
+            }
+        )])
     );
     assert_eq!(
         scan_tokens_only("20@dot@"),
-        Ok(vec![Token::NormalDigits(NumericLiteral {
-            digits: "20".to_string(),
-            has_trailing_dot: true,
-        })])
+        Ok(vec![Token::Digits(
+            Script::Normal,
+            NumericLiteral {
+                digits: "20".to_string(),
+                has_trailing_dot: true,
+            }
+        )])
     );
 }
 
@@ -411,7 +501,7 @@ fn test_subscript_digits_trailing_dot() {
     assert_eq!(&input[0..16], input);
     assert_eq!(
         scan_tokens_only(input),
-        Ok(vec![Token::SubscriptDigits(number_with_dot("3"))])
+        Ok(vec![Token::Digits(Script::Sub, number_with_dot("3"))])
     );
 }
 
@@ -421,49 +511,50 @@ fn test_subscript_digits() {
     assert_eq!(&input[0..30], input);
     assert_eq!(
         scan_tokens_only(input),
-        Ok(vec![Token::SubscriptDigits(number_without_dot(
-            "0123456789"
-        ))])
+        Ok(vec![Token::Digits(
+            Script::Sub,
+            number_without_dot("0123456789")
+        )])
     );
     assert_eq!(
         scan_tokens_only("@sub_0@"),
-        Ok(vec![Token::SubscriptDigits(number_without_dot("0"))])
+        Ok(vec![Token::Digits(Script::Sub, number_without_dot("0"))])
     );
     assert_eq!(
         scan_tokens_only("@sub_1@"),
-        Ok(vec![Token::SubscriptDigits(number_without_dot("1"))])
+        Ok(vec![Token::Digits(Script::Sub, number_without_dot("1"))])
     );
     assert_eq!(
         scan_tokens_only("@sub_2@"),
-        Ok(vec![Token::SubscriptDigits(number_without_dot("2"))])
+        Ok(vec![Token::Digits(Script::Sub, number_without_dot("2"))])
     );
     assert_eq!(
         scan_tokens_only("@sub_3@"),
-        Ok(vec![Token::SubscriptDigits(number_without_dot("3"))])
+        Ok(vec![Token::Digits(Script::Sub, number_without_dot("3"))])
     );
     assert_eq!(
         scan_tokens_only("@sub_4@"),
-        Ok(vec![Token::SubscriptDigits(number_without_dot("4"))])
+        Ok(vec![Token::Digits(Script::Sub, number_without_dot("4"))])
     );
     assert_eq!(
         scan_tokens_only("@sub_5@"),
-        Ok(vec![Token::SubscriptDigits(number_without_dot("5"))])
+        Ok(vec![Token::Digits(Script::Sub, number_without_dot("5"))])
     );
     assert_eq!(
         scan_tokens_only("@sub_6@"),
-        Ok(vec![Token::SubscriptDigits(number_without_dot("6"))])
+        Ok(vec![Token::Digits(Script::Sub, number_without_dot("6"))])
     );
     assert_eq!(
         scan_tokens_only("@sub_7@"),
-        Ok(vec![Token::SubscriptDigits(number_without_dot("7"))])
+        Ok(vec![Token::Digits(Script::Sub, number_without_dot("7"))])
     );
     assert_eq!(
         scan_tokens_only("@sub_8@"),
-        Ok(vec![Token::SubscriptDigits(number_without_dot("8"))])
+        Ok(vec![Token::Digits(Script::Sub, number_without_dot("8"))])
     );
     assert_eq!(
         scan_tokens_only("@sub_9@"),
-        Ok(vec![Token::SubscriptDigits(number_without_dot("9"))])
+        Ok(vec![Token::Digits(Script::Sub, number_without_dot("9"))])
     );
 
     let input = "@sub_9@@sub_9@";
@@ -471,7 +562,7 @@ fn test_subscript_digits() {
     assert_eq!(&input[0..14], input);
     assert_eq!(
         scan_tokens_only(input),
-        Ok(vec![Token::SubscriptDigits(number_without_dot("99"))])
+        Ok(vec![Token::Digits(Script::Sub, number_without_dot("99"))])
     );
 }
 
@@ -481,10 +572,13 @@ fn test_subscript_numeric_literal_with_minus_sign() {
         scan_tokens_only("₋₄"),
         Ok(vec![
             Token::Minus(Script::Sub),
-            Token::SubscriptDigits(NumericLiteral {
-                digits: "4".to_string(),
-                has_trailing_dot: false,
-            })
+            Token::Digits(
+                Script::Sub,
+                NumericLiteral {
+                    digits: "4".to_string(),
+                    has_trailing_dot: false,
+                }
+            )
         ])
     );
 }
@@ -495,10 +589,13 @@ fn test_subscript_numeric_literal_with_plus_sign() {
         scan_tokens_only("₊₄"),
         Ok(vec![
             Token::Plus(Script::Sub),
-            Token::SubscriptDigits(NumericLiteral {
-                digits: "4".to_string(),
-                has_trailing_dot: false,
-            })
+            Token::Digits(
+                Script::Sub,
+                NumericLiteral {
+                    digits: "4".to_string(),
+                    has_trailing_dot: false,
+                }
+            )
         ])
     );
 }
@@ -509,54 +606,55 @@ fn test_superscript_digits() {
     assert_eq!(&input[0..27], input);
     assert_eq!(
         scan_tokens_only(input),
-        Ok(vec![Token::SuperscriptDigits(number_without_dot(
-            "0123456789"
-        ))])
+        Ok(vec![Token::Digits(
+            Script::Super,
+            number_without_dot("0123456789")
+        )])
     );
     assert_eq!(
         scan_tokens_only("@sup_0@"),
-        Ok(vec![Token::SuperscriptDigits(number_without_dot("0"))])
+        Ok(vec![Token::Digits(Script::Super, number_without_dot("0"))])
     );
     assert_eq!(
         scan_tokens_only("@sup_1@"),
-        Ok(vec![Token::SuperscriptDigits(number_without_dot("1"))])
+        Ok(vec![Token::Digits(Script::Super, number_without_dot("1"))])
     );
     assert_eq!(
         scan_tokens_only("@sup_2@"),
-        Ok(vec![Token::SuperscriptDigits(number_without_dot("2"))])
+        Ok(vec![Token::Digits(Script::Super, number_without_dot("2"))])
     );
     assert_eq!(
         scan_tokens_only("@sup_3@"),
-        Ok(vec![Token::SuperscriptDigits(number_without_dot("3"))])
+        Ok(vec![Token::Digits(Script::Super, number_without_dot("3"))])
     );
     assert_eq!(
         scan_tokens_only("@sup_4@"),
-        Ok(vec![Token::SuperscriptDigits(number_without_dot("4"))])
+        Ok(vec![Token::Digits(Script::Super, number_without_dot("4"))])
     );
     assert_eq!(
         scan_tokens_only("@sup_5@"),
-        Ok(vec![Token::SuperscriptDigits(number_without_dot("5"))])
+        Ok(vec![Token::Digits(Script::Super, number_without_dot("5"))])
     );
     assert_eq!(
         scan_tokens_only("@sup_6@"),
-        Ok(vec![Token::SuperscriptDigits(number_without_dot("6"))])
+        Ok(vec![Token::Digits(Script::Super, number_without_dot("6"))])
     );
     assert_eq!(
         scan_tokens_only("@sup_7@"),
-        Ok(vec![Token::SuperscriptDigits(number_without_dot("7"))])
+        Ok(vec![Token::Digits(Script::Super, number_without_dot("7"))])
     );
     assert_eq!(
         scan_tokens_only("@sup_8@"),
-        Ok(vec![Token::SuperscriptDigits(number_without_dot("8"))])
+        Ok(vec![Token::Digits(Script::Super, number_without_dot("8"))])
     );
     assert_eq!(
         scan_tokens_only("@sup_9@"),
-        Ok(vec![Token::SuperscriptDigits(number_without_dot("9"))])
+        Ok(vec![Token::Digits(Script::Super, number_without_dot("9"))])
     );
 
     assert_eq!(
         scan_tokens_only("@sup_9@@sup_9@"),
-        Ok(vec![Token::SuperscriptDigits(number_without_dot("99"))])
+        Ok(vec![Token::Digits(Script::Super, number_without_dot("99"))])
     );
 }
 
@@ -566,10 +664,13 @@ fn test_superscript_sign_minus() {
         scan_tokens_only("\u{207B}\u{2074}"),
         Ok(vec![
             Token::Minus(Script::Super),
-            Token::SuperscriptDigits(NumericLiteral {
-                digits: "4".to_string(),
-                has_trailing_dot: false,
-            })
+            Token::Digits(
+                Script::Super,
+                NumericLiteral {
+                    digits: "4".to_string(),
+                    has_trailing_dot: false,
+                }
+            )
         ])
     );
 }
@@ -580,10 +681,13 @@ fn test_superscript_sign_plus() {
         scan_tokens_only("\u{207A}\u{2074}"),
         Ok(vec![
             Token::Plus(Script::Super),
-            Token::SuperscriptDigits(NumericLiteral {
-                digits: "4".to_string(),
-                has_trailing_dot: false,
-            })
+            Token::Digits(
+                Script::Super,
+                NumericLiteral {
+                    digits: "4".to_string(),
+                    has_trailing_dot: false,
+                }
+            )
         ])
     );
 }
@@ -667,10 +771,13 @@ fn test_equals() {
             Token::NormalSymexSyllable("FOO".to_string()),
             Token::NormalSymexSyllable("BAR".to_string()),
             Token::Equals,
-            Token::NormalDigits(NumericLiteral {
-                digits: "1".to_string(),
-                has_trailing_dot: false
-            }),
+            Token::Digits(
+                Script::Normal,
+                NumericLiteral {
+                    digits: "1".to_string(),
+                    has_trailing_dot: false
+                }
+            ),
             Token::Newline,
         ])
     );
@@ -1045,10 +1152,13 @@ fn test_foo3() {
     dbg!(&input[4..7]);
     assert_eq!(
         lex.next(),
-        Some(Ok(Token::SubscriptDigits(NumericLiteral {
-            digits: "3".to_string(),
-            has_trailing_dot: false
-        })))
+        Some(Ok(Token::Digits(
+            Script::Sub,
+            NumericLiteral {
+                digits: "3".to_string(),
+                has_trailing_dot: false
+            }
+        )))
     );
     // The key point about the next assertion is that slice indices
     // and spans are both byte positins, not character indexes.
