@@ -431,13 +431,13 @@ fn decode_glyphs_by_regex(tokname: &'static str, rx: &Regex, text: &str, script:
             }
         } else if let Some(m) = cap.get(0) {
             let fragment = m.as_str();
-            for (i, ch) in fragment.chars().enumerate() {
+            for ch in fragment.chars() {
                 match transformer(ch) {
                     Some(ch) => {
                         name.push(ch);
                     }
                     None => {
-                        panic!("while decoding '{text}' as token {tokname}, the lexer accepts '{ch}' at offset {i} in '{fragment}' but the lexer's decoder doesn't know what to do with it (so the lexer token matching rule is probably wrong)");
+                        panic!("while decoding '{text}' as token {tokname}, the lexer accepts '{ch}' in '{fragment}' but the lexer's decoder doesn't know what to do with it (so the lexer token matching rule is probably wrong)");
                     }
                 }
             }
@@ -889,9 +889,8 @@ mod lexer_impl_new {
     use super::glyph::{glyph_from_name, glyph_of_char, Elevated, Glyph, GlyphShape, Unrecognised};
     use super::{NumericLiteral, DOT_CHAR};
     use base::charset::Script;
-    use std::iter::Enumerate;
     use std::ops::Range;
-    use std::str::Chars;
+    use std::str::CharIndices;
 
     use super::{Span, Token};
 
@@ -903,7 +902,7 @@ mod lexer_impl_new {
 
     #[derive(Debug, Clone)]
     struct GlyphRecognizer<'a> {
-        it: Enumerate<Chars<'a>>,
+        it: CharIndices<'a>,
         pos: usize,
         glyph_start: usize,
     }
@@ -911,14 +910,14 @@ mod lexer_impl_new {
     impl<'a> GlyphRecognizer<'a> {
         fn new(input: &'a str) -> GlyphRecognizer<'a> {
             Self {
-                it: input.chars().enumerate(),
+                it: input.char_indices(),
                 pos: 0,
                 glyph_start: 0,
             }
         }
 
         fn get_next_char(&mut self) -> Option<char> {
-            match self.it.next() {
+            match dbg!(self.it.next()) {
                 None => None,
                 Some((i, ch)) => {
                     self.pos = i;
@@ -928,7 +927,7 @@ mod lexer_impl_new {
         }
 
         fn span(&self) -> Span {
-            self.glyph_start..(self.pos + 1)
+            self.glyph_start..(self.it.offset())
         }
 
         fn next_named_glyph(&mut self) -> Option<Result<Elevated<&'static Glyph>, Unrecognised>> {
@@ -1283,10 +1282,6 @@ mod lexer_impl_new {
                     }
                     TokenMergeResult::Merged(Token::SuperscriptSymexSyllable(existing), merged_span)
                 }
-                Token::Dot(Script::Super) => {
-                    existing.push(DOT_CHAR);
-                    TokenMergeResult::Merged(Token::SuperscriptSymexSyllable(existing), merged_span)
-                }
                 other => TokenMergeResult::Failed {
                     current: Ok(Token::SuperscriptSymexSyllable(existing)),
                     current_span,
@@ -1316,6 +1311,19 @@ mod lexer_impl_new {
                 },
             },
             Token::NormalSymexSyllable(mut existing) => match incoming {
+                Token::Hold => {
+                    // overbar followed by h means not-hold, and we handle this case specially.
+                    if existing == "\u{0305}" {
+                        TokenMergeResult::Merged(Token::NotHold, merged_span)
+                    } else {
+                        TokenMergeResult::Failed {
+                            current: Ok(Token::NormalSymexSyllable(existing)),
+                            current_span,
+                            incoming: Ok(Token::Hold),
+                            incoming_span,
+                        }
+                    }
+                }
                 Token::NormalSymexSyllable(incoming) => {
                     existing.push_str(&incoming);
                     TokenMergeResult::Merged(Token::NormalSymexSyllable(existing), merged_span)
@@ -1325,10 +1333,6 @@ mod lexer_impl_new {
                     if literal.has_trailing_dot {
                         existing.push(DOT_CHAR);
                     }
-                    TokenMergeResult::Merged(Token::NormalSymexSyllable(existing), merged_span)
-                }
-                Token::Dot(Script::Normal) => {
-                    existing.push(DOT_CHAR);
                     TokenMergeResult::Merged(Token::NormalSymexSyllable(existing), merged_span)
                 }
                 other => TokenMergeResult::Failed {
@@ -1369,10 +1373,6 @@ mod lexer_impl_new {
                     if literal.has_trailing_dot {
                         existing.push(DOT_CHAR);
                     }
-                    TokenMergeResult::Merged(Token::SubscriptSymexSyllable(existing), merged_span)
-                }
-                Token::Dot(Script::Sub) => {
-                    existing.push(DOT_CHAR);
                     TokenMergeResult::Merged(Token::SubscriptSymexSyllable(existing), merged_span)
                 }
                 other => TokenMergeResult::Failed {
@@ -1434,6 +1434,19 @@ mod lexer_impl_new {
                 let maybe_spanned_new_token: Option<(Result<Token, Unrecognised>, Span)> =
                     match dbg!(self.inner.next()) {
                         None => None,
+                        Some(Err(Unrecognised::InvalidChar('ℏ'))) => {
+                            // ℏ is Unicode code point U+210F.  There
+                            // is no glyph matching ℏ (because on the
+                            // TX-2 this was produced with an overbar
+                            // (which does not advance the carriage)
+                            // and a regular h.  We accept it as a
+                            // special case.
+                            //
+                            // Because there is no Glyph for this, we
+                            // do not accept @...@ (e.g. @hbar@) for
+                            // this.
+                            return Some((Ok(super::Token::NotHold), self.inner.span()));
+                        }
                         Some(Err(e)) => Some((Err(e), self.inner.span())),
                         Some(Ok(g)) => {
                             if matches!(g.get().shape(), GlyphShape::Space | GlyphShape::Tab) {
@@ -1517,10 +1530,12 @@ mod lexer_impl_new {
         use super::Token;
         // These glyphs are a single token because they are both valid
         // in a symex and are both in superscript.
-        let mut lex = GlyphTokenizer::new("@sup_eps@ᵂ");
+        let input = "@sup_eps@ᵂ";
+        dbg!(input.len());
+        let mut lex = GlyphTokenizer::new(input);
         assert_eq!(
             lex.get_next_spanned_token(),
-            Some((Ok(Token::SuperscriptSymexSyllable("εW".to_string())), 0..10))
+            Some((Ok(Token::SuperscriptSymexSyllable("εW".to_string())), 0..12))
         );
         assert_eq!(lex.get_next_spanned_token(), None);
     }

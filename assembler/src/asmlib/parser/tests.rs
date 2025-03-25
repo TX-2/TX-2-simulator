@@ -861,6 +861,8 @@ fn test_assignment_subscript() {
     ];
     for (input, val_begin, val_end) in INPUTS {
         dbg!(&input);
+        dbg!(&input.len());
+        dbg!(input.char_indices().collect::<Vec<_>>());
         dbg!(&val_begin);
         dbg!(&val_end);
         assert_eq!(
@@ -869,7 +871,8 @@ fn test_assignment_subscript() {
                 "FOO",
                 span(0..*val_end),
                 LiteralValue::from((span(*val_begin..*val_end), Script::Sub, u36!(3))),
-            )
+            ),
+            "Incorrect parse of input {input:?}"
         )
     }
 }

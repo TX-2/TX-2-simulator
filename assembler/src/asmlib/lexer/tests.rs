@@ -694,8 +694,6 @@ fn test_hold() {
 
 #[test]
 fn test_nothold() {
-    assert_eq!(scan_tokens_only("@hbar@"), Ok(vec![Token::NotHold,]));
-    // U+0305 is combining overline.
     assert_eq!(scan_tokens_only("\u{0305}h"), Ok(vec![Token::NotHold,]));
     assert_eq!(scan_tokens_only("ℏ"), Ok(vec![Token::NotHold,]));
 }
@@ -1025,6 +1023,36 @@ fn test_xdot() {
         ]),
         "lexical analysis is incorrect for input '{input}'",
     );
+}
+
+#[test]
+fn test_foo3() {
+    let input = "FOO=₃";
+    let mut lex = Lexer::new(input);
+
+    dbg!(&input[0..3]);
+    assert_eq!(
+        lex.next(),
+        Some(Ok(Token::NormalSymexSyllable("FOO".to_string())))
+    );
+    assert_eq!(lex.span(), 0..3);
+
+    dbg!(&input[3..4]);
+    assert_eq!(lex.next(), Some(Ok(Token::Equals)));
+    assert_eq!(lex.span(), 3..4);
+
+    dbg!(&input[4..7]);
+    assert_eq!(
+        lex.next(),
+        Some(Ok(Token::SubscriptDigits(NumericLiteral {
+            digits: "3".to_string(),
+            has_trailing_dot: false
+        })))
+    );
+    // The key point about the next assertion is that slice indices
+    // and spans are both byte positins, not character indexes.
+    assert_eq!(lex.span(), 4..7);
+    assert_eq!(lex.next(), None);
 }
 
 #[test]

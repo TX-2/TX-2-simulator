@@ -32,7 +32,7 @@ impl From<(&str, &Span)> for LineAndColumn {
         let mut line = START_LINE;
         let mut column = START_COL;
         let pos = span.start;
-        for (i, ch) in body.chars().enumerate() {
+        for (i, ch) in body.char_indices() {
             if i == pos {
                 break;
             }
