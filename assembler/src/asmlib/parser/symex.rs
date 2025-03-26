@@ -70,19 +70,8 @@ where
         .labelled(DOT_STR);
 
     let maybe_dot = one_dot.clone().or_not();
-    let without_dot = match script_required {
-        Script::Normal => select! {
-            Tok::NormalSymexSyllable(name) => name,
-        }
-        .boxed(),
-        Script::Super => select! {
-            Tok::SuperscriptSymexSyllable(name) => name,
-        }
-        .boxed(),
-        Script::Sub => select! {
-            Tok::SubscriptSymexSyllable(name) => name,
-        }
-        .boxed(),
+    let without_dot = select! {
+        Tok::SymexSyllable(script, name) if script == script_required => name,
     };
 
     // The dot is a macro terminator.  So eventually we will need to

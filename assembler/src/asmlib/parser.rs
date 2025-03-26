@@ -412,7 +412,7 @@ where
     };
 
     let matching_metacommand_name = select! {
-        Tok::NormalSymexSyllable(name) if name_match(name.as_str()) => (),
+        Tok::SymexSyllable(Script::Normal, name) if name_match(name.as_str()) => (),
     };
 
     just([Tok::Hand, Tok::Hand])

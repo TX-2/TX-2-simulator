@@ -77,7 +77,6 @@ pub(crate) enum Token {
     // In order for the parser to recover from tokenization errors, we
     // need to be able to emit an error token.
     Error(String),
-
     LeftBrace,
     RightBrace,
     Newline,
@@ -98,15 +97,10 @@ pub(crate) enum Token {
     /// can form part of a symex.  See the TX-2 Users Handbook,
     /// section 6-3.2, "RULES FOR SYMEX FORMATION".
     Hold,
-
-    NotHold,
-
+    NotHold, // handled specially, there is no glyph for this.
     Arrow,
-
     Hand,
-
     Hash(Script),
-
     Equals,
 
     /// Asterisk is used quite heavily (indicating deferred addressing)
@@ -119,19 +113,12 @@ pub(crate) enum Token {
     Asterisk,
 
     Pipe,
-
     ProperSuperset,
-
     IdenticalTo,
-
     Tilde,
-
     LessThan,
-
     GreaterThan,
-
     Intersection,
-
     Union,
 
     /// Solidus is often called "slash" but people often confuse slash
@@ -140,13 +127,9 @@ pub(crate) enum Token {
 
     // @plus@ is actually not the correct glyph name, following sub.py.
     Plus(Script),
-
     Minus(Script),
-
     Times,
-
     LogicalOr(Script),
-
     LogicalAnd(Script),
 
     // Any unary "-" is handled in the parser.
@@ -161,13 +144,7 @@ pub(crate) enum Token {
     /// differently in some circumstances (it is a macro terminator).
     /// However it is part of a valid symex also, and so we will need
     /// to parse it as such.
-    NormalSymexSyllable(String),
-
-    // No support for superscript apostrophe, underscore.
-    SuperscriptSymexSyllable(String),
-
-    // No support for superscript apostrophe, underscore.
-    SubscriptSymexSyllable(String),
+    SymexSyllable(Script, String),
 
     // If change the representation of the dot in the token
     // definition, please also change DOT_CHAR.
@@ -181,7 +158,6 @@ pub(crate) enum Token {
     // this will help us to correctly process them when used as macro
     // terminators.
     Dot(Script),
-
     Comma,
 }
 
@@ -224,36 +200,33 @@ impl Display for Token {
             Token::Digits(script, numeric_literal) => {
                 write!(f, "{}", elevate(*script, numeric_literal.to_string()))
             }
-            Token::NormalSymexSyllable(s) => f.write_str(s),
-            Token::SuperscriptSymexSyllable(s) => {
-                for ch in s.chars() {
-                    match superscript_char(ch) {
-                        Ok(sup_ch) => f.write_char(sup_ch),
-                        Err(_) => match ch {
-                            'α' => f.write_str("@sup_alpha@"),
-                            'β' => f.write_str("@sup_beta@"),
-                            'γ' => f.write_str("@sup_gamma@"),
-                            'Δ' => f.write_str("@sup_delta@"),
-                            'ε' => f.write_str("@sup_eps@"),
-                            'λ' => f.write_str("@sup_lambda@"),
-                            _ => write!(f, "@sup_{ch}@"),
-                        },
-                    }?;
+            Token::SymexSyllable(script, name) => {
+                fn nochange(ch: char) -> Result<char, ()> {
+                    Ok(ch)
                 }
-                Ok(())
-            }
-            Token::SubscriptSymexSyllable(s) => {
-                for ch in s.chars() {
-                    match subscript_char(ch) {
+                fn convert_to_sup(ch: char) -> Result<char, ()> {
+                    superscript_char(ch).map_err(|_| ())
+                }
+                fn convert_to_sub(ch: char) -> Result<char, ()> {
+                    subscript_char(ch).map_err(|_| ())
+                }
+                type Transformer = fn(char) -> Result<char, ()>;
+                let (prefix, transform): (&'static str, Transformer) = match script {
+                    Script::Super => ("super_", convert_to_sup),
+                    Script::Normal => ("", nochange),
+                    Script::Sub => ("sub_", convert_to_sub),
+                };
+                for ch in name.chars() {
+                    match transform(ch) {
                         Ok(sup_ch) => f.write_char(sup_ch),
-                        Err(_) => match ch {
-                            'α' => f.write_str("@sub_alpha@"),
-                            'β' => f.write_str("@sub_beta@"),
-                            'γ' => f.write_str("@sub_gamma@"),
-                            'Δ' => f.write_str("@sub_delta@"),
-                            'ε' => f.write_str("@sub_eps@"),
-                            'λ' => f.write_str("@sub_lambda@"),
-                            _ => write!(f, "@sub_{ch}@"),
+                        Err(()) => match ch {
+                            'α' => write!(f, "@{prefix}alpha@"),
+                            'β' => write!(f, "@{prefix}beta@"),
+                            'γ' => write!(f, "@{prefix}gamma@"),
+                            'Δ' => write!(f, "@{prefix}delta@"),
+                            'ε' => write!(f, "@{prefix}eps@"),
+                            'λ' => write!(f, "@{prefix}lambda@"),
+                            _ => write!(f, "@{prefix}{ch}@"),
                         },
                     }?;
                 }
@@ -434,11 +407,6 @@ mod lexer_impl_new {
             super::Token::Digits(script, literal)
         };
         let make_symex = || -> Option<Token> {
-            let f = match script {
-                Script::Super => Token::SuperscriptSymexSyllable,
-                Script::Normal => Token::NormalSymexSyllable,
-                Script::Sub => Token::SubscriptSymexSyllable,
-            };
             // The symex token always gives the characters in normal
             // script.  The superscript/subscript information is
             // carried in the token variant
@@ -456,7 +424,7 @@ mod lexer_impl_new {
                     panic!("incoming token '{g:?}' was assigned as part of a symex syllable, but the resuting initial token body unexpectedly has more than one character (specifically, {n}): {name:?}");
                 }
             }
-            Some(f(name))
+            Some(Token::SymexSyllable(script, name))
         };
         let only_normal = |t: Token| -> Option<Token> {
             match script {
@@ -613,94 +581,77 @@ mod lexer_impl_new {
             Token::Minus(Script::Normal) if incoming == Token::GreaterThan => {
                 TokenMergeResult::Merged(Token::Arrow, merged_span)
             }
-            Token::SuperscriptSymexSyllable(mut existing) => match incoming {
-                Token::SuperscriptSymexSyllable(incoming) => {
-                    existing.push_str(&incoming);
-                    TokenMergeResult::Merged(Token::SuperscriptSymexSyllable(existing), merged_span)
-                }
-                Token::Digits(Script::Super, literal) => {
-                    existing.push_str(&literal.digits);
-                    if literal.has_trailing_dot {
-                        existing.push(DOT_CHAR);
-                    }
-                    TokenMergeResult::Merged(Token::SuperscriptSymexSyllable(existing), merged_span)
-                }
-                other => TokenMergeResult::Failed {
-                    current: Ok(Token::SuperscriptSymexSyllable(existing)),
-                    current_span,
-                    incoming: Ok(other),
-                    incoming_span,
-                },
-            },
-            Token::NormalSymexSyllable(mut existing) => match incoming {
-                Token::Hold => {
+            Token::SymexSyllable(existing_script, mut existing_name) => match incoming {
+                Token::Hold if existing_script == Script::Normal => {
                     // overbar followed by h means not-hold, and we handle this case specially.
-                    if existing == "\u{0305}" {
+                    if existing_name == "\u{0305}" {
                         TokenMergeResult::Merged(Token::NotHold, merged_span)
                     } else {
                         TokenMergeResult::Failed {
-                            current: Ok(Token::NormalSymexSyllable(existing)),
+                            current: Ok(Token::SymexSyllable(existing_script, existing_name)),
                             current_span,
                             incoming: Ok(Token::Hold),
                             incoming_span,
                         }
                     }
                 }
-                Token::NormalSymexSyllable(incoming) => {
-                    existing.push_str(&incoming);
-                    TokenMergeResult::Merged(Token::NormalSymexSyllable(existing), merged_span)
+                Token::SymexSyllable(incoming_script, incoming_name)
+                    if existing_script == incoming_script =>
+                {
+                    existing_name.push_str(&incoming_name);
+                    TokenMergeResult::Merged(
+                        Token::SymexSyllable(existing_script, existing_name),
+                        merged_span,
+                    )
                 }
-                Token::Digits(Script::Normal, literal) => {
-                    existing.push_str(&literal.digits);
+                Token::Digits(incoming_script, literal) if existing_script == incoming_script => {
+                    existing_name.push_str(&literal.digits);
                     if literal.has_trailing_dot {
-                        existing.push(DOT_CHAR);
+                        existing_name.push(DOT_CHAR);
                     }
-                    TokenMergeResult::Merged(Token::NormalSymexSyllable(existing), merged_span)
+                    TokenMergeResult::Merged(
+                        Token::SymexSyllable(existing_script, existing_name),
+                        merged_span,
+                    )
                 }
                 other => TokenMergeResult::Failed {
-                    current: Ok(Token::NormalSymexSyllable(existing)),
+                    current: Ok(Token::SymexSyllable(existing_script, existing_name)),
                     current_span,
                     incoming: Ok(other),
                     incoming_span,
                 },
             },
-            Token::Digits(left_script, mut existing) => match incoming {
-                Token::Digits(right_script, incoming) if left_script == right_script => {
-                    existing.append_digits_of_literal(incoming);
-                    TokenMergeResult::Merged(Token::Digits(left_script, existing), merged_span)
+            Token::Digits(existing_script, mut existing_literal) => match incoming {
+                Token::Digits(incoming_script, incoming_name)
+                    if existing_script == incoming_script =>
+                {
+                    existing_literal.append_digits_of_literal(incoming_name);
+                    TokenMergeResult::Merged(
+                        Token::Digits(existing_script, existing_literal),
+                        merged_span,
+                    )
                 }
                 Token::Dot(right_script)
-                    if left_script == right_script && !existing.has_trailing_dot =>
+                    if existing_script == right_script && !existing_literal.has_trailing_dot =>
                 {
-                    existing.has_trailing_dot = true;
-                    TokenMergeResult::Merged(Token::Digits(left_script, existing), merged_span)
+                    existing_literal.has_trailing_dot = true;
+                    TokenMergeResult::Merged(
+                        Token::Digits(existing_script, existing_literal),
+                        merged_span,
+                    )
                 }
-                Token::NormalSymexSyllable(sym) if left_script == Script::Normal => {
-                    let mut s: String = existing.digits;
-                    s.push_str(&sym);
-                    TokenMergeResult::Merged(Token::NormalSymexSyllable(s), merged_span)
-                }
-                other => TokenMergeResult::Failed {
-                    current: Ok(Token::Digits(left_script, existing)),
-                    current_span,
-                    incoming: Ok(other),
-                    incoming_span,
-                },
-            },
-            Token::SubscriptSymexSyllable(mut existing) => match incoming {
-                Token::SubscriptSymexSyllable(incoming) => {
-                    existing.push_str(&incoming);
-                    TokenMergeResult::Merged(Token::SubscriptSymexSyllable(existing), merged_span)
-                }
-                Token::Digits(Script::Sub, literal) => {
-                    existing.push_str(&literal.digits);
-                    if literal.has_trailing_dot {
-                        existing.push(DOT_CHAR);
-                    }
-                    TokenMergeResult::Merged(Token::SubscriptSymexSyllable(existing), merged_span)
+                Token::SymexSyllable(incoming_script, sym)
+                    if existing_script == incoming_script =>
+                {
+                    let mut existing_name: String = existing_literal.digits;
+                    existing_name.push_str(&sym);
+                    TokenMergeResult::Merged(
+                        Token::SymexSyllable(existing_script, existing_name),
+                        merged_span,
+                    )
                 }
                 other => TokenMergeResult::Failed {
-                    current: Ok(Token::SubscriptSymexSyllable(existing)),
+                    current: Ok(Token::Digits(existing_script, existing_literal)),
                     current_span,
                     incoming: Ok(other),
                     incoming_span,
@@ -812,7 +763,10 @@ mod lexer_impl_new {
         assert_eq!(lex.get_next_spanned_token(), Some((Ok(Token::Hold), 0..1)));
         assert_eq!(
             lex.get_next_spanned_token(),
-            Some((Ok(Token::NormalSymexSyllable("x".to_string())), 1..2))
+            Some((
+                Ok(Token::SymexSyllable(Script::Normal, "x".to_string())),
+                1..2
+            ))
         );
         assert_eq!(lex.get_next_spanned_token(), None);
     }
@@ -823,7 +777,10 @@ mod lexer_impl_new {
         let mut lex = GlyphTokenizer::new("@sup_eps@");
         assert_eq!(
             lex.get_next_spanned_token(),
-            Some((Ok(Token::SuperscriptSymexSyllable("ε".to_string())), 0..9))
+            Some((
+                Ok(Token::SymexSyllable(Script::Super, "ε".to_string())),
+                0..9
+            ))
         );
         assert_eq!(lex.get_next_spanned_token(), None);
     }
@@ -837,7 +794,10 @@ mod lexer_impl_new {
         let mut lex = GlyphTokenizer::new(input);
         assert_eq!(
             lex.get_next_spanned_token(),
-            Some((Ok(Token::SuperscriptSymexSyllable("εW".to_string())), 0..12))
+            Some((
+                Ok(Token::SymexSyllable(Script::Super, "εW".to_string())),
+                0..12
+            ))
         );
         assert_eq!(lex.get_next_spanned_token(), None);
     }
@@ -851,11 +811,17 @@ mod lexer_impl_new {
         let mut lex = GlyphTokenizer::new("@sup_eps@W");
         assert_eq!(
             lex.get_next_spanned_token(),
-            Some((Ok(Token::SuperscriptSymexSyllable("ε".to_string())), 0..9))
+            Some((
+                Ok(Token::SymexSyllable(Script::Super, "ε".to_string())),
+                0..9
+            ))
         );
         assert_eq!(
             lex.get_next_spanned_token(),
-            Some((Ok(Token::NormalSymexSyllable("W".to_string())), 9..10))
+            Some((
+                Ok(Token::SymexSyllable(Script::Normal, "W".to_string())),
+                9..10
+            ))
         );
         assert_eq!(lex.get_next_spanned_token(), None);
     }
@@ -869,11 +835,17 @@ mod lexer_impl_new {
         let mut lex = GlyphTokenizer::new("W Q");
         assert_eq!(
             lex.get_next_spanned_token(),
-            Some((Ok(Token::NormalSymexSyllable("W".to_string())), 0..1))
+            Some((
+                Ok(Token::SymexSyllable(Script::Normal, "W".to_string())),
+                0..1
+            ))
         );
         assert_eq!(
             lex.get_next_spanned_token(),
-            Some((Ok(Token::NormalSymexSyllable("Q".to_string())), 2..3))
+            Some((
+                Ok(Token::SymexSyllable(Script::Normal, "Q".to_string())),
+                2..3
+            ))
         );
         assert_eq!(lex.get_next_spanned_token(), None);
     }

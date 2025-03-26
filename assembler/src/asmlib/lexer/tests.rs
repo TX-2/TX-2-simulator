@@ -696,23 +696,23 @@ fn test_superscript_sign_plus() {
 fn test_symex_one_syllable_ae_register_names() {
     assert_eq!(
         scan_tokens_only("A"),
-        Ok(vec![Token::NormalSymexSyllable("A".to_string())])
+        Ok(vec![Token::SymexSyllable(Script::Normal, "A".to_string())])
     );
     assert_eq!(
         scan_tokens_only("B"),
-        Ok(vec![Token::NormalSymexSyllable("B".to_string())])
+        Ok(vec![Token::SymexSyllable(Script::Normal, "B".to_string())])
     );
     assert_eq!(
         scan_tokens_only("C"),
-        Ok(vec![Token::NormalSymexSyllable("C".to_string())])
+        Ok(vec![Token::SymexSyllable(Script::Normal, "C".to_string())])
     );
     assert_eq!(
         scan_tokens_only("D"),
-        Ok(vec![Token::NormalSymexSyllable("D".to_string())])
+        Ok(vec![Token::SymexSyllable(Script::Normal, "D".to_string())])
     );
     assert_eq!(
         scan_tokens_only("E"),
-        Ok(vec![Token::NormalSymexSyllable("E".to_string())])
+        Ok(vec![Token::SymexSyllable(Script::Normal, "E".to_string())])
     );
 }
 
@@ -720,19 +720,22 @@ fn test_symex_one_syllable_ae_register_names() {
 fn test_symex_one_syllable_uppercase_normal() {
     assert_eq!(
         scan_tokens_only("A0"),
-        Ok(vec![Token::NormalSymexSyllable("A0".to_string())])
+        Ok(vec![Token::SymexSyllable(Script::Normal, "A0".to_string())])
     );
     assert_eq!(
         scan_tokens_only("A02"),
-        Ok(vec![Token::NormalSymexSyllable("A02".to_string())])
+        Ok(vec![Token::SymexSyllable(
+            Script::Normal,
+            "A02".to_string()
+        )])
     );
     assert_eq!(
         scan_tokens_only("BB"),
-        Ok(vec![Token::NormalSymexSyllable("BB".to_string())])
+        Ok(vec![Token::SymexSyllable(Script::Normal, "BB".to_string())])
     );
     assert_eq!(
         scan_tokens_only("CX"),
-        Ok(vec![Token::NormalSymexSyllable("CX".to_string())])
+        Ok(vec![Token::SymexSyllable(Script::Normal, "CX".to_string())])
     );
 }
 
@@ -740,11 +743,17 @@ fn test_symex_one_syllable_uppercase_normal() {
 fn test_symex_one_syllable_lowercase_normal() {
     assert_eq!(
         scan_tokens_only("xyz"),
-        Ok(vec![Token::NormalSymexSyllable("xyz".to_string())])
+        Ok(vec![Token::SymexSyllable(
+            Script::Normal,
+            "xyz".to_string()
+        )])
     );
     assert_eq!(
         scan_tokens_only("ijknpqtwxyz"),
-        Ok(vec![Token::NormalSymexSyllable("ijknpqtwxyz".to_string())])
+        Ok(vec![Token::SymexSyllable(
+            Script::Normal,
+            "ijknpqtwxyz".to_string()
+        )])
     );
 }
 
@@ -752,7 +761,10 @@ fn test_symex_one_syllable_lowercase_normal() {
 fn test_symex_one_syllable_greek() {
     assert_eq!(
         scan_tokens_only("βαγεΔλ"),
-        Ok(vec![Token::NormalSymexSyllable("βαγεΔλ".to_string())])
+        Ok(vec![Token::SymexSyllable(
+            Script::Normal,
+            "βαγεΔλ".to_string()
+        )])
     );
 }
 
@@ -768,8 +780,8 @@ fn test_equals() {
     assert_eq!(
         scan_tokens_only(input),
         Ok(vec![
-            Token::NormalSymexSyllable("FOO".to_string()),
-            Token::NormalSymexSyllable("BAR".to_string()),
+            Token::SymexSyllable(Script::Normal, "FOO".to_string()),
+            Token::SymexSyllable(Script::Normal, "BAR".to_string()),
             Token::Equals,
             Token::Digits(
                 Script::Normal,
@@ -788,7 +800,7 @@ fn test_pipe() {
     assert_eq!(
         scan_tokens_only("    START|"),
         Ok(vec![
-            Token::NormalSymexSyllable("START".to_string()),
+            Token::SymexSyllable(Script::Normal, "START".to_string()),
             Token::Pipe,
         ])
     )
@@ -811,9 +823,9 @@ fn test_hold_does_not_combine_with_symex() {
     assert_eq!(
         scan_tokens_only("whx"),
         Ok(vec![
-            Token::NormalSymexSyllable("w".to_string()),
+            Token::SymexSyllable(Script::Normal, "w".to_string()),
             Token::Hold, // the h
-            Token::NormalSymexSyllable("x".to_string()),
+            Token::SymexSyllable(Script::Normal, "x".to_string()),
         ])
     );
 }
@@ -1106,7 +1118,7 @@ fn test_superscript_symex_short() {
         let expected = normal.to_string();
         assert_eq!(
             scan_tokens_only(input),
-            Ok(vec![Token::SuperscriptSymexSyllable(expected)]),
+            Ok(vec![Token::SymexSyllable(Script::Super, expected)]),
             "lexical analysis is incorrect for input '{input}'",
         );
     }
@@ -1126,7 +1138,7 @@ fn test_xdot() {
             //
             // See Users Handbook, section 6-2.3, "RULES FOR SYMEX
             // FORMATION".
-            Token::SuperscriptSymexSyllable("X".to_string()),
+            Token::SymexSyllable(Script::Super, "X".to_string()),
             Token::Dot(Script::Super)
         ]),
         "lexical analysis is incorrect for input '{input}'",
@@ -1141,7 +1153,7 @@ fn test_foo3() {
     dbg!(&input[0..3]);
     assert_eq!(
         lex.next(),
-        Some(Ok(Token::NormalSymexSyllable("FOO".to_string())))
+        Some(Ok(Token::SymexSyllable(Script::Normal, "FOO".to_string())))
     );
     assert_eq!(lex.span(), 0..3);
 
@@ -1172,7 +1184,7 @@ fn test_xhash() {
     assert_eq!(
         scan_tokens_only(input),
         Ok(vec![
-            Token::SuperscriptSymexSyllable("X".to_string()),
+            Token::SymexSyllable(Script::Super, "X".to_string()),
             Token::Hash(Script::Super)
         ]),
         "lexical analysis is incorrect for input '{input}'",
@@ -1296,7 +1308,8 @@ fn test_superscript_symex_long() {
             // character).  Space is not missing (this is a syllable,
             // not the whole symex).
         )),
-        Ok(vec![Token::SuperscriptSymexSyllable(
+        Ok(vec![Token::SymexSyllable(
+            Script::Super,
             concat!(
                 "ABDEGHIJKLMNOPRTUVW",
                 "0123456789",
@@ -1411,7 +1424,7 @@ fn test_subscript_symex_short() {
         let expected = normal.to_string();
         assert_eq!(
             scan_tokens_only(input),
-            Ok(vec![Token::SubscriptSymexSyllable(expected)]),
+            Ok(vec![Token::SymexSyllable(Script::Sub, expected)]),
             "Incorrect tokenization of '{input}'"
         );
     }
@@ -1466,7 +1479,8 @@ fn test_subscript_symex_long() {
             "@sub_eps@",
             "@sub_lambda@",
         )),
-        Ok(vec![Token::SubscriptSymexSyllable(
+        Ok(vec![Token::SymexSyllable(
+            Script::Sub,
             concat!("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", "αβγΔελ",).to_string()
         )])
     );
