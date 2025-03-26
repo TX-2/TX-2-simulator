@@ -123,7 +123,7 @@ pub(crate) enum Token {
 
     /// Solidus is often called "slash" but people often confuse slash
     /// and backslash.  So we don't call it either.
-    Solidus,
+    Solidus(Script),
 
     // @plus@ is actually not the correct glyph name, following sub.py.
     Plus(Script),
@@ -191,7 +191,7 @@ impl Display for Token {
             Token::GreaterThan => f.write_char('>'),
             Token::Intersection => f.write_char('∩'),
             Token::Union => f.write_char('∪'),
-            Token::Solidus => f.write_char('/'),
+            Token::Solidus(script) => write_elevated(script, "/"),
             Token::Plus(script) => write_elevated(script, "+"),
             Token::Minus(script) => write_elevated(script, "-"),
             Token::Times => f.write_char('×'),
@@ -495,7 +495,7 @@ mod lexer_impl_new {
             GlyphShape::DoublePipe => {
                 todo!("double-pipe (which is a symex terminator) does not yet have a token")
             }
-            GlyphShape::Solidus => only_normal(Token::Solidus),
+            GlyphShape::Solidus => Some(Token::Solidus(script)),
             GlyphShape::Times => only_normal(Token::Times),
             GlyphShape::Hash => Some(Token::Hash(script)),
             GlyphShape::Arrow => Some(match script {

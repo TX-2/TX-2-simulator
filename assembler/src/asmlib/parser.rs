@@ -201,8 +201,7 @@ where
     select! {
         // Solidus ("/") is used for divide.  See section 6-2.7
         // "Word Assembly" for details.
-        // TODO: support subscript/superscript for '/'
-        Tok::Solidus if script_required == Script::Normal => Operator::Divide,
+        Tok::Solidus(script) if script_required == script => Operator::Divide,
         Tok::Plus(Script::Normal) => Operator::Add,
         // TODO: support subscript/superscript for times
         Tok::Times if script_required == Script::Normal => Operator::Multiply,
@@ -324,7 +323,7 @@ where
         just(Tok::GreaterThan).to('>'),
         just(Tok::Intersection).to('∩'),
         just(Tok::Union).to('∪'),
-        just(Tok::Solidus).to('/'),
+        just(Tok::Solidus(Script::Normal)).to('/'),
         just(Tok::Times).to('×'),
         just(Tok::LogicalOr(Script::Normal)).to('∨'),
         just(Tok::LogicalAnd(Script::Normal)).to('∧'),

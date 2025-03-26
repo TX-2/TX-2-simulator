@@ -922,7 +922,22 @@ fn test_union() {
 
 #[test]
 fn test_solidus() {
-    assert_eq!(scan_tokens_only("/"), Ok(vec![Token::Solidus,]));
+    assert_eq!(
+        scan_tokens_only("/"),
+        Ok(vec![Token::Solidus(Script::Normal)])
+    );
+    assert_eq!(
+        scan_tokens_only("@solidus@"),
+        Ok(vec![Token::Solidus(Script::Normal)])
+    );
+    assert_eq!(
+        scan_tokens_only("@sup_solidus@"),
+        Ok(vec![Token::Solidus(Script::Super)])
+    );
+    assert_eq!(
+        scan_tokens_only("@sub_solidus@"),
+        Ok(vec![Token::Solidus(Script::Sub)])
+    );
 }
 
 #[test]
