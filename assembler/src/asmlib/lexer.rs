@@ -158,7 +158,7 @@ pub(crate) enum Token {
     // this will help us to correctly process them when used as macro
     // terminators.
     Dot(Script),
-    Comma,
+    Comma(Script),
 }
 
 impl Display for Token {
@@ -232,7 +232,7 @@ impl Display for Token {
                 }
                 Ok(())
             }
-            Token::Comma => f.write_char(','),
+            Token::Comma(script) => write_elevated(script, ","),
         }
     }
 }
@@ -481,7 +481,7 @@ mod lexer_impl_new {
             GlyphShape::RightParen => Some(Token::RightParen(script)),
             GlyphShape::Add => Some(Token::Plus(script)),
             GlyphShape::Minus => Some(Token::Minus(script)),
-            GlyphShape::Comma => only_normal(Token::Comma),
+            GlyphShape::Comma => Some(Token::Comma(script)),
             GlyphShape::Dot => Some(Token::Dot(script)),
             GlyphShape::Backspace => unimplemented!("compound characters are not yet supported"),
             GlyphShape::Hand => Some(Token::Hand(script)),

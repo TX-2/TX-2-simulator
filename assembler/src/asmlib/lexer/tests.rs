@@ -793,7 +793,18 @@ fn test_symex_one_syllable_greek() {
 
 #[test]
 fn test_comma() {
-    assert_eq!(scan_tokens_only(","), Ok(vec![Token::Comma]));
+    assert_eq!(
+        scan_tokens_only(","),
+        Ok(vec![Token::Comma(Script::Normal)])
+    );
+    assert_eq!(
+        scan_tokens_only("@sup_comma@"),
+        Ok(vec![Token::Comma(Script::Super)])
+    );
+    assert_eq!(
+        scan_tokens_only("@sub_comma@"),
+        Ok(vec![Token::Comma(Script::Sub)])
+    );
 }
 
 #[test]
