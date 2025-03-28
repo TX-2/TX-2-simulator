@@ -936,8 +936,20 @@ fn test_proper_superset() {
 
 #[test]
 fn test_identical_to() {
-    assert_eq!(scan_tokens_only("≡"), Ok(vec![Token::IdenticalTo,]));
-    assert_eq!(scan_tokens_only("@hamb@"), Ok(vec![Token::IdenticalTo,]));
+    use Script::*;
+    assert_eq!(scan_tokens_only("≡"), Ok(vec![Token::IdenticalTo(Normal),]));
+    assert_eq!(
+        scan_tokens_only("@hamb@"),
+        Ok(vec![Token::IdenticalTo(Normal),])
+    );
+    assert_eq!(
+        scan_tokens_only("@sup_hamb@"),
+        Ok(vec![Token::IdenticalTo(Super),])
+    );
+    assert_eq!(
+        scan_tokens_only("@sub_hamb@"),
+        Ok(vec![Token::IdenticalTo(Sub),])
+    );
 }
 
 #[test]

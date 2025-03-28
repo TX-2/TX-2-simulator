@@ -316,7 +316,7 @@ where
         just(Tok::Arrow(Script::Normal)).to('→'),
         just(Tok::Pipe(Script::Normal)).to('|'),
         just(Tok::ProperSuperset).to('⊃'),
-        just(Tok::IdenticalTo).to('≡'),
+        just(Tok::IdenticalTo(Script::Normal)).to('≡'),
         just(Tok::Tilde(Script::Normal)).to('~'),
         just(Tok::LessThan).to('<'),
         just(Tok::GreaterThan).to('>'),
@@ -327,6 +327,7 @@ where
         just(Tok::LogicalOr(Script::Normal)).to('∨'),
         just(Tok::LogicalAnd(Script::Normal)).to('∧'),
     ))
+    .labelled("macro terminator")
 }
 
 fn macro_argument<'a, I>() -> impl Parser<'a, I, MacroArgument, Extra<'a>>
