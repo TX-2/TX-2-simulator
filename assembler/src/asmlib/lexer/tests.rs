@@ -976,8 +976,22 @@ fn test_solidus() {
 
 #[test]
 fn test_times() {
-    assert_eq!(scan_tokens_only("×"), Ok(vec![Token::Times,]));
-    assert_eq!(scan_tokens_only("@times@"), Ok(vec![Token::Times,]));
+    assert_eq!(
+        scan_tokens_only("×"),
+        Ok(vec![Token::Times(Script::Normal),])
+    );
+    assert_eq!(
+        scan_tokens_only("@times@"),
+        Ok(vec![Token::Times(Script::Normal),])
+    );
+    assert_eq!(
+        scan_tokens_only("@sup_times@"),
+        Ok(vec![Token::Times(Script::Super),])
+    );
+    assert_eq!(
+        scan_tokens_only("@sub_times@"),
+        Ok(vec![Token::Times(Script::Sub),])
+    );
 }
 
 #[test]

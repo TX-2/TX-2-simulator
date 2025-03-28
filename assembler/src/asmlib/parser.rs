@@ -203,8 +203,7 @@ where
         // "Word Assembly" for details.
         Tok::Solidus(script) if script_required == script => Operator::Divide,
         Tok::Plus(Script::Normal) => Operator::Add,
-        // TODO: support subscript/superscript for times
-        Tok::Times if script_required == Script::Normal => Operator::Multiply,
+        Tok::Times(got) if got == script_required => Operator::Multiply,
         Tok::LogicalOr(got) if got == script_required => Operator::LogicalOr,
         Tok::LogicalAnd(got) if got == script_required => Operator::LogicalAnd,
         Tok::Minus(got) if script_required == got => Operator::Subtract,
@@ -324,7 +323,7 @@ where
         just(Tok::Intersection).to('∩'),
         just(Tok::Union).to('∪'),
         just(Tok::Solidus(Script::Normal)).to('/'),
-        just(Tok::Times).to('×'),
+        just(Tok::Times(Script::Normal)).to('×'),
         just(Tok::LogicalOr(Script::Normal)).to('∨'),
         just(Tok::LogicalAnd(Script::Normal)).to('∧'),
     ))

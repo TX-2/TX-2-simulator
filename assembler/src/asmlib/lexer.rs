@@ -128,7 +128,7 @@ pub(crate) enum Token {
     // @plus@ is actually not the correct glyph name, following sub.py.
     Plus(Script),
     Minus(Script),
-    Times,
+    Times(Script),
     LogicalOr(Script),
     LogicalAnd(Script),
 
@@ -194,7 +194,7 @@ impl Display for Token {
             Token::Solidus(script) => write_elevated(script, "/"),
             Token::Plus(script) => write_elevated(script, "+"),
             Token::Minus(script) => write_elevated(script, "-"),
-            Token::Times => f.write_char('×'),
+            Token::Times(script) => write_elevated(script, "×"),
             Token::LogicalOr(script) => write_elevated(script, "∨"),
             Token::LogicalAnd(script) => write_elevated(script, "∧"),
             Token::Digits(script, numeric_literal) => {
@@ -493,7 +493,7 @@ mod lexer_impl_new {
                 todo!("double-pipe (which is a symex terminator) does not yet have a token")
             }
             GlyphShape::Solidus => Some(Token::Solidus(script)),
-            GlyphShape::Times => only_normal(Token::Times),
+            GlyphShape::Times => Some(Token::Times(script)),
             GlyphShape::Hash => Some(Token::Hash(script)),
             GlyphShape::Arrow => Some(match script {
                 Script::Super | Script::Sub => unimplemented!(),
