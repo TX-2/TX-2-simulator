@@ -317,7 +317,7 @@ where
         just(Tok::Pipe(Script::Normal)).to('|'),
         just(Tok::ProperSuperset).to('⊃'),
         just(Tok::IdenticalTo).to('≡'),
-        just(Tok::Tilde).to('~'),
+        just(Tok::Tilde(Script::Normal)).to('~'),
         just(Tok::LessThan).to('<'),
         just(Tok::GreaterThan).to('>'),
         just(Tok::Intersection).to('∩'),

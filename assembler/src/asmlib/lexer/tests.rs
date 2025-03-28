@@ -942,7 +942,22 @@ fn test_identical_to() {
 
 #[test]
 fn test_tilde() {
-    assert_eq!(scan_tokens_only("~"), Ok(vec![Token::Tilde,]));
+    assert_eq!(
+        scan_tokens_only("~"),
+        Ok(vec![Token::Tilde(Script::Normal),])
+    );
+    assert_eq!(
+        scan_tokens_only("@tilde@"),
+        Ok(vec![Token::Tilde(Script::Normal),])
+    );
+    assert_eq!(
+        scan_tokens_only("@sup_tilde@"),
+        Ok(vec![Token::Tilde(Script::Super),])
+    );
+    assert_eq!(
+        scan_tokens_only("@sub_tilde@"),
+        Ok(vec![Token::Tilde(Script::Sub),])
+    );
 }
 
 #[test]
