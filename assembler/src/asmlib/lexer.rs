@@ -1,17 +1,22 @@
 use std::{
     fmt::{Display, Write},
     ops::Range,
+    str::CharIndices,
 };
 
-use super::{
-    glyph::{self, elevate},
-    parser::helpers::{self, Sign},
-    state::NumeralMode,
-};
 use base::{
     charset::{subscript_char, superscript_char, Script},
     error::StringConversionFailed,
     Unsigned36Bit,
+};
+
+use super::{
+    glyph::{
+        elevate, glyph_from_name, glyph_of_char, is_allowed_in_symex, Elevated, Glyph, GlyphShape,
+        Unrecognised,
+    },
+    parser::helpers::{self, Sign},
+    state::NumeralMode,
 };
 
 #[cfg(test)]
@@ -239,748 +244,717 @@ impl Display for Token {
     }
 }
 
-pub(crate) use lexer_impl_new::*;
-pub(crate) type Lexer<'a> = NewLexer<'a>;
+#[derive(Debug, Clone)]
+struct GlyphRecognizer<'a> {
+    it: CharIndices<'a>,
+    pos: usize,
+    glyph_start: usize,
+}
 
-mod lexer_impl_new {
-    use super::glyph::{
-        glyph_from_name, glyph_of_char, is_allowed_in_symex, Elevated, Glyph, GlyphShape,
-        Unrecognised,
+impl<'a> GlyphRecognizer<'a> {
+    fn new(input: &'a str) -> GlyphRecognizer<'a> {
+        Self {
+            it: input.char_indices(),
+            pos: 0,
+            glyph_start: 0,
+        }
+    }
+
+    fn get_next_char(&mut self) -> Option<char> {
+        match self.it.next() {
+            None => None,
+            Some((i, ch)) => {
+                self.pos = i;
+                Some(ch)
+            }
+        }
+    }
+
+    fn span(&self) -> Span {
+        self.glyph_start..(self.it.offset())
+    }
+
+    fn next_named_glyph(&mut self) -> Option<Result<Elevated<&'static Glyph>, Unrecognised>> {
+        let mut name: String = String::with_capacity(10);
+        let mut got_anything = false;
+        while let Some(ch) = self.get_next_char() {
+            got_anything = true;
+            if ch == '@' {
+                break;
+            } else {
+                name.push(ch);
+            }
+        }
+
+        // If the input was @@, (that is, the glyph name is
+        // zero-length) name is empty but got_anything is
+        // (correctly) true.
+        if got_anything {
+            Some(match glyph_from_name(name.as_str()) {
+                Some(g) => Ok(g),
+                None => Err(Unrecognised::UnrecognisedGlyph(name)),
+            })
+        } else {
+            None
+        }
+    }
+}
+
+impl Iterator for GlyphRecognizer<'_> {
+    type Item = Result<Elevated<&'static Glyph>, Unrecognised>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let ch = self.get_next_char()?;
+        self.glyph_start = self.pos;
+        match ch {
+            '@' => match self.next_named_glyph() {
+                None => {
+                    // There actually was input, but it was only a
+                    // single '@'.  That is not in the Lincoln
+                    // Writer character set.
+                    Some(Err(Unrecognised::InvalidChar('@')))
+                }
+                something => something,
+            },
+            ch => Some(glyph_of_char(ch)),
+        }
+    }
+}
+
+#[test]
+fn test_glyph_recognizer_next() {
+    let mut gr = GlyphRecognizer::new("W");
+    match gr.next() {
+        Some(Ok(elev)) => {
+            assert_eq!(elev.script(), Script::Normal);
+            assert_eq!(elev.get().name, "W");
+        }
+        bad => {
+            panic!("glyph should not have been recognised as {bad:?}");
+        }
+    }
+    assert_eq!(gr.next(), None);
+}
+
+#[cfg(test)]
+fn assert_glyph(
+    got: Elevated<&'static Glyph>,
+    expected_shape: GlyphShape,
+    expected_script: Script,
+) {
+    assert_eq!(got.script(), expected_script, "wrong script for {got:?}");
+    assert_eq!(got.get().shape(), expected_shape, "wrong shape for {got:?}");
+}
+
+#[test]
+fn test_glyph_scanning() {
+    let mut scanner = GlyphRecognizer::new("hs@sub_eps@@hamb@@sup_add@@nosuch@ ");
+    // h is in the Lincoln Writer character set.
+    assert_glyph(
+        scanner.next().expect("input").expect("in character set"),
+        GlyphShape::h,
+        Script::Normal,
+    );
+    // s is not in the Lincoln Writer character set.
+    assert_eq!(scanner.next(), Some(Err(Unrecognised::InvalidChar('s'))),);
+    assert_glyph(
+        scanner.next().expect("input").expect("in character set"),
+        GlyphShape::Epsilon,
+        Script::Sub,
+    );
+    assert_glyph(
+        scanner.next().expect("input").expect("in character set"),
+        GlyphShape::IdenticalTo,
+        Script::Normal,
+    );
+    assert_glyph(
+        scanner.next().expect("input").expect("in character set"),
+        GlyphShape::Add,
+        Script::Super,
+    );
+    assert_eq!(
+        scanner.next(),
+        Some(Err(Unrecognised::UnrecognisedGlyph("nosuch".to_string())))
+    );
+    assert_glyph(
+        scanner.next().expect("input").expect("in character set"),
+        GlyphShape::Space,
+        Script::Normal,
+    );
+    assert_eq!(scanner.next(), None);
+    // Verify that detection of end-of-input is sticky.
+    assert_eq!(scanner.next(), None);
+}
+
+fn tokenise_single_glyph(g: Elevated<&'static Glyph>) -> Option<Token> {
+    let script: Script = g.script();
+
+    let make_num = |ch: char| {
+        let literal = NumericLiteral {
+            digits: {
+                let mut s = String::with_capacity(12);
+                s.push(ch);
+                s
+            },
+            has_trailing_dot: false,
+        };
+        Token::Digits(script, literal)
     };
-    use super::{NumericLiteral, DOT_CHAR};
-    use base::charset::Script;
-    use std::ops::Range;
-    use std::str::CharIndices;
-
-    use super::{Span, Token};
-
-    #[derive(Debug, Clone)]
-    struct GlyphRecognizer<'a> {
-        it: CharIndices<'a>,
-        pos: usize,
-        glyph_start: usize,
-    }
-
-    impl<'a> GlyphRecognizer<'a> {
-        fn new(input: &'a str) -> GlyphRecognizer<'a> {
-            Self {
-                it: input.char_indices(),
-                pos: 0,
-                glyph_start: 0,
+    let make_symex = || -> Option<Token> {
+        // The symex token always gives the characters in normal
+        // script.  The superscript/subscript information is
+        // carried in the token variant
+        // (e.g. SuperscriptSymexsyllable).
+        let name: String = g.get().get_char(Script::Normal).iter().collect();
+        // We do not use name.len() here because the number of
+        // bytes in the name is not relevant, only the number of
+        // Unicode code points.
+        match name.chars().count() {
+            0 => {
+                panic!("incoming token '{g:?}' was assigned as part of a symex syllable, but we don't have a character for it in script {script:?}");
+            }
+            1 => (),
+            n => {
+                panic!("incoming token '{g:?}' was assigned as part of a symex syllable, but the resuting initial token body unexpectedly has more than one character (specifically, {n}): {name:?}");
             }
         }
+        Some(Token::SymexSyllable(script, name))
+    };
 
-        fn get_next_char(&mut self) -> Option<char> {
-            match self.it.next() {
-                None => None,
-                Some((i, ch)) => {
-                    self.pos = i;
-                    Some(ch)
-                }
-            }
+    let output: Option<Token> = match g.get().shape() {
+        GlyphShape::Space | GlyphShape::Tab => None,
+        GlyphShape::Digit0 => Some(make_num('0')),
+        GlyphShape::Digit1 => Some(make_num('1')),
+        GlyphShape::Digit2 => Some(make_num('2')),
+        GlyphShape::Digit3 => Some(make_num('3')),
+        GlyphShape::Digit4 => Some(make_num('4')),
+        GlyphShape::Digit5 => Some(make_num('5')),
+        GlyphShape::Digit6 => Some(make_num('6')),
+        GlyphShape::Digit7 => Some(make_num('7')),
+        GlyphShape::Digit8 => Some(make_num('8')),
+        GlyphShape::Digit9 => Some(make_num('9')),
+        GlyphShape::Underscore
+        | GlyphShape::Circle
+        | GlyphShape::A
+        | GlyphShape::B
+        | GlyphShape::C
+        | GlyphShape::D
+        | GlyphShape::E
+        | GlyphShape::F
+        | GlyphShape::G
+        | GlyphShape::H
+        | GlyphShape::I
+        | GlyphShape::J
+        | GlyphShape::K
+        | GlyphShape::L
+        | GlyphShape::M
+        | GlyphShape::N
+        | GlyphShape::O
+        | GlyphShape::P
+        | GlyphShape::Q
+        | GlyphShape::R
+        | GlyphShape::S
+        | GlyphShape::T
+        | GlyphShape::U
+        | GlyphShape::V
+        | GlyphShape::W
+        | GlyphShape::X
+        | GlyphShape::Y
+        | GlyphShape::Z => make_symex(),
+        GlyphShape::LeftParen => Some(Token::LeftParen(script)),
+        GlyphShape::RightParen => Some(Token::RightParen(script)),
+        GlyphShape::Add => Some(Token::Plus(script)),
+        GlyphShape::Minus => Some(Token::Minus(script)),
+        GlyphShape::Comma => Some(Token::Comma(script)),
+        GlyphShape::Dot => Some(Token::Dot(script)),
+        GlyphShape::Backspace => unimplemented!("compound characters are not yet supported"),
+        GlyphShape::Hand => Some(Token::Hand(script)),
+        GlyphShape::Sigma => {
+            todo!("Sigma (which is a symex terminator) does not yet have a token")
         }
-
-        fn span(&self) -> Span {
-            self.glyph_start..(self.it.offset())
+        GlyphShape::Pipe => Some(Token::Pipe(script)),
+        GlyphShape::DoublePipe => {
+            todo!("double-pipe (which is a symex terminator) does not yet have a token")
         }
-
-        fn next_named_glyph(&mut self) -> Option<Result<Elevated<&'static Glyph>, Unrecognised>> {
-            let mut name: String = String::with_capacity(10);
-            let mut got_anything = false;
-            while let Some(ch) = self.get_next_char() {
-                got_anything = true;
-                if ch == '@' {
-                    break;
-                } else {
-                    name.push(ch);
-                }
-            }
-
-            // If the input was @@, (that is, the glyph name is
-            // zero-length) name is empty but got_anything is
-            // (correctly) true.
-            if got_anything {
-                Some(match glyph_from_name(name.as_str()) {
-                    Some(g) => Ok(g),
-                    None => Err(Unrecognised::UnrecognisedGlyph(name)),
-                })
-            } else {
-                None
-            }
+        GlyphShape::Solidus => Some(Token::Solidus(script)),
+        GlyphShape::Times => Some(Token::Times(script)),
+        GlyphShape::Hash => Some(Token::Hash(script)),
+        GlyphShape::Arrow => Some(Token::Arrow(script)),
+        GlyphShape::LessThan => Some(Token::LessThan(script)),
+        GlyphShape::GreaterThan => Some(Token::GreaterThan(script)),
+        GlyphShape::Overbar | GlyphShape::Square | GlyphShape::n => make_symex(),
+        GlyphShape::SubsetOf => Some(Token::SubsetOf(script)),
+        GlyphShape::Or => Some(Token::LogicalOr(script)),
+        GlyphShape::q
+        | GlyphShape::Gamma
+        | GlyphShape::t
+        | GlyphShape::w
+        | GlyphShape::x
+        | GlyphShape::i
+        | GlyphShape::y
+        | GlyphShape::z => make_symex(),
+        GlyphShape::Query => {
+            todo!("'?' (question-mark) is a symex terminator but does not yet have a token")
+        }
+        GlyphShape::Union => Some(Token::Union(script)),
+        GlyphShape::Intersection => Some(Token::Intersection(script)),
+        GlyphShape::j | GlyphShape::k => make_symex(),
+        GlyphShape::Alpha => make_symex(),
+        GlyphShape::Delta => make_symex(),
+        GlyphShape::p => make_symex(),
+        GlyphShape::Epsilon => make_symex(),
+        GlyphShape::h => Some(match script {
+            // h cannot be part of a symex (see Users Handbook,
+            // section 6-2.3).
+            Script::Super | Script::Sub => unimplemented!(),
+            Script::Normal => Token::Hold,
+        }),
+        // Todo: Token::NotHold.
+        GlyphShape::SupersetOf => Some(Token::ProperSuperset(script)),
+        GlyphShape::Beta => make_symex(),
+        GlyphShape::And => Some(Token::LogicalAnd(script)),
+        GlyphShape::Lambda => make_symex(),
+        GlyphShape::Tilde => Some(Token::Tilde(script)),
+        GlyphShape::LeftBrace => Some(Token::LeftBrace(script)),
+        GlyphShape::RightBrace => Some(Token::RightBrace(script)),
+        GlyphShape::IdenticalTo => Some(Token::IdenticalTo(script)),
+        GlyphShape::Equals => Some(Token::Equals(script)),
+        GlyphShape::Apostrophe => make_symex(),
+        GlyphShape::Asterisk => Some(Token::Asterisk(script)),
+    };
+    if let Some(t) = output.as_ref() {
+        if matches!(t, Token::SymexSyllable(_, _)) {
+            assert!(
+                is_allowed_in_symex(g.get().shape),
+                "attempted to make a symex with disallowed glyph shape {g:?}"
+            );
+        } else if matches!(t, Token::Digits(_, _) | Token::Dot(_)) {
+            // Digits and dots mostly called "PERIOD" in the Users
+            // Handbook) are allowed in numeric literals but also
+            // allowed in symexes.  We scan them as numeric
+            // literals and then join them into symexes when we
+            // discover what their neighbours are.
+            assert!(is_allowed_in_symex(g.get().shape),
+                    "all glyphs allowed in numeric literals are also allowed in symexes, but this went wrong for {g:?}");
+        } else if g.get().shape == GlyphShape::Space {
+            // Permitted in a symex but this is implemented at the parser level.
+        } else {
+            assert!(
+                !is_allowed_in_symex(g.get().shape),
+                "glyph shape {g:?} is allowed in a symex but the scanner didn't recognise it that way");
         }
     }
+    output
+}
 
-    impl Iterator for GlyphRecognizer<'_> {
-        type Item = Result<Elevated<&'static Glyph>, Unrecognised>;
+#[derive(Debug)]
+enum TokenMergeResult {
+    Merged(Token, Span),
+    Failed {
+        current: Result<Token, Unrecognised>,
+        current_span: Span,
+        incoming: Result<Token, Unrecognised>,
+        incoming_span: Span,
+    },
+}
 
-        fn next(&mut self) -> Option<Self::Item> {
-            let ch = self.get_next_char()?;
-            self.glyph_start = self.pos;
-            match ch {
-                '@' => match self.next_named_glyph() {
-                    None => {
-                        // There actually was input, but it was only a
-                        // single '@'.  That is not in the Lincoln
-                        // Writer character set.
-                        Some(Err(Unrecognised::InvalidChar('@')))
-                    }
-                    something => something,
-                },
-                ch => Some(glyph_of_char(ch)),
-            }
-        }
-    }
-
-    #[test]
-    fn test_glyph_recognizer_next() {
-        let mut gr = GlyphRecognizer::new("W");
-        match gr.next() {
-            Some(Ok(elev)) => {
-                assert_eq!(elev.script(), Script::Normal);
-                assert_eq!(elev.get().name, "W");
-            }
-            bad => {
-                panic!("glyph should not have been recognised as {bad:?}");
-            }
-        }
-        assert_eq!(gr.next(), None);
-    }
-
-    #[cfg(test)]
-    fn assert_glyph(
-        got: Elevated<&'static Glyph>,
-        expected_shape: GlyphShape,
-        expected_script: Script,
-    ) {
-        assert_eq!(got.script(), expected_script, "wrong script for {got:?}");
-        assert_eq!(got.get().shape(), expected_shape, "wrong shape for {got:?}");
-    }
-
-    #[test]
-    fn test_glyph_scanning() {
-        let mut scanner = GlyphRecognizer::new("hs@sub_eps@@hamb@@sup_add@@nosuch@ ");
-        // h is in the Lincoln Writer character set.
-        assert_glyph(
-            scanner.next().expect("input").expect("in character set"),
-            GlyphShape::h,
-            Script::Normal,
-        );
-        // s is not in the Lincoln Writer character set.
-        assert_eq!(scanner.next(), Some(Err(Unrecognised::InvalidChar('s'))),);
-        assert_glyph(
-            scanner.next().expect("input").expect("in character set"),
-            GlyphShape::Epsilon,
-            Script::Sub,
-        );
-        assert_glyph(
-            scanner.next().expect("input").expect("in character set"),
-            GlyphShape::IdenticalTo,
-            Script::Normal,
-        );
-        assert_glyph(
-            scanner.next().expect("input").expect("in character set"),
-            GlyphShape::Add,
-            Script::Super,
-        );
-        assert_eq!(
-            scanner.next(),
-            Some(Err(Unrecognised::UnrecognisedGlyph("nosuch".to_string())))
-        );
-        assert_glyph(
-            scanner.next().expect("input").expect("in character set"),
-            GlyphShape::Space,
-            Script::Normal,
-        );
-        assert_eq!(scanner.next(), None);
-        // Verify that detection of end-of-input is sticky.
-        assert_eq!(scanner.next(), None);
-    }
-
-    fn tokenise_single_glyph(g: Elevated<&'static Glyph>) -> Option<super::Token> {
-        use super::Token;
-        let script: Script = g.script();
-
-        let make_num = |ch: char| {
-            let literal = NumericLiteral {
-                digits: {
-                    let mut s = String::with_capacity(12);
-                    s.push(ch);
-                    s
-                },
-                has_trailing_dot: false,
+fn merge_tokens(
+    current: (Result<Token, Unrecognised>, Span),
+    incoming: (Result<Token, Unrecognised>, Span),
+) -> TokenMergeResult {
+    // We never merge errors with non-errors, so eliminate those
+    // cases and, when both inputs are Ok variants, unwrap.
+    let ((current, current_span), (incoming, incoming_span)) = match (current, incoming) {
+        ((Ok(cur), cur_span), (Ok(inc), inc_span)) => ((cur, cur_span), (inc, inc_span)),
+        ((cur, cur_span), (inc, inc_span)) => {
+            return TokenMergeResult::Failed {
+                current: cur,
+                current_span: cur_span,
+                incoming: inc,
+                incoming_span: inc_span,
             };
-            super::Token::Digits(script, literal)
-        };
-        let make_symex = || -> Option<Token> {
-            // The symex token always gives the characters in normal
-            // script.  The superscript/subscript information is
-            // carried in the token variant
-            // (e.g. SuperscriptSymexsyllable).
-            let name: String = g.get().get_char(Script::Normal).iter().collect();
-            // We do not use name.len() here because the number of
-            // bytes in the name is not relevant, only the number of
-            // Unicode code points.
-            match name.chars().count() {
-                0 => {
-                    panic!("incoming token '{g:?}' was assigned as part of a symex syllable, but we don't have a character for it in script {script:?}");
-                }
-                1 => (),
-                n => {
-                    panic!("incoming token '{g:?}' was assigned as part of a symex syllable, but the resuting initial token body unexpectedly has more than one character (specifically, {n}): {name:?}");
-                }
-            }
-            Some(Token::SymexSyllable(script, name))
-        };
-
-        let output: Option<super::Token> = match g.get().shape() {
-            GlyphShape::Space | GlyphShape::Tab => None,
-            GlyphShape::Digit0 => Some(make_num('0')),
-            GlyphShape::Digit1 => Some(make_num('1')),
-            GlyphShape::Digit2 => Some(make_num('2')),
-            GlyphShape::Digit3 => Some(make_num('3')),
-            GlyphShape::Digit4 => Some(make_num('4')),
-            GlyphShape::Digit5 => Some(make_num('5')),
-            GlyphShape::Digit6 => Some(make_num('6')),
-            GlyphShape::Digit7 => Some(make_num('7')),
-            GlyphShape::Digit8 => Some(make_num('8')),
-            GlyphShape::Digit9 => Some(make_num('9')),
-            GlyphShape::Underscore
-            | GlyphShape::Circle
-            | GlyphShape::A
-            | GlyphShape::B
-            | GlyphShape::C
-            | GlyphShape::D
-            | GlyphShape::E
-            | GlyphShape::F
-            | GlyphShape::G
-            | GlyphShape::H
-            | GlyphShape::I
-            | GlyphShape::J
-            | GlyphShape::K
-            | GlyphShape::L
-            | GlyphShape::M
-            | GlyphShape::N
-            | GlyphShape::O
-            | GlyphShape::P
-            | GlyphShape::Q
-            | GlyphShape::R
-            | GlyphShape::S
-            | GlyphShape::T
-            | GlyphShape::U
-            | GlyphShape::V
-            | GlyphShape::W
-            | GlyphShape::X
-            | GlyphShape::Y
-            | GlyphShape::Z => make_symex(),
-            GlyphShape::LeftParen => Some(Token::LeftParen(script)),
-            GlyphShape::RightParen => Some(Token::RightParen(script)),
-            GlyphShape::Add => Some(Token::Plus(script)),
-            GlyphShape::Minus => Some(Token::Minus(script)),
-            GlyphShape::Comma => Some(Token::Comma(script)),
-            GlyphShape::Dot => Some(Token::Dot(script)),
-            GlyphShape::Backspace => unimplemented!("compound characters are not yet supported"),
-            GlyphShape::Hand => Some(Token::Hand(script)),
-            GlyphShape::Sigma => {
-                todo!("Sigma (which is a symex terminator) does not yet have a token")
-            }
-            GlyphShape::Pipe => Some(Token::Pipe(script)),
-            GlyphShape::DoublePipe => {
-                todo!("double-pipe (which is a symex terminator) does not yet have a token")
-            }
-            GlyphShape::Solidus => Some(Token::Solidus(script)),
-            GlyphShape::Times => Some(Token::Times(script)),
-            GlyphShape::Hash => Some(Token::Hash(script)),
-            GlyphShape::Arrow => Some(Token::Arrow(script)),
-            GlyphShape::LessThan => Some(Token::LessThan(script)),
-            GlyphShape::GreaterThan => Some(Token::GreaterThan(script)),
-            GlyphShape::Overbar | GlyphShape::Square | GlyphShape::n => make_symex(),
-            GlyphShape::SubsetOf => Some(Token::SubsetOf(script)),
-            GlyphShape::Or => Some(Token::LogicalOr(script)),
-            GlyphShape::q
-            | GlyphShape::Gamma
-            | GlyphShape::t
-            | GlyphShape::w
-            | GlyphShape::x
-            | GlyphShape::i
-            | GlyphShape::y
-            | GlyphShape::z => make_symex(),
-            GlyphShape::Query => {
-                todo!("'?' (question-mark) is a symex terminator but does not yet have a token")
-            }
-            GlyphShape::Union => Some(Token::Union(script)),
-            GlyphShape::Intersection => Some(Token::Intersection(script)),
-            GlyphShape::j | GlyphShape::k => make_symex(),
-            GlyphShape::Alpha => make_symex(),
-            GlyphShape::Delta => make_symex(),
-            GlyphShape::p => make_symex(),
-            GlyphShape::Epsilon => make_symex(),
-            GlyphShape::h => Some(match script {
-                // h cannot be part of a symex (see Users Handbook,
-                // section 6-2.3).
-                Script::Super | Script::Sub => unimplemented!(),
-                Script::Normal => Token::Hold,
-            }),
-            // Todo: Token::NotHold.
-            GlyphShape::SupersetOf => Some(Token::ProperSuperset(script)),
-            GlyphShape::Beta => make_symex(),
-            GlyphShape::And => Some(Token::LogicalAnd(script)),
-            GlyphShape::Lambda => make_symex(),
-            GlyphShape::Tilde => Some(Token::Tilde(script)),
-            GlyphShape::LeftBrace => Some(Token::LeftBrace(script)),
-            GlyphShape::RightBrace => Some(Token::RightBrace(script)),
-            GlyphShape::IdenticalTo => Some(Token::IdenticalTo(script)),
-            GlyphShape::Equals => Some(Token::Equals(script)),
-            GlyphShape::Apostrophe => make_symex(),
-            GlyphShape::Asterisk => Some(Token::Asterisk(script)),
-        };
-        if let Some(t) = output.as_ref() {
-            if matches!(t, Token::SymexSyllable(_, _)) {
-                assert!(
-                    is_allowed_in_symex(g.get().shape),
-                    "attempted to make a symex with disallowed glyph shape {g:?}"
-                );
-            } else if matches!(t, Token::Digits(_, _) | Token::Dot(_)) {
-                // Digits and dots mostly called "PERIOD" in the Users
-                // Handbook) are allowed in numeric literals but also
-                // allowed in symexes.  We scan them as numeric
-                // literals and then join them into symexes when we
-                // discover what their neighbours are.
-                assert!(is_allowed_in_symex(g.get().shape),
-                        "all glyphs allowed in numeric literals are also allowed in symexes, but this went wrong for {g:?}");
-            } else if g.get().shape == GlyphShape::Space {
-                // Permitted in a symex but this is implemented at the parser level.
-            } else {
-                assert!(
-                    !is_allowed_in_symex(g.get().shape),
-                    "glyph shape {g:?} is allowed in a symex but the scanner didn't recognise it that way");
-            }
         }
-        output
-    }
-
-    #[derive(Debug)]
-    enum TokenMergeResult {
-        Merged(Token, Span),
-        Failed {
-            current: Result<Token, Unrecognised>,
-            current_span: Span,
-            incoming: Result<Token, Unrecognised>,
-            incoming_span: Span,
-        },
-    }
-
-    fn merge_tokens(
-        current: (Result<Token, Unrecognised>, Span),
-        incoming: (Result<Token, Unrecognised>, Span),
-    ) -> TokenMergeResult {
-        // We never merge errors with non-errors, so eliminate those
-        // cases and, when both inputs are Ok variants, unwrap.
-        let ((current, current_span), (incoming, incoming_span)) = match (current, incoming) {
-            ((Ok(cur), cur_span), (Ok(inc), inc_span)) => ((cur, cur_span), (inc, inc_span)),
-            ((cur, cur_span), (inc, inc_span)) => {
-                return TokenMergeResult::Failed {
-                    current: cur,
-                    current_span: cur_span,
-                    incoming: inc,
-                    incoming_span: inc_span,
-                };
+    };
+    let merged_span = current_span.start..incoming_span.end;
+    match current {
+        Token::Minus(incoming_script)
+            if incoming == Token::GreaterThan(incoming_script)
+                && incoming_script == Script::Normal =>
+        {
+            TokenMergeResult::Merged(Token::Arrow(Script::Normal), merged_span)
+        }
+        Token::SymexSyllable(existing_script, mut existing_name) => match incoming {
+            Token::Hold if existing_script == Script::Normal => {
+                // overbar followed by h means not-hold, and we handle this case specially.
+                if existing_name == "\u{0305}" {
+                    TokenMergeResult::Merged(Token::NotHold, merged_span)
+                } else {
+                    TokenMergeResult::Failed {
+                        current: Ok(Token::SymexSyllable(existing_script, existing_name)),
+                        current_span,
+                        incoming: Ok(Token::Hold),
+                        incoming_span,
+                    }
+                }
             }
-        };
-        let merged_span = current_span.start..incoming_span.end;
-        match current {
-            Token::Minus(incoming_script)
-                if incoming == Token::GreaterThan(incoming_script)
-                    && incoming_script == Script::Normal =>
+            Token::SymexSyllable(incoming_script, incoming_name)
+                if existing_script == incoming_script =>
             {
-                TokenMergeResult::Merged(Token::Arrow(Script::Normal), merged_span)
+                existing_name.push_str(&incoming_name);
+                TokenMergeResult::Merged(
+                    Token::SymexSyllable(existing_script, existing_name),
+                    merged_span,
+                )
             }
-            Token::SymexSyllable(existing_script, mut existing_name) => match incoming {
-                Token::Hold if existing_script == Script::Normal => {
-                    // overbar followed by h means not-hold, and we handle this case specially.
-                    if existing_name == "\u{0305}" {
-                        TokenMergeResult::Merged(Token::NotHold, merged_span)
-                    } else {
-                        TokenMergeResult::Failed {
-                            current: Ok(Token::SymexSyllable(existing_script, existing_name)),
-                            current_span,
-                            incoming: Ok(Token::Hold),
-                            incoming_span,
-                        }
-                    }
+            Token::Digits(incoming_script, literal) if existing_script == incoming_script => {
+                existing_name.push_str(&literal.digits);
+                if literal.has_trailing_dot {
+                    existing_name.push(DOT_CHAR);
                 }
-                Token::SymexSyllable(incoming_script, incoming_name)
-                    if existing_script == incoming_script =>
-                {
-                    existing_name.push_str(&incoming_name);
-                    TokenMergeResult::Merged(
-                        Token::SymexSyllable(existing_script, existing_name),
-                        merged_span,
-                    )
-                }
-                Token::Digits(incoming_script, literal) if existing_script == incoming_script => {
-                    existing_name.push_str(&literal.digits);
-                    if literal.has_trailing_dot {
-                        existing_name.push(DOT_CHAR);
-                    }
-                    TokenMergeResult::Merged(
-                        Token::SymexSyllable(existing_script, existing_name),
-                        merged_span,
-                    )
-                }
-                other => TokenMergeResult::Failed {
-                    current: Ok(Token::SymexSyllable(existing_script, existing_name)),
-                    current_span,
-                    incoming: Ok(other),
-                    incoming_span,
-                },
-            },
-            Token::Digits(existing_script, mut existing_literal) => match incoming {
-                Token::Digits(incoming_script, incoming_name)
-                    if existing_script == incoming_script =>
-                {
-                    existing_literal.append_digits_of_literal(incoming_name);
-                    TokenMergeResult::Merged(
-                        Token::Digits(existing_script, existing_literal),
-                        merged_span,
-                    )
-                }
-                Token::Dot(right_script)
-                    if existing_script == right_script && !existing_literal.has_trailing_dot =>
-                {
-                    existing_literal.has_trailing_dot = true;
-                    TokenMergeResult::Merged(
-                        Token::Digits(existing_script, existing_literal),
-                        merged_span,
-                    )
-                }
-                Token::SymexSyllable(incoming_script, sym)
-                    if existing_script == incoming_script =>
-                {
-                    let mut existing_name: String = existing_literal.digits;
-                    existing_name.push_str(&sym);
-                    TokenMergeResult::Merged(
-                        Token::SymexSyllable(existing_script, existing_name),
-                        merged_span,
-                    )
-                }
-                other => TokenMergeResult::Failed {
-                    current: Ok(Token::Digits(existing_script, existing_literal)),
-                    current_span,
-                    incoming: Ok(other),
-                    incoming_span,
-                },
-            },
-            existing => TokenMergeResult::Failed {
-                current: Ok(existing),
+                TokenMergeResult::Merged(
+                    Token::SymexSyllable(existing_script, existing_name),
+                    merged_span,
+                )
+            }
+            other => TokenMergeResult::Failed {
+                current: Ok(Token::SymexSyllable(existing_script, existing_name)),
                 current_span,
-                incoming: Ok(incoming),
+                incoming: Ok(other),
                 incoming_span,
             },
-        }
-    }
-
-    #[derive(Debug, Clone)]
-    struct GlyphTokenizer<'a> {
-        current: Option<(Result<super::Token, Unrecognised>, Span)>,
-        inner: GlyphRecognizer<'a>,
-    }
-
-    impl<'a> GlyphTokenizer<'a> {
-        fn new(input: &'a str) -> GlyphTokenizer<'a> {
-            GlyphTokenizer {
-                current: None,
-                inner: GlyphRecognizer::new(input),
+        },
+        Token::Digits(existing_script, mut existing_literal) => match incoming {
+            Token::Digits(incoming_script, incoming_name) if existing_script == incoming_script => {
+                existing_literal.append_digits_of_literal(incoming_name);
+                TokenMergeResult::Merged(
+                    Token::Digits(existing_script, existing_literal),
+                    merged_span,
+                )
             }
-        }
+            Token::Dot(right_script)
+                if existing_script == right_script && !existing_literal.has_trailing_dot =>
+            {
+                existing_literal.has_trailing_dot = true;
+                TokenMergeResult::Merged(
+                    Token::Digits(existing_script, existing_literal),
+                    merged_span,
+                )
+            }
+            Token::SymexSyllable(incoming_script, sym) if existing_script == incoming_script => {
+                let mut existing_name: String = existing_literal.digits;
+                existing_name.push_str(&sym);
+                TokenMergeResult::Merged(
+                    Token::SymexSyllable(existing_script, existing_name),
+                    merged_span,
+                )
+            }
+            other => TokenMergeResult::Failed {
+                current: Ok(Token::Digits(existing_script, existing_literal)),
+                current_span,
+                incoming: Ok(other),
+                incoming_span,
+            },
+        },
+        existing => TokenMergeResult::Failed {
+            current: Ok(existing),
+            current_span,
+            incoming: Ok(incoming),
+            incoming_span,
+        },
+    }
+}
 
-        pub(crate) fn get_next_spanned_token(
-            &mut self,
-        ) -> Option<(Result<super::Token, Unrecognised>, Span)> {
-            use super::Token;
-            loop {
-                let maybe_spanned_new_token: Option<(Result<Token, Unrecognised>, Span)> =
-                    match self.inner.next() {
-                        None => None,
-                        Some(Err(Unrecognised::InvalidChar('ℏ'))) => {
-                            // ℏ is Unicode code point U+210F.  There
-                            // is no glyph matching ℏ (because on the
-                            // TX-2 this was produced with an overbar
-                            // (which does not advance the carriage)
-                            // and a regular h.  We accept it as a
-                            // special case.
-                            //
-                            // Because there is no Glyph for this, we
-                            // do not accept @...@ (e.g. @hbar@) for
-                            // this.
-                            return Some((Ok(super::Token::NotHold), self.inner.span()));
-                        }
-                        Some(Err(e)) => Some((Err(e), self.inner.span())),
-                        Some(Ok(g)) => {
-                            if matches!(g.get().shape(), GlyphShape::Space | GlyphShape::Tab) {
-                                match self.current.take() {
-                                    Some(r) => {
-                                        return Some(r);
-                                    }
-                                    None => {
-                                        continue;
-                                    }
+#[derive(Debug, Clone)]
+struct GlyphTokenizer<'a> {
+    current: Option<(Result<Token, Unrecognised>, Span)>,
+    inner: GlyphRecognizer<'a>,
+}
+
+impl<'a> GlyphTokenizer<'a> {
+    fn new(input: &'a str) -> GlyphTokenizer<'a> {
+        GlyphTokenizer {
+            current: None,
+            inner: GlyphRecognizer::new(input),
+        }
+    }
+
+    pub(crate) fn get_next_spanned_token(&mut self) -> Option<(Result<Token, Unrecognised>, Span)> {
+        loop {
+            let maybe_spanned_new_token: Option<(Result<Token, Unrecognised>, Span)> =
+                match self.inner.next() {
+                    None => None,
+                    Some(Err(Unrecognised::InvalidChar('ℏ'))) => {
+                        // ℏ is Unicode code point U+210F.  There
+                        // is no glyph matching ℏ (because on the
+                        // TX-2 this was produced with an overbar
+                        // (which does not advance the carriage)
+                        // and a regular h.  We accept it as a
+                        // special case.
+                        //
+                        // Because there is no Glyph for this, we
+                        // do not accept @...@ (e.g. @hbar@) for
+                        // this.
+                        return Some((Ok(Token::NotHold), self.inner.span()));
+                    }
+                    Some(Err(e)) => Some((Err(e), self.inner.span())),
+                    Some(Ok(g)) => {
+                        if matches!(g.get().shape(), GlyphShape::Space | GlyphShape::Tab) {
+                            match self.current.take() {
+                                Some(r) => {
+                                    return Some(r);
                                 }
-                            } else {
-                                let tok_start = self.inner.span().start;
-                                match tokenise_single_glyph(g) {
-                                    Some(token) => {
-                                        let span = tok_start..self.inner.span().end;
-                                        Some((Ok(token), span))
-                                    }
-                                    None => {
-                                        unimplemented!("unable to convert glyph '{g:?}' to a token")
-                                    }
+                                None => {
+                                    continue;
+                                }
+                            }
+                        } else {
+                            let tok_start = self.inner.span().start;
+                            match tokenise_single_glyph(g) {
+                                Some(token) => {
+                                    let span = tok_start..self.inner.span().end;
+                                    Some((Ok(token), span))
+                                }
+                                None => {
+                                    unimplemented!("unable to convert glyph '{g:?}' to a token")
                                 }
                             }
                         }
-                    };
-                if let Some((newtoken, newtoken_span)) = maybe_spanned_new_token {
-                    if let Some((current, current_span)) = self.current.take() {
-                        match merge_tokens((current, current_span), (newtoken, newtoken_span)) {
-                            TokenMergeResult::Merged(merged, merged_span) => {
-                                self.current = Some((Ok(merged), merged_span));
-                                continue;
-                            }
-                            TokenMergeResult::Failed {
-                                current,
-                                current_span,
-                                incoming: newtoken,
-                                incoming_span: newtoken_span,
-                            } => {
-                                let result = (current, current_span);
-                                self.current = Some((newtoken, newtoken_span));
-                                return Some(result);
-                            }
+                    }
+                };
+            if let Some((newtoken, newtoken_span)) = maybe_spanned_new_token {
+                if let Some((current, current_span)) = self.current.take() {
+                    match merge_tokens((current, current_span), (newtoken, newtoken_span)) {
+                        TokenMergeResult::Merged(merged, merged_span) => {
+                            self.current = Some((Ok(merged), merged_span));
+                            continue;
                         }
-                    } else {
-                        // There is a new token but no existing token.
-                        self.current = Some((newtoken, newtoken_span));
+                        TokenMergeResult::Failed {
+                            current,
+                            current_span,
+                            incoming: newtoken,
+                            incoming_span: newtoken_span,
+                        } => {
+                            let result = (current, current_span);
+                            self.current = Some((newtoken, newtoken_span));
+                            return Some(result);
+                        }
                     }
                 } else {
-                    // There is no new token.
-                    return self.current.take();
+                    // There is a new token but no existing token.
+                    self.current = Some((newtoken, newtoken_span));
+                }
+            } else {
+                // There is no new token.
+                return self.current.take();
+            }
+        }
+    }
+}
+
+#[test]
+fn test_glyph_tokenizer_simple_multi_token() {
+    let mut lex = GlyphTokenizer::new("hx");
+    assert_eq!(lex.get_next_spanned_token(), Some((Ok(Token::Hold), 0..1)));
+    assert_eq!(
+        lex.get_next_spanned_token(),
+        Some((
+            Ok(Token::SymexSyllable(Script::Normal, "x".to_string())),
+            1..2
+        ))
+    );
+    assert_eq!(lex.get_next_spanned_token(), None);
+}
+
+#[test]
+fn test_glyph_tokenizer_glyph_names() {
+    let mut lex = GlyphTokenizer::new("@sup_eps@");
+    assert_eq!(
+        lex.get_next_spanned_token(),
+        Some((
+            Ok(Token::SymexSyllable(Script::Super, "ε".to_string())),
+            0..9
+        ))
+    );
+    assert_eq!(lex.get_next_spanned_token(), None);
+}
+
+#[test]
+fn test_glyph_tokenizer_multi_glyph_token() {
+    // These glyphs are a single token because they are both valid
+    // in a symex and are both in superscript.
+    let input = "@sup_eps@ᵂ";
+    let mut lex = GlyphTokenizer::new(input);
+    assert_eq!(
+        lex.get_next_spanned_token(),
+        Some((
+            Ok(Token::SymexSyllable(Script::Super, "εW".to_string())),
+            0..12
+        ))
+    );
+    assert_eq!(lex.get_next_spanned_token(), None);
+}
+
+#[test]
+fn test_glyph_tokenizer_script_change_breaks_tokens() {
+    // Verify that a change from superscript to normal script
+    // causes two immediately adjoining letters to be considereed
+    // separate tokens.
+    let mut lex = GlyphTokenizer::new("@sup_eps@W");
+    assert_eq!(
+        lex.get_next_spanned_token(),
+        Some((
+            Ok(Token::SymexSyllable(Script::Super, "ε".to_string())),
+            0..9
+        ))
+    );
+    assert_eq!(
+        lex.get_next_spanned_token(),
+        Some((
+            Ok(Token::SymexSyllable(Script::Normal, "W".to_string())),
+            9..10
+        ))
+    );
+    assert_eq!(lex.get_next_spanned_token(), None);
+}
+
+#[test]
+fn test_glyph_tokenizer_space_breaks_tokens() {
+    // Verify that a space breaks tokens.  For symexes, the parser
+    // will join the syllables together into a single name, but
+    // they are scanned as separate tokens.
+    let mut lex = GlyphTokenizer::new("W Q");
+    assert_eq!(
+        lex.get_next_spanned_token(),
+        Some((
+            Ok(Token::SymexSyllable(Script::Normal, "W".to_string())),
+            0..1
+        ))
+    );
+    assert_eq!(
+        lex.get_next_spanned_token(),
+        Some((
+            Ok(Token::SymexSyllable(Script::Normal, "Q".to_string())),
+            2..3
+        ))
+    );
+    assert_eq!(lex.get_next_spanned_token(), None);
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct Lexer<'a> {
+    lower: lower::LowerLexer<'a>,
+    upper: Option<GlyphTokenizer<'a>>,
+    upper_span: Option<Span>,
+}
+
+impl<'a> Lexer<'a> {
+    pub(crate) fn new(input: &'a str) -> Lexer<'a> {
+        Lexer {
+            lower: lower::LowerLexer::new(input),
+            upper: None,
+            upper_span: None,
+        }
+    }
+
+    fn adjust_span(&self, span: Range<usize>) -> Range<usize> {
+        match self.upper_span.as_ref() {
+            None => span,
+            Some(upper_span) => {
+                let offset = span.start;
+                (upper_span.start + offset)..(upper_span.end + offset)
+            }
+        }
+    }
+
+    pub(crate) fn span(&self) -> Range<usize> {
+        self.adjust_span(self.lower.span())
+    }
+
+    // TODO: now that we return an error token to report a problem, We
+    // no longer need the return type to be Option<Result<...>>.
+    fn next_upper(upper: &mut GlyphTokenizer<'a>) -> Option<(Result<Token, Unrecognised>, Span)> {
+        let (tok, span) = upper.get_next_spanned_token()?;
+        Some(match tok {
+            Ok(token_from_upper) => (Ok(token_from_upper), span),
+            Err(e) => (Ok(Token::Error(e.to_string())), span),
+        })
+    }
+
+    pub(crate) fn spanned(&self) -> SpannedIter<'a> {
+        let lexer: Lexer<'a> = self.clone();
+        SpannedIter::new(lexer)
+    }
+
+    fn get_next(&mut self) -> Option<Result<Token, Unrecognised>> {
+        use lower::Lexeme;
+        if let Some(upper_lexer) = self.upper.as_mut() {
+            match Lexer::next_upper(upper_lexer) {
+                Some((r, span)) => {
+                    self.upper_span = Some(span);
+                    return Some(r);
+                }
+                None => {
+                    // We have no more input from the upper lexer,
+                    // fetch more from the lower one.
                 }
             }
         }
-    }
 
-    #[test]
-    fn test_glyph_tokenizer_simple_multi_token() {
-        use super::Token;
-        let mut lex = GlyphTokenizer::new("hx");
-        assert_eq!(lex.get_next_spanned_token(), Some((Ok(Token::Hold), 0..1)));
-        assert_eq!(
-            lex.get_next_spanned_token(),
-            Some((
-                Ok(Token::SymexSyllable(Script::Normal, "x".to_string())),
-                1..2
-            ))
-        );
-        assert_eq!(lex.get_next_spanned_token(), None);
-    }
-
-    #[test]
-    fn test_glyph_tokenizer_glyph_names() {
-        use super::Token;
-        let mut lex = GlyphTokenizer::new("@sup_eps@");
-        assert_eq!(
-            lex.get_next_spanned_token(),
-            Some((
-                Ok(Token::SymexSyllable(Script::Super, "ε".to_string())),
-                0..9
-            ))
-        );
-        assert_eq!(lex.get_next_spanned_token(), None);
-    }
-
-    #[test]
-    fn test_glyph_tokenizer_multi_glyph_token() {
-        use super::Token;
-        // These glyphs are a single token because they are both valid
-        // in a symex and are both in superscript.
-        let input = "@sup_eps@ᵂ";
-        let mut lex = GlyphTokenizer::new(input);
-        assert_eq!(
-            lex.get_next_spanned_token(),
-            Some((
-                Ok(Token::SymexSyllable(Script::Super, "εW".to_string())),
-                0..12
-            ))
-        );
-        assert_eq!(lex.get_next_spanned_token(), None);
-    }
-
-    #[test]
-    fn test_glyph_tokenizer_script_change_breaks_tokens() {
-        // Verify that a change from superscript to normal script
-        // causes two immediately adjoining letters to be considereed
-        // separate tokens.
-        use super::Token;
-        let mut lex = GlyphTokenizer::new("@sup_eps@W");
-        assert_eq!(
-            lex.get_next_spanned_token(),
-            Some((
-                Ok(Token::SymexSyllable(Script::Super, "ε".to_string())),
-                0..9
-            ))
-        );
-        assert_eq!(
-            lex.get_next_spanned_token(),
-            Some((
-                Ok(Token::SymexSyllable(Script::Normal, "W".to_string())),
-                9..10
-            ))
-        );
-        assert_eq!(lex.get_next_spanned_token(), None);
-    }
-
-    #[test]
-    fn test_glyph_tokenizer_space_breaks_tokens() {
-        // Verify that a space breaks tokens.  For symexes, the parser
-        // will join the syllables together into a single name, but
-        // they are scanned as separate tokens.
-        use super::Token;
-        let mut lex = GlyphTokenizer::new("W Q");
-        assert_eq!(
-            lex.get_next_spanned_token(),
-            Some((
-                Ok(Token::SymexSyllable(Script::Normal, "W".to_string())),
-                0..1
-            ))
-        );
-        assert_eq!(
-            lex.get_next_spanned_token(),
-            Some((
-                Ok(Token::SymexSyllable(Script::Normal, "Q".to_string())),
-                2..3
-            ))
-        );
-        assert_eq!(lex.get_next_spanned_token(), None);
-    }
-
-    #[derive(Debug, Clone)]
-    pub(crate) struct NewLexer<'a> {
-        lower: super::lower::LowerLexer<'a>,
-        upper: Option<GlyphTokenizer<'a>>,
-        upper_span: Option<Span>,
-    }
-
-    impl<'a> NewLexer<'a> {
-        pub(crate) fn new(input: &'a str) -> NewLexer<'a> {
-            NewLexer {
-                lower: super::lower::LowerLexer::new(input),
-                upper: None,
-                upper_span: None,
-            }
-        }
-
-        fn adjust_span(&self, span: Range<usize>) -> Range<usize> {
-            match self.upper_span.as_ref() {
-                None => span,
-                Some(upper_span) => {
-                    let offset = span.start;
-                    (upper_span.start + offset)..(upper_span.end + offset)
-                }
-            }
-        }
-
-        pub(crate) fn span(&self) -> Range<usize> {
-            self.adjust_span(self.lower.span())
-        }
-
-        // TODO: now that we return an error token to report a problem, We
-        // no longer need the return type to be Option<Result<...>>.
-        fn next_upper(
-            upper: &mut GlyphTokenizer<'a>,
-        ) -> Option<(Result<Token, Unrecognised>, Span)> {
-            let (tok, span) = upper.get_next_spanned_token()?;
-            Some(match tok {
-                Ok(token_from_upper) => (Ok(token_from_upper), span),
-                Err(e) => (Ok(Token::Error(e.to_string())), span),
-            })
-        }
-
-        pub(crate) fn spanned(&self) -> SpannedIter<'a> {
-            let lexer: NewLexer<'a> = self.clone();
-            SpannedIter::new(lexer)
-        }
-
-        fn get_next(&mut self) -> Option<Result<Token, Unrecognised>> {
-            use super::lower::Lexeme;
-            if let Some(upper_lexer) = self.upper.as_mut() {
-                match NewLexer::next_upper(upper_lexer) {
+        // Fetch more text from the lower lexer.
+        self.upper = None;
+        self.upper_span = None;
+        match self.lower.next() {
+            Lexeme::EndOfInput => None,
+            Lexeme::Tok(tok) => Some(Ok(tok)),
+            // If the lower lexer actually returns Unrecognised, the
+            // slice in `content` is likely very short (a single
+            // character perhaps) and that is unlikely to be
+            // tokenizable.  So the upper lexer will likely also
+            // return an error for that text too.
+            Lexeme::Text(text) => {
+                let upper = GlyphTokenizer::new(text);
+                self.upper = Some(upper);
+                match Lexer::next_upper(
+                    self.upper
+                        .as_mut()
+                        .expect("the option cannot be empty, we just filled it"),
+                ) {
                     Some((r, span)) => {
                         self.upper_span = Some(span);
-                        return Some(r);
+                        Some(r)
                     }
-                    None => {
-                        // We have no more input from the upper lexer,
-                        // fetch more from the lower one.
-                    }
+                    None => None,
                 }
             }
-
-            // Fetch more text from the lower lexer.
-            self.upper = None;
-            self.upper_span = None;
-            match self.lower.next() {
-                Lexeme::EndOfInput => None,
-                Lexeme::Tok(tok) => Some(Ok(tok)),
-                // If the lower lexer actually returns Unrecognised, the
-                // slice in `content` is likely very short (a single
-                // character perhaps) and that is unlikely to be
-                // tokenizable.  So the upper lexer will likely also
-                // return an error for that text too.
-                Lexeme::Text(text) => {
-                    let upper = GlyphTokenizer::new(text);
-                    self.upper = Some(upper);
-                    match NewLexer::next_upper(
-                        self.upper
-                            .as_mut()
-                            .expect("the option cannot be empty, we just filled it"),
-                    ) {
-                        Some((r, span)) => {
-                            self.upper_span = Some(span);
-                            Some(r)
-                        }
-                        None => None,
-                    }
-                }
-                Lexeme::Err(e) => Some(Err(e)),
-            }
+            Lexeme::Err(e) => Some(Err(e)),
         }
     }
+}
 
-    impl Iterator for NewLexer<'_> {
-        type Item = Result<Token, Unrecognised>;
+impl Iterator for Lexer<'_> {
+    type Item = Result<Token, Unrecognised>;
 
-        fn next(&mut self) -> Option<Result<Token, Unrecognised>> {
-            self.get_next()
-        }
+    fn next(&mut self) -> Option<Result<Token, Unrecognised>> {
+        self.get_next()
     }
+}
 
-    #[derive(Debug, Clone)]
-    pub(crate) struct SpannedIter<'a> {
-        lexer: NewLexer<'a>,
+#[derive(Debug, Clone)]
+pub(crate) struct SpannedIter<'a> {
+    lexer: Lexer<'a>,
+}
+
+impl<'a> SpannedIter<'a> {
+    pub(crate) fn new(lexer: Lexer<'a>) -> SpannedIter<'a> {
+        SpannedIter { lexer }
     }
+}
 
-    impl<'a> SpannedIter<'a> {
-        pub(crate) fn new(lexer: NewLexer<'a>) -> SpannedIter<'a> {
-            SpannedIter { lexer }
-        }
-    }
+impl Iterator for SpannedIter<'_> {
+    type Item = (Result<Token, Unrecognised>, Span);
 
-    impl Iterator for SpannedIter<'_> {
-        type Item = (Result<Token, Unrecognised>, Span);
-
-        fn next(&mut self) -> Option<Self::Item> {
-            let token = self.lexer.next();
-            token.map(|t| (t, self.lexer.span()))
-        }
+    fn next(&mut self) -> Option<Self::Item> {
+        let token = self.lexer.next();
+        token.map(|t| (t, self.lexer.span()))
     }
 }
