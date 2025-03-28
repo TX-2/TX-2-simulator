@@ -1235,14 +1235,10 @@ impl Default for GlyphMapByChar {
     fn default() -> Self {
         let mut mapping = HashMap::new();
         for g in ALL_GLYPHS {
-            for (script, maybe_char) in [
-                (Script::Sub, &g.subscript),
-                (Script::Super, &g.superscript),
-                (Script::Normal, &g.normal),
-            ] {
-                if let Some(key) = maybe_char {
+            for script in [Script::Sub, Script::Super, Script::Normal] {
+                if let Some(key) = g.get_char(script) {
                     let value = elevate(script, g);
-                    if let Some(prev) = mapping.insert(*key, value) {
+                    if let Some(prev) = mapping.insert(key, value) {
                         panic!("duplicate glyph mapping for character '{key}': {g:?} and {prev:?}");
                     }
                 }
