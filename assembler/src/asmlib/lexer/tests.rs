@@ -1010,7 +1010,20 @@ fn test_greater_than() {
 
 #[test]
 fn test_intersection() {
-    assert_eq!(scan_tokens_only("∩"), Ok(vec![Token::Intersection,]));
+    use Script::*;
+    assert_eq!(scan_tokens_only("∩"), Ok(vec![Token::Intersection(Normal)]));
+    assert_eq!(
+        scan_tokens_only("@sup_intersection@"),
+        Ok(vec![Token::Intersection(Super)])
+    );
+    assert_eq!(
+        scan_tokens_only("@intersection@"),
+        Ok(vec![Token::Intersection(Normal)])
+    );
+    assert_eq!(
+        scan_tokens_only("@sub_intersection@"),
+        Ok(vec![Token::Intersection(Sub)])
+    );
 }
 
 #[test]

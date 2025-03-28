@@ -320,7 +320,7 @@ where
         just(Tok::Tilde(Script::Normal)).to('~'),
         just(Tok::LessThan(Script::Normal)).to('<'),
         just(Tok::GreaterThan(Script::Normal)).to('>'),
-        just(Tok::Intersection).to('∩'),
+        just(Tok::Intersection(Script::Normal)).to('∩'),
         just(Tok::Union).to('∪'),
         just(Tok::Solidus(Script::Normal)).to('/'),
         just(Tok::Times(Script::Normal)).to('×'),
