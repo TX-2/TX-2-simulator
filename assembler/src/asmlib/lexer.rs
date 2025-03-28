@@ -114,6 +114,7 @@ pub(crate) enum Token {
 
     Pipe(Script),
     ProperSuperset(Script),
+    SubsetOf(Script),
     IdenticalTo(Script),
     Tilde(Script),
     LessThan(Script),
@@ -184,7 +185,8 @@ impl Display for Token {
             Token::Hash(script) => write_elevated(script, "#"),
             Token::Equals(script) => write_elevated(script, "="),
             Token::Pipe(script) => write_elevated(script, "|"),
-            Token::ProperSuperset(script) => write_elevated(script, "⊃"),
+            Token::ProperSuperset(script) => write_elevated(script, "⊃"), // U+2283
+            Token::SubsetOf(script) => write_elevated(script, "⊂"),       // U+2282
             Token::IdenticalTo(script) => write_elevated(script, "≡"),
             Token::Tilde(script) => write_elevated(script, "~"),
             Token::LessThan(script) => write_elevated(script, "<"),
@@ -489,9 +491,7 @@ mod lexer_impl_new {
             GlyphShape::LessThan => Some(Token::LessThan(script)),
             GlyphShape::GreaterThan => Some(Token::GreaterThan(script)),
             GlyphShape::Overbar | GlyphShape::Square | GlyphShape::n => make_symex(),
-            GlyphShape::SubsetOf => {
-                todo!("'⊂' (subset-of) is a symex terminator but does not yet have a token")
-            }
+            GlyphShape::SubsetOf => Some(Token::SubsetOf(script)),
             GlyphShape::Or => Some(Token::LogicalOr(script)),
             GlyphShape::q
             | GlyphShape::Gamma

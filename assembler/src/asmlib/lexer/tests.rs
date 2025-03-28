@@ -957,6 +957,26 @@ fn test_proper_superset() {
 }
 
 #[test]
+fn test_subset_of() {
+    use Script::*;
+    assert_eq!(scan_tokens_only("⊂"), Ok(vec![Token::SubsetOf(Normal),]));
+    // @sup@ is an important corner case, since it is distinct from
+    // (say) @sup_sup@
+    assert_eq!(
+        scan_tokens_only("@subsetof@"),
+        Ok(vec![Token::SubsetOf(Normal),])
+    );
+    assert_eq!(
+        scan_tokens_only("@sup_subsetof@"),
+        Ok(vec![Token::SubsetOf(Super),])
+    );
+    assert_eq!(
+        scan_tokens_only("@sub_subsetof@"),
+        Ok(vec![Token::SubsetOf(Sub),])
+    );
+}
+
+#[test]
 fn test_identical_to() {
     use Script::*;
     assert_eq!(scan_tokens_only("≡"), Ok(vec![Token::IdenticalTo(Normal),]));
