@@ -98,7 +98,7 @@ pub(crate) enum Token {
     /// section 6-3.2, "RULES FOR SYMEX FORMATION".
     Hold,
     NotHold, // handled specially, there is no glyph for this.
-    Arrow,
+    Arrow(Script),
     Hand(Script),
     Hash(Script),
     Equals(Script),
@@ -177,7 +177,7 @@ impl Display for Token {
             Token::RightParen(script) => write_elevated(script, ")"),
             Token::Hold => f.write_char('h'),
             Token::NotHold => f.write_char('ℏ'),
-            Token::Arrow => f.write_str("->"),
+            Token::Arrow(script) => write_elevated(script, "->"),
             Token::Hand(script) => write_elevated(script, "☛"),
             Token::Asterisk => f.write_char('*'),
             Token::Dot(script) => write_elevated(script, DOT_STR),
@@ -495,10 +495,7 @@ mod lexer_impl_new {
             GlyphShape::Solidus => Some(Token::Solidus(script)),
             GlyphShape::Times => Some(Token::Times(script)),
             GlyphShape::Hash => Some(Token::Hash(script)),
-            GlyphShape::Arrow => Some(match script {
-                Script::Super | Script::Sub => unimplemented!(),
-                Script::Normal => Token::Arrow,
-            }),
+            GlyphShape::Arrow => Some(Token::Arrow(script)),
             GlyphShape::LessThan => only_normal(Token::LessThan),
             GlyphShape::GreaterThan => only_normal(Token::GreaterThan),
             GlyphShape::Overbar | GlyphShape::Square | GlyphShape::n => make_symex(),
@@ -576,7 +573,7 @@ mod lexer_impl_new {
         let merged_span = current_span.start..incoming_span.end;
         match current {
             Token::Minus(Script::Normal) if incoming == Token::GreaterThan => {
-                TokenMergeResult::Merged(Token::Arrow, merged_span)
+                TokenMergeResult::Merged(Token::Arrow(Script::Normal), merged_span)
             }
             Token::SymexSyllable(existing_script, mut existing_name) => match incoming {
                 Token::Hold if existing_script == Script::Normal => {

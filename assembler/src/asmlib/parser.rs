@@ -188,7 +188,7 @@ where
             name,
             span: extra.span(),
         })
-        .then_ignore(just(Tok::Arrow))
+        .then_ignore(just(Tok::Arrow(Script::Normal)))
         .labelled("tag definition")
 }
 
@@ -313,7 +313,7 @@ where
         just(Tok::Hand(Script::Normal)).to('☛'),
         just(Tok::Dot(Script::Normal)).to(lexer::DOT_CHAR),
         just(Tok::Equals(Script::Normal)).to('='),
-        just(Tok::Arrow).to('→'),
+        just(Tok::Arrow(Script::Normal)).to('→'),
         just(Tok::Pipe(Script::Normal)).to('|'),
         just(Tok::ProperSuperset).to('⊃'),
         just(Tok::IdenticalTo).to('≡'),

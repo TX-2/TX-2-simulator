@@ -138,20 +138,31 @@ fn test_hand_hand_normal() {
 
 #[test]
 fn test_arrow_plain() {
-    assert_eq!(scan_tokens_only("->"), Ok(vec![Token::Arrow]));
+    assert_eq!(
+        scan_tokens_only("->"),
+        Ok(vec![Token::Arrow(Script::Normal)])
+    );
+    // Since the user has @arr@, @sup_arr@, etc. we don't actually
+    // require @sub_minus@@sub_greater@ to be understood as an arrow
+    // (though it likely is).
 }
 
 #[test]
 fn test_double_arrow_plain() {
+    use Script::Normal;
     assert_eq!(
         scan_tokens_only("->->"),
-        Ok(vec![Token::Arrow, Token::Arrow])
+        Ok(vec![Token::Arrow(Normal), Token::Arrow(Normal)])
     );
 }
 
 #[test]
 fn test_arrow_as_glyph() {
-    assert_eq!(scan_tokens_only("@arr@"), Ok(vec![Token::Arrow]));
+    use Script::*;
+    assert_eq!(scan_tokens_only("@arr@"), Ok(vec![Token::Arrow(Normal)]));
+
+    assert_eq!(scan_tokens_only("@sup_arr@"), Ok(vec![Token::Arrow(Super)]));
+    assert_eq!(scan_tokens_only("@sub_arr@"), Ok(vec![Token::Arrow(Sub)]));
 }
 
 #[test]
@@ -163,7 +174,7 @@ fn test_upper_lexer_span() {
         scan_slices("{->}"),
         Ok(vec![
             (Token::LeftBrace, "{"),
-            (Token::Arrow, "->"),
+            (Token::Arrow(Script::Normal), "->"),
             (Token::RightBrace, "}"),
         ])
     );
@@ -1084,9 +1095,10 @@ fn test_superscript_minus_unicode() {
 
 #[test]
 fn test_annotations_are_ignored() {
+    use Script::Normal;
     assert_eq!(
         scan_tokens_only("->[THIS IS AN ANNOTATION]->"),
-        Ok(vec![Token::Arrow, Token::Arrow,])
+        Ok(vec![Token::Arrow(Normal), Token::Arrow(Normal),])
     );
 }
 
