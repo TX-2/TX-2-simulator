@@ -112,7 +112,7 @@ pub(crate) enum Token {
     /// macro name.
     Asterisk,
 
-    Pipe,
+    Pipe(Script),
     ProperSuperset,
     IdenticalTo,
     Tilde,
@@ -183,7 +183,7 @@ impl Display for Token {
             Token::Dot(script) => write_elevated(script, DOT_STR),
             Token::Hash(script) => write_elevated(script, "#"),
             Token::Equals => f.write_char('='),
-            Token::Pipe => f.write_char('|'),
+            Token::Pipe(script) => write_elevated(script, "|"),
             Token::ProperSuperset => f.write_char('⊃'),
             Token::IdenticalTo => f.write_char('≡'),
             Token::Tilde => f.write_char('~'),
@@ -491,7 +491,7 @@ mod lexer_impl_new {
             GlyphShape::Sigma => {
                 todo!("Sigma (which is a symex terminator) does not yet have a token")
             }
-            GlyphShape::Pipe => only_normal(Token::Pipe),
+            GlyphShape::Pipe => Some(Token::Pipe(script)),
             GlyphShape::DoublePipe => {
                 todo!("double-pipe (which is a symex terminator) does not yet have a token")
             }

@@ -315,7 +315,7 @@ where
         just(Tok::Dot(Script::Normal)).to(lexer::DOT_CHAR),
         just(Tok::Equals).to('='),
         just(Tok::Arrow).to('→'),
-        just(Tok::Pipe).to('|'),
+        just(Tok::Pipe(Script::Normal)).to('|'),
         just(Tok::ProperSuperset).to('⊃'),
         just(Tok::IdenticalTo).to('≡'),
         just(Tok::Tilde).to('~'),
@@ -591,7 +591,7 @@ where
             // An origin specification is an expression followed by a
             // (normal-case) pipe symbol.
             choice((literal_address_expression(), symbolic_address_expression()))
-                .then_ignore(just(Tok::Pipe))
+                .then_ignore(just(Tok::Pipe(Script::Normal)))
                 .labelled("origin specification")
         }
 

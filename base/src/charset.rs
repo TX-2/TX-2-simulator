@@ -112,7 +112,7 @@ pub fn superscript_char(ch: char) -> Result<char, NoSuperscriptKnown> {
         'P' => Ok('ᴾ'),
         'Q' => Ok('\u{A7F4}'),
         'R' => Ok('ᴿ'),
-        'S' => Ok('\u{209B}'),
+        // There is no Unicode superscript 'S', U+2E2 is a superscript 's'.
         'T' => Ok('ᵀ'),
         'U' => Ok('ᵁ'),
         'V' => Ok('ⱽ'),

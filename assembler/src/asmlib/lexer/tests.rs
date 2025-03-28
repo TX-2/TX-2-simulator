@@ -801,7 +801,7 @@ fn test_pipe() {
         scan_tokens_only("    START|"),
         Ok(vec![
             Token::SymexSyllable(Script::Normal, "START".to_string()),
-            Token::Pipe,
+            Token::Pipe(Script::Normal),
         ])
     )
 }

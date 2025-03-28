@@ -72,9 +72,19 @@ impl<T: AsStr> Display for Elevated<T> {
                         Ok(superchar) => {
                             f.write_char(superchar)?;
                         }
-                        Err(_) => {
-                            todo!("find superscript variant of {ch}")
-                        }
+                        Err(_) => match glyph_of_char(ch) {
+                            Ok(elevated_glyph) => {
+                                let glyph = elevated_glyph.get();
+                                if let Some(superchar) = glyph.superscript {
+                                    f.write_char(superchar)?;
+                                } else {
+                                    write!(f, "@sup_{}@", glyph.name)?;
+                                }
+                            }
+                            Err(_) => {
+                                unimplemented!("superscript variant of {ch}")
+                            }
+                        },
                     }
                 }
                 Ok(())
@@ -85,9 +95,19 @@ impl<T: AsStr> Display for Elevated<T> {
                         Ok(subchar) => {
                             f.write_char(subchar)?;
                         }
-                        Err(_) => {
-                            todo!("find subscript variant of {ch}")
-                        }
+                        Err(_) => match glyph_of_char(ch) {
+                            Ok(elevated_glyph) => {
+                                let glyph = elevated_glyph.get();
+                                if let Some(superchar) = glyph.superscript {
+                                    f.write_char(superchar)?;
+                                } else {
+                                    write!(f, "@sub_{}@", glyph.name)?;
+                                }
+                            }
+                            Err(_) => {
+                                unimplemented!("find subscript variant of {ch}")
+                            }
+                        },
                     }
                 }
                 Ok(())
@@ -146,6 +166,40 @@ impl Glyph {
             Script::Normal => self.normal,
             Script::Super => self.superscript,
             Script::Sub => self.subscript,
+        }
+    }
+}
+
+#[test]
+fn test_subscript_char_agreement() {
+    for g in ALL_GLYPHS {
+        if let Some(ch) = g.normal {
+            if let Some(glyph_sub_ch) = g.subscript {
+                if let Ok(charset_sub_ch) = subscript_char(ch) {
+                    assert_eq!(glyph_sub_ch, charset_sub_ch,
+                               "glyph {g:?} maps {ch} to {glyph_sub_ch} ({}) but subscript_char maps it to {charset_sub_ch} ({})",
+                               glyph_sub_ch.escape_unicode(),
+                               charset_sub_ch.escape_unicode(),
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn test_superscript_char_agreement() {
+    for g in ALL_GLYPHS {
+        if let Some(ch) = g.normal {
+            if let Some(glyph_sup_ch) = g.superscript {
+                if let Ok(charset_sup_ch) = superscript_char(ch) {
+                    assert_eq!(glyph_sup_ch, charset_sup_ch,
+                               "glyph {g:?} maps {ch} to {glyph_sup_ch} ({}) but superscript_char maps it to {charset_sup_ch} ({})",
+                               glyph_sup_ch.escape_unicode(),
+                               charset_sup_ch.escape_unicode(),
+                    );
+                }
+            }
         }
     }
 }
@@ -582,7 +636,7 @@ const ALL_GLYPHS: &[Glyph] = &[
         shape: GlyphShape::C,
         name: "C",
         normal: Some('C'),
-        superscript: Some('ᶜ'), // U+1D9C, but problem: there is also ꟲ (U+A7F2)
+        superscript: Some('ꟲ'), // U+A7F2 (we don't use U+1D9C, that's the lower-case C)
         ..GDEF
     },
     Glyph {
@@ -694,7 +748,8 @@ const ALL_GLYPHS: &[Glyph] = &[
         shape: GlyphShape::S,
         name: "S",
         normal: Some('S'),
-        superscript: Some('ˢ'),
+        // There is no Unicode superscript 'S', U+2E2 is a superscript 's'.
+        superscript: None,
         ..GDEF
     },
     Glyph {
@@ -1199,8 +1254,10 @@ impl Default for GlyphMapByChar {
 
 fn canonicalise_char(ch: char) -> char {
     match ch {
-        '\u{A7F2}' => '\u{1D9C}', // ꟲ -> ᶜ
-        '.' => '\u{00B7}',        // . -> ·
+        // We don't convert U+A7F2 (ꟲ) to U+1D9C because the former is
+        // a majuscule (captial) letter and the latter is a minuscule
+        // (lower-case) letter.
+        '.' => '\u{00B7}', // . -> ·
 
         // The TX-2 character set doesn't include ':', but some of the
         // older sources use ':' to signal that the hold bit should be

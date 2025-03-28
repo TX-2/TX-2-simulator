@@ -135,7 +135,7 @@ fn round_trip() {
     must_round_trip("ᴾ", &ulmap);
     must_round_trip("\u{A7F4}", &ulmap);
     must_round_trip("ᴿ", &ulmap);
-    must_round_trip("\u{209B}", &ulmap);
+    // There is no Unicode superscript 'S', U+2E2 is a superscript 's'.
     must_round_trip("ᵀ", &ulmap);
     must_round_trip("ᵁ", &ulmap);
     must_round_trip("ⱽ", &ulmap);
