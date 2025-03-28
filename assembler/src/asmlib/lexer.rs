@@ -99,7 +99,7 @@ pub(crate) enum Token {
     Hold,
     NotHold, // handled specially, there is no glyph for this.
     Arrow,
-    Hand,
+    Hand(Script),
     Hash(Script),
     Equals,
 
@@ -178,7 +178,7 @@ impl Display for Token {
             Token::Hold => f.write_char('h'),
             Token::NotHold => f.write_char('ℏ'),
             Token::Arrow => f.write_str("->"),
-            Token::Hand => f.write_char('☛'),
+            Token::Hand(script) => write_elevated(script, "☛"),
             Token::Asterisk => f.write_char('*'),
             Token::Dot(script) => write_elevated(script, DOT_STR),
             Token::Hash(script) => write_elevated(script, "#"),
@@ -484,10 +484,7 @@ mod lexer_impl_new {
             GlyphShape::Comma => only_normal(Token::Comma),
             GlyphShape::Dot => Some(Token::Dot(script)),
             GlyphShape::Backspace => unimplemented!("compound characters are not yet supported"),
-            GlyphShape::Hand => Some(match script {
-                Script::Super | Script::Sub => unimplemented!(),
-                Script::Normal => Token::Hand,
-            }),
+            GlyphShape::Hand => Some(Token::Hand(script)),
             GlyphShape::Sigma => {
                 todo!("Sigma (which is a symex terminator) does not yet have a token")
             }

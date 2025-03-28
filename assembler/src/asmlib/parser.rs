@@ -311,7 +311,7 @@ where
     // We use a centre dot for the dot symbol because otherwise the
     // low position of "." makes it look like part of a subscript.
     choice((
-        just(Tok::Hand).to('☛'),
+        just(Tok::Hand(Script::Normal)).to('☛'),
         just(Tok::Dot(Script::Normal)).to(lexer::DOT_CHAR),
         just(Tok::Equals).to('='),
         just(Tok::Arrow).to('→'),
@@ -414,7 +414,7 @@ where
         Tok::SymexSyllable(Script::Normal, name) if name_match(name.as_str()) => (),
     };
 
-    just([Tok::Hand, Tok::Hand])
+    just([Tok::Hand(Script::Normal), Tok::Hand(Script::Normal)])
         .ignored()
         .then_ignore(matching_metacommand_name)
 }

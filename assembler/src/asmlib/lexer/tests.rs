@@ -98,18 +98,41 @@ fn test_unmatched_rbrace() {
 
 #[test]
 fn test_hand_normal() {
-    assert_eq!(scan_tokens_only("@hand@"), Ok(vec![Token::Hand]));
+    assert_eq!(
+        scan_tokens_only("@hand@"),
+        Ok(vec![Token::Hand(Script::Normal)])
+    );
+}
+
+#[test]
+fn test_hand_superscript() {
+    assert_eq!(
+        scan_tokens_only("@sup_hand@"),
+        Ok(vec![Token::Hand(Script::Super)])
+    );
+}
+
+#[test]
+fn test_hand_subscript() {
+    assert_eq!(
+        scan_tokens_only("@sub_hand@"),
+        Ok(vec![Token::Hand(Script::Sub)])
+    );
 }
 
 #[test]
 fn test_hand_hand_normal() {
+    use Script::Normal;
     let input = "@hand@@hand@";
     assert_eq!(&input[1..5], "hand");
     assert_eq!(&input[7..11], "hand");
 
     assert_eq!(
         scan_slices(input),
-        Ok(vec![(Token::Hand, "@hand@"), (Token::Hand, "@hand@"),])
+        Ok(vec![
+            (Token::Hand(Normal), "@hand@"),
+            (Token::Hand(Normal), "@hand@"),
+        ])
     );
 }
 
