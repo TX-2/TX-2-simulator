@@ -935,10 +935,25 @@ fn test_right_paren() {
 
 #[test]
 fn test_proper_superset() {
-    assert_eq!(scan_tokens_only("⊃"), Ok(vec![Token::ProperSuperset,]));
+    use Script::*;
+    assert_eq!(
+        scan_tokens_only("⊃"),
+        Ok(vec![Token::ProperSuperset(Normal),])
+    );
     // @sup@ is an important corner case, since it is distinct from
     // (say) @sup_sup@
-    assert_eq!(scan_tokens_only("@sup@"), Ok(vec![Token::ProperSuperset,]));
+    assert_eq!(
+        scan_tokens_only("@sup@"),
+        Ok(vec![Token::ProperSuperset(Normal),])
+    );
+    assert_eq!(
+        scan_tokens_only("@sup_sup@"),
+        Ok(vec![Token::ProperSuperset(Super),])
+    );
+    assert_eq!(
+        scan_tokens_only("@sub_sup@"),
+        Ok(vec![Token::ProperSuperset(Sub),])
+    );
 }
 
 #[test]

@@ -113,7 +113,7 @@ pub(crate) enum Token {
     Asterisk(Script),
 
     Pipe(Script),
-    ProperSuperset,
+    ProperSuperset(Script),
     IdenticalTo(Script),
     Tilde(Script),
     LessThan(Script),
@@ -184,7 +184,7 @@ impl Display for Token {
             Token::Hash(script) => write_elevated(script, "#"),
             Token::Equals(script) => write_elevated(script, "="),
             Token::Pipe(script) => write_elevated(script, "|"),
-            Token::ProperSuperset => f.write_char('⊃'),
+            Token::ProperSuperset(script) => write_elevated(script, "⊃"),
             Token::IdenticalTo(script) => write_elevated(script, "≡"),
             Token::Tilde(script) => write_elevated(script, "~"),
             Token::LessThan(script) => write_elevated(script, "<"),
@@ -426,16 +426,6 @@ mod lexer_impl_new {
             }
             Some(Token::SymexSyllable(script, name))
         };
-        let only_normal = |t: Token| -> Option<Token> {
-            match script {
-                Script::Super | Script::Sub => {
-                    unimplemented!(
-                        "only normal script is supported for {t:?} but input is {script:?}"
-                    );
-                }
-                Script::Normal => Some(t),
-            }
-        };
 
         match g.get().shape() {
             GlyphShape::Space | GlyphShape::Tab => None,
@@ -528,7 +518,7 @@ mod lexer_impl_new {
                 Script::Normal => Token::Hold,
             }),
             // Todo: Token::NotHold.
-            GlyphShape::SupersetOf => only_normal(Token::ProperSuperset),
+            GlyphShape::SupersetOf => Some(Token::ProperSuperset(script)),
             GlyphShape::Beta => make_symex(),
             GlyphShape::And => Some(Token::LogicalAnd(script)),
             GlyphShape::Lambda => make_symex(),
