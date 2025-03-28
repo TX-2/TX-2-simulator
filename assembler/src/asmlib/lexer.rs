@@ -243,7 +243,10 @@ pub(crate) use lexer_impl_new::*;
 pub(crate) type Lexer<'a> = NewLexer<'a>;
 
 mod lexer_impl_new {
-    use super::glyph::{glyph_from_name, glyph_of_char, Elevated, Glyph, GlyphShape, Unrecognised};
+    use super::glyph::{
+        glyph_from_name, glyph_of_char, is_allowed_in_symex, Elevated, Glyph, GlyphShape,
+        Unrecognised,
+    };
     use super::{NumericLiteral, DOT_CHAR};
     use base::charset::Script;
     use std::ops::Range;
@@ -429,7 +432,7 @@ mod lexer_impl_new {
             Some(Token::SymexSyllable(script, name))
         };
 
-        match g.get().shape() {
+        let output: Option<super::Token> = match g.get().shape() {
             GlyphShape::Space | GlyphShape::Tab => None,
             GlyphShape::Digit0 => Some(make_num('0')),
             GlyphShape::Digit1 => Some(make_num('1')),
@@ -529,7 +532,30 @@ mod lexer_impl_new {
             GlyphShape::Equals => Some(Token::Equals(script)),
             GlyphShape::Apostrophe => make_symex(),
             GlyphShape::Asterisk => Some(Token::Asterisk(script)),
+        };
+        if let Some(t) = output.as_ref() {
+            if matches!(t, Token::SymexSyllable(_, _)) {
+                assert!(
+                    is_allowed_in_symex(g.get().shape),
+                    "attempted to make a symex with disallowed glyph shape {g:?}"
+                );
+            } else if matches!(t, Token::Digits(_, _) | Token::Dot(_)) {
+                // Digits and dots mostly called "PERIOD" in the Users
+                // Handbook) are allowed in numeric literals but also
+                // allowed in symexes.  We scan them as numeric
+                // literals and then join them into symexes when we
+                // discover what their neighbours are.
+                assert!(is_allowed_in_symex(g.get().shape),
+                        "all glyphs allowed in numeric literals are also allowed in symexes, but this went wrong for {g:?}");
+            } else if g.get().shape == GlyphShape::Space {
+                // Permitted in a symex but this is implemented at the parser level.
+            } else {
+                assert!(
+                    !is_allowed_in_symex(g.get().shape),
+                    "glyph shape {g:?} is allowed in a symex but the scanner didn't recognise it that way");
+            }
         }
+        output
     }
 
     #[derive(Debug)]

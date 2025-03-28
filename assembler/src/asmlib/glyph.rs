@@ -1285,3 +1285,79 @@ pub(crate) fn glyph_from_name(name: &str) -> Option<Elevated<&'static Glyph>> {
         .find(|g| g.name == glyph_base_name)
         .map(|g| elevate(script, g))
 }
+
+/// Specified in Users Handbook section 6-2.3 item 6.
+pub(crate) fn is_allowed_in_symex(g: GlyphShape) -> bool {
+    match g {
+        GlyphShape::Digit0 |
+        GlyphShape::Digit1 |
+        GlyphShape::Digit2 |
+        GlyphShape::Digit3 |
+        GlyphShape::Digit4 |
+        GlyphShape::Digit5 |
+        GlyphShape::Digit6 |
+        GlyphShape::Digit7 |
+        GlyphShape::Digit8 |
+        GlyphShape::Digit9 |
+        GlyphShape::A |
+        GlyphShape::B |
+        GlyphShape::C |
+        GlyphShape::D |
+        GlyphShape::E |
+        GlyphShape::F |
+        GlyphShape::G |
+        GlyphShape::H |
+        GlyphShape::I |
+        GlyphShape::J |
+        GlyphShape::K |
+        GlyphShape::L |
+        GlyphShape::M |
+        GlyphShape::N |
+        GlyphShape::O |
+        GlyphShape::P |
+        GlyphShape::Q |
+        GlyphShape::R |
+        GlyphShape::S |
+        GlyphShape::T |
+        GlyphShape::U |
+        GlyphShape::V |
+        GlyphShape::W |
+        GlyphShape::X |
+        GlyphShape::Y |
+        GlyphShape::Z |
+        GlyphShape::Alpha|
+        GlyphShape::Beta |
+        GlyphShape::Gamma |
+        GlyphShape::Delta  |
+        GlyphShape::Epsilon |
+        GlyphShape::Lambda |
+        // Note: h is not allowed.
+        GlyphShape::i |
+        GlyphShape::j |
+        GlyphShape::k |
+        GlyphShape::n |
+        GlyphShape::p |
+        GlyphShape::q |
+        GlyphShape::t |
+        GlyphShape::w |
+        GlyphShape::x |
+        GlyphShape::y |
+        GlyphShape::z |
+        GlyphShape::Dot |
+        GlyphShape::Apostrophe |
+        GlyphShape::Underscore |
+        GlyphShape::Overbar |
+        GlyphShape::Square |
+        GlyphShape::Circle => true,
+        GlyphShape::Space => {
+            // Space bar is allowed in a symex, per section 6-2.3.
+            // But that doesn't necessarily mean that other space
+            // characters are.  However, we treat space and tab the
+            // same, and don't include them in the symex syllable
+            // token (instead we join symex syllables together in the
+            // parser).
+            true
+        }
+        _ => false,
+    }
+}
