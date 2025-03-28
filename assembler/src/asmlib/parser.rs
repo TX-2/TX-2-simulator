@@ -291,7 +291,7 @@ where
             single_script_fragment(Script::Normal),
             single_script_fragment(Script::Super),
             single_script_fragment(Script::Sub),
-            just(Tok::Asterisk).to(InstructionFragment::DeferredAddressing),
+            just(Tok::Asterisk(Script::Normal)).to(InstructionFragment::DeferredAddressing),
         ))
         .repeated()
         .at_least(1)

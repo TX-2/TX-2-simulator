@@ -110,7 +110,7 @@ pub(crate) enum Token {
     /// macro terminators (6-4.5).  However, they are valid as part of
     /// a superposed character sequence making up a compound-character
     /// macro name.
-    Asterisk,
+    Asterisk(Script),
 
     Pipe(Script),
     ProperSuperset,
@@ -179,7 +179,7 @@ impl Display for Token {
             Token::NotHold => f.write_char('ℏ'),
             Token::Arrow(script) => write_elevated(script, "->"),
             Token::Hand(script) => write_elevated(script, "☛"),
-            Token::Asterisk => f.write_char('*'),
+            Token::Asterisk(script) => write_elevated(script, "*"),
             Token::Dot(script) => write_elevated(script, DOT_STR),
             Token::Hash(script) => write_elevated(script, "#"),
             Token::Equals(script) => write_elevated(script, "="),
@@ -538,7 +538,7 @@ mod lexer_impl_new {
             GlyphShape::IdenticalTo => Some(Token::IdenticalTo(script)),
             GlyphShape::Equals => Some(Token::Equals(script)),
             GlyphShape::Apostrophe => make_symex(),
-            GlyphShape::Asterisk => only_normal(Token::Asterisk),
+            GlyphShape::Asterisk => Some(Token::Asterisk(script)),
         }
     }
 
