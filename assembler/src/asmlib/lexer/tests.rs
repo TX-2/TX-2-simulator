@@ -61,7 +61,10 @@ fn test_empty_input() {
 fn test_balanced_braces() {
     assert_eq!(
         scan_slices("{}"),
-        Ok(vec![(Token::LeftBrace, "{"), (Token::RightBrace, "}")])
+        Ok(vec![
+            (Token::LeftBrace(Script::Normal), "{"),
+            (Token::RightBrace(Script::Normal), "}")
+        ])
     );
 }
 
@@ -92,7 +95,10 @@ fn test_comment_with_unmatched_rbrace() {
 fn test_unmatched_rbrace() {
     assert_eq!(
         scan_slices("}\n"),
-        Ok(vec![(Token::RightBrace, "}"), (Token::Newline, "\n")])
+        Ok(vec![
+            (Token::RightBrace(Script::Normal), "}"),
+            (Token::Newline, "\n")
+        ])
     );
 }
 
@@ -170,12 +176,13 @@ fn test_upper_lexer_span() {
     // The purpose of this test is to verify that the lexer
     // returns correct span information for tokens (not starting
     // at position 0) identified by the upper lexer.
+    use Script::Normal;
     assert_eq!(
         scan_slices("{->}"),
         Ok(vec![
-            (Token::LeftBrace, "{"),
-            (Token::Arrow(Script::Normal), "->"),
-            (Token::RightBrace, "}"),
+            (Token::LeftBrace(Normal), "{"),
+            (Token::Arrow(Normal), "->"),
+            (Token::RightBrace(Normal), "}"),
         ])
     );
 }

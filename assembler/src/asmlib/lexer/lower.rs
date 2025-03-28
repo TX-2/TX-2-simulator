@@ -2,6 +2,8 @@ use std::ops::Range;
 
 use logos::Logos;
 
+use base::charset::Script;
+
 use super::super::glyph::Unrecognised;
 
 /// InnerToken is the result of a "partial" lexer which only
@@ -137,7 +139,7 @@ impl<'a> LowerLexer<'a> {
                     self.state.lbrace_count = self.state.lbrace_count.checked_add(1).expect(
                         "the number of '{' on one line should be countable without overflow",
                     );
-                    return Tok(Token::LeftBrace);
+                    return Tok(Token::LeftBrace(Script::Normal));
                 }
                 InnerToken::RightBrace => {
                     match self.state.lbrace_count.checked_sub(1) {
@@ -150,12 +152,12 @@ impl<'a> LowerLexer<'a> {
                                 // the comment text.
                                 continue;
                             }
-                            return Tok(Token::RightBrace);
+                            return Tok(Token::RightBrace(Script::Normal));
                         }
                         Some(reduced_count) => {
                             self.state.lbrace_count = reduced_count;
                             self.state.in_comment = false;
-                            return Tok(Token::RightBrace);
+                            return Tok(Token::RightBrace(Script::Normal));
                         }
                     }
                 }

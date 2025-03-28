@@ -77,8 +77,8 @@ pub(crate) enum Token {
     // In order for the parser to recover from tokenization errors, we
     // need to be able to emit an error token.
     Error(String),
-    LeftBrace,
-    RightBrace,
+    LeftBrace(Script),
+    RightBrace(Script),
     Newline,
 
     /// The parser currently only handled parenthesised expressions in
@@ -170,8 +170,8 @@ impl Display for Token {
 
         match self {
             Token::Error(msg) => write!(f, "(error: {msg})"),
-            Token::LeftBrace => f.write_char('{'),
-            Token::RightBrace => f.write_char('}'),
+            Token::LeftBrace(script) => write_elevated(script, "{"),
+            Token::RightBrace(script) => write_elevated(script, "}"),
             Token::Newline => f.write_char('\n'),
             Token::LeftParen(script) => write_elevated(script, "("),
             Token::RightParen(script) => write_elevated(script, ")"),
@@ -533,8 +533,8 @@ mod lexer_impl_new {
             GlyphShape::And => Some(Token::LogicalAnd(script)),
             GlyphShape::Lambda => make_symex(),
             GlyphShape::Tilde => Some(Token::Tilde(script)),
-            GlyphShape::LeftBrace => only_normal(Token::LeftBrace),
-            GlyphShape::RightBrace => only_normal(Token::RightBrace),
+            GlyphShape::LeftBrace => Some(Token::LeftBrace(script)),
+            GlyphShape::RightBrace => Some(Token::RightBrace(script)),
             GlyphShape::IdenticalTo => Some(Token::IdenticalTo(script)),
             GlyphShape::Equals => Some(Token::Equals(script)),
             GlyphShape::Apostrophe => make_symex(),

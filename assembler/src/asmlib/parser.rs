@@ -254,7 +254,10 @@ where
                 // using recursive() we will blow the stack, unfortunately.
                 let register_containing = program_instruction_fragments
                     .clone()
-                    .delimited_by(just(Tok::LeftBrace), just(Tok::RightBrace))
+                    .delimited_by(
+                        just(Tok::LeftBrace(Script::Normal)),
+                        just(Tok::RightBrace(Script::Normal)),
+                    )
                     .map_with(|fragments, extra| Atom::RcRef(extra.span(), fragments))
                     .labelled("RC-word");
 
