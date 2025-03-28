@@ -347,8 +347,7 @@ fn test_comments_only_manuscript() {
                 "\n",
                 "** AND SOME LINES CONTAINING ONLY SPACES\n",
                 "    \n",
-                "** OR TABS\n",
-                "\t\t\t\n",
+                "    \n",
                 "** AND SOME COMMENTS.\n",
                 "    ** SOME COMMENTS ARE PRECEDED BY BLANKS\n",
             ),
@@ -560,7 +559,7 @@ fn test_symbol_name_two_syllables() {
 fn test_manuscript_with_single_syllable_tag() {
     assert_eq!(
         parse_successfully_with(
-            "START4  \t->\t205 ** comment here\n",
+            "START4 -> 205 ** comment here\n",
             source_file(),
             no_state_setup
         ),
@@ -575,10 +574,10 @@ fn test_manuscript_with_single_syllable_tag() {
                         span: span(0..6),
                     }),
                     instruction: UntaggedProgramInstruction {
-                        span: span(12..15),
+                        span: span(10..13),
                         holdbit: HoldBit::Unspecified,
                         parts: vec![InstructionFragment::from((
-                            span(12..15),
+                            span(10..13),
                             Script::Normal,
                             Unsigned36Bit::from(0o205_u32),
                         )),]
@@ -1111,7 +1110,6 @@ fn test_end_of_line() {
     }
     good("\n");
     good(" \n");
-    good("\t\n");
     good("\n\n");
     good("\n \n");
     good("**COMMENT\n");

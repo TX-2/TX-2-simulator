@@ -44,7 +44,12 @@ pub(super) enum InnerToken {
     #[regex("[^ \\[\t{}\n]+", priority = 3)]
     Text,
 
-    #[regex("[ \t]+")]
+    // We distinguish tab from spaces because they are handled
+    // differently.  Space is allowed inside symexes while tab is not.
+    #[token("\t")]
+    Tab,
+
+    #[regex("[ ]+")]
     Spaces,
 }
 
@@ -126,6 +131,13 @@ impl<'a> LowerLexer<'a> {
             match tok {
                 InnerToken::Spaces | InnerToken::Annotation => {
                     // Skip.
+                }
+                InnerToken::Tab => {
+                    // Parse tab differently to avoid joining symex
+                    // symbols across a space.  Per section 6-2.3 of
+                    // the User Handbook, tab is not allowed inside a
+                    // symex.
+                    return Tok(Token::Tab);
                 }
                 InnerToken::CommentStart => {
                     self.state.in_comment = true;

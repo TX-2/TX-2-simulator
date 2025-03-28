@@ -85,6 +85,7 @@ pub(crate) enum Token {
     LeftBrace(Script),
     RightBrace(Script),
     Newline,
+    Tab,
 
     /// The parser currently only handled parenthesised expressions in
     /// normal script.
@@ -179,6 +180,7 @@ impl Display for Token {
             Token::LeftBrace(script) => write_elevated(script, "{"),
             Token::RightBrace(script) => write_elevated(script, "}"),
             Token::Newline => f.write_char('\n'),
+            Token::Tab => f.write_char('\t'),
             Token::LeftParen(script) => write_elevated(script, "("),
             Token::RightParen(script) => write_elevated(script, ")"),
             Token::Hold => f.write_char('h'),
@@ -421,6 +423,9 @@ fn tokenise_single_glyph(g: Elevated<&'static Glyph>) -> Option<Token> {
         Some(Token::SymexSyllable(script, name))
     };
 
+    // In the grammar described in section 6 of the Users Handbook,
+    // space and tab are not handled in quite the same way.  Space is
+    // allowed in symexes, but tab is not (tab terminates a symex).
     let output: Option<Token> = match g.get().shape() {
         GlyphShape::Space | GlyphShape::Tab => None,
         GlyphShape::Digit0 => Some(make_num('0')),
@@ -906,11 +911,6 @@ impl<'a> Lexer<'a> {
         match self.lower.next() {
             Lexeme::EndOfInput => None,
             Lexeme::Tok(tok) => Some(Ok(tok)),
-            // If the lower lexer actually returns Unrecognised, the
-            // slice in `content` is likely very short (a single
-            // character perhaps) and that is unlikely to be
-            // tokenizable.  So the upper lexer will likely also
-            // return an error for that text too.
             Lexeme::Text(text) => {
                 let upper = GlyphTokenizer::new(text);
                 self.upper = Some(upper);
