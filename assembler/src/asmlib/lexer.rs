@@ -119,7 +119,7 @@ pub(crate) enum Token {
     LessThan(Script),
     GreaterThan(Script),
     Intersection(Script),
-    Union,
+    Union(Script),
 
     /// Solidus is often called "slash" but people often confuse slash
     /// and backslash.  So we don't call it either.
@@ -190,7 +190,7 @@ impl Display for Token {
             Token::LessThan(script) => write_elevated(script, "<"),
             Token::GreaterThan(script) => write_elevated(script, ">"),
             Token::Intersection(script) => write_elevated(script, "∩"),
-            Token::Union => f.write_char('∪'),
+            Token::Union(script) => write_elevated(script, "∪"),
             Token::Solidus(script) => write_elevated(script, "/"),
             Token::Plus(script) => write_elevated(script, "+"),
             Token::Minus(script) => write_elevated(script, "-"),
@@ -514,7 +514,7 @@ mod lexer_impl_new {
             GlyphShape::Query => {
                 todo!("'?' (question-mark) is a symex terminator but does not yet have a token")
             }
-            GlyphShape::Union => only_normal(Token::Union),
+            GlyphShape::Union => Some(Token::Union(script)),
             GlyphShape::Intersection => Some(Token::Intersection(script)),
             GlyphShape::j | GlyphShape::k => make_symex(),
             GlyphShape::Alpha => make_symex(),

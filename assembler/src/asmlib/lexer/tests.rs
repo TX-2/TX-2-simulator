@@ -1028,7 +1028,14 @@ fn test_intersection() {
 
 #[test]
 fn test_union() {
-    assert_eq!(scan_tokens_only("∪"), Ok(vec![Token::Union,]));
+    use Script::*;
+    assert_eq!(scan_tokens_only("∪"), Ok(vec![Token::Union(Normal)]));
+    assert_eq!(
+        scan_tokens_only("@sup_union@"),
+        Ok(vec![Token::Union(Super)])
+    );
+    assert_eq!(scan_tokens_only("@union@"), Ok(vec![Token::Union(Normal)]));
+    assert_eq!(scan_tokens_only("@sub_union@"), Ok(vec![Token::Union(Sub)]));
 }
 
 #[test]
