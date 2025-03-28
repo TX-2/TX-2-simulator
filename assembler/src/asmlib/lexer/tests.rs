@@ -974,12 +974,38 @@ fn test_tilde() {
 
 #[test]
 fn test_less_than() {
-    assert_eq!(scan_tokens_only("<"), Ok(vec![Token::LessThan,]));
+    use Script::*;
+    assert_eq!(scan_tokens_only("<"), Ok(vec![Token::LessThan(Normal),]));
+    assert_eq!(
+        scan_tokens_only("@lessthan@"),
+        Ok(vec![Token::LessThan(Normal),])
+    );
+    assert_eq!(
+        scan_tokens_only("@sub_lessthan@"),
+        Ok(vec![Token::LessThan(Sub),])
+    );
+    assert_eq!(
+        scan_tokens_only("@sup_lessthan@"),
+        Ok(vec![Token::LessThan(Super),])
+    );
 }
 
 #[test]
 fn test_greater_than() {
-    assert_eq!(scan_tokens_only(">"), Ok(vec![Token::GreaterThan,]));
+    use Script::*;
+    assert_eq!(scan_tokens_only(">"), Ok(vec![Token::GreaterThan(Normal),]));
+    assert_eq!(
+        scan_tokens_only("@greaterthan@"),
+        Ok(vec![Token::GreaterThan(Normal),])
+    );
+    assert_eq!(
+        scan_tokens_only("@sub_greaterthan@"),
+        Ok(vec![Token::GreaterThan(Sub),])
+    );
+    assert_eq!(
+        scan_tokens_only("@sup_greaterthan@"),
+        Ok(vec![Token::GreaterThan(Super),])
+    );
 }
 
 #[test]
