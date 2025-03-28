@@ -805,7 +805,7 @@ fn test_equals() {
         Ok(vec![
             Token::SymexSyllable(Script::Normal, "FOO".to_string()),
             Token::SymexSyllable(Script::Normal, "BAR".to_string()),
-            Token::Equals,
+            Token::Equals(Script::Normal),
             Token::Digits(
                 Script::Normal,
                 NumericLiteral {
@@ -1196,7 +1196,7 @@ fn test_foo3() {
     assert_eq!(lex.span(), 0..3);
 
     dbg!(&input[3..4]);
-    assert_eq!(lex.next(), Some(Ok(Token::Equals)));
+    assert_eq!(lex.next(), Some(Ok(Token::Equals(Script::Normal))));
     assert_eq!(lex.span(), 3..4);
 
     dbg!(&input[4..7]);

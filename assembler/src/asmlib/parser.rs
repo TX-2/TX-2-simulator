@@ -313,7 +313,7 @@ where
     choice((
         just(Tok::Hand(Script::Normal)).to('☛'),
         just(Tok::Dot(Script::Normal)).to(lexer::DOT_CHAR),
-        just(Tok::Equals).to('='),
+        just(Tok::Equals(Script::Normal)).to('='),
         just(Tok::Arrow).to('→'),
         just(Tok::Pipe(Script::Normal)).to('|'),
         just(Tok::ProperSuperset).to('⊃'),
@@ -509,7 +509,7 @@ where
         I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
     {
         (symex::parse_symex(Script::Normal)
-            .then_ignore(just(Tok::Equals))
+            .then_ignore(just(Tok::Equals(Script::Normal)))
             .then(untagged_program_instruction()))
         .labelled("equality (assignment)")
     }

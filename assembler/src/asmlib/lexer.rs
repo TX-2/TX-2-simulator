@@ -101,7 +101,7 @@ pub(crate) enum Token {
     Arrow,
     Hand(Script),
     Hash(Script),
-    Equals,
+    Equals(Script),
 
     /// Asterisk is used quite heavily (indicating deferred addressing)
     /// but while the TX-2 supports superscript and subscript
@@ -182,7 +182,7 @@ impl Display for Token {
             Token::Asterisk => f.write_char('*'),
             Token::Dot(script) => write_elevated(script, DOT_STR),
             Token::Hash(script) => write_elevated(script, "#"),
-            Token::Equals => f.write_char('='),
+            Token::Equals(script) => write_elevated(script, "="),
             Token::Pipe(script) => write_elevated(script, "|"),
             Token::ProperSuperset => f.write_char('⊃'),
             Token::IdenticalTo => f.write_char('≡'),
@@ -539,7 +539,7 @@ mod lexer_impl_new {
             GlyphShape::LeftBrace => only_normal(Token::LeftBrace),
             GlyphShape::RightBrace => only_normal(Token::RightBrace),
             GlyphShape::IdenticalTo => only_normal(Token::IdenticalTo),
-            GlyphShape::Equals => only_normal(Token::Equals),
+            GlyphShape::Equals => Some(Token::Equals(script)),
             GlyphShape::Apostrophe => make_symex(),
             GlyphShape::Asterisk => only_normal(Token::Asterisk),
         }
