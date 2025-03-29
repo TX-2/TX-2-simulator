@@ -401,3 +401,27 @@ fn test_division_overflow_on_constants() {
         assemble_source("100| 1 / 777777777777\n", Default::default()).expect("program is valid");
     assert_eq!(program.chunks[0].words[0], u36!(0o1)); // 1
 }
+
+#[test]
+fn test_double_pipe_config_literal_correctly_shifted() {
+    // The 6 here is not superscript but it should be shifted into the
+    // configuration part of the assembled word, because the '‖'
+    // symbol introduces a configuration syllable.
+    let input = "‖6\n";
+    let program = assemble_source(input, Default::default()).expect("program is valid");
+    assert_eq!(program.chunks[0].words[0], u36!(0o6).shl(30));
+}
+
+#[test]
+fn test_double_pipe_config_symbolic_default_assignment() {
+    // Section 6-2.2 "SYMEX DEFINITON - TAGS - EQUALITIES - AUTOMATIC
+    // ASSIGNMENT" of the Users Handbook states that a symex used only
+    // as a configuration value which has no defintiion will be
+    // automatically assigned as zero.
+    //
+    // In our example here, the 42 octal should go in the address part
+    // of the word.
+    let input = "‖X 42\n";
+    let program = assemble_source(input, Default::default()).expect("program is valid");
+    assert_eq!(program.chunks[0].words[0], u36!(0o42));
+}

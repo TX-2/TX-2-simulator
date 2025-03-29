@@ -212,6 +212,27 @@ where
     .labelled("arithmetic operator")
 }
 
+fn doublepipe_config_value<'a, I>() -> impl Parser<'a, I, InstructionFragment, Extra<'a>> + Clone
+where
+    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
+{
+    // Spaces are not allowed within configuration values, so we only
+    // accept one symex syllable here.
+    let symbolic_config_value = symex::symex_syllable(Script::Normal)
+        .map_with(|name, extra| ConfigValue::Symbol(extra.span(), SymbolName::from(name)));
+    // The numeric literal of a config value must be in normal script,
+    // so ConfigValue::Literal directly contains an Unsigned36Bit
+    // value instead of using the LiteralValue type.
+    let literal_config_value = literal(Script::Normal)
+        .map_with(|literal, extra| ConfigValue::Literal(extra.span(), literal.value()));
+
+    // We try to parse the config syllable as a literal first, because
+    // symexes can also contain (and start with) digits.
+    just(Tok::DoublePipe(Script::Normal))
+        .ignore_then(choice((literal_config_value, symbolic_config_value)))
+        .map(|config| InstructionFragment::Config(config))
+}
+
 fn program_instruction_fragments<'srcbody, I>(
 ) -> impl Parser<'srcbody, I, Vec<InstructionFragment>, Extra<'srcbody>>
 where
@@ -292,6 +313,7 @@ where
             single_script_fragment(Script::Super),
             single_script_fragment(Script::Sub),
             just(Tok::Asterisk(Script::Normal)).to(InstructionFragment::DeferredAddressing),
+            doublepipe_config_value(),
         ))
         .repeated()
         .at_least(1)

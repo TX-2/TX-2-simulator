@@ -1569,3 +1569,57 @@ fn test_asterisk_for_deferred_addressing() {
         ]
     );
 }
+
+#[test]
+fn test_double_pipe_config_symbolic() {
+    // The input "‖4" sets the configuration syllable of the
+    // instruction word to 4.  This is described in section 6-2.1 of
+    // the Users Handbook.  Spaces are not allowed in the
+    // configuration syllable, so "‖X Y" should be parsed as a
+    // configuration syllable X followed by the symbolic value Y
+    // (which would therefore go into the address portion of the
+    // instruction word).
+    let input_xy = "‖X Y";
+    let got = parse_successfully_with(input_xy, tagged_program_instruction(), no_state_setup);
+    let expected = TaggedProgramInstruction {
+        tag: None,
+        instruction: UntaggedProgramInstruction {
+            span: span(0..6),
+            holdbit: HoldBit::Unspecified,
+            parts: vec![
+                InstructionFragment::Config(ConfigValue::Symbol(
+                    span(3..4),
+                    SymbolName {
+                        canonical: "X".to_string(),
+                    },
+                )),
+                InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::Symbol(
+                    span(5..6),
+                    Script::Normal,
+                    SymbolName {
+                        canonical: "Y".to_string(),
+                    },
+                ))),
+            ],
+        },
+    };
+    assert_eq!(got, expected);
+}
+
+#[test]
+fn test_double_pipe_config_literal() {
+    let input = "‖10"; // 10 octal = 8 decimal.
+    let got = parse_successfully_with(input, tagged_program_instruction(), no_state_setup);
+    let expected = TaggedProgramInstruction {
+        tag: None,
+        instruction: UntaggedProgramInstruction {
+            span: span(0..5),
+            holdbit: HoldBit::Unspecified,
+            parts: vec![InstructionFragment::Config(ConfigValue::Literal(
+                span(3..5),
+                u36!(8),
+            ))],
+        },
+    };
+    assert_eq!(got, expected);
+}

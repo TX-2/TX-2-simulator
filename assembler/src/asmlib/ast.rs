@@ -265,6 +265,53 @@ impl Evaluate for ArithmeticExpression {
     }
 }
 
+/// A configuration syllable can be specified by putting it in a
+/// superscript, or by putting it in normal script after a ‖ symbol
+/// (‖x or ‖2, for example).  This is described in section 6-2.1 of
+/// the Users Handbook.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ConfigValue {
+    Literal(Span, Unsigned36Bit),
+    Symbol(Span, SymbolName),
+}
+
+impl ConfigValue {
+    pub(crate) fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
+        match self {
+            ConfigValue::Literal(_span, _value) => None,
+            ConfigValue::Symbol(span, name) => Some((
+                name.to_owned(),
+                *span,
+                SymbolUse::Reference(SymbolContext::configuration()),
+            )),
+        }
+        .into_iter()
+    }
+}
+
+impl Evaluate for ConfigValue {
+    fn evaluate<R: RcAllocator>(
+        &self,
+        target_address: &HereValue,
+        symtab: &mut SymbolTable,
+        rc_allocator: &mut R,
+        op: &mut LookupOperation,
+    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+        match self {
+            ConfigValue::Literal(_span, value) => Ok(*value),
+            ConfigValue::Symbol(span, name) => {
+                let context = SymbolContext::configuration();
+                match symtab.lookup_with_op(name, *span, target_address, rc_allocator, &context, op)
+                {
+                    Ok(SymbolValue::Final(value)) => Ok(value),
+                    Err(e) => Err(e),
+                }
+            }
+        }
+        .map(|value| value.shl(30u32))
+    }
+}
+
 /// Eventually we will support real expressions, but for now we only
 /// suport literals and references to symbols ("equalities" in the
 /// User Handbook).
@@ -396,8 +443,9 @@ pub(crate) enum InstructionFragment {
     /// allows them in subscript/superscript too.
     Arithmetic(ArithmeticExpression),
     DeferredAddressing,
-    // TODO: subscript/superscript atom (if the `Arithmetic` variant
-    // disallows subscript/superscript).
+    Config(ConfigValue), // some configuration values are specified as Arithmetic variants.
+                         // TODO: subscript/superscript atom (if the `Arithmetic` variant
+                         // disallows subscript/superscript).
 }
 
 impl InstructionFragment {
@@ -408,6 +456,9 @@ impl InstructionFragment {
                 result.extend(expr.symbol_uses());
             }
             InstructionFragment::DeferredAddressing => (),
+            InstructionFragment::Config(value) => {
+                result.extend(value.symbol_uses());
+            }
         }
         result.into_iter()
     }
@@ -426,6 +477,9 @@ impl Evaluate for InstructionFragment {
                 expr.evaluate(target_address, symtab, rc_allocator, op)
             }
             InstructionFragment::DeferredAddressing => Ok(DEFER_BIT),
+            InstructionFragment::Config(value) => {
+                value.evaluate(target_address, symtab, rc_allocator, op)
+            }
         }
     }
 }

@@ -663,7 +663,11 @@ fn assemble_pass3(
         };
     }
 
-    final_symbols.check_all_defined(&*symtab);
+    // The evaluation process will have resulted in the computation of
+    // a default definition for any symbols which were not already
+    // inserted into final_symbols, so we make sure those are inserted
+    // now.
+    final_symbols.import_all_defined(&*symtab);
 
     Ok((binary, final_symbols))
 }

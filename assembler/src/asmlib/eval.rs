@@ -223,6 +223,13 @@ impl SymbolContext {
         ]
     }
 
+    pub(crate) fn configuration() -> SymbolContext {
+        SymbolContext {
+            configuration: true,
+            ..Default::default()
+        }
+    }
+
     fn uses(span: Span) -> BTreeSet<OrderableSpan> {
         [OrderableSpan(span)].into_iter().collect()
     }

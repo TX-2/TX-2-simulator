@@ -246,8 +246,21 @@ impl SymbolTable {
                             .map(SymbolValue::Final)
                     }
                     SymbolDefinition::Undefined(context_union) => {
-                        match t.get_default_value(name, &span, &context_union) {
-                            Ok(value) => Ok(SymbolValue::Final(value)),
+                        dbg!(&name);
+                        match dbg!(t.get_default_value(name, &span, &context_union)) {
+                            Ok(value) => {
+                                eprintln!("now that a default value {value} has been assigned for {name}, we will insert this into the symbol table.");
+                                match t.define(
+                                    span,
+                                    name.clone(),
+                                    SymbolDefinition::DefaultAssigned(value, context_union),
+                                ) {
+                                    Err(e) => {
+                                        panic!("got a bad symbol definition error ({e}) on a previously undefined symbol, which should be impossible");
+                                    }
+                                    Ok(()) => Ok(SymbolValue::Final(value)),
+                                }
+                            }
                             Err(e) => Err(e),
                         }
                     }
@@ -495,6 +508,7 @@ impl SymbolLookup for SymbolTable {
 pub(crate) enum FinalSymbolType {
     Tag,
     Equality,
+    Default,
 }
 
 #[derive(Debug)]
@@ -532,11 +546,25 @@ impl FinalSymbolTable {
         self.definitions.entry(name).or_insert(def);
     }
 
-    pub(crate) fn check_all_defined(&self, symtab: &SymbolTable) {
-        for (name, definition) in symtab.definitions.iter() {
-            if !self.definitions.contains_key(name) {
-                panic!("symbol {name} appears in symbol table with definition {definition:?} but was not finalised in the final symbol table");
+    pub(crate) fn import_all_defined(&mut self, symtab: &SymbolTable) {
+        fn make_final_def(name: &SymbolName, def: &SymbolDefinition) -> FinalSymbolDefinition {
+            match def {
+                SymbolDefinition::DefaultAssigned(value, _context) => FinalSymbolDefinition {
+                    value: *value,
+                    representation: value.to_string(),
+                    sym_type: FinalSymbolType::Default,
+                },
+                SymbolDefinition::Undefined(_symbol_context) => unreachable!(),
+                _ => unimplemented!(
+                    "symbol table entry for {name} (with definition {def:?}) had not been copied into the final symbol table"
+                ),
             }
+        }
+
+        for (name, definition) in symtab.definitions.iter() {
+            self.definitions
+                .entry(name.clone())
+                .or_insert_with(|| make_final_def(name, &definition.def));
         }
     }
 }

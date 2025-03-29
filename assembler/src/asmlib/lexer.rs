@@ -119,6 +119,7 @@ pub(crate) enum Token {
     Asterisk(Script),
 
     Pipe(Script),
+    DoublePipe(Script),
     ProperSuperset(Script),
     SubsetOf(Script),
     IdenticalTo(Script),
@@ -192,8 +193,9 @@ impl Display for Token {
             Token::Hash(script) => write_elevated(script, "#"),
             Token::Equals(script) => write_elevated(script, "="),
             Token::Pipe(script) => write_elevated(script, "|"),
+            Token::DoublePipe(script) => write_elevated(script, "‖"), // U+2016
             Token::ProperSuperset(script) => write_elevated(script, "⊃"), // U+2283
-            Token::SubsetOf(script) => write_elevated(script, "⊂"),       // U+2282
+            Token::SubsetOf(script) => write_elevated(script, "⊂"),   // U+2282
             Token::IdenticalTo(script) => write_elevated(script, "≡"),
             Token::Tilde(script) => write_elevated(script, "~"),
             Token::LessThan(script) => write_elevated(script, "<"),
@@ -478,9 +480,7 @@ fn tokenise_single_glyph(g: Elevated<&'static Glyph>) -> Option<Token> {
             todo!("Sigma (which is a symex terminator) does not yet have a token")
         }
         GlyphShape::Pipe => Some(Token::Pipe(script)),
-        GlyphShape::DoublePipe => {
-            todo!("double-pipe (which is a symex terminator) does not yet have a token")
-        }
+        GlyphShape::DoublePipe => Some(Token::DoublePipe(script)),
         GlyphShape::Solidus => Some(Token::Solidus(script)),
         GlyphShape::Times => Some(Token::Times(script)),
         GlyphShape::Hash => Some(Token::Hash(script)),
