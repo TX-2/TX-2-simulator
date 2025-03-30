@@ -11,10 +11,7 @@ use crate::symtab::{LookupOperation, SymbolTable};
 use super::ast::UntaggedProgramInstruction;
 use super::symbol::SymbolName;
 use super::symtab::RcAllocator;
-use super::types::{
-    AssemblerFailure, BlockIdentifier, LineAndColumn, MachineLimitExceededFailure, OrderableSpan,
-    Span,
-};
+use super::types::{BlockIdentifier, MachineLimitExceededFailure, OrderableSpan, Span};
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum LookupTarget {
@@ -117,38 +114,6 @@ impl Display for SymbolLookupFailure {
                 f.write_str("'#' (representing the current address) is not allowed here")
             }
         }
-    }
-}
-
-fn convert_symbol_lookup_failure_to_assembler_failure(
-    f: SymbolLookupFailure,
-    source_file_body: &str,
-) -> AssemblerFailure {
-    let symbol_desc: String = f.target.to_string();
-    let span: Span = *f.target.span();
-    match f.kind {
-        SymbolLookupFailureKind::HereIsNotAllowedHere => AssemblerFailure::SyntaxError {
-            location: LineAndColumn::from((source_file_body, &span)),
-            msg: f.to_string(),
-        },
-        SymbolLookupFailureKind::MachineLimitExceeded(limit_exceeded) => {
-            AssemblerFailure::MachineLimitExceeded(limit_exceeded)
-        }
-        SymbolLookupFailureKind::Loop { deps_in_order } => {
-            let chain: String = deps_in_order
-                .iter()
-                .map(|dep| dep.to_string())
-                .collect::<Vec<_>>()
-                .join("->");
-            AssemblerFailure::InvalidProgram {
-                span,
-                msg: format!("definition of {symbol_desc} has a dependency loop ({chain})",),
-            }
-        }
-        SymbolLookupFailureKind::Inconsistent(msg) => AssemblerFailure::InvalidProgram {
-            span,
-            msg: format!("program is inconsistent: {msg}",),
-        },
     }
 }
 
