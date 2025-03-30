@@ -246,7 +246,6 @@ impl SymbolTable {
                             .map(SymbolValue::Final)
                     }
                     SymbolDefinition::Undefined(context_union) => {
-                        dbg!(&name);
                         match dbg!(t.get_default_value(name, &span, &context_union)) {
                             Ok(value) => {
                                 eprintln!("now that a default value {value} has been assigned for {name}, we will insert this into the symbol table.");
