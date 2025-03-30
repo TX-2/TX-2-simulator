@@ -240,41 +240,40 @@ where
         };
         choice((
             here(script_required),
+            // Spaces are not allowed within configuration values, so
+            // we only accept one symex syllable here.
             symex::symex_syllable(script_required)
                 .map(|name| SymbolOrHere::Named(SymbolName::from(name))),
         ))
         .labelled(label)
     }
 
-    // Spaces are not allowed within configuration values, so we only
-    // accept one symex syllable here.
-    let doublepipe_symbolic_config_value = single_syllable_name_or_here(Script::Normal)
-        .map_with(|name_or_here, extra| ConfigValue::Symbol(extra.span(), name_or_here));
-
-    // The numeric literal of a config value must be in normal script,
-    // so ConfigValue::Literal directly contains an Unsigned36Bit
-    // value instead of using the LiteralValue type.
-    let doublepipe_literal_config_value = literal(Script::Normal)
-        .map_with(|literal, extra| ConfigValue::Literal(extra.span(), literal.value()));
-
-    let superscript_symbolic_config_value = single_syllable_name_or_here(Script::Super)
-        .map_with(|name_or_here, extra| ConfigValue::Symbol(extra.span(), name_or_here));
-    let superscript_literal_config_value = literal(Script::Super)
-        .map_with(|literal, extra| ConfigValue::Literal(extra.span(), literal.unshifted_value()));
-
     choice((
         just(Tok::DoublePipe(Script::Normal)).ignore_then(choice((
             // We try to parse the config syllable as a literal first,
-            // because symexes can also contain (and start with) digits.
-            doublepipe_literal_config_value,
-            doublepipe_symbolic_config_value,
+            // because symexes can also contain (and start with)
+            // digits (so the symbolic version would accept numeric
+            // literals also).
+            //
+            // The numeric literal of a config value introduced by '‖'
+            // must be in normal script, so ConfigValue::Literal
+            // directly contains an Unsigned36Bit value instead of
+            // using the LiteralValue type.
+            literal(Script::Normal)
+                .map_with(|literal, extra| ConfigValue::Literal(extra.span(), literal.value())),
+            single_syllable_name_or_here(Script::Normal)
+                .map_with(|name_or_here, extra| ConfigValue::Symbol(extra.span(), name_or_here)),
         ))),
-        // Same here; try to parse the literal first, because symexes
+        // Again, we try to parse the literal first, because symexes
         // can also contain (and start with) digits.
-        superscript_literal_config_value,
-        superscript_symbolic_config_value,
+        literal(Script::Super).map_with(|literal, extra| {
+            ConfigValue::Literal(extra.span(), literal.unshifted_value())
+        }),
+        single_syllable_name_or_here(Script::Super)
+            .map_with(|name_or_here, extra| ConfigValue::Symbol(extra.span(), name_or_here)),
     ))
     .map(InstructionFragment::Config)
+    .labelled("configuration value")
 }
 
 fn program_instruction_fragments<'srcbody, I>(
@@ -299,53 +298,58 @@ where
         // [1] I use "sequence" in the paragraph above to avoid saying
         // "expression" or "instruction fragment".
         let arith_expr = |script_required: Script| {
-            // We use recursive here to prevent the parser blowing the stack
-            // when trying to parse inputs which have parentheses - that is,
-            // inputs that require recursion.
-            recursive(move |arithmetic_expr| {
-                // Parse (E) where E is some expression.
-                let parenthesised_arithmetic_expression = arithmetic_expr // this is the recursive call
-                    .clone()
-                    .delimited_by(
-                        just(Tok::LeftParen(script_required)),
-                        just(Tok::RightParen(script_required)),
-                    )
-                    .map(move |expr| Atom::Parens(script_required, Box::new(expr)))
-                    .labelled("parenthesised arithmetic expression");
+            {
+                // We use recursive here to prevent the parser blowing the stack
+                // when trying to parse inputs which have parentheses - that is,
+                // inputs that require recursion.
+                recursive(move |arithmetic_expr| {
+                    // Parse (E) where E is some expression.
+                    let parenthesised_arithmetic_expression = arithmetic_expr // this is the recursive call
+                        .clone()
+                        .delimited_by(
+                            just(Tok::LeftParen(script_required)),
+                            just(Tok::RightParen(script_required)),
+                        )
+                        .map(move |expr| Atom::Parens(script_required, Box::new(expr)))
+                        .labelled("parenthesised arithmetic expression");
 
-                // Parse {E} where E is some expression.  Since tags are
-                // allowed inside RC-blocks, we should parse E as a
-                // TaggedProgramInstruction.  But if we try to do that without
-                // using recursive() we will blow the stack, unfortunately.
-                let register_containing = program_instruction_fragments
-                    .clone()
-                    .delimited_by(
-                        just(Tok::LeftBrace(Script::Normal)),
-                        just(Tok::RightBrace(Script::Normal)),
-                    )
-                    .map_with(|fragments, extra| Atom::RcRef(extra.span(), fragments))
-                    .labelled("RC-word");
+                    // Parse {E} where E is some expression.  Since tags are
+                    // allowed inside RC-blocks, we should parse E as a
+                    // TaggedProgramInstruction.  But if we try to do that without
+                    // using recursive() we will blow the stack, unfortunately.
+                    let register_containing = program_instruction_fragments
+                        .clone()
+                        .delimited_by(
+                            just(Tok::LeftBrace(Script::Normal)),
+                            just(Tok::RightBrace(Script::Normal)),
+                        )
+                        .map_with(|fragments, extra| Atom::RcRef(extra.span(), fragments))
+                        .labelled("RC-word");
 
-                // Parse a literal, symbol, #, or (recursively) an expression in parentheses.
-                let atom = choice((
-                    literal(script_required).map(Atom::from),
-                    opcode().map(Atom::from),
-                    named_symbol_or_here(script_required).map_with(move |symbol_or_here, extra| {
-                        Atom::Symbol(extra.span(), script_required, symbol_or_here)
-                    }),
-                    register_containing,
-                    parenthesised_arithmetic_expression,
-                ))
-                .boxed();
+                    // Parse a literal, symbol, #, or (recursively) an expression in parentheses.
+                    let atom = choice((
+                        literal(script_required).map(Atom::from),
+                        opcode().map(Atom::from),
+                        named_symbol_or_here(script_required).map_with(
+                            move |symbol_or_here, extra| {
+                                Atom::Symbol(extra.span(), script_required, symbol_or_here)
+                            },
+                        ),
+                        register_containing,
+                        parenthesised_arithmetic_expression,
+                    ))
+                    .boxed();
 
-                // Parse an arithmetic operator (e.g. plus, times) followed by an atom.
-                let operator_with_atom = operator(script_required).then(atom.clone());
+                    // Parse an arithmetic operator (e.g. plus, times) followed by an atom.
+                    let operator_with_atom = operator(script_required).then(atom.clone());
 
-                // An arithmetic expression is an atom followed by zero or
-                // more pairs of (arithmetic operator, atom).
-                atom.then(operator_with_atom.repeated().collect())
-                    .map(|(head, tail)| ArithmeticExpression::with_tail(head, tail))
-            })
+                    // An arithmetic expression is an atom followed by zero or
+                    // more pairs of (arithmetic operator, atom).
+                    atom.then(operator_with_atom.repeated().collect())
+                        .map(|(head, tail)| ArithmeticExpression::with_tail(head, tail))
+                })
+            }
+            .labelled("arithmetic expression")
         };
 
         let single_script_fragment =
