@@ -235,6 +235,28 @@ impl BinaryChunk {
     }
 }
 
+impl From<RcBlock> for BinaryChunk {
+    fn from(rcblock: RcBlock) -> Self {
+        let block: LocatedBlock = rcblock.take();
+        let words: Vec<Unsigned36Bit> = block
+            .items
+            .into_iter()
+            .map(|stmt| match stmt {
+                Statement::RcWord(_span, word) => word,
+                unexpected => {
+                    panic!(
+                        "The RC-block should contain only RC-words, but we found: {unexpected:?}"
+                    );
+                }
+            })
+            .collect();
+        BinaryChunk {
+            address: block.location,
+            words,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Binary {
     entry_point: Option<Address>,
@@ -668,6 +690,23 @@ fn assemble_pass3(
     // inserted into final_symbols, so we make sure those are inserted
     // now.
     final_symbols.import_all_defined(&*symtab);
+
+    // If the RC-word block is non-empty, emit it.
+    let chunk: BinaryChunk = rcblock.into();
+    if chunk.is_empty() {
+        event!(
+            Level::DEBUG,
+            "The RC-word block is empty, and so it will not be emitted.",
+        );
+    } else {
+        event!(
+            Level::DEBUG,
+            "Emitting RC-word block of length {:#o} words at address {:#o}.",
+            chunk.words.len(),
+            &chunk.address,
+        );
+        binary.add_chunk(chunk);
+    }
 
     Ok((binary, final_symbols))
 }

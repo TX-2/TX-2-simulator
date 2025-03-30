@@ -430,3 +430,36 @@ fn test_double_pipe_config_symbolic_default_assignment() {
     let program = assemble_source(input, Default::default()).expect("program is valid");
     assert_eq!(program.chunks[0].words[0], u36!(0o42));
 }
+
+#[test]
+fn test_undefined_address_only_symbols_get_rc_block_allocation() {
+    // Our program contains only references to a symbol (in address
+    // context) which is not defined.  Per the Users Handbook, section
+    // 6-2.2 ("SYMEX DEFINITION - TAGS - EQUALITIES - AUTOMATIC
+    // ASSIGNMENT") the defautl value shoudl be the numerical location
+    // of the next place in the RC words block.
+    //
+    // However, when we see the same symbol a second time we should
+    // not assign a second RC-word.
+    let input = "100|X\nX\n";
+    // The input should be assembled at locations 0o100 and 0o101.  So
+    // the RC block should begin at location 0o102.  Hence addresses
+    // 0o100 and 0o101 should both contain the value 0o102 (which is
+    // the value of X).
+    let program = assemble_source(input, Default::default()).expect("program is valid");
+    dbg!(&program);
+
+    // Check that the program was assembled at the right location
+    // (otherwise, the remaining checks will not make sense).
+    assert_eq!(program.chunks[0].address, Address::from(u18!(0o100)));
+
+    // The RC-block should be allocated, so there should be two chunks.
+    assert_eq!(program.chunks.len(), 2);
+
+    // Verify that both uses of X refer to the same location.
+    assert_eq!(program.chunks[0].words[0], u36!(0o102));
+    assert_eq!(program.chunks[0].words[1], u36!(0o102));
+
+    // The allocated RC-word should initially contain zero.
+    assert_eq!(program.chunks[1].words[0], u36!(0));
+}

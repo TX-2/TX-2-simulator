@@ -38,8 +38,15 @@ pub(crate) trait RcAllocator {
     fn allocate(&mut self, span: Span, value: Unsigned36Bit) -> Address;
 }
 
+#[derive(Debug)]
 pub(crate) struct RcBlock {
     inner: LocatedBlock,
+}
+
+impl RcBlock {
+    pub(crate) fn take(self) -> LocatedBlock {
+        self.inner
+    }
 }
 
 impl From<LocatedBlock> for RcBlock {
@@ -246,9 +253,8 @@ impl SymbolTable {
                             .map(SymbolValue::Final)
                     }
                     SymbolDefinition::Undefined(context_union) => {
-                        match dbg!(t.get_default_value(name, &span, &context_union)) {
+                        match dbg!(t.get_default_value(name, &span, &context_union, rc_allocator)) {
                             Ok(value) => {
-                                eprintln!("now that a default value {value} has been assigned for {name}, we will insert this into the symbol table.");
                                 match t.define(
                                     span,
                                     name.clone(),
@@ -434,11 +440,12 @@ impl SymbolTable {
     /// Assign a default value for a symbol, using the rules from
     /// section 6-2.2 of the Users Handbook ("SYMEX DEFINITON - TAGS -
     /// EQUALITIES - AUTOMATIC ASSIGNMENT").
-    pub(crate) fn get_default_value(
+    pub(crate) fn get_default_value<R: RcAllocator>(
         &mut self,
         name: &SymbolName,
         span: &Span,
         contexts_used: &SymbolContext,
+        rc_allocator: &mut R,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         let get_target = || LookupTarget::Symbol(name.clone(), *span);
         event!(
@@ -481,7 +488,9 @@ impl SymbolTable {
             }
             [false, false, true, false] => {
                 // address only, assign the next RC word.
-                todo!("assign the next word in the RC block")
+                let rc_addr: Address = rc_allocator.allocate(*span, Unsigned36Bit::ZERO);
+                let symbol_value: Unsigned36Bit = Unsigned36Bit::from(rc_addr);
+                Ok(symbol_value)
             }
         }
     }
