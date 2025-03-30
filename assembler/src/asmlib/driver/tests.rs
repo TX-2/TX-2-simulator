@@ -4,8 +4,8 @@ use std::{
 };
 
 use super::super::ast::{
-    ArithmeticExpression, Atom, HoldBit, InstructionFragment, LiteralValue, LocatedBlock,
-    ManuscriptBlock, PunchCommand, SourceFile, Statement, TaggedProgramInstruction,
+    ArithmeticExpression, Atom, ConfigValue, HoldBit, InstructionFragment, LiteralValue,
+    LocatedBlock, ManuscriptBlock, PunchCommand, SourceFile, Statement, TaggedProgramInstruction,
     UntaggedProgramInstruction,
 };
 use super::super::eval::{SymbolContext, SymbolLookup, SymbolValue};
@@ -209,7 +209,7 @@ fn test_metacommand_dec_changes_default_base() {
 fn test_assemble_octal_superscript_literal() {
     assemble_literal(
         "⁺³⁶\n", // 36, superscript
-        &InstructionFragment::from((span(0..8), Script::Super, Unsigned36Bit::from(0o36_u32))),
+        &InstructionFragment::Config(ConfigValue::Literal(span(0..8), u36!(0o36))),
     );
 }
 
@@ -257,10 +257,15 @@ fn test_normal_hash_value() {
 
 #[test]
 fn test_super_hash_value() {
-    let program =
-        assemble_source(concat!("1| @sup_hash@\n",), Default::default()).expect("program is valid");
+    let input = "1| @sup_hash@\n";
+    let program = assemble_source(input, Default::default()).expect("program is valid");
     assert_eq!(program.chunks[0].address, Address::from(u18!(0o1)));
-    assert_eq!(program.chunks[0].words[0], u36!(1).shl(30));
+    let got = program.chunks[0].words[0];
+    let expected = u36!(1).shl(30);
+    assert_eq!(
+        got, expected,
+        "input '{input}' assembled to {got} but we expected {expected}"
+    );
 }
 
 #[test]

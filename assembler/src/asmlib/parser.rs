@@ -20,7 +20,7 @@ use super::ast::*;
 use super::glyph::Unrecognised;
 use super::lexer::{self};
 use super::state::NumeralMode;
-use super::symbol::SymbolName;
+use super::symbol::{SymbolName, SymbolOrHere};
 use super::types::*;
 use base::charset::Script;
 use base::prelude::*;
@@ -77,12 +77,12 @@ where
         .labelled("numeric literal")
 }
 
-fn here<'a, I>(script_required: Script) -> impl Parser<'a, I, Atom, Extra<'a>> + Clone
+fn here<'a, I>(script_required: Script) -> impl Parser<'a, I, SymbolOrHere, Extra<'a>> + Clone
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
     select! {
-        Tok::Hash(script) if script == script_required => Atom::Here(script_required),
+        Tok::Hash(script) if script == script_required => SymbolOrHere::Here,
     }
 }
 
@@ -170,20 +170,31 @@ where
         .labelled("opcode")
 }
 
-fn symbol<'a, I>(script_required: Script) -> impl Parser<'a, I, SymbolName, Extra<'a>>
+fn named_symbol<'a, I>(script_required: Script) -> impl Parser<'a, I, SymbolName, Extra<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
-    symex::parse_symex(script_required)
-        .map(SymbolName::from)
-        .labelled("symex (symbol) name")
+    symex::parse_symex(script_required).labelled("symex (symbol) name")
+}
+
+fn named_symbol_or_here<'a, I>(
+    script_required: Script,
+) -> impl Parser<'a, I, SymbolOrHere, Extra<'a>>
+where
+    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
+{
+    choice((
+        here(script_required),
+        named_symbol(script_required).map(|name| SymbolOrHere::Named(name)),
+    ))
+    .labelled("symex (symbol)")
 }
 
 fn tag_definition<'a, I>() -> impl Parser<'a, I, Tag, Extra<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
-    symbol(Script::Normal)
+    named_symbol(Script::Normal)
         .map_with(|name, extra| Tag {
             name,
             span: extra.span(),
@@ -212,25 +223,58 @@ where
     .labelled("arithmetic operator")
 }
 
-fn doublepipe_config_value<'a, I>() -> impl Parser<'a, I, InstructionFragment, Extra<'a>> + Clone
+fn config_value<'a, I>() -> impl Parser<'a, I, InstructionFragment, Extra<'a>> + Clone
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
+    fn single_syllable_name_or_here<'a, I>(
+        script_required: Script,
+    ) -> impl Parser<'a, I, SymbolOrHere, Extra<'a>> + Clone
+    where
+        I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
+    {
+        let label = match script_required {
+            Script::Super => "superscript symex (symbol) without spaces",
+            Script::Normal => "symex (symbol) without spaces",
+            Script::Sub => unreachable!(),
+        };
+        choice((
+            here(script_required),
+            symex::symex_syllable(script_required)
+                .map(|name| SymbolOrHere::Named(SymbolName::from(name))),
+        ))
+        .labelled(label)
+    }
+
     // Spaces are not allowed within configuration values, so we only
     // accept one symex syllable here.
-    let symbolic_config_value = symex::symex_syllable(Script::Normal)
-        .map_with(|name, extra| ConfigValue::Symbol(extra.span(), SymbolName::from(name)));
+    let doublepipe_symbolic_config_value = single_syllable_name_or_here(Script::Normal)
+        .map_with(|name_or_here, extra| ConfigValue::Symbol(extra.span(), name_or_here));
+
     // The numeric literal of a config value must be in normal script,
     // so ConfigValue::Literal directly contains an Unsigned36Bit
     // value instead of using the LiteralValue type.
-    let literal_config_value = literal(Script::Normal)
+    let doublepipe_literal_config_value = literal(Script::Normal)
         .map_with(|literal, extra| ConfigValue::Literal(extra.span(), literal.value()));
 
-    // We try to parse the config syllable as a literal first, because
-    // symexes can also contain (and start with) digits.
-    just(Tok::DoublePipe(Script::Normal))
-        .ignore_then(choice((literal_config_value, symbolic_config_value)))
-        .map(|config| InstructionFragment::Config(config))
+    let superscript_symbolic_config_value = single_syllable_name_or_here(Script::Super)
+        .map_with(|name_or_here, extra| ConfigValue::Symbol(extra.span(), name_or_here));
+    let superscript_literal_config_value = literal(Script::Super)
+        .map_with(|literal, extra| ConfigValue::Literal(extra.span(), literal.unshifted_value()));
+
+    choice((
+        just(Tok::DoublePipe(Script::Normal)).ignore_then(choice((
+            // We try to parse the config syllable as a literal first,
+            // because symexes can also contain (and start with) digits.
+            doublepipe_literal_config_value,
+            doublepipe_symbolic_config_value,
+        ))),
+        // Same here; try to parse the literal first, because symexes
+        // can also contain (and start with) digits.
+        superscript_literal_config_value,
+        superscript_symbolic_config_value,
+    ))
+    .map(|config| InstructionFragment::Config(config))
 }
 
 fn program_instruction_fragments<'srcbody, I>(
@@ -285,10 +329,9 @@ where
                 // Parse a literal, symbol, #, or (recursively) an expression in parentheses.
                 let atom = choice((
                     literal(script_required).map(Atom::from),
-                    here(script_required).map(Atom::from),
                     opcode().map(Atom::from),
-                    symbol(script_required).map_with(move |name, extra| {
-                        Atom::Symbol(extra.span(), script_required, name)
+                    named_symbol_or_here(script_required).map_with(move |symbol_or_here, extra| {
+                        Atom::Symbol(extra.span(), script_required, symbol_or_here)
                     }),
                     register_containing,
                     parenthesised_arithmetic_expression,
@@ -310,10 +353,9 @@ where
 
         choice((
             single_script_fragment(Script::Normal),
-            single_script_fragment(Script::Super),
             single_script_fragment(Script::Sub),
             just(Tok::Asterisk(Script::Normal)).to(InstructionFragment::DeferredAddressing),
-            doublepipe_config_value(),
+            config_value(),
         ))
         .repeated()
         .at_least(1)
@@ -359,13 +401,13 @@ fn macro_argument<'a, I>() -> impl Parser<'a, I, MacroArgument, Extra<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
-    (macro_terminator().then(symbol(Script::Normal))).map_with(|(terminator, symbol), extra| {
-        MacroArgument {
+    (macro_terminator().then(named_symbol(Script::Normal))).map_with(
+        |(terminator, symbol), extra| MacroArgument {
             name: symbol,
             span: extra.span(),
             preceding_terminator: terminator,
-        }
-    })
+        },
+    )
 }
 
 fn macro_arguments<'a, I>() -> impl Parser<'a, I, MacroArguments, Extra<'a>>
@@ -389,7 +431,7 @@ where
 {
     named_metacommand(Metacommand::DefineMacro)
         .ignore_then(
-            symbol(Script::Normal), // the macro's name
+            named_symbol(Script::Normal), // the macro's name (# is not allowed)
         )
         .then(macro_arguments())
         .then_ignore(end_of_line())
@@ -608,8 +650,8 @@ where
             where
                 I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
             {
-                symbol(Script::Normal)
-                    .map_with(|sym, extra| Origin::Symbolic(extra.span(), sym))
+                named_symbol(Script::Normal)
+                    .map_with(|name, extra| Origin::Symbolic(extra.span(), name))
                     .labelled("symbolic address expression")
             }
 

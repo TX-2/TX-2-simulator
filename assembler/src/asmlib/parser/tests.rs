@@ -216,10 +216,9 @@ fn test_program_instruction_fragments() {
     );
     assert_eq!(
         parse_successfully_with("⁶³", program_instruction_fragments(), no_state_setup),
-        vec![InstructionFragment::from((
+        vec![InstructionFragment::Config(ConfigValue::Literal(
             span(0..5),
-            Script::Super,
-            Unsigned36Bit::from(0o63_u32),
+            Unsigned36Bit::from(0o63_u32)
         ))]
     );
     assert_eq!(
@@ -254,11 +253,7 @@ fn test_program_instruction() {
                 span: span(0..12),
                 holdbit: HoldBit::Unspecified,
                 parts: vec![
-                    InstructionFragment::from((
-                        span(0..3),
-                        Script::Super,
-                        Unsigned36Bit::from(0o6_u32),
-                    )),
+                    InstructionFragment::Config(ConfigValue::Literal(span(0..3), u36!(0o6),)),
                     InstructionFragment::from((
                         span(3..6),
                         Script::Normal,
@@ -536,22 +531,24 @@ fn test_comment_in_rc_block() {
 #[test]
 fn test_symbol_name_one_syllable() {
     assert_eq!(
-        parse_successfully_with("START4", symbol(Script::Normal), no_state_setup),
-        SymbolName {
-            canonical: "START4".to_string(),
-            //as_used: "START4".to_string(),
-        }
+        parse_successfully_with(
+            "START4",
+            named_symbol_or_here(Script::Normal),
+            no_state_setup
+        ),
+        SymbolOrHere::from("START4")
     );
 }
 
 #[test]
 fn test_symbol_name_two_syllables() {
     assert_eq!(
-        parse_successfully_with("TWO WORDS", symbol(Script::Normal), no_state_setup),
-        SymbolName {
-            canonical: "TWOWORDS".to_string(),
-            //as_used: "TWO WORDS".to_string(),
-        }
+        parse_successfully_with(
+            "TWO WORDS",
+            named_symbol_or_here(Script::Normal),
+            no_state_setup
+        ),
+        SymbolOrHere::from("TWOWORDS")
     );
 }
 
@@ -841,10 +838,19 @@ fn test_assignment_superscript() {
         dbg!(input);
         assert_eq!(
             parse_successfully_with(*input, statement(), no_state_setup),
-            assignment_of_literal(
-                "FOO",
+            Statement::Assignment(
                 span(0..*val_end),
-                LiteralValue::from((span(*val_begin..*val_end), Script::Super, u36!(2))),
+                SymbolName {
+                    canonical: "FOO".to_string()
+                },
+                UntaggedProgramInstruction {
+                    span: span(*val_begin..*val_end),
+                    holdbit: HoldBit::Unspecified,
+                    parts: vec![InstructionFragment::Config(ConfigValue::Literal(
+                        span(*val_begin..*val_end),
+                        u36!(0o2)
+                    ))],
+                }
             )
         );
     }
@@ -1486,11 +1492,7 @@ fn test_macro_definition_with_trivial_body() {
                 span: span(17..18),
                 holdbit: HoldBit::Unspecified,
                 parts: vec![InstructionFragment::Arithmetic(ArithmeticExpression::from(
-                    Atom::Symbol(
-                        span(17..18),
-                        Script::Normal,
-                        SymbolName::from("A".to_string()),
-                    ),
+                    Atom::Symbol(span(17..18), Script::Normal, SymbolOrHere::from("A")),
                 ))],
             },
         })],
@@ -1521,13 +1523,7 @@ fn test_macro_definition_as_entire_source_file() {
                     span: span(17..18),
                     holdbit: HoldBit::Unspecified,
                     parts: vec![InstructionFragment::Arithmetic(ArithmeticExpression::from(
-                        Atom::Symbol(
-                            span(17..18),
-                            Script::Normal,
-                            SymbolName {
-                                canonical: "A".to_string(),
-                            },
-                        ),
+                        Atom::Symbol(span(17..18), Script::Normal, SymbolOrHere::from("A")),
                     ))],
                 },
             })],
@@ -1549,9 +1545,7 @@ fn test_asterisk_for_deferred_addressing() {
             no_state_setup
         ),
         vec![
-            InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::Literal(
-                LiteralValue::from((span(0..7), Script::Super, u36!(0o1)))
-            ))),
+            InstructionFragment::Config(ConfigValue::Literal(span(0..7), u36!(0o1))),
             InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::Literal(
                 LiteralValue::from((span(7..10), Script::Normal, u36!(0o1600000000)))
             ))),
@@ -1562,9 +1556,7 @@ fn test_asterisk_for_deferred_addressing() {
             InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::Symbol(
                 span(19..20),
                 Script::Normal,
-                SymbolName {
-                    canonical: "B".to_string()
-                }
+                SymbolOrHere::from("B"),
             ),)),
         ]
     );
@@ -1589,16 +1581,12 @@ fn test_double_pipe_config_symbolic() {
             parts: vec![
                 InstructionFragment::Config(ConfigValue::Symbol(
                     span(3..4),
-                    SymbolName {
-                        canonical: "X".to_string(),
-                    },
+                    SymbolOrHere::from("X"),
                 )),
                 InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::Symbol(
                     span(5..6),
                     Script::Normal,
-                    SymbolName {
-                        canonical: "Y".to_string(),
-                    },
+                    SymbolOrHere::from("Y"),
                 ))),
             ],
         },
@@ -1622,4 +1610,42 @@ fn test_double_pipe_config_literal() {
         },
     };
     assert_eq!(got, expected);
+}
+
+#[test]
+fn test_superscript_configuration_literal() {
+    let input = "@sup_1@AUX";
+    let config = InstructionFragment::Config(ConfigValue::Literal(span(0..7), u36!(0o1)));
+    let aux = InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::Literal(
+        LiteralValue::from((
+            span(7..10),
+            Script::Normal,
+            // AUX is opcode 0o10.
+            u36!(0o10 << 24),
+        )),
+    )));
+
+    assert_eq!(
+        parse_successfully_with(
+            input,
+            super::program_instruction_fragments(),
+            no_state_setup
+        ),
+        vec![config, aux]
+    );
+}
+
+#[test]
+fn test_superscript_configuration_hash() {
+    assert_eq!(
+        parse_successfully_with(
+            "@sup_hash@",
+            super::program_instruction_fragments(),
+            no_state_setup
+        ),
+        vec![InstructionFragment::Config(ConfigValue::Symbol(
+            span(0..10),
+            SymbolOrHere::Here
+        ))]
+    );
 }

@@ -1,5 +1,5 @@
 use std::collections::BTreeSet;
-use std::fmt::{self, Debug, Display, Formatter};
+use std::fmt::{self, Debug, Display, Formatter, Write};
 
 use base::{
     charset::Script,
@@ -12,13 +12,16 @@ use super::ast::UntaggedProgramInstruction;
 use super::symbol::SymbolName;
 use super::symtab::RcAllocator;
 use super::types::{
-    AssemblerFailure, BlockIdentifier, MachineLimitExceededFailure, OrderableSpan, Span,
+    AssemblerFailure, BlockIdentifier, LineAndColumn, MachineLimitExceededFailure, OrderableSpan,
+    Span,
 };
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum LookupTarget {
     Symbol(SymbolName, Span),
     MemRef(MemoryReference, Span),
+    /// Attempt to look up "here", that is, '#'.
+    Hash(Span),
 }
 
 impl From<(SymbolName, Span)> for LookupTarget {
@@ -36,7 +39,9 @@ impl From<(MemoryReference, Span)> for LookupTarget {
 impl LookupTarget {
     fn span(&self) -> &Span {
         match self {
-            LookupTarget::Symbol(_, span) | LookupTarget::MemRef(_, span) => span,
+            LookupTarget::Hash(span)
+            | LookupTarget::Symbol(_, span)
+            | LookupTarget::MemRef(_, span) => span,
         }
     }
 }
@@ -44,6 +49,7 @@ impl LookupTarget {
 impl Display for LookupTarget {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         match self {
+            LookupTarget::Hash(_) => f.write_char('#'),
             LookupTarget::Symbol(name, _) => {
                 write!(f, "symbol {name}")
             }
@@ -82,6 +88,7 @@ pub(crate) enum SymbolLookupFailureKind {
     Inconsistent(String),
     Loop { deps_in_order: Vec<SymbolName> },
     MachineLimitExceeded(MachineLimitExceededFailure),
+    HereIsNotAllowedHere,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -106,34 +113,42 @@ impl Display for SymbolLookupFailure {
             SymbolLookupFailureKind::MachineLimitExceeded(fail) => {
                 write!(f, "machine limit exceeded: {fail}")
             }
+            SymbolLookupFailureKind::HereIsNotAllowedHere => {
+                f.write_str("'#' (representing the current address) is not allowed here")
+            }
         }
     }
 }
 
-impl From<SymbolLookupFailure> for AssemblerFailure {
-    fn from(f: SymbolLookupFailure) -> AssemblerFailure {
-        let symbol_desc: String = f.target.to_string();
-        let span: Span = *f.target.span();
-        match f.kind {
-            SymbolLookupFailureKind::MachineLimitExceeded(limit_exceeded) => {
-                AssemblerFailure::MachineLimitExceeded(limit_exceeded)
-            }
-            SymbolLookupFailureKind::Loop { deps_in_order } => {
-                let chain: String = deps_in_order
-                    .iter()
-                    .map(|dep| dep.to_string())
-                    .collect::<Vec<_>>()
-                    .join("->");
-                AssemblerFailure::InvalidProgram {
-                    span,
-                    msg: format!("definition of {symbol_desc} has a dependency loop ({chain})",),
-                }
-            }
-            SymbolLookupFailureKind::Inconsistent(msg) => AssemblerFailure::InvalidProgram {
-                span,
-                msg: format!("program is inconsistent: {msg}",),
-            },
+fn convert_symbol_lookup_failure_to_assembler_failure(
+    f: SymbolLookupFailure,
+    source_file_body: &str,
+) -> AssemblerFailure {
+    let symbol_desc: String = f.target.to_string();
+    let span: Span = *f.target.span();
+    match f.kind {
+        SymbolLookupFailureKind::HereIsNotAllowedHere => AssemblerFailure::SyntaxError {
+            location: LineAndColumn::from((source_file_body, &span)),
+            msg: f.to_string(),
+        },
+        SymbolLookupFailureKind::MachineLimitExceeded(limit_exceeded) => {
+            AssemblerFailure::MachineLimitExceeded(limit_exceeded)
         }
+        SymbolLookupFailureKind::Loop { deps_in_order } => {
+            let chain: String = deps_in_order
+                .iter()
+                .map(|dep| dep.to_string())
+                .collect::<Vec<_>>()
+                .join("->");
+            AssemblerFailure::InvalidProgram {
+                span,
+                msg: format!("definition of {symbol_desc} has a dependency loop ({chain})",),
+            }
+        }
+        SymbolLookupFailureKind::Inconsistent(msg) => AssemblerFailure::InvalidProgram {
+            span,
+            msg: format!("program is inconsistent: {msg}",),
+        },
     }
 }
 
@@ -178,6 +193,18 @@ pub(crate) enum HereValue {
     /// NotAllowed is for when '#' is not allowed (this is used
     /// when evaluating an origin).
     NotAllowed,
+}
+
+impl HereValue {
+    pub(crate) fn get_address(&self, span: &Span) -> Result<Address, SymbolLookupFailure> {
+        match self {
+            HereValue::Address(addr) => Ok(*addr),
+            HereValue::NotAllowed => Err(SymbolLookupFailure {
+                target: LookupTarget::Hash(*span),
+                kind: SymbolLookupFailureKind::HereIsNotAllowedHere,
+            }),
+        }
+    }
 }
 
 pub(crate) trait Evaluate {

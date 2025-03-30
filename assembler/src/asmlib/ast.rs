@@ -17,7 +17,7 @@ use crate::symtab::{LookupOperation, RcAllocator, RcBlock};
 use super::eval::{Evaluate, SymbolContext, SymbolDefinition, SymbolLookup, SymbolUse};
 use super::glyph;
 use super::state::NumeralMode;
-use super::symbol::SymbolName;
+use super::symbol::{SymbolName, SymbolOrHere};
 use super::symtab::SymbolTable;
 use super::types::{
     offset_from_origin, AssemblerFailure, BlockIdentifier, MachineLimitExceededFailure, Span,
@@ -34,6 +34,10 @@ pub(crate) struct LiteralValue {
 impl LiteralValue {
     pub(crate) fn value(&self) -> Unsigned36Bit {
         self.value << self.elevation.shift()
+    }
+
+    pub(crate) fn unshifted_value(&self) -> Unsigned36Bit {
+        self.value
     }
 
     #[cfg(test)]
@@ -272,14 +276,15 @@ impl Evaluate for ArithmeticExpression {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ConfigValue {
     Literal(Span, Unsigned36Bit),
-    Symbol(Span, SymbolName),
+    Symbol(Span, SymbolOrHere),
 }
 
 impl ConfigValue {
     pub(crate) fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
         match self {
             ConfigValue::Literal(_span, _value) => None,
-            ConfigValue::Symbol(span, name) => Some((
+            ConfigValue::Symbol(_span, SymbolOrHere::Here) => None,
+            ConfigValue::Symbol(span, SymbolOrHere::Named(name)) => Some((
                 name.to_owned(),
                 *span,
                 SymbolUse::Reference(SymbolContext::configuration()),
@@ -299,7 +304,10 @@ impl Evaluate for ConfigValue {
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         match self {
             ConfigValue::Literal(_span, value) => Ok(*value),
-            ConfigValue::Symbol(span, name) => {
+            ConfigValue::Symbol(span, SymbolOrHere::Here) => {
+                Ok(Unsigned36Bit::from(target_address.get_address(span)?))
+            }
+            ConfigValue::Symbol(span, SymbolOrHere::Named(name)) => {
                 let context = SymbolContext::configuration();
                 match symtab.lookup_with_op(name, *span, target_address, rc_allocator, &context, op)
                 {
@@ -318,8 +326,7 @@ impl Evaluate for ConfigValue {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Atom {
     Literal(LiteralValue),
-    Symbol(Span, Script, SymbolName),
-    Here(Script), // the special symbol '#'.
+    Symbol(Span, Script, SymbolOrHere),
     Parens(Script, Box<ArithmeticExpression>),
     RcRef(Span, Vec<InstructionFragment>),
 }
@@ -328,10 +335,10 @@ impl Atom {
     pub(crate) fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
         let mut result = Vec::with_capacity(1);
         match self {
-            Atom::Literal(_) | Atom::Here(_) | Atom::RcRef(_, _) => (),
-            Atom::Symbol(span, script, symbol_name) => {
+            Atom::Literal(_) | Atom::RcRef(_, _) | Atom::Symbol(_, _, SymbolOrHere::Here) => (),
+            Atom::Symbol(span, script, SymbolOrHere::Named(name)) => {
                 result.push((
-                    symbol_name.clone(),
+                    name.clone(),
                     *span,
                     SymbolUse::Reference(SymbolContext::from((script, *span))),
                 ));
@@ -353,17 +360,12 @@ impl Evaluate for Atom {
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         match self {
-            Atom::Here(elevation) => match target_address {
-                HereValue::Address(addr) => {
-                    let value: Unsigned36Bit = (*addr).into();
-                    Ok(value.shl(elevation.shift()))
-                }
-                HereValue::NotAllowed => {
-                    todo!("# is not allowed in origins")
-                }
-            },
+            Atom::Symbol(span, elevation, SymbolOrHere::Here) => {
+                let value: Unsigned36Bit = target_address.get_address(span)?.into();
+                Ok(value.shl(elevation.shift()))
+            }
             Atom::Literal(literal) => Ok(literal.value()),
-            Atom::Symbol(span, elevation, name) => {
+            Atom::Symbol(span, elevation, SymbolOrHere::Named(name)) => {
                 let context = SymbolContext::from((elevation, *span));
                 match symtab.lookup_with_op(name, *span, target_address, rc_allocator, &context, op)
                 {
@@ -419,11 +421,13 @@ fn elevated_string<'a>(s: &'a str, elevation: &Script) -> Cow<'a, str> {
 impl std::fmt::Display for Atom {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Atom::Here(Script::Super) => f.write_str("@super_hash@"),
-            Atom::Here(Script::Normal) => f.write_char('#'),
-            Atom::Here(Script::Sub) => f.write_str("@sub_hash@"),
+            Atom::Symbol(_span, elevation, SymbolOrHere::Here) => match elevation {
+                Script::Super => f.write_str("@super_hash@"),
+                Script::Normal => f.write_char('#'),
+                Script::Sub => f.write_str("@sub_hash@"),
+            },
             Atom::Literal(value) => value.fmt(f),
-            Atom::Symbol(_span, elevation, name) => {
+            Atom::Symbol(_span, elevation, SymbolOrHere::Named(name)) => {
                 elevated_string(&name.to_string(), elevation).fmt(f)
             }
             Atom::Parens(script, expr) => elevated_string(&expr.to_string(), script).fmt(f),

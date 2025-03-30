@@ -1,4 +1,4 @@
-use std::fmt::{self, Debug, Display, Formatter};
+use std::fmt::{self, Debug, Display, Formatter, Write};
 use std::hash::{Hash, Hasher};
 
 #[derive(Clone, Eq, PartialOrd, Ord)]
@@ -34,5 +34,31 @@ impl PartialEq for SymbolName {
 impl Hash for SymbolName {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.canonical.hash(state)
+    }
+}
+
+#[derive(Clone, Eq, PartialOrd, Ord, PartialEq, Debug)]
+pub(crate) enum SymbolOrHere {
+    Named(SymbolName),
+    Here,
+}
+
+impl From<&str> for SymbolOrHere {
+    fn from(value: &str) -> Self {
+        match value {
+            "#" => SymbolOrHere::Here,
+            name => SymbolOrHere::Named(SymbolName {
+                canonical: name.to_owned(),
+            }),
+        }
+    }
+}
+
+impl Display for SymbolOrHere {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            SymbolOrHere::Named(name) => write!(f, "{name}"),
+            SymbolOrHere::Here => f.write_char('#'),
+        }
     }
 }
