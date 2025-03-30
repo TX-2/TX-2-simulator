@@ -185,7 +185,7 @@ where
 {
     choice((
         here(script_required),
-        named_symbol(script_required).map(|name| SymbolOrHere::Named(name)),
+        named_symbol(script_required).map(SymbolOrHere::Named),
     ))
     .labelled("symex (symbol)")
 }
@@ -274,7 +274,7 @@ where
         superscript_literal_config_value,
         superscript_symbolic_config_value,
     ))
-    .map(|config| InstructionFragment::Config(config))
+    .map(InstructionFragment::Config)
 }
 
 fn program_instruction_fragments<'srcbody, I>(

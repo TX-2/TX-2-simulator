@@ -33,16 +33,6 @@ impl From<(MemoryReference, Span)> for LookupTarget {
     }
 }
 
-impl LookupTarget {
-    fn span(&self) -> &Span {
-        match self {
-            LookupTarget::Hash(span)
-            | LookupTarget::Symbol(_, span)
-            | LookupTarget::MemRef(_, span) => span,
-        }
-    }
-}
-
 impl Display for LookupTarget {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         match self {
