@@ -145,6 +145,25 @@ fn opcode_code(s: &str) -> Option<Unsigned6Bit> {
     }
 }
 
+pub(super) fn symbol_or_literal<'a, I>(
+    script_required: Script,
+) -> impl Parser<'a, I, SymbolOrLiteral, Extra<'a>> + Clone
+where
+    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
+{
+    choice((
+        literal(script_required).map(SymbolOrLiteral::Literal),
+        symex::symex_syllable(script_required).map_with(move |name, extra| {
+            SymbolOrLiteral::Symbol(script_required, SymbolName::from(name), extra.span())
+        }),
+    ))
+    .labelled(match script_required {
+        Script::Super => "superscript single-syllable symbol or literal",
+        Script::Normal => "single-syllable symbol or literal",
+        Script::Sub => "subscript single-syllable symbol or literal",
+    })
+}
+
 pub(super) fn opcode<'a, I>() -> impl Parser<'a, I, LiteralValue, Extra<'a>> + Clone
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
@@ -276,27 +295,81 @@ where
     .labelled("configuration value")
 }
 
+fn asterisk_indirection_fragment<'srcbody, I>(
+) -> impl Parser<'srcbody, I, InstructionFragment, Extra<'srcbody>> + Clone
+where
+    I: Input<'srcbody, Token = Tok, Span = Span> + ValueInput<'srcbody>,
+{
+    just(Tok::Asterisk(Script::Normal)).to(InstructionFragment::DeferredAddressing)
+}
+
+/// The pipe construct is described in section 6-2.8 "SPECIAL SYMBOLS"
+/// of the Users Handbook.
+///
+/// "ADXₚ|ₜQ" should be equivalent to "ADXₚ{Qₜ}*".  So during
+/// evaluation we will need to generate an RC-word containing Qₜ.
+fn make_pipe_construct(
+    ((p_index, t), (mut qfrags, qspan)): (
+        (SymbolOrLiteral, SymbolOrLiteral),
+        (Vec<InstructionFragment>, Span),
+    ),
+) -> InstructionFragment {
+    // The variable names here are taken from the example in the
+    // documentation comment.
+    InstructionFragment::PipeConstruct {
+        index: p_index,
+        rc_word_span: qspan,
+        rc_word_fragments: {
+            // When this part of the AST is evaluated, the contents of
+            // qfrags (which is Q in our example) will be evaluated as
+            // a single 36-bit word.  So to get Qₜ in that RC-word, we
+            // need to arrange for t to end up in the index syllable
+            // of that word (forming ₜ, being t shifted into the index
+            // syllable).  Since the expression was already in
+            // subscript, the evaluation process will ensure it is
+            // placed in the correct syllable.
+            qfrags.push(InstructionFragment::Arithmetic(ArithmeticExpression::from(
+                t,
+            )));
+            qfrags
+        },
+    }
+}
+
 fn program_instruction_fragments<'srcbody, I>(
 ) -> impl Parser<'srcbody, I, Vec<InstructionFragment>, Extra<'srcbody>>
 where
     I: Input<'srcbody, Token = Tok, Span = Span> + ValueInput<'srcbody>,
 {
+    // Parse a sequence of values (symbolic or literal) and arithmetic
+    // operators.
+    //
+    // BAT² is not an identifier but a sequence[1] whose value is
+    // computed by OR-ing the value of the symex BAT with the value of
+    // the literal "²" (which is 2<<30, or 0o20_000_000_000).  But BAT²
+    // is itself not an arithmetic_expression (because there is a script
+    // change).
+    //
+    // You could argue that (BAT²) should be parsed as an atom.  Right
+    // now that doesn't work because all the elements of an expression
+    // (i.e. everything within the parens) need to have the same script.
+    //
+    // [1] I use "sequence" in the paragraph above to avoid saying
+    // "expression" or "instruction fragment".
     recursive(move |program_instruction_fragments| {
-        // Parse a sequence of values (symbolic or literal) and arithmetic
-        // operators.
-        //
-        // BAT² is not an identifier but a sequence[1] whose value is
-        // computed by OR-ing the value of the symex BAT with the value of
-        // the literal "²" (which is 2<<30, or 0o20_000_000_000).  But BAT²
-        // is itself not an arithmetic_expression (because there is a script
-        // change).
-        //
-        // You could argue that (BAT²) should be parsed as an atom.  Right
-        // now that doesn't work because all the elements of an expression
-        // (i.e. everything within the parens) need to have the same script.
-        //
-        // [1] I use "sequence" in the paragraph above to avoid saying
-        // "expression" or "instruction fragment".
+        // Parse {E} where E is some expression.  Since tags are
+        // allowed inside RC-blocks, we should parse E as a
+        // TaggedProgramInstruction.  But if we try to do that without
+        // using recursive() we will blow the stack, unfortunately.
+        let register_containing = program_instruction_fragments
+            .clone()
+            .delimited_by(
+                just(Tok::LeftBrace(Script::Normal)),
+                just(Tok::RightBrace(Script::Normal)),
+            )
+            .map_with(|fragments, extra| Atom::RcRef(extra.span(), fragments))
+            .labelled("RC-word");
+
         let arith_expr = |script_required: Script| {
             {
                 // We use recursive here to prevent the parser blowing the stack
@@ -312,19 +385,6 @@ where
                         )
                         .map(move |expr| Atom::Parens(script_required, Box::new(expr)))
                         .labelled("parenthesised arithmetic expression");
-
-                    // Parse {E} where E is some expression.  Since tags are
-                    // allowed inside RC-blocks, we should parse E as a
-                    // TaggedProgramInstruction.  But if we try to do that without
-                    // using recursive() we will blow the stack, unfortunately.
-                    let register_containing = program_instruction_fragments
-                        .clone()
-                        .delimited_by(
-                            just(Tok::LeftBrace(Script::Normal)),
-                            just(Tok::RightBrace(Script::Normal)),
-                        )
-                        .map_with(|fragments, extra| Atom::RcRef(extra.span(), fragments))
-                        .labelled("RC-word");
 
                     // Parse a literal, symbol, #, or (recursively) an expression in parentheses.
                     let atom = choice((
@@ -352,13 +412,40 @@ where
             .labelled("arithmetic expression")
         };
 
+        // Parse the pipe-construct described in the User Handbook
+        // section 2-2.8 "SPECIAL SYMBOLS" as "ₚ|ₜ" (though in reality
+        // the pipe should also be subscript and in their example they
+        // use a subscript q).
+        //
+        // The Handbook is not explicit on whether the "ₚ" or "ₜ" can
+        // contain spaces.  We will assume not, for simplicity (at
+        // least for the time being).
+        //
+        // "ADXₚ|ₜQ" should be equivalent to ADXₚ{Qₜ}*.  So we need to
+        // generate an RC-word containing Qₜ.
+        let spanned_fragments = program_instruction_fragments // this is Q
+            .clone()
+            .map_with(|v: Vec<InstructionFragment>, extra| {
+                let span: Span = extra.span();
+                (v, span)
+            });
+        let pipe_construct = (symbol_or_literal(Script::Sub) // this is p
+            .then_ignore(just(Tok::Pipe(Script::Sub)))
+            .then(
+                symbol_or_literal(Script::Sub), // this is t
+            )
+            .then(spanned_fragments))
+        .map(make_pipe_construct)
+        .labelled("pipe construct");
+
         let single_script_fragment =
             |script_required| arith_expr.clone()(script_required).map(InstructionFragment::from);
 
         choice((
+            pipe_construct,
             single_script_fragment(Script::Normal),
             single_script_fragment(Script::Sub),
-            just(Tok::Asterisk(Script::Normal)).to(InstructionFragment::DeferredAddressing),
+            asterisk_indirection_fragment(),
             config_value(),
         ))
         .repeated()

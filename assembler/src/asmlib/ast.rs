@@ -175,6 +175,12 @@ impl From<Atom> for ArithmeticExpression {
     }
 }
 
+impl From<SymbolOrLiteral> for ArithmeticExpression {
+    fn from(value: SymbolOrLiteral) -> Self {
+        ArithmeticExpression::from(Atom::from(value))
+    }
+}
+
 impl ArithmeticExpression {
     pub(crate) fn with_tail(first: Atom, tail: Vec<(Operator, Atom)>) -> ArithmeticExpression {
         ArithmeticExpression { first, tail }
@@ -331,6 +337,17 @@ pub(crate) enum Atom {
     RcRef(Span, Vec<InstructionFragment>),
 }
 
+impl From<SymbolOrLiteral> for Atom {
+    fn from(value: SymbolOrLiteral) -> Self {
+        match value {
+            SymbolOrLiteral::Symbol(script, symbol_name, span) => {
+                Atom::Symbol(span, script, SymbolOrHere::Named(symbol_name))
+            }
+            SymbolOrLiteral::Literal(literal_value) => Atom::Literal(literal_value),
+        }
+    }
+}
+
 impl Atom {
     pub(crate) fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
         let mut result = Vec::with_capacity(1);
@@ -351,6 +368,23 @@ impl Atom {
     }
 }
 
+fn symbol_name_lookup<R: RcAllocator>(
+    name: &SymbolName,
+    elevation: Script,
+    span: Span,
+    target_address: &HereValue,
+    symtab: &mut SymbolTable,
+    rc_allocator: &mut R,
+    op: &mut LookupOperation,
+) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+    let context = SymbolContext::from((elevation, span));
+    match symtab.lookup_with_op(name, span, target_address, rc_allocator, &context, op) {
+        Ok(SymbolValue::Final(value)) => Ok(value),
+        Err(e) => Err(e),
+    }
+    .map(|value| value.shl(elevation.shift()))
+}
+
 impl Evaluate for Atom {
     fn evaluate<R: RcAllocator>(
         &self,
@@ -365,15 +399,15 @@ impl Evaluate for Atom {
                 Ok(value.shl(elevation.shift()))
             }
             Atom::Literal(literal) => Ok(literal.value()),
-            Atom::Symbol(span, elevation, SymbolOrHere::Named(name)) => {
-                let context = SymbolContext::from((elevation, *span));
-                match symtab.lookup_with_op(name, *span, target_address, rc_allocator, &context, op)
-                {
-                    Ok(SymbolValue::Final(value)) => Ok(value),
-                    Err(e) => Err(e),
-                }
-                .map(|value| value.shl(elevation.shift()))
-            }
+            Atom::Symbol(span, elevation, SymbolOrHere::Named(name)) => symbol_name_lookup(
+                name,
+                *elevation,
+                *span,
+                target_address,
+                symtab,
+                rc_allocator,
+                op,
+            ),
             Atom::Parens(_script, expr) => expr.evaluate(target_address, symtab, rc_allocator, op),
             Atom::RcRef(span, fragments) => {
                 let value: Unsigned36Bit = evaluate_instruction_fragments(
@@ -441,15 +475,71 @@ impl std::fmt::Display for Atom {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum SymbolOrLiteral {
+    Symbol(Script, SymbolName, Span),
+    Literal(LiteralValue),
+}
+
+impl SymbolOrLiteral {
+    pub(crate) fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
+        let mut result: Vec<(SymbolName, Span, SymbolUse)> = Vec::with_capacity(1);
+        match self {
+            SymbolOrLiteral::Literal(_) => (),
+            SymbolOrLiteral::Symbol(script, name, span) => {
+                let context: SymbolContext = (script, *span).into();
+                let sym_use: SymbolUse = SymbolUse::Reference(context);
+                result.push((name.clone(), *span, sym_use));
+            }
+        }
+        result.into_iter()
+    }
+}
+
+impl Evaluate for SymbolOrLiteral {
+    fn evaluate<R: RcAllocator>(
+        &self,
+        target_address: &HereValue,
+        symtab: &mut SymbolTable,
+        rc_allocator: &mut R,
+        op: &mut LookupOperation,
+    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+        match self {
+            SymbolOrLiteral::Symbol(script, symbol_name, span) => symbol_name_lookup(
+                symbol_name,
+                *script,
+                *span,
+                target_address,
+                symtab,
+                rc_allocator,
+                op,
+            ),
+            SymbolOrLiteral::Literal(literal_value) => {
+                literal_value.evaluate(target_address, symtab, rc_allocator, op)
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum InstructionFragment {
     /// Arithmetic expressions are permitted in normal case according
     /// to the Users Handbook, but currently this implementation
     /// allows them in subscript/superscript too.
     Arithmetic(ArithmeticExpression),
+    /// Deferred addressing is normally specified as '*' but
+    /// PipeConstruct is a different way to indicate deferred
+    /// addressing.
     DeferredAddressing,
-    Config(ConfigValue), // some configuration values are specified as Arithmetic variants.
-                         // TODO: subscript/superscript atom (if the `Arithmetic` variant
-                         // disallows subscript/superscript).
+    /// A configuration syllable (specified either in superscript or with a ‖).
+    Config(ConfigValue),
+    /// Described in section 6-2.8 "SPECIAL SYMBOLS" of the Users Handbook.
+    PipeConstruct {
+        index: SymbolOrLiteral,
+        rc_word_span: Span,
+        rc_word_fragments: Vec<InstructionFragment>,
+    },
+    // TODO: subscript/superscript atom (if the `Arithmetic` variant
+    // disallows subscript/superscript).
 }
 
 impl InstructionFragment {
@@ -462,6 +552,20 @@ impl InstructionFragment {
             InstructionFragment::DeferredAddressing => (),
             InstructionFragment::Config(value) => {
                 result.extend(value.symbol_uses());
+            }
+            InstructionFragment::PipeConstruct {
+                index,
+                rc_word_span: _,
+                rc_word_fragments,
+            } => {
+                result.extend(index.symbol_uses().map(|(name, span, mut symbol_use)| {
+                    if let SymbolUse::Reference(context) = &mut symbol_use {
+                        assert!(!context.is_address());
+                        context.also_set_index();
+                    };
+                    (name, span, symbol_use)
+                }));
+                result.extend(rc_word_fragments.iter().flat_map(|frag| frag.symbol_uses()));
             }
         }
         result.into_iter()
@@ -476,6 +580,10 @@ impl Evaluate for InstructionFragment {
         rc_allocator: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+        fn index_value_of(unshifted: Unsigned36Bit) -> Unsigned36Bit {
+            unshifted.shl(Script::Sub.shift())
+        }
+
         match self {
             InstructionFragment::Arithmetic(expr) => {
                 expr.evaluate(target_address, symtab, rc_allocator, op)
@@ -483,6 +591,35 @@ impl Evaluate for InstructionFragment {
             InstructionFragment::DeferredAddressing => Ok(DEFER_BIT),
             InstructionFragment::Config(value) => {
                 value.evaluate(target_address, symtab, rc_allocator, op)
+            }
+            InstructionFragment::PipeConstruct {
+                index: p,
+                rc_word_span,
+                rc_word_fragments,
+            } => {
+                // The pipe construct is described in section 6-2.8
+                // "SPECIAL SYMBOLS" of the Users Handbook.
+                //
+                //
+                // "ADXₚ|ₜQ" should be equivalent to "ADXₚ{Qₜ}*".
+                // (Note that in the real pipe construct the "|" is
+                // itself in subscript).  During parsing, the values
+                // of Q and ₜ were combined into rc_word_fragments.
+                // We evaluate Qₜ as rc_word_value.
+                let rc_word_value: Unsigned36Bit = evaluate_instruction_fragments(
+                    rc_word_fragments,
+                    target_address,
+                    symtab,
+                    rc_allocator,
+                    op,
+                )?;
+                let p_value: Unsigned36Bit =
+                    index_value_of(p.evaluate(target_address, symtab, rc_allocator, op)?);
+                let addr: Address = rc_allocator.allocate(*rc_word_span, rc_word_value);
+                Ok(combine_fragment_values(
+                    combine_fragment_values(Unsigned36Bit::from(addr), p_value),
+                    DEFER_BIT,
+                ))
             }
         }
     }
@@ -617,6 +754,14 @@ impl UntaggedProgramInstruction {
     }
 }
 
+/// The Users Handbook implies that instruction fragments are added
+/// together, and I am not sure whether they mean this literally (as
+/// in, addition) or figuratively (as in a logica-or operation).  This
+/// function exists to be a single place to encode this assumption.
+fn combine_fragment_values(left: Unsigned36Bit, right: Unsigned36Bit) -> Unsigned36Bit {
+    left | right
+}
+
 fn evaluate_instruction_fragments<R: RcAllocator>(
     parts: &[InstructionFragment],
     target_address: &HereValue,
@@ -632,7 +777,10 @@ fn evaluate_instruction_fragments<R: RcAllocator>(
         rc_allocator: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-        Ok(accumulator | frag.evaluate(target_address, symtab, rc_allocator, op)?)
+        Ok(combine_fragment_values(
+            accumulator,
+            frag.evaluate(target_address, symtab, rc_allocator, op)?,
+        ))
     }
 
     parts.iter().try_fold(Unsigned36Bit::ZERO, |acc, curr| {

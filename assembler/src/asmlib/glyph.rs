@@ -1008,6 +1008,8 @@ const ALL_GLYPHS: &[Glyph] = &[
         name: "q",
         normal: Some('q'),
         superscript: None,
+        // U+107A5 is a subscript q, but this is not widely supported,
+        // so we don't use it.  Instead the user should use "@sub_q@".
         subscript: None,
         ..GDEF
     },

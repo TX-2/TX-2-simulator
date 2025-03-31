@@ -1649,3 +1649,30 @@ fn test_superscript_configuration_hash() {
         ))]
     );
 }
+
+#[test]
+fn test_pipe_construct() {
+    let input = "@sub_alpha@@sub_pipe@@sub_beta@DISPTBL";
+    let got = parse_successfully_with(
+        input,
+        super::program_instruction_fragments(),
+        no_state_setup,
+    );
+    let expected = vec![InstructionFragment::PipeConstruct {
+        index: SymbolOrLiteral::Symbol(Script::Sub, SymbolName::from("α"), span(0..11)),
+        rc_word_span: span(31..38),
+        rc_word_fragments: vec![
+            InstructionFragment::Arithmetic(ArithmeticExpression::from(SymbolOrLiteral::Symbol(
+                Script::Normal,
+                SymbolName::from("DISPTBL"),
+                span(31..38),
+            ))),
+            InstructionFragment::Arithmetic(ArithmeticExpression::from(SymbolOrLiteral::Symbol(
+                Script::Sub,
+                SymbolName::from("β"),
+                span(21..31),
+            ))),
+        ],
+    }];
+    assert_eq!(got, expected, "incorrect parse of input {input}");
+}

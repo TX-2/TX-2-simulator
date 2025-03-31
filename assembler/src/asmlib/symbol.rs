@@ -13,6 +13,12 @@ impl From<String> for SymbolName {
     }
 }
 
+impl From<&str> for SymbolName {
+    fn from(s: &str) -> SymbolName {
+        SymbolName::from(s.to_string())
+    }
+}
+
 impl Display for SymbolName {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(&self.canonical, f)

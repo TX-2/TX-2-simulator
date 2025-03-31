@@ -212,6 +212,14 @@ impl SymbolContext {
         }
     }
 
+    pub(crate) fn also_set_index(&mut self) {
+        self.index = true;
+    }
+
+    pub(crate) fn is_address(&self) -> bool {
+        self.address
+    }
+
     fn uses(span: Span) -> BTreeSet<OrderableSpan> {
         [OrderableSpan(span)].into_iter().collect()
     }

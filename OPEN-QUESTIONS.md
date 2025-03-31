@@ -32,7 +32,7 @@
     memory-mapped?  If yes, how does it appear?
 11. If you press "RESET 0" and the defer bit is set in the "RESET 0"
     location, does a deferred addressing cycle occur (similarly for
-	resets 1-7)?
+    resets 1-7)?
 
 ## Instructions
 
@@ -75,3 +75,6 @@
    assemble an instruction into both the left and right halves of a
    word.  Is the operand address portion of both instructions
    discarded?  If not, how is it handled?
+4. In the pipe construct "Z ₚ|ₜ Q" described in the User Handbook
+   section 2-2.8 "SPECIAL SYMBOLS", are spaces allowed in the "ₚ" or
+   "ₜ"?
