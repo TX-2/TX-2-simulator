@@ -1271,11 +1271,11 @@ fn test_macro_arg() {
     );
 
     assert_eq!(
-        parse_successfully_with("@dot@A02", macro_argument(), no_state_setup),
+        parse_successfully_with("@comma@A02", macro_argument(), no_state_setup),
         MacroArgument {
             name: SymbolName::from("A02".to_string()),
-            span: span(0..8),
-            preceding_terminator: '·',
+            span: span(0..10),
+            preceding_terminator: ',',
         }
     );
 

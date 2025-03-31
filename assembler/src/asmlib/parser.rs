@@ -463,13 +463,26 @@ where
     // This list of 16 allowed terminators is exhaustive, see section
     // 6-4.5 of the TX-2 User Handbook.
     //
-    // ☛ · = →  | ⊃ ≡ ~ < > ∩ ∪ / × ∨ ∧
+    // ☛ , = →  | ⊃ ≡ ~ < > ∩ ∪ / × ∨ ∧
     //
-    // We use a centre dot for the dot symbol because otherwise the
-    // low position of "." makes it look like part of a subscript.
+    // The second symbol, in my scanned copy of the Users Handbook
+    // (page 6-31 of the Nov 1963 Users Handbook), looks like either a
+    // comma or a dot/full-stop/period.  Since a dot is valid in a
+    // symex name, and because the symbol seems to be taller than it
+    // is wide, I'm going to assume it is a comma.
+    //
+    // They are actually hard to distinguish in the copy of the Users
+    // Handbook I have.  But, looking at page 011 of Leonard
+    // Kleinrock's listing for his network simulator, the `HP OS`
+    // macro is definitely using as a separator a symbol that lives on
+    // the line.  If you look a little further below on the same
+    // page, the third instruction in the body of the `MV MX` macro
+    // body contains both a dot and a comma.  The dot is definitely
+    // above the line and looks rounder.  So I conclude that the
+    // separator character is a comma.
     choice((
         just(Tok::Hand(Script::Normal)).to('☛'),
-        just(Tok::Dot(Script::Normal)).to(lexer::DOT_CHAR),
+        just(Tok::Comma(Script::Normal)).to(','),
         just(Tok::Equals(Script::Normal)).to('='),
         just(Tok::Arrow(Script::Normal)).to('→'),
         just(Tok::Pipe(Script::Normal)).to('|'),
