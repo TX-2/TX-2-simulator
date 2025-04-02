@@ -1676,3 +1676,15 @@ fn test_pipe_construct() {
     }];
     assert_eq!(got, expected, "incorrect parse of input {input}");
 }
+
+#[test]
+fn test_comments_without_newline_manuscript() {
+    assert_eq!(
+        parse_successfully_with("** NO NEWLINE AFTER COMMENT", source_file(), no_state_setup),
+        SourceFile {
+            blocks: BTreeMap::new(),
+            macros: vec![],
+            punch: None,
+        }
+    )
+}
