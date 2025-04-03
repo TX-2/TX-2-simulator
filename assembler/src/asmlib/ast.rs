@@ -1042,12 +1042,6 @@ pub(crate) struct MacroDefinition {
     pub(crate) span: Span,
 }
 
-/// impl MacroDefinition {
-///     pub(crate) fn emitted_instruction_count(&self) -> Unsigned18Bit {
-///         self.body.iter().map(|stmt| stmt.memory_size()).sum()
-///     }
-/// }
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ManuscriptBlock {
     pub(crate) origin: Option<Origin>,
@@ -1123,19 +1117,6 @@ impl Directive {
         self.entry_point
     }
 }
-
-//impl RcAllocator for Directive {
-//    fn allocate(&mut self, span: Span, value: Unsigned36Bit) -> Address {
-//        match self.blocks.get_mut(&BlockIdentifier::RcWords) {
-//            None => {
-//                panic!(
-//                    "precondition did not hold: no RC-word block was allocated in the directive"
-//                );
-//            }
-//            Some(rc_word_block) => rc_word_block.allocate(span, value),
-//        }
-//    }
-//}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Block {

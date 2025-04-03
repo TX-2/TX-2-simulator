@@ -350,17 +350,6 @@ impl Display for SymbolDefinition {
     }
 }
 
-//impl From<(&SymbolDefinition, &Span)> for SymbolContext {
-//    fn from((definition, span): (&SymbolDefinition, &Span)) -> SymbolContext {
-//        match definition {
-//            SymbolDefinition::Tag { .. } => SymbolContext::tag(*span),
-//            SymbolDefinition::Equality(expression) => expression.context(),
-//            SymbolDefinition::Undefined(context) => context.clone(),
-//            SymbolDefinition::DefaultAssigned(_val, context) => context.clone(),
-//        }
-//    }
-//}
-
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub(crate) enum BadSymbolDefinition {
     Incompatible(SymbolDefinition, SymbolDefinition),
