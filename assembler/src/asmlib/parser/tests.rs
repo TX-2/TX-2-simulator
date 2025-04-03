@@ -382,7 +382,7 @@ fn test_manuscript_line_with_bare_literal() {
 fn manuscript_blocks(blocks: Vec<ManuscriptBlock>) -> BTreeMap<BlockIdentifier, ManuscriptBlock> {
     let mut result = BTreeMap::new();
     for (i, block) in blocks.into_iter().enumerate() {
-        result.insert(BlockIdentifier::Number(i), block);
+        result.insert(BlockIdentifier::from(i), block);
     }
     result
 }

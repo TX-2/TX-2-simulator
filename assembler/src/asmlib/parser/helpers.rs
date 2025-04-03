@@ -234,7 +234,7 @@ pub(super) fn manuscript_lines_to_blocks(
                 Some((id, _)) => id
                     .next_block()
                     .expect("manuscript block numbers can always be incremented"),
-                None => BlockIdentifier::Number(0),
+                None => BlockIdentifier::from(0),
             };
             result.insert(
                 next_id,

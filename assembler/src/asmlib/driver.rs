@@ -112,7 +112,7 @@ fn convert_source_file_to_blocks(
             Block {
                 origin: mblock.origin.clone(),
                 location,
-                items: mblock.statements.clone(),
+                statements: mblock.statements.clone(),
             },
         );
         if let Some(loc) = location {
@@ -236,23 +236,10 @@ impl BinaryChunk {
 }
 
 impl From<RcBlock> for BinaryChunk {
-    fn from(rcblock: RcBlock) -> Self {
-        let block: LocatedBlock = rcblock.take();
-        let words: Vec<Unsigned36Bit> = block
-            .items
-            .into_iter()
-            .map(|stmt| match stmt {
-                Statement::RcWord(_span, word) => word,
-                unexpected => {
-                    panic!(
-                        "The RC-block should contain only RC-words, but we found: {unexpected:?}"
-                    );
-                }
-            })
-            .collect();
+    fn from(block: RcBlock) -> Self {
         BinaryChunk {
-            address: block.location,
-            words,
+            address: block.address,
+            words: block.words.into_iter().map(|(_span, word)| word).collect(),
         }
     }
 }
@@ -542,7 +529,7 @@ fn assign_block_positions(
             block_id,
             LocatedBlock {
                 location: address,
-                items: directive_block.items,
+                statements: directive_block.statements,
             },
         );
     }
@@ -550,64 +537,64 @@ fn assign_block_positions(
     Ok((Directive::new(output_blocks, maybe_entry_point), origins))
 }
 
-fn build_binary_block<R: RcAllocator>(
-    directive_block: &LocatedBlock,
-    block_id: BlockIdentifier,
-    symtab: &mut SymbolTable,
-    rc_allocator: &mut R,
-    final_symbols: &mut FinalSymbolTable,
-    body: &str,
-    listing: &mut Listing,
-) -> Result<Vec<Unsigned36Bit>, AssemblerFailure> {
-    let mut words: Vec<Unsigned36Bit> = Vec::with_capacity(directive_block.items.len());
-    for (offset, statement) in directive_block.items.iter().enumerate() {
-        let here: Address = directive_block.get_offset(block_id, offset)?;
-
-        match statement {
-            Statement::Assignment(span, symbol, definition) => {
-                let mut op = Default::default();
-                let value = definition
-                    .evaluate(&HereValue::Address(here), symtab, rc_allocator, &mut op)
-                    .expect("lookup on FinalSymbolTable is infallible");
-                final_symbols.define(
-                    symbol.clone(),
-                    FinalSymbolDefinition::new(
-                        value,
-                        FinalSymbolType::Equality,
-                        extract_span(body, span).trim().to_string(),
-                    ),
-                );
-            }
-            Statement::RcWord(_span, value) => {
-                words.push(*value);
-            }
-            Statement::Instruction(inst) => {
-                if let Some(tag) = inst.tag.as_ref() {
+impl LocatedBlock {
+    fn build_binary_block<R: RcAllocator>(
+        &self,
+        location: Address,
+        symtab: &mut SymbolTable,
+        rc_allocator: &mut R,
+        final_symbols: &mut FinalSymbolTable,
+        body: &str,
+        listing: &mut Listing,
+    ) -> Result<Vec<Unsigned36Bit>, AssemblerFailure> {
+        let mut words: Vec<Unsigned36Bit> = Vec::with_capacity(self.emitted_word_count().into());
+        for (offset, statement) in self.statements.iter().enumerate() {
+            let offset: Unsigned18Bit = Unsigned18Bit::try_from(offset)
+                .expect("assembled code block should fit within physical memory");
+            let here: Address = location.index_by(offset);
+            match statement {
+                Statement::Assignment(span, symbol, definition) => {
+                    let mut op = Default::default();
+                    let value = definition
+                        .evaluate(&HereValue::Address(here), symtab, rc_allocator, &mut op)
+                        .expect("lookup on FinalSymbolTable is infallible");
                     final_symbols.define(
-                        tag.name.clone(),
+                        symbol.clone(),
                         FinalSymbolDefinition::new(
-                            here.into(),
-                            FinalSymbolType::Tag,
-                            extract_span(body, &tag.span).trim().to_string(),
+                            value,
+                            FinalSymbolType::Equality,
+                            extract_span(body, span).trim().to_string(),
                         ),
                     );
                 }
+                Statement::Instruction(inst) => {
+                    if let Some(tag) = inst.tag.as_ref() {
+                        final_symbols.define(
+                            tag.name.clone(),
+                            FinalSymbolDefinition::new(
+                                here.into(),
+                                FinalSymbolType::Tag,
+                                extract_span(body, &tag.span).trim().to_string(),
+                            ),
+                        );
+                    }
 
-                let mut op = Default::default();
-                let word = inst
-                    .evaluate(&HereValue::Address(here), symtab, rc_allocator, &mut op)
-                    .expect("lookup on FinalSymbolTable is infallible");
+                    let mut op = Default::default();
+                    let word = inst
+                        .evaluate(&HereValue::Address(here), symtab, rc_allocator, &mut op)
+                        .expect("lookup on FinalSymbolTable is infallible");
 
-                listing.push_line(ListingLine::Instruction {
-                    address: here,
-                    instruction: inst.clone(),
-                    binary: word,
-                });
-                words.push(word);
+                    listing.push_line(ListingLine::Instruction {
+                        address: here,
+                        instruction: inst.clone(),
+                        binary: word,
+                    });
+                    words.push(word);
+                }
             }
         }
+        Ok(words)
     }
-    Ok(words)
 }
 
 /// Pass 3 generates binary code.
@@ -654,7 +641,7 @@ fn assemble_pass3(
             Level::DEBUG,
             "{block_id} in output has address {0:#o} and length {1:#o}",
             directive_block.location,
-            directive_block.items.len(),
+            directive_block.emitted_word_count(),
         );
 
         if let Some(Some(origin)) = origins.get(block_id) {
@@ -663,9 +650,8 @@ fn assemble_pass3(
             listing.push_line(ListingLine::Origin(origin.clone()));
         }
 
-        let words = build_binary_block(
-            directive_block,
-            *block_id,
+        let words = directive_block.build_binary_block(
+            directive_block.location,
             symtab,
             &mut rcblock,
             &mut final_symbols,
@@ -850,7 +836,7 @@ fn test_assemble_pass1() {
                 punch: Some(PunchCommand(expected_directive_entry_point)),
                 blocks: {
                     let mut m = BTreeMap::new();
-                    m.insert(BlockIdentifier::Number(0), expected_block);
+                    m.insert(BlockIdentifier::from(0), expected_block);
                     m
                 },
                 macros: Vec::new(),

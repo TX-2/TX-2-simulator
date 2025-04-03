@@ -7,7 +7,7 @@ use tracing::{event, Level};
 use base::prelude::*;
 use base::subword;
 
-use super::ast::{LocatedBlock, Origin, Statement};
+use super::ast::Origin;
 use super::eval::{
     BadSymbolDefinition, Evaluate, HereValue, LookupTarget, SymbolContext, SymbolDefinition,
     SymbolLookup, SymbolLookupFailure, SymbolLookupFailureKind, SymbolValue,
@@ -38,43 +38,30 @@ pub(crate) trait RcAllocator {
     fn allocate(&mut self, span: Span, value: Unsigned36Bit) -> Address;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(crate) struct RcBlock {
-    inner: LocatedBlock,
-}
-
-impl RcBlock {
-    pub(crate) fn take(self) -> LocatedBlock {
-        self.inner
-    }
-}
-
-impl From<LocatedBlock> for RcBlock {
-    fn from(value: LocatedBlock) -> Self {
-        RcBlock { inner: value }
-    }
+    pub(crate) address: Address,
+    pub(crate) words: Vec<(Span, Unsigned36Bit)>,
 }
 
 #[cfg(test)]
 pub(crate) fn make_empty_rc_block_for_test(location: Address) -> RcBlock {
     RcBlock {
-        inner: LocatedBlock {
-            location,
-            items: Vec::new(),
-        },
+        address: location,
+        words: Vec::new(),
     }
 }
 
 impl RcAllocator for RcBlock {
     fn allocate(&mut self, span: Span, value: Unsigned36Bit) -> Address {
-        match Unsigned18Bit::try_from(self.inner.items.len()) {
+        match Unsigned18Bit::try_from(self.words.len()) {
             Ok(offset) => {
-                let addr: Address = self.inner.location.index_by(offset);
-                self.inner.items.push(Statement::RcWord(span, value));
+                let addr = self.address.index_by(offset);
+                self.words.push((span, value));
                 addr
             }
             Err(_) => {
-                panic!("program is too large"); // fixme: use Result
+                panic!("program is too large"); // TODO: fixme: use Result
             }
         }
     }
@@ -130,7 +117,7 @@ impl SymbolTable {
             .into_iter()
             .enumerate()
             .map(|(i, (span, maybe_origin, block_size))| {
-                let block_id = BlockIdentifier::Number(i);
+                let block_id = BlockIdentifier::from(i);
                 (
                     block_id,
                     BlockPosition {

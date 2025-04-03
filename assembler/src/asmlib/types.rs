@@ -86,39 +86,32 @@ impl PartialEq for OrderableSpan {
 impl Eq for OrderableSpan {}
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord)]
-pub enum BlockIdentifier {
-    Number(usize),
-    RcWords,
+pub struct BlockIdentifier(usize);
+
+impl From<usize> for BlockIdentifier {
+    fn from(value: usize) -> Self {
+        BlockIdentifier(value)
+    }
 }
 
 impl BlockIdentifier {
     pub fn next_block(&self) -> Option<BlockIdentifier> {
-        match self {
-            BlockIdentifier::Number(n) => Some(
-                n.checked_add(1)
-                    .map(BlockIdentifier::Number)
-                    .expect("block count should not overflow"),
-            ),
-            BlockIdentifier::RcWords => None,
-        }
+        Some(
+            self.0
+                .checked_add(1)
+                .map(BlockIdentifier)
+                .expect("block count should not overflow"),
+        )
     }
 
     pub fn previous_block(&self) -> Option<BlockIdentifier> {
-        match self {
-            BlockIdentifier::Number(n) => n.checked_sub(1).map(BlockIdentifier::Number),
-            BlockIdentifier::RcWords => {
-                unimplemented!("previous_block should not be called on the RC-words block.");
-            }
-        }
+        self.0.checked_sub(1).map(BlockIdentifier)
     }
 }
 
 impl Display for BlockIdentifier {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            BlockIdentifier::Number(n) => write!(f, "block {n}"),
-            BlockIdentifier::RcWords => f.write_str("RC-word block"),
-        }
+        write!(f, "block {}", self.0)
     }
 }
 

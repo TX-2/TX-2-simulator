@@ -30,9 +30,12 @@ fn assemble_literal(input: &str, expected: &InstructionFragment) {
     let got = gotvec.as_slice();
     eprintln!("{got:#?}");
     match got {
-        [LocatedBlock { location: _, items }] => {
-            eprintln!("There are {} items", items.len());
-            match items.as_slice() {
+        [LocatedBlock {
+            location: _,
+            statements,
+        }] => {
+            eprintln!("There are {} items", statements.len());
+            match statements.as_slice() {
                 [Statement::Instruction(TaggedProgramInstruction {
                     tag: None,
                     instruction:
@@ -57,8 +60,8 @@ fn assemble_literal(input: &str, expected: &InstructionFragment) {
                 },
                 _ => {
                     panic!(
-                        "expected one instruction containing {expected:?}\ngot {} items {items:?}",
-                        items.len()
+                        "expected one instruction containing {expected:?}\ngot {} items {statements:?}",
+                        statements.len()
                     );
                 }
             }
@@ -115,7 +118,7 @@ fn test_assemble_pass1() {
     fn single_manuscript_block_map(
         mb: ManuscriptBlock,
     ) -> BTreeMap<BlockIdentifier, ManuscriptBlock> {
-        one_item_map(BlockIdentifier::Number(0), mb)
+        one_item_map(BlockIdentifier::from(0), mb)
     }
 
     let input = concat!("14\n", "☛☛PUNCH 26\n");
@@ -155,7 +158,10 @@ fn span(range: Range<usize>) -> Span {
 fn test_metacommand_dec_changes_default_base() {
     const INPUT: &str = concat!("10\n", "☛☛DECIMAL\n", "10  ** Ten\n");
     let (directive, _) = assemble_nonempty_valid_input(INPUT);
-    if let [LocatedBlock { location: _, items }] = directive
+    if let [LocatedBlock {
+        location: _,
+        statements,
+    }] = directive
         .blocks
         .values()
         .cloned()
@@ -178,7 +184,7 @@ fn test_metacommand_dec_changes_default_base() {
                     holdbit: HoldBit::Unspecified,
                     parts: second_parts,
                 },
-        })] = items.as_slice()
+        })] = statements.as_slice()
         {
             assert_eq!(
                 &first_parts.as_slice(),

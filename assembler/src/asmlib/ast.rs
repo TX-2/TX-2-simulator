@@ -19,9 +19,7 @@ use super::glyph;
 use super::state::NumeralMode;
 use super::symbol::{SymbolName, SymbolOrHere};
 use super::symtab::SymbolTable;
-use super::types::{
-    offset_from_origin, AssemblerFailure, BlockIdentifier, MachineLimitExceededFailure, Span,
-};
+use super::types::{BlockIdentifier, Span};
 
 /// Eventually we will support symbolic expressions.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -876,13 +874,6 @@ impl Evaluate for TaggedProgramInstruction {
 
 const HELD_MASK: Unsigned36Bit = u36!(1 << 35);
 
-pub(crate) fn bad_offset(block_id: BlockIdentifier, offset: usize) -> AssemblerFailure {
-    AssemblerFailure::MachineLimitExceeded(MachineLimitExceededFailure::BlockTooLarge {
-        block_id,
-        offset,
-    })
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SourceFile {
     pub(crate) punch: Option<PunchCommand>,
@@ -910,27 +901,6 @@ impl SourceFile {
                 }
             })
     }
-
-    //pub(crate) fn define_rc_word(
-    //    &mut self,
-    //    value: TaggedProgramInstruction,
-    //) -> Result<RcReference, AssemblerFailure> {
-    //    let rcblock: &mut ManuscriptBlock = self
-    //        .blocks
-    //        .entry(BlockIdentifier::RcWords)
-    //        .or_insert_with(|| ManuscriptBlock {
-    //            origin: None,
-    //            statements: Vec::new(),
-    //        });
-    //    let offset = rcblock.statements.len();
-    //    match Unsigned18Bit::try_from(offset) {
-    //        Ok(id) => {
-    //            rcblock.statements.push(Statement::Instruction(value));
-    //            Ok(RcReference::new(id))
-    //        }
-    //        Err(_) => Err(bad_offset(BlockIdentifier::RcWords, offset)),
-    //    }
-    //}
 
     pub(crate) fn global_symbol_definitions(
         &self,
@@ -979,13 +949,11 @@ pub(crate) enum Statement {
     // on the RHS, the value cannot be a TaggedProgramInstruction.
     Assignment(Span, SymbolName, UntaggedProgramInstruction), // User Guide calls these "equalities".
     Instruction(TaggedProgramInstruction),
-    RcWord(Span, Unsigned36Bit),
 }
 
 impl Statement {
     fn span(&self) -> Span {
         match self {
-            Statement::RcWord(span, _) => *span,
             Statement::Assignment(span, _, _) => *span,
             Statement::Instruction(TaggedProgramInstruction { tag, instruction }) => {
                 if let Some(t) = tag {
@@ -1000,7 +968,7 @@ impl Statement {
     fn emitted_instruction_count(&self) -> Unsigned18Bit {
         match self {
             Statement::Assignment(_, _, _) => Unsigned18Bit::ZERO,
-            Statement::Instruction(_) | Statement::RcWord(_, _) => Unsigned18Bit::ONE,
+            Statement::Instruction(_) => Unsigned18Bit::ONE,
         }
     }
 
@@ -1010,7 +978,6 @@ impl Statement {
         offset: Unsigned18Bit,
     ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
         match self {
-            Statement::RcWord(_, _) => Vec::new(),
             Statement::Assignment(span, symbol, expression) => {
                 vec![(
                     symbol.clone(),
@@ -1024,6 +991,25 @@ impl Statement {
             Statement::Instruction(inst) => inst.symbol_uses(block_id, offset).collect(),
         }
         .into_iter()
+    }
+}
+
+impl From<(Span, Unsigned36Bit)> for Statement {
+    fn from((span, value): (Span, Unsigned36Bit)) -> Statement {
+        Statement::Instruction(TaggedProgramInstruction {
+            tag: None,
+            instruction: UntaggedProgramInstruction {
+                span,
+                holdbit: HoldBit::Unspecified,
+                parts: vec![InstructionFragment::from(ArithmeticExpression::from(
+                    Atom::Literal(LiteralValue {
+                        span,
+                        elevation: Script::Normal,
+                        value,
+                    }),
+                ))],
+            },
+        })
     }
 }
 
@@ -1127,18 +1113,10 @@ impl Directive {
     pub(crate) fn take_rc_block(&mut self) -> RcBlock {
         let max_occupied_addr: Option<Address> =
             self.blocks.values().map(LocatedBlock::following_addr).max();
-        fn make_rc_block(max_occupied_addr: Option<Address>) -> LocatedBlock {
-            let rc_block_address: Address =
-                max_occupied_addr.unwrap_or_else(Origin::default_address);
-            LocatedBlock {
-                location: rc_block_address,
-                items: Vec::new(),
-            }
+        RcBlock {
+            address: max_occupied_addr.unwrap_or_else(Origin::default_address),
+            words: Vec::new(),
         }
-        self.blocks
-            .remove(&BlockIdentifier::RcWords)
-            .unwrap_or_else(|| make_rc_block(max_occupied_addr))
-            .into()
     }
 
     pub(crate) fn entry_point(&self) -> Option<Address> {
@@ -1146,38 +1124,29 @@ impl Directive {
     }
 }
 
-impl RcAllocator for Directive {
-    fn allocate(&mut self, span: Span, value: Unsigned36Bit) -> Address {
-        match self.blocks.get_mut(&BlockIdentifier::RcWords) {
-            None => {
-                panic!(
-                    "precondition did not hold: no RC-word block was allocated in the directive"
-                );
-            }
-            Some(rc_word_block) => match Unsigned18Bit::try_from(rc_word_block.items.len()) {
-                Ok(offset) => {
-                    let addr = rc_word_block.location.index_by(offset);
-                    rc_word_block.items.push(Statement::RcWord(span, value));
-                    addr
-                }
-                Err(_) => {
-                    unimplemented!("handle overflow")
-                }
-            },
-        }
-    }
-}
+//impl RcAllocator for Directive {
+//    fn allocate(&mut self, span: Span, value: Unsigned36Bit) -> Address {
+//        match self.blocks.get_mut(&BlockIdentifier::RcWords) {
+//            None => {
+//                panic!(
+//                    "precondition did not hold: no RC-word block was allocated in the directive"
+//                );
+//            }
+//            Some(rc_word_block) => rc_word_block.allocate(span, value),
+//        }
+//    }
+//}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Block {
     pub(crate) origin: Option<Origin>,
     pub(crate) location: Option<Address>,
-    pub(crate) items: Vec<Statement>,
+    pub(crate) statements: Vec<Statement>,
 }
 
 impl Block {
     pub(crate) fn emitted_instruction_count(&self) -> Unsigned18Bit {
-        self.items
+        self.statements
             .iter()
             .map(|stmt| stmt.emitted_instruction_count())
             .sum()
@@ -1187,33 +1156,18 @@ impl Block {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct LocatedBlock {
     pub(crate) location: Address,
-    pub(crate) items: Vec<Statement>,
+    pub(crate) statements: Vec<Statement>,
 }
 
 impl LocatedBlock {
-    pub(crate) fn get_offset(
-        &self,
-        block_id: BlockIdentifier,
-        offset: usize,
-    ) -> Result<Address, AssemblerFailure> {
-        if let Ok(h) = Unsigned18Bit::try_from(offset)
-            .map_err(|_| ())
-            .and_then(|n| offset_from_origin(&self.location, n).map_err(|_| ()))
-        {
-            Ok(h)
-        } else {
-            Err(bad_offset(block_id, offset))
-        }
-    }
-
-    pub(crate) fn following_addr(&self) -> Address {
-        self.location.index_by(self.emitted_instruction_count())
-    }
-
-    pub(crate) fn emitted_instruction_count(&self) -> Unsigned18Bit {
-        self.items
+    pub(crate) fn emitted_word_count(&self) -> Unsigned18Bit {
+        self.statements
             .iter()
             .map(|stmt| stmt.emitted_instruction_count())
             .sum()
+    }
+
+    pub(crate) fn following_addr(&self) -> Address {
+        self.location.index_by(self.emitted_word_count())
     }
 }
