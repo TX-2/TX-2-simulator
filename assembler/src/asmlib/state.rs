@@ -1,5 +1,6 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum NumeralMode {
+    #[default]
     Octal,
     Decimal,
 }
@@ -17,11 +18,7 @@ impl NumeralMode {
     }
 }
 
-// defeat derivable_impls here because if we simply derive Default
-// it's unclear which value we get as the default.
-#[allow(clippy::derivable_impls)]
-impl Default for NumeralMode {
-    fn default() -> NumeralMode {
-        NumeralMode::Octal
-    }
+#[test]
+fn test_numeral_mode_default() {
+    assert_eq!(NumeralMode::default(), NumeralMode::Octal);
 }
