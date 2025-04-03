@@ -12,14 +12,18 @@ use base::charset::{subscript_char, superscript_char, Script};
 use base::prelude::*;
 
 use crate::eval::{HereValue, SymbolLookupFailure, SymbolValue};
-use crate::symtab::{LookupOperation, RcAllocator, RcBlock};
+use crate::symtab::LookupOperation;
 
-use super::eval::{Evaluate, SymbolContext, SymbolDefinition, SymbolLookup, SymbolUse};
+use super::eval::{Evaluate, RcBlock, SymbolContext, SymbolDefinition, SymbolLookup, SymbolUse};
 use super::glyph;
 use super::state::NumeralMode;
 use super::symbol::{SymbolName, SymbolOrHere};
 use super::symtab::SymbolTable;
 use super::types::{BlockIdentifier, Span};
+
+pub(crate) trait RcAllocator {
+    fn allocate(&mut self, span: Span, value: Unsigned36Bit) -> Address;
+}
 
 /// Eventually we will support symbolic expressions.
 #[derive(Debug, Clone, PartialEq, Eq)]

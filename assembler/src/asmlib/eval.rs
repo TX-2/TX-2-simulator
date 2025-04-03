@@ -3,14 +3,13 @@ use std::fmt::{self, Debug, Display, Formatter, Write};
 
 use base::{
     charset::Script,
-    prelude::{Address, Unsigned18Bit, Unsigned36Bit},
+    prelude::{Address, IndexBy, Unsigned18Bit, Unsigned36Bit},
 };
 
 use crate::symtab::{LookupOperation, SymbolTable};
 
-use super::ast::UntaggedProgramInstruction;
+use super::ast::{RcAllocator, UntaggedProgramInstruction};
 use super::symbol::SymbolName;
-use super::symtab::RcAllocator;
 use super::types::{BlockIdentifier, MachineLimitExceededFailure, OrderableSpan, Span};
 
 #[derive(Debug, PartialEq, Eq)]
@@ -402,5 +401,34 @@ impl SymbolDefinition {
                 }
             }
         }
+    }
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct RcBlock {
+    pub(crate) address: Address,
+    pub(crate) words: Vec<(Span, Unsigned36Bit)>,
+}
+
+impl RcAllocator for RcBlock {
+    fn allocate(&mut self, span: Span, value: Unsigned36Bit) -> Address {
+        match Unsigned18Bit::try_from(self.words.len()) {
+            Ok(offset) => {
+                let addr = self.address.index_by(offset);
+                self.words.push((span, value));
+                addr
+            }
+            Err(_) => {
+                panic!("program is too large"); // TODO: fixme: use Result
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn make_empty_rc_block_for_test(location: Address) -> RcBlock {
+    RcBlock {
+        address: location,
+        words: Vec::new(),
     }
 }

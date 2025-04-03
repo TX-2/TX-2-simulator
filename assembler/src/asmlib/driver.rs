@@ -18,14 +18,13 @@ use chumsky::error::Rich;
 use tracing::{event, span, Level};
 
 use super::ast::*;
-use super::eval::{BadSymbolDefinition, Evaluate, HereValue, SymbolDefinition};
+use super::eval::{BadSymbolDefinition, Evaluate, HereValue, RcBlock, SymbolDefinition};
 use super::lexer;
 use super::parser::parse_source_file;
 use super::state::NumeralMode;
 use super::symbol::SymbolName;
 use super::symtab::{
-    FinalSymbolDefinition, FinalSymbolTable, FinalSymbolType, LookupOperation, RcAllocator,
-    RcBlock, SymbolTable,
+    FinalSymbolDefinition, FinalSymbolTable, FinalSymbolType, LookupOperation, SymbolTable,
 };
 use super::types::*;
 use base::prelude::{Address, IndexBy, Unsigned18Bit, Unsigned36Bit};

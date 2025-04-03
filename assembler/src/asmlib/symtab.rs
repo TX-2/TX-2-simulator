@@ -7,7 +7,7 @@ use tracing::{event, Level};
 use base::prelude::*;
 use base::subword;
 
-use super::ast::Origin;
+use super::ast::{Origin, RcAllocator};
 use super::eval::{
     BadSymbolDefinition, Evaluate, HereValue, LookupTarget, SymbolContext, SymbolDefinition,
     SymbolLookup, SymbolLookupFailure, SymbolLookupFailureKind, SymbolValue,
@@ -33,39 +33,6 @@ impl Display for DefaultValueAssignmentError {
 }
 
 impl std::error::Error for DefaultValueAssignmentError {}
-
-pub(crate) trait RcAllocator {
-    fn allocate(&mut self, span: Span, value: Unsigned36Bit) -> Address;
-}
-
-#[derive(Debug, Default)]
-pub(crate) struct RcBlock {
-    pub(crate) address: Address,
-    pub(crate) words: Vec<(Span, Unsigned36Bit)>,
-}
-
-#[cfg(test)]
-pub(crate) fn make_empty_rc_block_for_test(location: Address) -> RcBlock {
-    RcBlock {
-        address: location,
-        words: Vec::new(),
-    }
-}
-
-impl RcAllocator for RcBlock {
-    fn allocate(&mut self, span: Span, value: Unsigned36Bit) -> Address {
-        match Unsigned18Bit::try_from(self.words.len()) {
-            Ok(offset) => {
-                let addr = self.address.index_by(offset);
-                self.words.push((span, value));
-                addr
-            }
-            Err(_) => {
-                panic!("program is too large"); // TODO: fixme: use Result
-            }
-        }
-    }
-}
 
 #[derive(Debug, Clone)]
 pub(super) struct BlockPosition {

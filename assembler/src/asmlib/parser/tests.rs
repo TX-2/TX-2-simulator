@@ -12,11 +12,11 @@ use super::super::{
         Atom, HoldBit, InstructionFragment, LiteralValue, ManuscriptBlock, ManuscriptMetaCommand,
         Origin, SourceFile, Statement, TaggedProgramInstruction, UntaggedProgramInstruction,
     },
-    eval::{Evaluate, HereValue},
+    eval::{make_empty_rc_block_for_test, Evaluate, HereValue},
     parser::symex::{parse_multi_syllable_symex, parse_symex},
     state::NumeralMode,
     symbol::SymbolName,
-    symtab::{make_empty_rc_block_for_test, LookupOperation, SymbolTable},
+    symtab::{LookupOperation, SymbolTable},
 };
 use super::*;
 
