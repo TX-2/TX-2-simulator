@@ -405,7 +405,7 @@ impl Display for ListingLineWithBody<'_> {
                     }
                 }
                 let displayed_instruction: &str =
-                    extract_span(self.body, &instruction.instruction.span).trim();
+                    extract_span(self.body, &instruction.span()).trim();
                 let (left, right) = split_halves(*binary);
                 write!(f, "{displayed_instruction:30}  |{left:06} {right:06}| ")?;
 
@@ -815,15 +815,25 @@ fn test_assemble_pass1() {
         origin: None,
         statements: vec![Statement::Instruction(TaggedProgramInstruction {
             tag: None,
-            instruction: UntaggedProgramInstruction {
-                span: span(0..2),
-                holdbit: HoldBit::Unspecified,
-                parts: vec![atom_to_fragment(Atom::Literal(LiteralValue::from((
-                    span(0..2),
-                    Script::Normal,
-                    u36!(0o14),
-                ))))],
-            },
+            instructions: vec![CommaDelimitedInstruction {
+                leading_commas: Commas {
+                    span: span(0..0),
+                    count: 0,
+                },
+                instruction: UntaggedProgramInstruction {
+                    span: span(0..2),
+                    holdbit: HoldBit::Unspecified,
+                    parts: vec![atom_to_fragment(Atom::Literal(LiteralValue::from((
+                        span(0..2),
+                        Script::Normal,
+                        u36!(0o14),
+                    ))))],
+                },
+                trailing_commas: Commas {
+                    span: span(2..2),
+                    count: 0,
+                },
+            }],
         })],
     };
 

@@ -744,14 +744,18 @@ pub(crate) enum HoldBit {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct Commas {
-    span: Span,
-    count: usize,
+pub(crate) struct Commas {
+    pub(crate) span: Span,
+    pub(crate) count: usize,
 }
 
 impl Commas {
-    fn implicit(&self) -> bool {
+    pub(crate) fn implicit(&self) -> bool {
         self.count == 0
+    }
+
+    pub(crate) fn span(&self) -> &Span {
+        &self.span
     }
 }
 
@@ -761,7 +765,53 @@ enum CommasOrInstruction {
     C(Commas),
 }
 
-fn instructions_with_comma_counts<I>(it: I) -> Vec<(Commas, UntaggedProgramInstruction, Commas)>
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct CommaDelimitedInstruction {
+    pub(crate) leading_commas: Commas,
+    pub(crate) instruction: UntaggedProgramInstruction,
+    pub(crate) trailing_commas: Commas,
+}
+
+impl CommaDelimitedInstruction {
+    fn new(
+        leading_commas: Commas,
+        instruction: UntaggedProgramInstruction,
+        trailing_commas: Commas,
+    ) -> Self {
+        Self {
+            leading_commas,
+            instruction,
+            trailing_commas,
+        }
+    }
+
+    pub(crate) fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> + '_ {
+        self.instruction.symbol_uses()
+    }
+
+    pub(crate) fn span(&self) -> Span {
+        Span::from((self.leading_commas.span().start)..(self.trailing_commas.span().end))
+    }
+}
+
+impl Evaluate for CommaDelimitedInstruction {
+    fn evaluate<R: RcAllocator>(
+        &self,
+        target_address: &HereValue,
+        symtab: &mut SymbolTable,
+        rc_allocator: &mut R,
+        op: &mut LookupOperation,
+    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+        if self.leading_commas.count != 0 || self.trailing_commas.count != 0 {
+            // TODO: support explicit commas
+            panic!("explicit commas are not yet supported: {self:?}");
+        }
+        self.instruction
+            .evaluate(target_address, symtab, rc_allocator, op)
+    }
+}
+
+fn instructions_with_comma_counts<I>(it: I) -> Vec<CommaDelimitedInstruction>
 where
     I: Iterator<Item = CommasOrInstruction>,
 {
@@ -834,8 +884,7 @@ where
     })];
     dbg!(&initial_accumulator);
     let tmp = it.fold(initial_accumulator, fold_step);
-    let mut output: Vec<(Commas, UntaggedProgramInstruction, Commas)> =
-        Vec::with_capacity(tmp.len() / 2 + 1);
+    let mut output: Vec<CommaDelimitedInstruction> = Vec::with_capacity(tmp.len() / 2 + 1);
     let mut it = tmp.into_iter().peekable();
     loop {
         let maybe_before_count = it.next();
@@ -855,7 +904,11 @@ where
                         unreachable!("fold_step did not maintain its invariant")
                     }
                 };
-                output.push((before_commas, inst, after_commas));
+                output.push(CommaDelimitedInstruction::new(
+                    before_commas,
+                    inst,
+                    after_commas,
+                ));
             }
             (Some(C(_)), None) => {
                 // No instructions in the input.
@@ -873,6 +926,7 @@ where
 mod comma_tests {
     use super::super::types::Span;
     use super::instructions_with_comma_counts as parent_instructions_with_comma_counts;
+    use super::CommaDelimitedInstruction;
     use super::Commas;
     use super::CommasOrInstruction;
     use super::UntaggedProgramInstruction;
@@ -880,11 +934,11 @@ mod comma_tests {
     use std::ops::Range;
 
     #[derive(Clone, Eq)]
-    struct Briefly(Commas, UntaggedProgramInstruction, Commas);
+    struct Briefly(CommaDelimitedInstruction);
 
     impl From<(Commas, UntaggedProgramInstruction, Commas)> for Briefly {
         fn from(value: (Commas, UntaggedProgramInstruction, Commas)) -> Self {
-            Self(value.0, value.1, value.2)
+            Self(CommaDelimitedInstruction::new(value.0, value.1, value.2))
         }
     }
 
@@ -892,31 +946,28 @@ mod comma_tests {
         v.into_iter().map(Briefly::from).collect()
     }
 
-    impl PartialEq<(Commas, UntaggedProgramInstruction, Commas)> for Briefly {
-        fn eq(&self, other: &(Commas, UntaggedProgramInstruction, Commas)) -> bool {
-            self.0 == other.0 && self.1 == other.1 && self.2 == other.2
+    impl PartialEq<CommaDelimitedInstruction> for Briefly {
+        fn eq(&self, other: &CommaDelimitedInstruction) -> bool {
+            self == other
         }
     }
 
     impl PartialEq<Briefly> for Briefly {
         fn eq(&self, other: &Briefly) -> bool {
-            self.0 == other.0 && self.1 == other.1 && self.2 == other.2
+            self.0 == other.0
         }
     }
 
     fn instructions_with_comma_counts(input: Vec<CommasOrInstruction>) -> Vec<Briefly> {
         dbg!(&input);
         let output = parent_instructions_with_comma_counts(input.into_iter());
-        output
-            .into_iter()
-            .map(|(lc, inst, rc)| Briefly(lc, inst, rc))
-            .collect()
+        output.into_iter().map(Briefly).collect()
     }
 
     impl std::fmt::Debug for Briefly {
         fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
             use super::*;
-            let instr_string: String = match self.1.parts.as_slice() {
+            let instr_string: String = match self.0.instruction.parts.as_slice() {
                 [] => unreachable!(),
                 [only] => match only {
                     InstructionFragment::Arithmetic(ArithmeticExpression { first, tail }) => {
@@ -942,7 +993,7 @@ mod comma_tests {
             write!(
                 f,
                 "({:?},UntaggedProgramInstruction({instr_string}),{:?})",
-                self.0, self.2
+                self.0.leading_commas, self.0.trailing_commas
             )
         }
     }
@@ -1265,7 +1316,7 @@ impl Tag {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TaggedProgramInstruction {
     pub(crate) tag: Option<Tag>,
-    pub(crate) instruction: UntaggedProgramInstruction,
+    pub(crate) instructions: Vec<CommaDelimitedInstruction>,
 }
 
 impl TaggedProgramInstruction {
@@ -1278,16 +1329,30 @@ impl TaggedProgramInstruction {
         if let Some(tag) = self.tag() {
             result.extend(tag.symbol_uses(block_id, offset));
         }
-        result.extend(self.instruction.symbol_uses());
+        for inst in self.instructions.iter() {
+            result.extend(inst.symbol_uses());
+        }
         result.into_iter()
     }
 
     pub(crate) fn span(&self) -> Span {
         let begin = match self.tag() {
             Some(t) => t.span.start,
-            None => self.instruction.span.start,
+            None => {
+                self.instructions
+                    .first()
+                    .expect("TaggedProgramInstruction must contain at least one instruction")
+                    .span()
+                    .start
+            }
         };
-        Span::from(begin..(self.instruction.span.end))
+        let end = self
+            .instructions
+            .last()
+            .expect("TaggedProgramInstruction must contain at least one instruction")
+            .span()
+            .end;
+        Span::from(begin..end)
     }
 
     pub(crate) fn tag(&self) -> Option<&Tag> {
@@ -1298,7 +1363,22 @@ impl TaggedProgramInstruction {
         tag: Option<Tag>,
         instruction: UntaggedProgramInstruction,
     ) -> TaggedProgramInstruction {
-        Self { tag, instruction }
+        fn implicit_commas(at: usize) -> Commas {
+            Commas {
+                span: Span::from(at..at),
+                count: 0,
+            }
+        }
+        let span: Span = instruction.span.clone();
+        let cdi = CommaDelimitedInstruction {
+            leading_commas: implicit_commas(span.start),
+            instruction,
+            trailing_commas: implicit_commas(span.end),
+        };
+        Self {
+            tag,
+            instructions: vec![cdi],
+        }
     }
 }
 
@@ -1310,8 +1390,18 @@ impl Evaluate for TaggedProgramInstruction {
         rc_allocator: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-        self.instruction
-            .evaluate(target_address, symtab, rc_allocator, op)
+        match self.instructions.as_slice() {
+            [only_instruction] => {
+                only_instruction.evaluate(target_address, symtab, rc_allocator, op)
+            }
+            [] => {
+                panic!("invariant broken: TaggedProgramInstruction contains zero instructions");
+            }
+            _two_or_more_instructions => {
+                // TODO: support this case.
+                panic!("invariant broken: TaggedProgramInstruction contains two or more instructions: {self:?}");
+            }
+        }
     }
 }
 

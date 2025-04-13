@@ -662,7 +662,7 @@ where
         .then(untagged_program_instruction())
         .map(
             |(tag, instruction): (Option<Tag>, UntaggedProgramInstruction)| {
-                TaggedProgramInstruction { tag, instruction }
+                TaggedProgramInstruction::single(tag, instruction)
             },
         )
         .labelled("optional tag definition followed by a program instruction")

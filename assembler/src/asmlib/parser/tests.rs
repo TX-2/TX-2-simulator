@@ -247,9 +247,9 @@ fn test_assemble_octal_literal() {
 fn test_program_instruction() {
     assert_eq!(
         parse_successfully_with("⁶673₃₁", tagged_program_instruction(), no_state_setup),
-        TaggedProgramInstruction {
-            tag: None,
-            instruction: UntaggedProgramInstruction {
+        TaggedProgramInstruction::single(
+            None,
+            UntaggedProgramInstruction {
                 span: span(0..12),
                 holdbit: HoldBit::Unspecified,
                 parts: vec![
@@ -266,7 +266,7 @@ fn test_program_instruction() {
                     )),
                 ]
             }
-        },
+        )
     );
 }
 
@@ -363,9 +363,9 @@ fn test_manuscript_line_with_bare_literal() {
         parse_successfully_with("1", manuscript_line(), no_state_setup),
         ManuscriptLine::Code(
             None,
-            Statement::Instruction(TaggedProgramInstruction {
-                tag: None,
-                instruction: UntaggedProgramInstruction {
+            Statement::Instruction(TaggedProgramInstruction::single(
+                None,
+                UntaggedProgramInstruction {
                     span: span(0..1),
                     holdbit: HoldBit::Unspecified,
                     parts: vec![InstructionFragment::from((
@@ -374,7 +374,7 @@ fn test_manuscript_line_with_bare_literal() {
                         Unsigned36Bit::from(1_u32),
                     ))]
                 }
-            })
+            ))
         )
     );
 }
@@ -395,9 +395,9 @@ fn test_manuscript_with_bare_literal() {
             punch: None,
             blocks: manuscript_blocks(vec![ManuscriptBlock {
                 origin: None,
-                statements: vec![Statement::Instruction(TaggedProgramInstruction {
-                    tag: None,
-                    instruction: UntaggedProgramInstruction {
+                statements: vec![Statement::Instruction(TaggedProgramInstruction::single(
+                    None,
+                    UntaggedProgramInstruction {
                         span: span(0..1),
                         holdbit: HoldBit::Unspecified,
                         parts: vec![InstructionFragment::from((
@@ -406,7 +406,7 @@ fn test_manuscript_with_bare_literal() {
                             Unsigned36Bit::from(1_u32),
                         ))],
                     }
-                })]
+                ))]
             }]),
             macros: vec![],
         }
@@ -417,9 +417,9 @@ fn test_manuscript_with_bare_literal() {
 fn test_terminated_manuscript_line_with_bare_literal() {
     let expected_line = ManuscriptLine::Code(
         None,
-        Statement::Instruction(TaggedProgramInstruction {
-            tag: None,
-            instruction: UntaggedProgramInstruction {
+        Statement::Instruction(TaggedProgramInstruction::single(
+            None,
+            UntaggedProgramInstruction {
                 span: span(0..1),
                 holdbit: HoldBit::Unspecified,
                 parts: vec![InstructionFragment::from((
@@ -428,7 +428,7 @@ fn test_terminated_manuscript_line_with_bare_literal() {
                     Unsigned36Bit::from(1_u32),
                 ))],
             },
-        }),
+        )),
     );
 
     assert_eq!(
@@ -457,9 +457,9 @@ fn test_manuscript_without_tag() {
             blocks: manuscript_blocks(vec![ManuscriptBlock {
                 origin: None,
                 statements: vec![
-                    Statement::Instruction(TaggedProgramInstruction {
-                        tag: None,
-                        instruction: UntaggedProgramInstruction {
+                    Statement::Instruction(TaggedProgramInstruction::single(
+                        None,
+                        UntaggedProgramInstruction {
                             span: span(0..3),
                             holdbit: HoldBit::Unspecified,
                             parts: vec![InstructionFragment::from((
@@ -468,10 +468,10 @@ fn test_manuscript_without_tag() {
                                 Unsigned36Bit::from(0o673_u32),
                             ))],
                         }
-                    }),
-                    Statement::Instruction(TaggedProgramInstruction {
-                        tag: None,
-                        instruction: UntaggedProgramInstruction {
+                    )),
+                    Statement::Instruction(TaggedProgramInstruction::single(
+                        None,
+                        UntaggedProgramInstruction {
                             span: span(25..27),
                             holdbit: HoldBit::Unspecified,
                             parts: vec![InstructionFragment::from((
@@ -480,7 +480,7 @@ fn test_manuscript_without_tag() {
                                 Unsigned36Bit::from(0o71_u32),
                             ))],
                         }
-                    }),
+                    )),
                 ]
             }]),
             macros: vec![],
@@ -502,9 +502,9 @@ fn test_comment_in_rc_block() {
         SourceFile {
             blocks: manuscript_blocks(vec![ManuscriptBlock {
                 origin: None,
-                statements: vec![Statement::Instruction(TaggedProgramInstruction {
-                    tag: None,
-                    instruction: UntaggedProgramInstruction {
+                statements: vec![Statement::Instruction(TaggedProgramInstruction::single(
+                    None,
+                    UntaggedProgramInstruction {
                         span: span(0..10),
                         holdbit: HoldBit::Unspecified,
                         parts: vec![InstructionFragment::from(ArithmeticExpression::from(
@@ -520,7 +520,7 @@ fn test_comment_in_rc_block() {
                             )
                         ))]
                     }
-                })]
+                ))]
             }]),
             macros: vec![],
             punch: None,
@@ -563,14 +563,14 @@ fn test_manuscript_with_single_syllable_tag() {
         SourceFile {
             blocks: manuscript_blocks(vec![ManuscriptBlock {
                 origin: None,
-                statements: vec![Statement::Instruction(TaggedProgramInstruction {
-                    tag: Some(Tag {
+                statements: vec![Statement::Instruction(TaggedProgramInstruction::single(
+                    Some(Tag {
                         name: SymbolName {
                             canonical: "START4".to_string(),
                         },
                         span: span(0..6),
                     }),
-                    instruction: UntaggedProgramInstruction {
+                    UntaggedProgramInstruction {
                         span: span(10..13),
                         holdbit: HoldBit::Unspecified,
                         parts: vec![InstructionFragment::from((
@@ -579,7 +579,7 @@ fn test_manuscript_with_single_syllable_tag() {
                             Unsigned36Bit::from(0o205_u32),
                         )),]
                     }
-                })]
+                ))]
             }]),
             macros: vec![],
             punch: None
@@ -599,9 +599,9 @@ fn test_manuscript_with_origin() {
             punch: None,
             blocks: manuscript_blocks(vec![ManuscriptBlock {
                 origin: Some(Origin::Literal(span(0..3), Address::new(u18!(0o100)))),
-                statements: vec![Statement::Instruction(TaggedProgramInstruction {
-                    tag: None,
-                    instruction: UntaggedProgramInstruction {
+                statements: vec![Statement::Instruction(TaggedProgramInstruction::single(
+                    None,
+                    UntaggedProgramInstruction {
                         span: span(6..9),
                         holdbit: HoldBit::Unspecified,
                         parts: vec![InstructionFragment::from((
@@ -610,7 +610,7 @@ fn test_manuscript_with_origin() {
                             Unsigned36Bit::from(0o202_u32),
                         ))]
                     }
-                })]
+                ))]
             }]),
             macros: vec![],
         }
@@ -648,14 +648,14 @@ fn test_multi_syllable_tag() {
     );
     assert_eq!(
         inst,
-        TaggedProgramInstruction {
-            tag: Some(Tag {
+        TaggedProgramInstruction::single(
+            Some(Tag {
                 name: SymbolName {
                     canonical: "CODEHERE".to_string(),
                 },
                 span: span(0..9),
             }),
-            instruction: UntaggedProgramInstruction {
+            UntaggedProgramInstruction {
                 span: span(11..14),
                 holdbit: HoldBit::Unspecified,
                 parts: vec![InstructionFragment::Arithmetic(ArithmeticExpression::from(
@@ -666,7 +666,7 @@ fn test_multi_syllable_tag() {
                     )))
                 ))]
             }
-        }
+        )
     );
 }
 
@@ -702,14 +702,14 @@ fn test_manuscript_with_multi_syllable_tag() {
             punch: None,
             blocks: manuscript_blocks(vec![ManuscriptBlock {
                 origin: None,
-                statements: vec![Statement::Instruction(TaggedProgramInstruction {
-                    tag: Some(Tag {
+                statements: vec![Statement::Instruction(TaggedProgramInstruction::single(
+                    Some(Tag {
                         name: SymbolName {
                             canonical: "CODEHERE".to_string(),
                         },
                         span: span(0..9),
                     }),
-                    instruction: UntaggedProgramInstruction {
+                    UntaggedProgramInstruction {
                         span: span(11..14),
                         holdbit: HoldBit::Unspecified,
                         parts: vec![InstructionFragment::from((
@@ -718,7 +718,7 @@ fn test_manuscript_with_multi_syllable_tag() {
                             Unsigned36Bit::from(0o205_u32),
                         ))]
                     }
-                })]
+                ))]
             }]),
             macros: vec![],
         }
@@ -736,14 +736,14 @@ fn test_manuscript_line_with_real_arrow_tag() {
         parse_successfully_with(INPUT, manuscript_line(), no_state_setup),
         ManuscriptLine::Code(
             None,
-            Statement::Instruction(TaggedProgramInstruction {
-                tag: Some(Tag {
+            Statement::Instruction(TaggedProgramInstruction::single(
+                Some(Tag {
                     name: SymbolName {
                         canonical: "HERE".to_string(),
                     },
                     span: span(0..4),
                 }),
-                instruction: UntaggedProgramInstruction {
+                UntaggedProgramInstruction {
                     span: span(7..10),
                     holdbit: HoldBit::Unspecified,
                     parts: vec![atom_to_fragment(Atom::from((
@@ -752,7 +752,7 @@ fn test_manuscript_line_with_real_arrow_tag() {
                         u36!(0o207)
                     )))],
                 }
-            })
+            ))
         )
     );
 }
@@ -766,14 +766,14 @@ fn test_manuscript_with_real_arrow_tag() {
             punch: None,
             blocks: manuscript_blocks(vec![ManuscriptBlock {
                 origin: None,
-                statements: vec![Statement::Instruction(TaggedProgramInstruction {
-                    tag: Some(Tag {
+                statements: vec![Statement::Instruction(TaggedProgramInstruction::single(
+                    Some(Tag {
                         name: SymbolName {
                             canonical: "HERE".to_string(),
                         },
                         span: span(0..4),
                     }),
-                    instruction: UntaggedProgramInstruction {
+                    UntaggedProgramInstruction {
                         holdbit: HoldBit::Unspecified,
                         parts: vec![InstructionFragment::from((
                             span(7..10),
@@ -782,7 +782,7 @@ fn test_manuscript_with_real_arrow_tag() {
                         ))],
                         span: span(7..10),
                     }
-                })]
+                ))]
             }]),
             macros: Vec::new(),
         }
@@ -915,9 +915,9 @@ fn test_assignment_lines() {
                         span(10..17),
                         LiteralValue::from((span(16..17), Script::Normal, u36!(1))),
                     ),
-                    Statement::Instruction(TaggedProgramInstruction {
-                        tag: None,
-                        instruction: UntaggedProgramInstruction {
+                    Statement::Instruction(TaggedProgramInstruction::single(
+                        None,
+                        UntaggedProgramInstruction {
                             span: span(19..20),
                             holdbit: HoldBit::Unspecified,
                             parts: vec![atom_to_fragment(Atom::Literal(LiteralValue::from((
@@ -926,7 +926,7 @@ fn test_assignment_lines() {
                                 u36!(6)
                             ))))]
                         }
-                    })
+                    ))
                 ]
             }]),
             macros: Vec::new(),
@@ -953,9 +953,9 @@ fn test_assignment_origin() {
                 },
                 ManuscriptBlock {
                     origin: Some(Origin::Literal(span(9..13), Address::new(u18!(0o1000)))),
-                    statements: vec![Statement::Instruction(TaggedProgramInstruction {
-                        tag: None,
-                        instruction: UntaggedProgramInstruction {
+                    statements: vec![Statement::Instruction(TaggedProgramInstruction::single(
+                        None,
+                        UntaggedProgramInstruction {
                             span: span(14..15),
                             holdbit: HoldBit::Unspecified,
                             parts: vec![InstructionFragment::from((
@@ -964,7 +964,7 @@ fn test_assignment_origin() {
                                 u36!(4),
                             ))]
                         }
-                    })]
+                    ))]
                 }
             ]),
             macros: Vec::new(),
@@ -1486,16 +1486,16 @@ fn test_macro_definition_with_trivial_body() {
             span: span(14..16),
             preceding_terminator: '|',
         }]),
-        body: vec![Statement::Instruction(TaggedProgramInstruction {
-            tag: None,
-            instruction: UntaggedProgramInstruction {
+        body: vec![Statement::Instruction(TaggedProgramInstruction::single(
+            None,
+            UntaggedProgramInstruction {
                 span: span(17..18),
                 holdbit: HoldBit::Unspecified,
                 parts: vec![InstructionFragment::Arithmetic(ArithmeticExpression::from(
                     Atom::Symbol(span(17..18), Script::Normal, SymbolOrHere::from("A")),
                 ))],
             },
-        })],
+        ))],
         span: span(0..66),
     };
     assert_eq!(got, expected);
@@ -1517,16 +1517,16 @@ fn test_macro_definition_as_entire_source_file() {
                 span: span(14..16),
                 preceding_terminator: '|',
             }]),
-            body: vec![Statement::Instruction(TaggedProgramInstruction {
-                tag: None,
-                instruction: UntaggedProgramInstruction {
+            body: vec![Statement::Instruction(TaggedProgramInstruction::single(
+                None,
+                UntaggedProgramInstruction {
                     span: span(17..18),
                     holdbit: HoldBit::Unspecified,
                     parts: vec![InstructionFragment::Arithmetic(ArithmeticExpression::from(
                         Atom::Symbol(span(17..18), Script::Normal, SymbolOrHere::from("A")),
                     ))],
                 },
-            })],
+            ))],
             span: span(0..28),
         }],
         punch: None,
@@ -1573,9 +1573,9 @@ fn test_double_pipe_config_symbolic() {
     // instruction word).
     let input_xy = "‖X Y";
     let got = parse_successfully_with(input_xy, tagged_program_instruction(), no_state_setup);
-    let expected = TaggedProgramInstruction {
-        tag: None,
-        instruction: UntaggedProgramInstruction {
+    let expected = TaggedProgramInstruction::single(
+        None,
+        UntaggedProgramInstruction {
             span: span(0..6),
             holdbit: HoldBit::Unspecified,
             parts: vec![
@@ -1590,7 +1590,7 @@ fn test_double_pipe_config_symbolic() {
                 ))),
             ],
         },
-    };
+    );
     assert_eq!(got, expected);
 }
 
@@ -1598,9 +1598,9 @@ fn test_double_pipe_config_symbolic() {
 fn test_double_pipe_config_literal() {
     let input = "‖10"; // 10 octal = 8 decimal.
     let got = parse_successfully_with(input, tagged_program_instruction(), no_state_setup);
-    let expected = TaggedProgramInstruction {
-        tag: None,
-        instruction: UntaggedProgramInstruction {
+    let expected = TaggedProgramInstruction::single(
+        None,
+        UntaggedProgramInstruction {
             span: span(0..5),
             holdbit: HoldBit::Unspecified,
             parts: vec![InstructionFragment::Config(ConfigValue::Literal(
@@ -1608,7 +1608,7 @@ fn test_double_pipe_config_literal() {
                 u36!(8),
             ))],
         },
-    };
+    );
     assert_eq!(got, expected);
 }
 

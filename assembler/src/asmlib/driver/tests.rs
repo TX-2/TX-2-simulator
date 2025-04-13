@@ -4,9 +4,9 @@ use std::{
 };
 
 use super::super::ast::{
-    ArithmeticExpression, Atom, ConfigValue, HoldBit, InstructionFragment, LiteralValue,
-    LocatedBlock, ManuscriptBlock, PunchCommand, SourceFile, Statement, TaggedProgramInstruction,
-    UntaggedProgramInstruction,
+    ArithmeticExpression, Atom, CommaDelimitedInstruction, Commas, ConfigValue, HoldBit,
+    InstructionFragment, LiteralValue, LocatedBlock, ManuscriptBlock, PunchCommand, SourceFile,
+    Statement, TaggedProgramInstruction, UntaggedProgramInstruction,
 };
 use super::super::eval::{make_empty_rc_block_for_test, SymbolContext, SymbolLookup, SymbolValue};
 use super::super::symbol::SymbolName;
@@ -36,33 +36,52 @@ fn assemble_literal(input: &str, expected: &InstructionFragment) {
         }] => {
             eprintln!("There are {} items", statements.len());
             match statements.as_slice() {
+                [] => {
+                    panic!("no statement was assembled");
+                }
                 [Statement::Instruction(TaggedProgramInstruction {
                     tag: None,
-                    instruction:
-                        UntaggedProgramInstruction {
-                            holdbit: HoldBit::Unspecified,
-                            parts,
-                            span: _,
-                        },
-                })] => match parts.as_slice() {
-                    [only_frag] => {
-                        if only_frag == expected {
-                            return;
-                        }
-                        panic!(
-                            "expected single instruction {:?}\ngot {:?}",
-                            &expected, &only_frag,
-                        );
+                    instructions,
+                })] => match instructions.as_slice() {
+                    [] => {
+                        panic!("no instruction was assembled");
                     }
-                    got => {
-                        panic!("expected one instruction containing {expected:?}\ngot wrong number of fragments {got:?}");
+                    [CommaDelimitedInstruction {
+                        leading_commas,
+                        instruction:
+                            UntaggedProgramInstruction {
+                                holdbit: HoldBit::Unspecified,
+                                parts,
+                                span: _,
+                            },
+                        trailing_commas,
+                    }] => {
+                        assert!(leading_commas.implicit());
+                        assert!(trailing_commas.implicit());
+                        match parts.as_slice() {
+                            [only_frag] => {
+                                if only_frag == expected {
+                                    return;
+                                }
+                                panic!(
+                                    "expected single instruction {:?}\ngot {:?}",
+                                    &expected, &only_frag,
+                                );
+                            }
+                            got => {
+                                panic!("expected one instruction containing {expected:?}\ngot wrong number of fragments {got:?}");
+                            }
+                        }
+                    }
+                    _ => {
+                        panic!(
+                                "expected one instruction containing {expected:?}\ngot {} items {statements:?}",
+                                statements.len()
+                            );
                     }
                 },
-                _ => {
-                    panic!(
-                        "expected one instruction containing {expected:?}\ngot {} items {statements:?}",
-                        statements.len()
-                    );
+                multiple => {
+                    panic!("more than one statement was assembled: {multiple:?}");
                 }
             }
         }
@@ -134,15 +153,25 @@ fn test_assemble_pass1() {
                 origin: None,
                 statements: vec![Statement::Instruction(TaggedProgramInstruction {
                     tag: None,
-                    instruction: UntaggedProgramInstruction {
-                        span: Span::from(0..2),
-                        holdbit: HoldBit::Unspecified,
-                        parts: vec![atom_to_fragment(Atom::Literal(LiteralValue::from((
-                            Span::from(0..2),
-                            Script::Normal,
-                            u36!(0o14)
-                        ))))]
-                    }
+                    instructions: vec![CommaDelimitedInstruction {
+                        leading_commas: Commas {
+                            span: Span::from(0..0),
+                            count: 0,
+                        },
+                        instruction: UntaggedProgramInstruction {
+                            span: Span::from(0..2),
+                            holdbit: HoldBit::Unspecified,
+                            parts: vec![atom_to_fragment(Atom::Literal(LiteralValue::from((
+                                Span::from(0..2),
+                                Script::Normal,
+                                u36!(0o14)
+                            ))))]
+                        },
+                        trailing_commas: Commas {
+                            span: Span::from(2..2),
+                            count: 0,
+                        },
+                    }]
                 })]
             }),
             macros: Vec::new(), // no macros
@@ -170,39 +199,42 @@ fn test_metacommand_dec_changes_default_base() {
     {
         if let [Statement::Instruction(TaggedProgramInstruction {
             tag: None,
-            instruction:
-                UntaggedProgramInstruction {
-                    span: _,
-                    holdbit: HoldBit::Unspecified,
-                    parts: first_parts,
-                },
+            instructions: first_instructions,
         }), Statement::Instruction(TaggedProgramInstruction {
             tag: None,
-            instruction:
-                UntaggedProgramInstruction {
-                    span: _,
-                    holdbit: HoldBit::Unspecified,
-                    parts: second_parts,
-                },
+            instructions: second_instructions,
         })] = statements.as_slice()
         {
-            assert_eq!(
-                &first_parts.as_slice(),
-                &[InstructionFragment::from((
-                    Span::from(0..2usize),
-                    Script::Normal,
-                    Unsigned36Bit::from(0o10_u32),
-                ))],
-            );
-            assert_eq!(
-                &second_parts.as_slice(),
-                &[InstructionFragment::from((
-                    span(17..19),
-                    Script::Normal,
-                    Unsigned36Bit::from(0o12_u32),
-                ))],
-            );
-            return;
+            if let [first_instruction] = first_instructions.as_slice() {
+                if let [second_instruction] = second_instructions.as_slice() {
+                    assert_eq!(first_instruction.leading_commas.count, 0);
+                    assert_eq!(first_instruction.trailing_commas.count, 0);
+                    assert_eq!(second_instruction.leading_commas.count, 0);
+                    assert_eq!(second_instruction.trailing_commas.count, 0);
+
+                    let (first_parts, second_parts) = (
+                        &first_instruction.instruction.parts,
+                        &second_instruction.instruction.parts,
+                    );
+                    assert_eq!(
+                        &first_parts.as_slice(),
+                        &[InstructionFragment::from((
+                            Span::from(0..2usize),
+                            Script::Normal,
+                            Unsigned36Bit::from(0o10_u32),
+                        ))],
+                    );
+                    assert_eq!(
+                        &second_parts.as_slice(),
+                        &[InstructionFragment::from((
+                            span(17..19),
+                            Script::Normal,
+                            Unsigned36Bit::from(0o12_u32),
+                        ))],
+                    );
+                    return;
+                }
+            }
         }
     }
     panic!(
