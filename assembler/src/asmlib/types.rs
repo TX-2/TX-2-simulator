@@ -4,8 +4,7 @@ use std::fmt::{self, Display, Formatter};
 use std::io::Error as IoError;
 use std::path::PathBuf;
 
-use chumsky::prelude::SimpleSpan;
-
+use super::span::Span;
 use super::symbol::SymbolName;
 use base::prelude::{Address, Unsigned18Bit};
 
@@ -53,8 +52,6 @@ impl From<(&str, &Span)> for LineAndColumn {
         }
     }
 }
-
-pub(crate) type Span = SimpleSpan;
 
 #[derive(Debug, Clone)]
 pub(crate) struct OrderableSpan(pub(crate) Span);

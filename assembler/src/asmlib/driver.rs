@@ -9,8 +9,6 @@ use std::ffi::OsStr;
 use std::fmt::Display;
 use std::fs::OpenOptions;
 use std::io::{BufReader, BufWriter, Read};
-#[cfg(test)]
-use std::ops::Range;
 use std::path::Path;
 
 use base::subword::split_halves;
@@ -21,6 +19,7 @@ use super::ast::*;
 use super::eval::{BadSymbolDefinition, Evaluate, HereValue, RcBlock, SymbolDefinition};
 use super::lexer;
 use super::parser::parse_source_file;
+use super::span::*;
 use super::state::NumeralMode;
 use super::symbol::SymbolName;
 use super::symtab::{
@@ -795,11 +794,6 @@ pub(crate) fn assemble_source(
         binary.count_words()
     );
     Ok(binary)
-}
-
-#[cfg(test)]
-fn span(range: Range<usize>) -> Span {
-    Span::from(range)
 }
 
 #[cfg(test)]

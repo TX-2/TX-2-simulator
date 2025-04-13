@@ -19,9 +19,9 @@ use chumsky::Parser;
 use super::ast::*;
 use super::glyph::Unrecognised;
 use super::lexer::{self};
+use super::span::*;
 use super::state::NumeralMode;
 use super::symbol::{SymbolName, SymbolOrHere};
-use super::types::*;
 use base::charset::Script;
 use base::prelude::*;
 use helpers::Sign;
@@ -653,19 +653,51 @@ where
     )
 }
 
+fn commas<'a, I>() -> impl Parser<'a, I, Commas, Extra<'a>>
+where
+    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
+{
+    just(Tok::Comma(Script::Normal))
+        .repeated()
+        .at_least(1)
+        .at_most(3)
+        .count()
+        .map_with(|count, extra| Commas {
+            span: extra.span(),
+            count,
+        })
+}
+
+fn comma_delimited_instructions<'a, I>(
+) -> impl Parser<'a, I, Vec<CommaDelimitedInstruction>, Extra<'a>>
+where
+    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
+{
+    let commas_or_instructions = choice((
+        commas().map(CommasOrInstruction::C),
+        untagged_program_instruction().map(CommasOrInstruction::I),
+    ))
+    .repeated()
+    .at_least(1)
+    .collect::<Vec<CommasOrInstruction>>();
+    commas_or_instructions.map(|ci_vec| instructions_with_comma_counts(ci_vec.into_iter()))
+}
+
 fn tagged_program_instruction<'a, I>() -> impl Parser<'a, I, TaggedProgramInstruction, Extra<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
     tag_definition()
         .or_not()
-        .then(untagged_program_instruction())
+        .then(comma_delimited_instructions())
         .map(
-            |(tag, instruction): (Option<Tag>, UntaggedProgramInstruction)| {
-                TaggedProgramInstruction::single(tag, instruction)
+            |(tag, instructions): (Option<Tag>, Vec<CommaDelimitedInstruction>)| {
+                TaggedProgramInstruction { tag, instructions }
             },
         )
-        .labelled("optional tag definition followed by a program instruction")
+        .labelled(
+            "optional tag definition followed by a (possibly comma-delimited) program instructions",
+        )
 }
 
 fn statement<'a, I>() -> impl Parser<'a, I, Statement, Extra<'a>>

@@ -17,6 +17,7 @@ use super::super::{
     state::NumeralMode,
     symbol::SymbolName,
     symtab::{LookupOperation, SymbolTable},
+    types::*,
 };
 use super::*;
 
@@ -1688,3 +1689,53 @@ fn test_comments_without_newline_manuscript() {
         }
     )
 }
+
+//#[test]
+//fn test_commas() {
+//    let input = "200,200,,200,200\n";
+//    let got = parse_successfully_with(input, tagged_program_instruction(), no_state_setup);
+//    let expected = TaggedProgramInstruction::multiple(
+//        None,
+//        vec![
+//            CommaDelimitedInstruction {
+//                leading_commas: Commas {
+//                    span: span(0..0),
+//                    count: 0,
+//                },
+//                instruction: UntaggedProgramInstruction {
+//                    span: span(0..3),
+//                    holdbit: HoldBit::Unspecified,
+//                    parts: vec![InstructionFragment::from((
+//                        span(3..5),
+//                        Script::Normal,
+//                        Unsigned36Bit::from(0o200u8),
+//                    ))],
+//                },
+//                trailing_commas: Commas {
+//                    span: span(3..4),
+//                    count: 1,
+//                },
+//            },
+//            CommaDelimitedInstruction {
+//                leading_commas: Commas {
+//                    span: span(3..4),
+//                    count: 1,
+//                },
+//                instruction: UntaggedProgramInstruction {
+//                    span: span(3..6),
+//                    holdbit: HoldBit::Unspecified,
+//                    parts: vec![InstructionFragment::from((
+//                        span(3..6),
+//                        Script::Normal,
+//                        Unsigned36Bit::from(0o200u8),
+//                    ))],
+//                },
+//                trailing_commas: Commas {
+//                    span: span(7..9),
+//                    count: 2,
+//                },
+//            },
+//        ],
+//    );
+//    assert_eq!(got, expected);
+//}

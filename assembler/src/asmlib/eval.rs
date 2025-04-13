@@ -9,8 +9,9 @@ use base::{
 use crate::symtab::{LookupOperation, SymbolTable};
 
 use super::ast::{RcAllocator, UntaggedProgramInstruction};
+use super::span::*;
 use super::symbol::SymbolName;
-use super::types::{BlockIdentifier, MachineLimitExceededFailure, OrderableSpan, Span};
+use super::types::{BlockIdentifier, MachineLimitExceededFailure, OrderableSpan};
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum LookupTarget {

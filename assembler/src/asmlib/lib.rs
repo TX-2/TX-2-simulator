@@ -7,6 +7,7 @@ mod eval;
 mod glyph;
 mod lexer;
 mod parser;
+mod span;
 mod state;
 mod symbol;
 mod symtab;

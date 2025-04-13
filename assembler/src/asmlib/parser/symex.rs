@@ -4,9 +4,10 @@ use chumsky::prelude::*;
 use chumsky::Parser;
 
 use super::super::lexer::{DOT_CHAR, DOT_STR};
+use super::super::span::*;
 use super::super::symbol::SymbolName;
 use super::helpers::{self, DecodedOpcode};
-use super::{Extra, Span, Tok};
+use super::{Extra, Tok};
 
 fn canonical_symbol_name(s: &str) -> SymbolName {
     // TODO: avoid copy where possible.

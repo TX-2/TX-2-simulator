@@ -12,8 +12,9 @@ use super::eval::{
     BadSymbolDefinition, Evaluate, HereValue, LookupTarget, SymbolContext, SymbolDefinition,
     SymbolLookup, SymbolLookupFailure, SymbolLookupFailureKind, SymbolValue,
 };
+use super::span::*;
 use super::symbol::SymbolName;
-use super::types::{offset_from_origin, BlockIdentifier, MachineLimitExceededFailure, Span};
+use super::types::{offset_from_origin, BlockIdentifier, MachineLimitExceededFailure};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub(crate) enum DefaultValueAssignmentError {
