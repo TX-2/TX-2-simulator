@@ -744,6 +744,426 @@ pub(crate) enum HoldBit {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+struct Commas {
+    span: Span,
+    count: usize,
+}
+
+impl Commas {
+    fn implicit(&self) -> bool {
+        self.count == 0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum CommasOrInstruction {
+    I(UntaggedProgramInstruction),
+    C(Commas),
+}
+
+fn instructions_with_comma_counts<I>(it: I) -> Vec<(Commas, UntaggedProgramInstruction, Commas)>
+where
+    I: Iterator<Item = CommasOrInstruction>,
+{
+    use CommasOrInstruction::*;
+    let mut it = it.peekable();
+
+    /// Fold operation which estabishes an alternating pattern of
+    /// commas and instructions.
+    ///
+    /// Invariant: acc is non-empty, begins and ends with C(_)
+    /// and does not contain a consecutive pair of C(_) or a
+    /// consecutive pair of Inst(_).
+    fn fold_step(
+        mut acc: Vec<CommasOrInstruction>,
+        item: CommasOrInstruction,
+    ) -> Vec<CommasOrInstruction> {
+        fn null_instruction(span: Span) -> UntaggedProgramInstruction {
+            UntaggedProgramInstruction {
+                span,
+                holdbit: HoldBit::Unspecified,
+                parts: vec![InstructionFragment::from(ArithmeticExpression::from(
+                    Atom::Literal(LiteralValue {
+                        span,
+                        elevation: Script::Normal,
+                        value: Unsigned36Bit::ZERO,
+                    }),
+                ))],
+            }
+        }
+
+        match acc.last_mut() {
+            Some(CommasOrInstruction::C(tail_comma)) => match item {
+                C(item_commas) => {
+                    if tail_comma.implicit() {
+                        *tail_comma = item_commas;
+                    } else {
+                        acc.push(CommasOrInstruction::I(null_instruction(item_commas.span)));
+                        acc.push(CommasOrInstruction::C(item_commas));
+                    }
+                }
+                CommasOrInstruction::I(inst) => {
+                    let span: Span = inst.span;
+                    acc.push(CommasOrInstruction::I(inst));
+                    acc.push(CommasOrInstruction::C(Commas { span, count: 0 }));
+                }
+            },
+            Some(I(_)) => unreachable!("invariant was broken"),
+            None => unreachable!("invariant was not established"),
+        }
+        assert!(matches!(acc.first(), Some(C(_))));
+        assert!(matches!(acc.last(), Some(C(_))));
+        acc
+    }
+
+    let initial_accumulator: Vec<CommasOrInstruction> = vec![CommasOrInstruction::C({
+        match it.peek() {
+            None => {
+                return Vec::new();
+            }
+            Some(I(inst)) => Commas {
+                span: inst.span,
+                count: 0,
+            },
+            Some(C(commas)) => {
+                let c = commas.clone();
+                it.next();
+                c
+            }
+        }
+    })];
+    dbg!(&initial_accumulator);
+    let tmp = it.fold(initial_accumulator, fold_step);
+    let mut output: Vec<(Commas, UntaggedProgramInstruction, Commas)> =
+        Vec::with_capacity(tmp.len() / 2 + 1);
+    let mut it = tmp.into_iter().peekable();
+    loop {
+        let maybe_before_count = it.next();
+        let maybe_inst = it.next();
+        match (maybe_before_count, maybe_inst) {
+            (None, _) => {
+                break;
+            }
+            (Some(C(before_commas)), Some(I(inst))) => {
+                let after_commas: Commas = match it.peek() {
+                    Some(CommasOrInstruction::C(commas)) => commas.clone(),
+                    None => Commas {
+                        span: before_commas.span,
+                        count: 0,
+                    },
+                    Some(CommasOrInstruction::I(_)) => {
+                        unreachable!("fold_step did not maintain its invariant")
+                    }
+                };
+                output.push((before_commas, inst, after_commas));
+            }
+            (Some(C(_)), None) => {
+                // No instructions in the input.
+                break;
+            }
+            (Some(I(_)), _) | (Some(C(_)), Some(C(_))) => {
+                unreachable!("fold_step did not maintain its invariant");
+            }
+        }
+    }
+    output
+}
+
+#[cfg(test)]
+mod comma_tests {
+    use super::super::types::Span;
+    use super::instructions_with_comma_counts as parent_instructions_with_comma_counts;
+    use super::Commas;
+    use super::CommasOrInstruction;
+    use super::UntaggedProgramInstruction;
+    use std::fmt::Formatter;
+    use std::ops::Range;
+
+    #[derive(Clone, Eq)]
+    struct Briefly(Commas, UntaggedProgramInstruction, Commas);
+
+    impl From<(Commas, UntaggedProgramInstruction, Commas)> for Briefly {
+        fn from(value: (Commas, UntaggedProgramInstruction, Commas)) -> Self {
+            Self(value.0, value.1, value.2)
+        }
+    }
+
+    fn briefly(v: Vec<(Commas, UntaggedProgramInstruction, Commas)>) -> Vec<Briefly> {
+        v.into_iter().map(Briefly::from).collect()
+    }
+
+    impl PartialEq<(Commas, UntaggedProgramInstruction, Commas)> for Briefly {
+        fn eq(&self, other: &(Commas, UntaggedProgramInstruction, Commas)) -> bool {
+            self.0 == other.0 && self.1 == other.1 && self.2 == other.2
+        }
+    }
+
+    impl PartialEq<Briefly> for Briefly {
+        fn eq(&self, other: &Briefly) -> bool {
+            self.0 == other.0 && self.1 == other.1 && self.2 == other.2
+        }
+    }
+
+    fn instructions_with_comma_counts(input: Vec<CommasOrInstruction>) -> Vec<Briefly> {
+        dbg!(&input);
+        let output = parent_instructions_with_comma_counts(input.into_iter());
+        output
+            .into_iter()
+            .map(|(lc, inst, rc)| Briefly(lc, inst, rc))
+            .collect()
+    }
+
+    impl std::fmt::Debug for Briefly {
+        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+            use super::*;
+            let instr_string: String = match self.1.parts.as_slice() {
+                [] => unreachable!(),
+                [only] => match only {
+                    InstructionFragment::Arithmetic(ArithmeticExpression { first, tail }) => {
+                        if tail.is_empty() {
+                            match first {
+                                Atom::Literal(LiteralValue {
+                                    span: _,
+                                    elevation: Script::Normal,
+                                    value,
+                                }) => {
+                                    format!("{value}")
+                                }
+                                _ => unreachable!(),
+                            }
+                        } else {
+                            unreachable!();
+                        }
+                    }
+                    _ => unreachable!(),
+                },
+                _too_many => unreachable!(),
+            };
+            write!(
+                f,
+                "({:?},UntaggedProgramInstruction({instr_string}),{:?})",
+                self.0, self.2
+            )
+        }
+    }
+
+    fn span(range: Range<usize>) -> Span {
+        Span::from(range)
+    }
+
+    fn inst(n: u16) -> UntaggedProgramInstruction {
+        use super::*;
+        UntaggedProgramInstruction {
+            span: span(0..1),
+            holdbit: HoldBit::Unspecified,
+            parts: vec![InstructionFragment::from(ArithmeticExpression::from(
+                Atom::Literal(LiteralValue {
+                    span: span(0..1),
+                    elevation: Script::Normal,
+                    value: n.into(),
+                }),
+            ))],
+        }
+    }
+
+    fn commas(count: usize) -> Commas {
+        Commas {
+            span: span(0..1),
+            count,
+        }
+    }
+
+    #[test]
+    fn test_instructions_with_comma_counts_len_0_all_cases() {
+        assert_eq!(instructions_with_comma_counts(Vec::new()), briefly(vec![]))
+    }
+
+    #[test]
+    fn test_instructions_with_comma_counts_len_1_all_cases() {
+        assert_eq!(
+            instructions_with_comma_counts(vec![CommasOrInstruction::I(inst(1))]),
+            briefly(vec![(commas(0), inst(1), commas(0)),])
+        );
+        assert_eq!(
+            instructions_with_comma_counts(vec![CommasOrInstruction::C(commas(1))]),
+            briefly(vec![]),
+        );
+    }
+
+    #[test]
+    fn test_instructions_with_comma_counts_len_2_with_0_instructions() {
+        assert_eq!(
+            instructions_with_comma_counts(vec![
+                CommasOrInstruction::C(commas(1)),
+                CommasOrInstruction::C(commas(2))
+            ]),
+            briefly(vec![(commas(1), inst(0), commas(2))])
+        );
+    }
+
+    #[test]
+    fn test_instructions_with_comma_counts_len_2_with_1_instruction_a() {
+        assert_eq!(
+            instructions_with_comma_counts(vec![
+                CommasOrInstruction::I(inst(1)),
+                CommasOrInstruction::C(commas(1)),
+            ]),
+            briefly(vec![(commas(0), inst(1), commas(1))])
+        );
+    }
+
+    #[test]
+    fn test_instructions_with_comma_counts_len_2_with_1_instruction_b() {
+        assert_eq!(
+            instructions_with_comma_counts(vec![
+                CommasOrInstruction::C(commas(2)),
+                CommasOrInstruction::I(inst(3)),
+            ]),
+            briefly(vec![(commas(2), inst(3), commas(0))])
+        );
+    }
+
+    #[test]
+    fn test_instructions_with_comma_counts_len_2_with_2_instructions() {
+        use CommasOrInstruction::*;
+        assert_eq!(
+            instructions_with_comma_counts(vec![I(inst(1)), I(inst(2))]),
+            briefly(vec![
+                (commas(0), inst(1), commas(0)),
+                (commas(0), inst(2), commas(0)),
+            ])
+        );
+    }
+
+    #[test]
+    fn test_instructions_with_comma_counts_len_3_with_0_instructions() {
+        use CommasOrInstruction::*;
+        assert_eq!(
+            instructions_with_comma_counts(vec![C(commas(1)), C(commas(2)), C(commas(3))]),
+            briefly(vec![
+                (commas(1), inst(0), commas(2)),
+                (commas(2), inst(0), commas(3)),
+            ])
+        );
+    }
+
+    #[test]
+    fn test_instructions_with_comma_counts_len_3_with_1_instructions() {
+        use CommasOrInstruction::*;
+        // CCI cases
+        assert_eq!(
+            instructions_with_comma_counts(vec![C(commas(1)), C(commas(2)), I(inst(3))]),
+            briefly(vec![
+                (commas(1), inst(0), commas(2)),
+                (commas(2), inst(3), commas(0)),
+            ])
+        );
+
+        // CIC cases
+        assert_eq!(
+            instructions_with_comma_counts(vec![C(commas(0)), I(inst(2)), C(commas(0))]),
+            briefly(vec![(commas(0), inst(2), commas(0))])
+        );
+        assert_eq!(
+            instructions_with_comma_counts(vec![C(commas(1)), I(inst(2)), C(commas(3))]),
+            briefly(vec![(commas(1), inst(2), commas(3))])
+        );
+        assert_eq!(
+            instructions_with_comma_counts(vec![C(commas(0)), I(inst(2)), C(commas(3))]),
+            briefly(vec![(commas(0), inst(2), commas(3))])
+        );
+
+        // ICC cases
+        assert_eq!(
+            instructions_with_comma_counts(vec![I(inst(1)), C(commas(1)), C(commas(2))]),
+            briefly(vec![
+                (commas(0), inst(1), commas(1)),
+                (commas(1), inst(0), commas(2))
+            ])
+        );
+        assert_eq!(
+            instructions_with_comma_counts(vec![I(inst(1)), C(commas(2)), C(commas(3))]),
+            briefly(vec![
+                (commas(0), inst(1), commas(2)),
+                (commas(2), inst(0), commas(3)),
+            ])
+        );
+    }
+
+    #[test]
+    fn test_instructions_with_comma_counts_len_3_with_2_instructions() {
+        use CommasOrInstruction::*;
+        // IIC cases
+        assert_eq!(
+            instructions_with_comma_counts(vec![I(inst(1)), I(inst(2)), C(commas(2))]),
+            briefly(vec![
+                (commas(0), inst(1), commas(0)),
+                (commas(0), inst(2), commas(2))
+            ])
+        );
+        assert_eq!(
+            instructions_with_comma_counts(vec![I(inst(1)), I(inst(2)), C(commas(0))]),
+            briefly(vec![
+                (commas(0), inst(1), commas(0)),
+                (commas(0), inst(2), commas(0))
+            ])
+        );
+
+        // ICI cases
+        assert_eq!(
+            instructions_with_comma_counts(vec![I(inst(1)), C(commas(2)), I(inst(2)),]),
+            briefly(vec![
+                (commas(0), inst(1), commas(2)),
+                (commas(2), inst(2), commas(0))
+            ])
+        );
+        assert_eq!(
+            instructions_with_comma_counts(vec![I(inst(1)), C(commas(3)), I(inst(2)),]),
+            briefly(vec![
+                (commas(0), inst(1), commas(3)),
+                (commas(3), inst(2), commas(0))
+            ])
+        );
+        assert_eq!(
+            instructions_with_comma_counts(vec![I(inst(1)), C(commas(0)), I(inst(2)),]),
+            briefly(vec![
+                (commas(0), inst(1), commas(0)),
+                (commas(0), inst(2), commas(0))
+            ])
+        );
+
+        // CII cases
+        assert_eq!(
+            instructions_with_comma_counts(vec![C(commas(2)), I(inst(1)), I(inst(2)),]),
+            briefly(vec![
+                (commas(2), inst(1), commas(0)),
+                (commas(0), inst(2), commas(0))
+            ])
+        );
+        assert_eq!(
+            instructions_with_comma_counts(vec![C(commas(0)), I(inst(1)), I(inst(2)),]),
+            briefly(vec![
+                (commas(0), inst(1), commas(0)),
+                (commas(0), inst(2), commas(0))
+            ])
+        );
+    }
+
+    #[test]
+    fn test_instructions_with_comma_counts_len_3_with_3_instructions() {
+        use CommasOrInstruction::*;
+        assert_eq!(
+            instructions_with_comma_counts(vec![I(inst(1)), I(inst(2)), I(inst(3)),]),
+            briefly(vec![
+                (commas(0), inst(1), commas(0)),
+                (commas(0), inst(2), commas(0)),
+                (commas(0), inst(3), commas(0)),
+            ])
+        );
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct UntaggedProgramInstruction {
     pub(crate) span: Span,
     pub(crate) holdbit: HoldBit,
@@ -855,11 +1275,30 @@ impl TaggedProgramInstruction {
         offset: Unsigned18Bit,
     ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
         let mut result = Vec::new();
-        if let Some(tag) = self.tag.as_ref() {
+        if let Some(tag) = self.tag() {
             result.extend(tag.symbol_uses(block_id, offset));
         }
         result.extend(self.instruction.symbol_uses());
         result.into_iter()
+    }
+
+    pub(crate) fn span(&self) -> Span {
+        let begin = match self.tag() {
+            Some(t) => t.span.start,
+            None => self.instruction.span.start,
+        };
+        Span::from(begin..(self.instruction.span.end))
+    }
+
+    pub(crate) fn tag(&self) -> Option<&Tag> {
+        self.tag.as_ref()
+    }
+
+    pub(crate) fn single(
+        tag: Option<Tag>,
+        instruction: UntaggedProgramInstruction,
+    ) -> TaggedProgramInstruction {
+        Self { tag, instruction }
     }
 }
 
@@ -959,13 +1398,7 @@ impl Statement {
     fn span(&self) -> Span {
         match self {
             Statement::Assignment(span, _, _) => *span,
-            Statement::Instruction(TaggedProgramInstruction { tag, instruction }) => {
-                if let Some(t) = tag {
-                    Span::from(t.span.start()..instruction.span.end())
-                } else {
-                    instruction.span
-                }
-            }
+            Statement::Instruction(inst) => inst.span(),
         }
     }
 
@@ -1000,9 +1433,9 @@ impl Statement {
 
 impl From<(Span, Unsigned36Bit)> for Statement {
     fn from((span, value): (Span, Unsigned36Bit)) -> Statement {
-        Statement::Instruction(TaggedProgramInstruction {
-            tag: None,
-            instruction: UntaggedProgramInstruction {
+        Statement::Instruction(TaggedProgramInstruction::single(
+            None,
+            UntaggedProgramInstruction {
                 span,
                 holdbit: HoldBit::Unspecified,
                 parts: vec![InstructionFragment::from(ArithmeticExpression::from(
@@ -1013,7 +1446,7 @@ impl From<(Span, Unsigned36Bit)> for Statement {
                     }),
                 ))],
             },
-        })
+        ))
     }
 }
 

@@ -567,7 +567,7 @@ impl LocatedBlock {
                     );
                 }
                 Statement::Instruction(inst) => {
-                    if let Some(tag) = inst.tag.as_ref() {
+                    if let Some(tag) = inst.tag() {
                         final_symbols.define(
                             tag.name.clone(),
                             FinalSymbolDefinition::new(
