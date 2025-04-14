@@ -516,21 +516,30 @@ fn test_200_200_200_200_with_no_commas() {
     assert_eq!(program.chunks[0].words[0], u36!(0o200200200200));
 }
 
-//#[test]
-//fn test_200_200_200_200_with_commas() {
-//    // This example is from section 6-2.4 "NUMERICAL FORMAT - USE OF
-//    // COMMAS" in the Users Handbook.
-//    //
-//    // Note that we don't have spaces in the input.  I believe this is
-//    // because the spaces in the Users Handbook are intended not to be
-//    // taken literally.  Otherwise it's unclear how to distinguish
-//    // inputs like "200 200 200 200" (from the space-separated parts
-//    // go into Q4 Q3 Q2 Q1) from inputs like "ADD X" where the values
-//    // generated from ADD and from X are assembled into the 36-bit
-//    // word as-is).
-//    let input = "200,200,,200,200\n";
-//    let program = assemble_source(input, Default::default()).expect("program is valid");
-//    dbg!(&program);
-//    assert_eq!(program.chunks.len(), 1); // one chunk (no RC-block needed).
-//    assert_eq!(program.chunks[0].words[0], u36!(0o200200200200));
-//}
+#[test]
+fn test_200_200_200_200_with_commas() {
+    // This example is from section 6-2.4 "NUMERICAL FORMAT - USE OF
+    // COMMAS" in the Users Handbook.
+    //
+    // Note that we don't have spaces in the input.  I believe this is
+    // because the spaces in the Users Handbook are intended not to be
+    // taken literally.  Otherwise it's unclear how to distinguish
+    // inputs like "200 200 200 200" (from the space-separated parts
+    // go into Q4 Q3 Q2 Q1) from inputs like "ADD X" where the values
+    // generated from ADD and from X are assembled into the 36-bit
+    // word as-is).
+    let input = "200,200,,200,200\n";
+    let program = assemble_source(input, Default::default()).expect("program is valid");
+    dbg!(&program);
+    assert_eq!(program.chunks.len(), 1); // one chunk (no RC-block needed).
+    assert_eq!(program.chunks[0].words[0], u36!(0o200200200200));
+}
+
+#[test]
+fn test_440_330_220_110_with_commas() {
+    let input = "440,330,,220,110\n";
+    let program = assemble_source(input, Default::default()).expect("program is valid");
+    dbg!(&program);
+    assert_eq!(program.chunks.len(), 1); // one chunk (no RC-block needed).
+    assert_eq!(program.chunks[0].words[0], u36!(0o440330220110));
+}
