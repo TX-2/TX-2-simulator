@@ -1690,52 +1690,82 @@ fn test_comments_without_newline_manuscript() {
     )
 }
 
-//#[test]
-//fn test_commas() {
-//    let input = "200,200,,200,200\n";
-//    let got = parse_successfully_with(input, tagged_program_instruction(), no_state_setup);
-//    let expected = TaggedProgramInstruction::multiple(
-//        None,
-//        vec![
-//            CommaDelimitedInstruction {
-//                leading_commas: Commas {
-//                    span: span(0..0),
-//                    count: 0,
-//                },
-//                instruction: UntaggedProgramInstruction {
-//                    span: span(0..3),
-//                    holdbit: HoldBit::Unspecified,
-//                    parts: vec![InstructionFragment::from((
-//                        span(3..5),
-//                        Script::Normal,
-//                        Unsigned36Bit::from(0o200u8),
-//                    ))],
-//                },
-//                trailing_commas: Commas {
-//                    span: span(3..4),
-//                    count: 1,
-//                },
-//            },
-//            CommaDelimitedInstruction {
-//                leading_commas: Commas {
-//                    span: span(3..4),
-//                    count: 1,
-//                },
-//                instruction: UntaggedProgramInstruction {
-//                    span: span(3..6),
-//                    holdbit: HoldBit::Unspecified,
-//                    parts: vec![InstructionFragment::from((
-//                        span(3..6),
-//                        Script::Normal,
-//                        Unsigned36Bit::from(0o200u8),
-//                    ))],
-//                },
-//                trailing_commas: Commas {
-//                    span: span(7..9),
-//                    count: 2,
-//                },
-//            },
-//        ],
-//    );
-//    assert_eq!(got, expected);
-//}
+#[test]
+fn test_commas() {
+    assert_eq!(
+        parse_successfully_with(",", commas(), no_state_setup),
+        Commas::One(span(0..1))
+    );
+    assert_eq!(
+        parse_successfully_with(",,", commas(), no_state_setup),
+        Commas::Two(span(0..2))
+    );
+    assert_eq!(
+        parse_successfully_with(",,,", commas(), no_state_setup),
+        Commas::Three(span(0..3))
+    );
+}
+
+#[test]
+fn test_commas_instruction() {
+    let input = "200,200,,200,200";
+    let got = parse_successfully_with(input, tagged_program_instruction(), no_state_setup);
+    let expected = TaggedProgramInstruction::multiple(
+        None,
+        vec![
+            CommaDelimitedInstruction {
+                leading_commas: None,
+                instruction: UntaggedProgramInstruction {
+                    span: span(0..3),
+                    holdbit: HoldBit::Unspecified,
+                    parts: vec![InstructionFragment::from((
+                        span(0..3),
+                        Script::Normal,
+                        Unsigned36Bit::from(0o200u8),
+                    ))],
+                },
+                trailing_commas: Some(Commas::One(span(3..4))),
+            },
+            CommaDelimitedInstruction {
+                leading_commas: Some(Commas::One(span(3..4))),
+                instruction: UntaggedProgramInstruction {
+                    span: span(4..7),
+                    holdbit: HoldBit::Unspecified,
+                    parts: vec![InstructionFragment::from((
+                        span(4..7),
+                        Script::Normal,
+                        Unsigned36Bit::from(0o200u8),
+                    ))],
+                },
+                trailing_commas: Some(Commas::Two(span(7..9))),
+            },
+            CommaDelimitedInstruction {
+                leading_commas: Some(Commas::Two(span(7..9))),
+                instruction: UntaggedProgramInstruction {
+                    span: span(9..12),
+                    holdbit: HoldBit::Unspecified,
+                    parts: vec![InstructionFragment::from((
+                        span(9..12),
+                        Script::Normal,
+                        Unsigned36Bit::from(0o200u8),
+                    ))],
+                },
+                trailing_commas: Some(Commas::One(span(12..13))),
+            },
+            CommaDelimitedInstruction {
+                leading_commas: Some(Commas::One(span(12..13))),
+                instruction: UntaggedProgramInstruction {
+                    span: span(13..16),
+                    holdbit: HoldBit::Unspecified,
+                    parts: vec![InstructionFragment::from((
+                        span(13..16),
+                        Script::Normal,
+                        Unsigned36Bit::from(0o200u8),
+                    ))],
+                },
+                trailing_commas: None,
+            },
+        ],
+    );
+    assert_eq!(got, expected);
+}
