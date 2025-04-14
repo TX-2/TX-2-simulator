@@ -935,7 +935,7 @@ where
             }
         }
     })];
-    dbg!(&initial_accumulator);
+
     let tmp = it.fold(initial_accumulator, fold_step);
     let mut output: Vec<CommaDelimitedInstruction> = Vec::with_capacity(tmp.len() / 2 + 1);
     let mut it = tmp.into_iter().peekable();
