@@ -4,7 +4,7 @@ use std::{
 };
 
 use super::super::ast::{
-    ArithmeticExpression, Atom, CommaDelimitedInstruction, Commas, ConfigValue, HoldBit,
+    ArithmeticExpression, Atom, CommaDelimitedInstruction, ConfigValue, HoldBit,
     InstructionFragment, LiteralValue, LocatedBlock, ManuscriptBlock, PunchCommand, SourceFile,
     Statement, TaggedProgramInstruction, UntaggedProgramInstruction,
 };
@@ -57,8 +57,8 @@ fn assemble_literal(input: &str, expected: &InstructionFragment) {
                             },
                         trailing_commas,
                     }] => {
-                        assert!(leading_commas.implicit());
-                        assert!(trailing_commas.implicit());
+                        assert!(leading_commas.is_none());
+                        assert!(trailing_commas.is_none());
                         match parts.as_slice() {
                             [only_frag] => {
                                 if only_frag == expected {
@@ -155,10 +155,7 @@ fn test_assemble_pass1() {
                 statements: vec![Statement::Instruction(TaggedProgramInstruction {
                     tag: None,
                     instructions: vec![CommaDelimitedInstruction {
-                        leading_commas: Commas {
-                            span: Span::from(0..0),
-                            count: 0,
-                        },
+                        leading_commas: None,
                         instruction: UntaggedProgramInstruction {
                             span: Span::from(0..2),
                             holdbit: HoldBit::Unspecified,
@@ -168,10 +165,7 @@ fn test_assemble_pass1() {
                                 u36!(0o14)
                             ))))]
                         },
-                        trailing_commas: Commas {
-                            span: Span::from(2..2),
-                            count: 0,
-                        },
+                        trailing_commas: None,
                     }]
                 })]
             }),
@@ -208,10 +202,10 @@ fn test_metacommand_dec_changes_default_base() {
         {
             if let [first_instruction] = first_instructions.as_slice() {
                 if let [second_instruction] = second_instructions.as_slice() {
-                    assert_eq!(first_instruction.leading_commas.count, 0);
-                    assert_eq!(first_instruction.trailing_commas.count, 0);
-                    assert_eq!(second_instruction.leading_commas.count, 0);
-                    assert_eq!(second_instruction.trailing_commas.count, 0);
+                    assert_eq!(first_instruction.leading_commas, None);
+                    assert_eq!(first_instruction.trailing_commas, None);
+                    assert_eq!(second_instruction.leading_commas, None);
+                    assert_eq!(second_instruction.trailing_commas, None);
 
                     let (first_parts, second_parts) = (
                         &first_instruction.instruction.parts,

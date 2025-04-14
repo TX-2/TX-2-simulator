@@ -810,10 +810,7 @@ fn test_assemble_pass1() {
         statements: vec![Statement::Instruction(TaggedProgramInstruction {
             tag: None,
             instructions: vec![CommaDelimitedInstruction {
-                leading_commas: Commas {
-                    span: span(0..0),
-                    count: 0,
-                },
+                leading_commas: None,
                 instruction: UntaggedProgramInstruction {
                     span: span(0..2),
                     holdbit: HoldBit::Unspecified,
@@ -823,10 +820,7 @@ fn test_assemble_pass1() {
                         u36!(0o14),
                     ))))],
                 },
-                trailing_commas: Commas {
-                    span: span(2..2),
-                    count: 0,
-                },
+                trailing_commas: None,
             }],
         })],
     };

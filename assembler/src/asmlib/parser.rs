@@ -662,9 +662,14 @@ where
         .at_least(1)
         .at_most(3)
         .count()
-        .map_with(|count, extra| Commas {
-            span: extra.span(),
-            count,
+        .map_with(|count, extra| {
+            let span = extra.span();
+            match count {
+                1 => Commas::One(span),
+                2 => Commas::Two(span),
+                3 => Commas::Three(span),
+                _ => unreachable!(),
+            }
         })
 }
 
@@ -674,7 +679,7 @@ where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
     let commas_or_instructions = choice((
-        commas().map(CommasOrInstruction::C),
+        commas().map(|c| CommasOrInstruction::C(Some(c))),
         untagged_program_instruction().map(CommasOrInstruction::I),
     ))
     .repeated()

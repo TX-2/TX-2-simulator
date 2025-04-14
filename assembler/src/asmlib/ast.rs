@@ -743,47 +743,38 @@ pub(crate) enum HoldBit {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Commas {
-    pub(crate) span: Span,
-    pub(crate) count: usize,
+pub(crate) enum Commas {
+    One(Span),
+    Two(Span),
+    Three(Span),
 }
 
-// TODO: switch to comething more like this:
-//#[derive(Debug, Clone, PartialEq, Eq)]
-//pub(crate) enum Commas {
-//    One(Span),
-//    Two(Span),
-//    Three(Span),
-//}
-
 impl Commas {
-    pub(crate) fn implicit(&self) -> bool {
-        self.count == 0
-    }
-
     pub(crate) fn span(&self) -> &Span {
-        &self.span
+        match &self {
+            Commas::One(span) | Commas::Two(span) | Commas::Three(span) => span,
+        }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CommasOrInstruction {
     I(UntaggedProgramInstruction),
-    C(Commas),
+    C(Option<Commas>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CommaDelimitedInstruction {
-    pub(crate) leading_commas: Commas,
+    pub(crate) leading_commas: Option<Commas>,
     pub(crate) instruction: UntaggedProgramInstruction,
-    pub(crate) trailing_commas: Commas,
+    pub(crate) trailing_commas: Option<Commas>,
 }
 
 impl CommaDelimitedInstruction {
     fn new(
-        leading_commas: Commas,
+        leading_commas: Option<Commas>,
         instruction: UntaggedProgramInstruction,
-        trailing_commas: Commas,
+        trailing_commas: Option<Commas>,
     ) -> Self {
         Self {
             leading_commas,
@@ -797,7 +788,17 @@ impl CommaDelimitedInstruction {
     }
 
     pub(crate) fn span(&self) -> Span {
-        Span::from((self.leading_commas.span().start)..(self.trailing_commas.span().end))
+        let start = self
+            .leading_commas
+            .as_ref()
+            .map(|c| c.span().start)
+            .unwrap_or(self.instruction.span.start);
+        let end = self
+            .trailing_commas
+            .as_ref()
+            .map(|c| c.span().end)
+            .unwrap_or(self.instruction.span.end);
+        Span::from(start..end)
     }
 }
 
@@ -809,7 +810,7 @@ impl Evaluate for CommaDelimitedInstruction {
         rc_allocator: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-        if self.leading_commas.count != 0 || self.trailing_commas.count != 0 {
+        if self.leading_commas.is_some() || self.trailing_commas.is_some() {
             // TODO: support explicit commas
             panic!("explicit commas are not yet supported: {self:?}");
         }
@@ -851,21 +852,25 @@ where
 
         match acc.last_mut() {
             Some(CommasOrInstruction::C(tail_comma)) => match item {
-                C(item_commas) => {
-                    if tail_comma.implicit() {
-                        *tail_comma = item_commas;
+                CommasOrInstruction::C(maybe_commas) => {
+                    if tail_comma.is_none() {
+                        *tail_comma = maybe_commas;
                     } else {
-                        let null_inst_span: Span =
-                            span(item_commas.span.start..item_commas.span.start);
+                        let null_inst_span: Span = match (tail_comma, &maybe_commas) {
+                            (_, Some(ic)) => span(ic.span().start..ic.span().start),
+                            (Some(tc), _) => span(tc.span().start..tc.span().start),
+                            (None, None) => {
+                                unreachable!("should be no need to interpose a null instruction between two instances of zero commas");
+                            }
+                        };
                         dbg!(&null_inst_span);
                         acc.push(CommasOrInstruction::I(null_instruction(null_inst_span)));
-                        acc.push(CommasOrInstruction::C(item_commas));
+                        acc.push(CommasOrInstruction::C(maybe_commas));
                     }
                 }
                 CommasOrInstruction::I(inst) => {
-                    let span: Span = span(inst.span.end..inst.span.end);
                     acc.push(CommasOrInstruction::I(inst));
-                    acc.push(CommasOrInstruction::C(Commas { span, count: 0 }));
+                    acc.push(CommasOrInstruction::C(None));
                 }
             },
             Some(I(_)) => unreachable!("invariant was broken"),
@@ -881,12 +886,9 @@ where
             None => {
                 return Vec::new();
             }
-            Some(I(inst)) => Commas {
-                span: span(inst.span.start..inst.span.start),
-                count: 0,
-            },
-            Some(C(commas)) => {
-                let c = commas.clone();
+            Some(I(_)) => None,
+            Some(C(maybe_commas)) => {
+                let c = maybe_commas.clone();
                 it.next();
                 c
             }
@@ -904,12 +906,9 @@ where
                 break;
             }
             (Some(C(before_commas)), Some(I(inst))) => {
-                let after_commas: Commas = match it.peek() {
+                let after_commas: Option<Commas> = match it.peek() {
                     Some(CommasOrInstruction::C(commas)) => commas.clone(),
-                    None => Commas {
-                        span: span(inst.span.end..inst.span.end),
-                        count: 0,
-                    },
+                    None => None,
                     Some(CommasOrInstruction::I(_)) => {
                         unreachable!("fold_step did not maintain its invariant")
                     }
@@ -945,13 +944,15 @@ mod comma_tests {
     #[derive(Clone, Eq)]
     struct Briefly(CommaDelimitedInstruction);
 
-    impl From<(Commas, UntaggedProgramInstruction, Commas)> for Briefly {
-        fn from(value: (Commas, UntaggedProgramInstruction, Commas)) -> Self {
+    impl From<(Option<Commas>, UntaggedProgramInstruction, Option<Commas>)> for Briefly {
+        fn from(value: (Option<Commas>, UntaggedProgramInstruction, Option<Commas>)) -> Self {
             Self(CommaDelimitedInstruction::new(value.0, value.1, value.2))
         }
     }
 
-    fn briefly(v: Vec<(Commas, UntaggedProgramInstruction, Commas)>) -> Vec<Briefly> {
+    fn briefly(
+        v: Vec<(Option<Commas>, UntaggedProgramInstruction, Option<Commas>)>,
+    ) -> Vec<Briefly> {
         v.into_iter().map(Briefly::from).collect()
     }
 
@@ -1022,18 +1023,14 @@ mod comma_tests {
         }
     }
 
-    fn implicit_commas<T: Into<Span>>(sp: T) -> Commas {
-        Commas {
-            span: sp.into(),
-            count: 0,
-        }
-    }
-
-    fn explicit_commas<T: Into<Span>>(sp: T, count: usize) -> Commas {
-        Commas {
-            span: sp.into(),
-            count,
-        }
+    fn explicit_commas<T: Into<Span>>(sp: T, count: usize) -> Option<Commas> {
+        let f = match count {
+            1 => Commas::One,
+            2 => Commas::Two,
+            3 => Commas::Three,
+            _ => unreachable!(),
+        };
+        Some(f(sp.into()))
     }
 
     #[test]
@@ -1045,21 +1042,16 @@ mod comma_tests {
     fn test_instructions_with_comma_counts_len_1_with_1_instructions() {
         assert_eq!(
             instructions_with_comma_counts(vec![CommasOrInstruction::I(inst(span(0..1), 1))]),
-            briefly(vec![(
-                implicit_commas(0..0),
-                inst(span(0..1), 1),
-                implicit_commas(1..1)
-            ),])
+            briefly(vec![(None, inst(span(0..1), 1), None),])
         );
     }
 
     #[test]
     fn test_instructions_with_comma_counts_len_1_with_0_instructions() {
         assert_eq!(
-            instructions_with_comma_counts(vec![CommasOrInstruction::C(Commas {
-                span: span(0..1),
-                count: 1
-            })]),
+            instructions_with_comma_counts(vec![CommasOrInstruction::C(Some(Commas::One(span(
+                0..1
+            ))))]),
             briefly(vec![]),
         );
     }
@@ -1087,7 +1079,7 @@ mod comma_tests {
                 CommasOrInstruction::C(explicit_commas(span(1..2), 1)),
             ]),
             briefly(vec![(
-                implicit_commas(0..0),
+                None,
                 inst(span(0..1), 1),
                 explicit_commas(span(1..2), 1)
             )])
@@ -1104,7 +1096,7 @@ mod comma_tests {
             briefly(vec![(
                 explicit_commas(span(0..2), 2),
                 inst(span(2..3), 3),
-                implicit_commas(3..3)
+                None,
             )])
         );
     }
@@ -1115,16 +1107,8 @@ mod comma_tests {
         assert_eq!(
             instructions_with_comma_counts(vec![I(inst(span(0..1), 1)), I(inst(span(2..3), 2))]),
             briefly(vec![
-                (
-                    implicit_commas(0..0),
-                    inst(span(0..1), 1),
-                    implicit_commas(1..1)
-                ),
-                (
-                    implicit_commas(1..1),
-                    inst(span(2..3), 2),
-                    implicit_commas(3..3)
-                ),
+                (None, inst(span(0..1), 1), None),
+                (None, inst(span(2..3), 2), None,),
             ])
         );
     }
@@ -1169,11 +1153,7 @@ mod comma_tests {
                     inst(span(2..2), 0),
                     explicit_commas(span(2..3), 2)
                 ),
-                (
-                    explicit_commas(span(2..3), 2),
-                    inst(span(3..4), 3),
-                    implicit_commas(4..4)
-                ),
+                (explicit_commas(span(2..3), 2), inst(span(3..4), 3), None,),
             ])
         );
 
@@ -1204,12 +1184,12 @@ mod comma_tests {
         );
         assert_eq!(
             instructions_with_comma_counts(vec![
-                C(implicit_commas(0..0)),
+                C(None),
                 I(inst(span(0..1), 2)),
                 C(explicit_commas(span(1..4), 3))
             ]),
             briefly(vec![(
-                implicit_commas(0..0),
+                None,
                 inst(span(0..1), 2),
                 explicit_commas(span(1..4), 3)
             )])
@@ -1223,11 +1203,7 @@ mod comma_tests {
                 C(explicit_commas(span(3..4), 2))
             ]),
             briefly(vec![
-                (
-                    implicit_commas(0..0),
-                    inst(span(0..1), 1),
-                    explicit_commas(span(1..2), 1)
-                ),
+                (None, inst(span(0..1), 1), explicit_commas(span(1..2), 1)),
                 (
                     explicit_commas(span(1..2), 1),
                     inst(span(3..3), 0),
@@ -1245,11 +1221,7 @@ mod comma_tests {
                 ]
             ),
             briefly(vec![
-                (
-                    implicit_commas(0..0),
-                    inst(span(0..1), 1),
-                    explicit_commas(span(1..3), 2)
-                ),
+                (None, inst(span(0..1), 1), explicit_commas(span(1..3), 2)),
                 (
                     explicit_commas(span(1..3), 2),
                     inst(span(4..4), 0),
@@ -1270,16 +1242,8 @@ mod comma_tests {
                 C(explicit_commas(span(3..5), 2))
             ]),
             briefly(vec![
-                (
-                    implicit_commas(0..0),
-                    inst(span(0..1), 1),
-                    implicit_commas(1..1)
-                ),
-                (
-                    implicit_commas(1..1),
-                    inst(span(2..3), 2),
-                    explicit_commas(span(3..5), 2)
-                )
+                (None, inst(span(0..1), 1), None),
+                (None, inst(span(2..3), 2), explicit_commas(span(3..5), 2))
             ])
         );
         assert_eq!(
@@ -1287,19 +1251,11 @@ mod comma_tests {
                 I(inst(span(0..1), 1)),
                 // span 1..2 is a space.
                 I(inst(span(2..3), 2)),
-                C(implicit_commas(3..3))
+                C(None)
             ]),
             briefly(vec![
-                (
-                    implicit_commas(0..0),
-                    inst(span(0..1), 1),
-                    implicit_commas(1..1)
-                ),
-                (
-                    implicit_commas(1..1),
-                    inst(span(2..3), 2),
-                    implicit_commas(3..3)
-                )
+                (None, inst(span(0..1), 1), None,),
+                (None, inst(span(2..3), 2), None,)
             ])
         );
 
@@ -1311,16 +1267,8 @@ mod comma_tests {
                 I(inst(span(3..4), 2)),
             ]),
             briefly(vec![
-                (
-                    implicit_commas(0..0),
-                    inst(span(0..1), 1),
-                    explicit_commas(span(1..3), 2)
-                ),
-                (
-                    explicit_commas(span(1..3), 2),
-                    inst(span(3..4), 2),
-                    implicit_commas(4..4)
-                )
+                (None, inst(span(0..1), 1), explicit_commas(span(1..3), 2)),
+                (explicit_commas(span(1..3), 2), inst(span(3..4), 2), None)
             ])
         );
         assert_eq!(
@@ -1330,16 +1278,8 @@ mod comma_tests {
                 I(inst(span(4..5), 2)),
             ]),
             briefly(vec![
-                (
-                    implicit_commas(0..0),
-                    inst(span(0..1), 1),
-                    explicit_commas(span(1..4), 3)
-                ),
-                (
-                    explicit_commas(span(1..4), 3),
-                    inst(span(4..5), 2),
-                    implicit_commas(5..5)
-                )
+                (None, inst(span(0..1), 1), explicit_commas(span(1..4), 3)),
+                (explicit_commas(span(1..4), 3), inst(span(4..5), 2), None)
             ])
         );
         assert_eq!(
@@ -1349,16 +1289,8 @@ mod comma_tests {
                 I(inst(span(2..3), 2)),
             ]),
             briefly(vec![
-                (
-                    implicit_commas(0..0),
-                    inst(span(0..1), 1),
-                    explicit_commas(1..2, 1)
-                ),
-                (
-                    explicit_commas(1..2, 1),
-                    inst(span(2..3), 2),
-                    implicit_commas(3..3)
-                )
+                (None, inst(span(0..1), 1), explicit_commas(1..2, 1)),
+                (explicit_commas(1..2, 1), inst(span(2..3), 2), None)
             ])
         );
 
@@ -1370,35 +1302,19 @@ mod comma_tests {
                 I(inst(span(4..5), 2)),
             ]),
             briefly(vec![
-                (
-                    explicit_commas(span(0..2), 2),
-                    inst(span(2..3), 1),
-                    implicit_commas(3..3)
-                ),
-                (
-                    implicit_commas(3..3),
-                    inst(span(4..5), 2),
-                    implicit_commas(5..5)
-                )
+                (explicit_commas(span(0..2), 2), inst(span(2..3), 1), None),
+                (None, inst(span(4..5), 2), None)
             ])
         );
         assert_eq!(
             instructions_with_comma_counts(vec![
-                C(implicit_commas(0..0)),
+                C(None),
                 I(inst(span(0..1), 1)),
                 I(inst(span(1..3), 2)),
             ]),
             briefly(vec![
-                (
-                    implicit_commas(0..0),
-                    inst(span(0..1), 1),
-                    implicit_commas(1..1)
-                ),
-                (
-                    implicit_commas(1..1),
-                    inst(span(1..3), 2),
-                    implicit_commas(3..3)
-                )
+                (None, inst(span(0..1), 1), None),
+                (None, inst(span(1..3), 2), None)
             ])
         );
     }
@@ -1413,21 +1329,9 @@ mod comma_tests {
                 I(inst(span(4..5), 3)),
             ]),
             briefly(vec![
-                (
-                    implicit_commas(0..0),
-                    inst(span(0..1), 1),
-                    implicit_commas(1..1)
-                ),
-                (
-                    implicit_commas(1..1),
-                    inst(span(2..3), 2),
-                    implicit_commas(3..3)
-                ),
-                (
-                    implicit_commas(3..3),
-                    inst(span(4..5), 3),
-                    implicit_commas(5..5)
-                ),
+                (None, inst(span(0..1), 1), None),
+                (None, inst(span(2..3), 2), None),
+                (None, inst(span(4..5), 3), None),
             ])
         );
     }
@@ -1582,19 +1486,12 @@ impl TaggedProgramInstruction {
         tag: Option<Tag>,
         instruction: UntaggedProgramInstruction,
     ) -> TaggedProgramInstruction {
-        fn implicit_commas(at: usize) -> Commas {
-            Commas {
-                span: Span::from(at..at),
-                count: 0,
-            }
-        }
-        let span: Span = instruction.span;
         TaggedProgramInstruction::multiple(
             tag,
             vec![CommaDelimitedInstruction {
-                leading_commas: implicit_commas(span.start),
+                leading_commas: None,
                 instruction,
-                trailing_commas: implicit_commas(span.end),
+                trailing_commas: None,
             }],
         )
     }
