@@ -9,7 +9,7 @@ use std::ops::{Shl, Shr};
 use base::charset::{subscript_char, superscript_char, Script};
 use base::prelude::*;
 
-use crate::eval::{HereValue, SymbolLookupFailure, SymbolValue};
+use crate::eval::{combine_fragment_values, HereValue, SymbolLookupFailure, SymbolValue};
 use crate::symtab::LookupOperation;
 
 use super::eval::{Evaluate, RcBlock, SymbolContext, SymbolDefinition, SymbolLookup, SymbolUse};
@@ -537,7 +537,7 @@ pub(crate) enum InstructionFragment {
     PipeConstruct {
         index: SymbolOrLiteral,
         rc_word_span: Span,
-        rc_word_fragments: Vec<InstructionFragment>,
+        rc_word_value: Box<(InstructionFragment, Atom)>,
     },
     // TODO: subscript/superscript atom (if the `Arithmetic` variant
     // disallows subscript/superscript).
@@ -557,7 +557,7 @@ impl InstructionFragment {
             InstructionFragment::PipeConstruct {
                 index,
                 rc_word_span: _,
-                rc_word_fragments,
+                rc_word_value,
             } => {
                 result.extend(index.symbol_uses().map(|(name, span, mut symbol_use)| {
                     if let SymbolUse::Reference(context) = &mut symbol_use {
@@ -566,7 +566,9 @@ impl InstructionFragment {
                     };
                     (name, span, symbol_use)
                 }));
-                result.extend(rc_word_fragments.iter().flat_map(|frag| frag.symbol_uses()));
+                let (base, index) = rc_word_value.as_ref();
+                result.extend(base.symbol_uses());
+                result.extend(index.symbol_uses());
             }
         }
         result.into_iter()
@@ -596,7 +598,7 @@ impl Evaluate for InstructionFragment {
             InstructionFragment::PipeConstruct {
                 index: p,
                 rc_word_span,
-                rc_word_fragments,
+                rc_word_value,
             } => {
                 // The pipe construct is described in section 6-2.8
                 // "SPECIAL SYMBOLS" of the Users Handbook.
@@ -605,18 +607,16 @@ impl Evaluate for InstructionFragment {
                 // "ADXₚ|ₜQ" should be equivalent to "ADXₚ{Qₜ}*".
                 // (Note that in the real pipe construct the "|" is
                 // itself in subscript).  During parsing, the values
-                // of Q and ₜ were combined into rc_word_fragments.
-                // We evaluate Qₜ as rc_word_value.
-                let rc_word_value: Unsigned36Bit = evaluate_instruction_fragments(
-                    rc_word_fragments,
-                    target_address,
-                    symtab,
-                    rc_allocator,
-                    op,
-                )?;
+                // of Q and ₜ were combined into the two parts of the
+                // rc_word_value tuple.  We evaluate Qₜ as
+                // rc_word_val.
+                let (base, index) = rc_word_value.as_ref();
+                let base_value = base.evaluate(target_address, symtab, rc_allocator, op)?;
+                let index_value = index.evaluate(target_address, symtab, rc_allocator, op)?;
+                let rc_word_val: Unsigned36Bit = combine_fragment_values(base_value, index_value);
                 let p_value: Unsigned36Bit =
                     index_value_of(p.evaluate(target_address, symtab, rc_allocator, op)?);
-                let addr: Address = rc_allocator.allocate(*rc_word_span, rc_word_value);
+                let addr: Address = rc_allocator.allocate(*rc_word_span, rc_word_val);
                 Ok(combine_fragment_values(
                     combine_fragment_values(Unsigned36Bit::from(addr), p_value),
                     DEFER_BIT,
@@ -881,13 +881,13 @@ where
             UntaggedProgramInstruction {
                 span,
                 holdbit: HoldBit::Unspecified,
-                parts: vec![InstructionFragment::from(ArithmeticExpression::from(
-                    Atom::Literal(LiteralValue {
+                inst: InstructionFragment::from(ArithmeticExpression::from(Atom::Literal(
+                    LiteralValue {
                         span,
                         elevation: Script::Normal,
                         value: Unsigned36Bit::ZERO,
-                    }),
-                ))],
+                    },
+                ))),
             }
         }
 
@@ -1020,9 +1020,8 @@ mod comma_tests {
     impl std::fmt::Debug for Briefly {
         fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
             use super::*;
-            let instr_string: String = match self.0.instruction.parts.as_slice() {
-                [] => unreachable!(),
-                [only] => match only {
+            let instr_string: String = {
+                match &self.0.instruction.inst {
                     InstructionFragment::Arithmetic(ArithmeticExpression { first, tail }) => {
                         if tail.is_empty() {
                             match first {
@@ -1040,8 +1039,7 @@ mod comma_tests {
                         }
                     }
                     _ => unreachable!(),
-                },
-                _too_many => unreachable!(),
+                }
             };
             write!(
                 f,
@@ -1056,13 +1054,13 @@ mod comma_tests {
         UntaggedProgramInstruction {
             span: sp,
             holdbit: HoldBit::Unspecified,
-            parts: vec![InstructionFragment::from(ArithmeticExpression::from(
-                Atom::Literal(LiteralValue {
+            inst: InstructionFragment::from(ArithmeticExpression::from(Atom::Literal(
+                LiteralValue {
                     span: sp,
                     elevation: Script::Normal,
                     value: n.into(),
-                }),
-            ))],
+                },
+            ))),
         }
     }
 
@@ -1742,24 +1740,31 @@ mod comma_tests {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct EqualityValue(Vec<CommaDelimitedInstruction>);
+
+impl EqualityValue {
+    pub(crate) fn items(&self) -> &[CommaDelimitedInstruction] {
+        &self.0
+    }
+}
+
+impl From<Vec<CommaDelimitedInstruction>> for EqualityValue {
+    fn from(value: Vec<CommaDelimitedInstruction>) -> Self {
+        Self(value)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct UntaggedProgramInstruction {
     pub(crate) span: Span,
     pub(crate) holdbit: HoldBit,
-    pub(crate) parts: Vec<InstructionFragment>,
+    pub(crate) inst: InstructionFragment,
 }
 
 impl UntaggedProgramInstruction {
     pub(crate) fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> + '_ {
-        self.parts.iter().flat_map(InstructionFragment::symbol_uses)
+        self.inst.symbol_uses()
     }
-}
-
-/// The Users Handbook implies that instruction fragments are added
-/// together, and I am not sure whether they mean this literally (as
-/// in, addition) or figuratively (as in a logica-or operation).  This
-/// function exists to be a single place to encode this assumption.
-fn combine_fragment_values(left: Unsigned36Bit, right: Unsigned36Bit) -> Unsigned36Bit {
-    left | right
 }
 
 fn evaluate_instruction_fragments<R: RcAllocator>(
@@ -1788,6 +1793,17 @@ fn evaluate_instruction_fragments<R: RcAllocator>(
     })
 }
 
+fn evaluate_instruction_fragment<R: RcAllocator>(
+    // TODO: fold into caller
+    inst: &InstructionFragment,
+    target_address: &HereValue,
+    symtab: &mut SymbolTable,
+    rc_allocator: &mut R,
+    op: &mut LookupOperation,
+) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+    inst.evaluate(target_address, symtab, rc_allocator, op)
+}
+
 impl Evaluate for UntaggedProgramInstruction {
     fn evaluate<R: RcAllocator>(
         &self,
@@ -1796,18 +1812,13 @@ impl Evaluate for UntaggedProgramInstruction {
         rc_allocator: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-        evaluate_instruction_fragments(
-            self.parts.as_slice(),
-            target_address,
-            symtab,
-            rc_allocator,
-            op,
+        evaluate_instruction_fragment(&self.inst, target_address, symtab, rc_allocator, op).map(
+            |word| match self.holdbit {
+                HoldBit::Hold => word | HELD_MASK,
+                HoldBit::NotHold => word & !HELD_MASK,
+                HoldBit::Unspecified => word,
+            },
         )
-        .map(|word| match self.holdbit {
-            HoldBit::Hold => word | HELD_MASK,
-            HoldBit::NotHold => word & !HELD_MASK,
-            HoldBit::Unspecified => word,
-        })
     }
 }
 
@@ -1909,30 +1920,6 @@ impl TaggedProgramInstruction {
     }
 }
 
-impl Evaluate for TaggedProgramInstruction {
-    fn evaluate<R: RcAllocator>(
-        &self,
-        target_address: &HereValue,
-        symtab: &mut SymbolTable,
-        rc_allocator: &mut R,
-        op: &mut LookupOperation,
-    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-        if self.instructions.is_empty() {
-            panic!("invariant broken: TaggedProgramInstruction contains zero instructions");
-        }
-        // Instructions are evaluated left-to-right, as stated in item
-        // (b) in section 6-2.4, "NUMERICAL FORMAT - USE OF COMMAS" of
-        // the Users Handbook.  The initial value is zero (as
-        // specified in item (a) in the same place).
-        self.instructions
-            .iter()
-            .try_fold(Unsigned36Bit::ZERO, |acc, inst| {
-                inst.evaluate(target_address, symtab, rc_allocator, op)
-                    .map(|value| combine_fragment_values(acc, value))
-            })
-    }
-}
-
 const HELD_MASK: Unsigned36Bit = u36!(1 << 35);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2008,7 +1995,7 @@ pub(crate) enum Statement {
     // RHS of the assignment is symbolic the user needs to be able to
     // set the hold bit with "h".  However, since we don't allow tags
     // on the RHS, the value cannot be a TaggedProgramInstruction.
-    Assignment(Span, SymbolName, UntaggedProgramInstruction), // User Guide calls these "equalities".
+    Assignment(Span, SymbolName, EqualityValue), // User Guide calls these "equalities".
     Instruction(TaggedProgramInstruction),
 }
 
@@ -2056,13 +2043,13 @@ impl From<(Span, Unsigned36Bit)> for Statement {
             UntaggedProgramInstruction {
                 span,
                 holdbit: HoldBit::Unspecified,
-                parts: vec![InstructionFragment::from(ArithmeticExpression::from(
-                    Atom::Literal(LiteralValue {
+                inst: InstructionFragment::from(ArithmeticExpression::from(Atom::Literal(
+                    LiteralValue {
                         span,
                         elevation: Script::Normal,
                         value,
-                    }),
-                ))],
+                    },
+                ))),
             },
         ))
     }

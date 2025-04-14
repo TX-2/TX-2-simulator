@@ -8,7 +8,7 @@ use base::{
 
 use crate::symtab::{LookupOperation, SymbolTable};
 
-use super::ast::{RcAllocator, UntaggedProgramInstruction};
+use super::ast::{EqualityValue, RcAllocator, TaggedProgramInstruction};
 use super::span::*;
 use super::symbol::SymbolName;
 use super::types::{BlockIdentifier, MachineLimitExceededFailure, OrderableSpan};
@@ -292,7 +292,7 @@ pub(crate) enum SymbolDefinition {
         span: Span,
     },
     Origin(Address),
-    Equality(UntaggedProgramInstruction),
+    Equality(EqualityValue),
     Undefined(SymbolContext),
     DefaultAssigned(Unsigned36Bit, SymbolContext),
 }
@@ -431,5 +431,61 @@ pub(crate) fn make_empty_rc_block_for_test(location: Address) -> RcBlock {
     RcBlock {
         address: location,
         words: Vec::new(),
+    }
+}
+
+pub(crate) fn evaluate_and_combine_values<R, E>(
+    items: &[E],
+    target_address: &HereValue,
+    symtab: &mut SymbolTable,
+    rc_allocator: &mut R,
+    op: &mut LookupOperation,
+) -> Result<Unsigned36Bit, SymbolLookupFailure>
+where
+    R: RcAllocator,
+    E: Evaluate,
+{
+    items.iter().try_fold(Unsigned36Bit::ZERO, |acc, item| {
+        item.evaluate(target_address, symtab, rc_allocator, op)
+            .map(|value| combine_fragment_values(acc, value))
+    })
+}
+
+impl Evaluate for EqualityValue {
+    fn evaluate<R: RcAllocator>(
+        &self,
+        target_address: &HereValue,
+        symtab: &mut SymbolTable,
+        rc_allocator: &mut R,
+        op: &mut LookupOperation,
+    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+        // Comma delimited values are evaluated left-to-right, as stated in item
+        // (b) in section 6-2.4, "NUMERICAL FORMAT - USE OF COMMAS" of
+        // the Users Handbook.  The initial value is zero (as
+        // specified in item (a) in the same place).
+        evaluate_and_combine_values(self.items(), target_address, symtab, rc_allocator, op)
+    }
+}
+
+/// The Users Handbook implies that instruction fragments are added
+/// together, and I am not sure whether they mean this literally (as
+/// in, addition) or figuratively (as in a logica-or operation).  This
+/// function exists to be a single place to encode this assumption.
+pub(crate) fn combine_fragment_values(left: Unsigned36Bit, right: Unsigned36Bit) -> Unsigned36Bit {
+    left | right
+}
+
+impl Evaluate for TaggedProgramInstruction {
+    fn evaluate<R: RcAllocator>(
+        &self,
+        target_address: &HereValue,
+        symtab: &mut SymbolTable,
+        rc_allocator: &mut R,
+        op: &mut LookupOperation,
+    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+        if self.instructions.is_empty() {
+            panic!("invariant broken: TaggedProgramInstruction contains zero instructions");
+        }
+        evaluate_and_combine_values(&self.instructions, target_address, symtab, rc_allocator, op)
     }
 }

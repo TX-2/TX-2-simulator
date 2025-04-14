@@ -52,27 +52,20 @@ fn assemble_literal(input: &str, expected: &InstructionFragment) {
                         instruction:
                             UntaggedProgramInstruction {
                                 holdbit: HoldBit::Unspecified,
-                                parts,
+                                inst: only_frag,
                                 span: _,
                             },
                         trailing_commas,
                     }] => {
                         assert!(leading_commas.is_none());
                         assert!(trailing_commas.is_none());
-                        match parts.as_slice() {
-                            [only_frag] => {
-                                if only_frag == expected {
-                                    return;
-                                }
-                                panic!(
-                                    "expected single instruction {:?}\ngot {:?}",
-                                    &expected, &only_frag,
-                                );
-                            }
-                            got => {
-                                panic!("expected one instruction containing {expected:?}\ngot wrong number of fragments {got:?}");
-                            }
+                        if only_frag == expected {
+                            return;
                         }
+                        panic!(
+                            "expected single instruction {:?}\ngot {:?}",
+                            &expected, &only_frag,
+                        );
                     }
                     _ => {
                         panic!(
@@ -159,11 +152,11 @@ fn test_assemble_pass1() {
                         instruction: UntaggedProgramInstruction {
                             span: Span::from(0..2),
                             holdbit: HoldBit::Unspecified,
-                            parts: vec![atom_to_fragment(Atom::Literal(LiteralValue::from((
+                            inst: atom_to_fragment(Atom::Literal(LiteralValue::from((
                                 Span::from(0..2),
                                 Script::Normal,
                                 u36!(0o14)
-                            ))))]
+                            ))))
                         },
                         trailing_commas: None,
                     }]
@@ -207,25 +200,21 @@ fn test_metacommand_dec_changes_default_base() {
                     assert_eq!(second_instruction.leading_commas, None);
                     assert_eq!(second_instruction.trailing_commas, None);
 
-                    let (first_parts, second_parts) = (
-                        &first_instruction.instruction.parts,
-                        &second_instruction.instruction.parts,
-                    );
                     assert_eq!(
-                        &first_parts.as_slice(),
-                        &[InstructionFragment::from((
+                        &first_instruction.instruction.inst,
+                        &InstructionFragment::from((
                             Span::from(0..2usize),
                             Script::Normal,
                             Unsigned36Bit::from(0o10_u32),
-                        ))],
+                        )),
                     );
                     assert_eq!(
-                        &second_parts.as_slice(),
-                        &[InstructionFragment::from((
+                        &second_instruction.instruction.inst,
+                        &InstructionFragment::from((
                             span(17..19),
                             Script::Normal,
                             Unsigned36Bit::from(0o12_u32),
-                        ))],
+                        )),
                     );
                     return;
                 }
@@ -543,3 +532,14 @@ fn test_440_330_220_110_with_commas() {
     assert_eq!(program.chunks.len(), 1); // one chunk (no RC-block needed).
     assert_eq!(program.chunks[0].words[0], u36!(0o440330220110));
 }
+
+//#[test]
+//fn test_440_330_220_110_with_commas_in_rc_word() {
+//    let input = "{440,330,,220,110}\n";
+//    let program = assemble_source(input, Default::default()).expect("program is valid");
+//    dbg!(&program);
+//    assert_eq!(program.chunks.len(), 2); // one regular chunk plus RC-block
+//    assert_eq!(program.chunks[0].words[0], program.chunks[1].address); // point to first word in RC-block
+//    assert_eq!(program.chunks[1].words[0], u36!(0o440330220110));
+//}
+//

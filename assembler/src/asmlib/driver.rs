@@ -190,7 +190,9 @@ pub(crate) fn assemble_nonempty_valid_input(input: &str) -> (Directive, SymbolTa
     let result: Result<(Option<SourceFile>, OutputOptions), AssemblerFailure> =
         assemble_pass1(input, &mut errors);
     if !errors.is_empty() {
-        panic!("assemble_nonempty_valid_input: errors were reported: {errors:?}");
+        panic!(
+            "assemble_nonempty_valid_input: for input\n{input}\nerrors were reported: {errors:?}"
+        );
     }
     match result {
         Ok((None, _)) => unreachable!("parser should generate output if there are no errors"),
@@ -814,11 +816,11 @@ fn test_assemble_pass1() {
                 instruction: UntaggedProgramInstruction {
                     span: span(0..2),
                     holdbit: HoldBit::Unspecified,
-                    parts: vec![atom_to_fragment(Atom::Literal(LiteralValue::from((
+                    inst: atom_to_fragment(Atom::Literal(LiteralValue::from((
                         span(0..2),
                         Script::Normal,
                         u36!(0o14),
-                    ))))],
+                    )))),
                 },
                 trailing_commas: None,
             }],

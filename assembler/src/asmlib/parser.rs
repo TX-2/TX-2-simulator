@@ -9,8 +9,8 @@ mod symex;
 mod tests;
 
 use chumsky::error::Rich;
-use chumsky::extra::Full;
-use chumsky::input::{Stream, ValueInput};
+use chumsky::extra::{Full, ParserExtra};
+use chumsky::input::{MapExtra, Stream, ValueInput};
 use chumsky::inspector::SimpleState;
 use chumsky::prelude::{choice, just, one_of, recursive, Input, IterParser, SimpleSpan};
 use chumsky::select;
@@ -309,9 +309,9 @@ where
 /// "ADXₚ|ₜQ" should be equivalent to "ADXₚ{Qₜ}*".  So during
 /// evaluation we will need to generate an RC-word containing Qₜ.
 fn make_pipe_construct(
-    ((p_index, t), (mut qfrags, qspan)): (
+    ((p_index, t), (qfrag, qspan)): (
         (SymbolOrLiteral, SymbolOrLiteral),
-        (Vec<InstructionFragment>, Span),
+        (InstructionFragment, Span),
     ),
 ) -> InstructionFragment {
     // The variable names here are taken from the example in the
@@ -319,30 +319,16 @@ fn make_pipe_construct(
     InstructionFragment::PipeConstruct {
         index: p_index,
         rc_word_span: qspan,
-        rc_word_fragments: {
-            // When this part of the AST is evaluated, the contents of
-            // qfrags (which is Q in our example) will be evaluated as
-            // a single 36-bit word.  So to get Qₜ in that RC-word, we
-            // need to arrange for t to end up in the index syllable
-            // of that word (forming ₜ, being t shifted into the index
-            // syllable).  Since the expression was already in
-            // subscript, the evaluation process will ensure it is
-            // placed in the correct syllable.
-            qfrags.push(InstructionFragment::Arithmetic(ArithmeticExpression::from(
-                t,
-            )));
-            qfrags
-        },
+        rc_word_value: Box::new((qfrag, Atom::from(t))),
     }
 }
 
-fn program_instruction_fragments<'srcbody, I>(
-) -> impl Parser<'srcbody, I, Vec<InstructionFragment>, Extra<'srcbody>>
+fn program_instruction_fragment<'srcbody, I>(
+) -> impl Parser<'srcbody, I, InstructionFragment, Extra<'srcbody>>
 where
     I: Input<'srcbody, Token = Tok, Span = Span> + ValueInput<'srcbody>,
 {
-    // Parse a sequence of values (symbolic or literal) and arithmetic
-    // operators.
+    // Parse a values (symbolic or literal) or arithmetic expression.
     //
     // BAT² is not an identifier but a sequence[1] whose value is
     // computed by OR-ing the value of the symex BAT with the value of
@@ -353,21 +339,18 @@ where
     // You could argue that (BAT²) should be parsed as an atom.  Right
     // now that doesn't work because all the elements of an expression
     // (i.e. everything within the parens) need to have the same script.
-    //
-    // [1] I use "sequence" in the paragraph above to avoid saying
-    // "expression" or "instruction fragment".
-    recursive(move |program_instruction_fragments| {
+    recursive(move |program_instruction_fragment| {
         // Parse {E} where E is some expression.  Since tags are
         // allowed inside RC-blocks, we should parse E as a
         // TaggedProgramInstruction.  But if we try to do that without
         // using recursive() we will blow the stack, unfortunately.
-        let register_containing = program_instruction_fragments
+        let register_containing = program_instruction_fragment
             .clone()
             .delimited_by(
                 just(Tok::LeftBrace(Script::Normal)),
                 just(Tok::RightBrace(Script::Normal)),
             )
-            .map_with(|fragments, extra| Atom::RcRef(extra.span(), fragments))
+            .map_with(|fragment, extra| Atom::RcRef(extra.span(), vec![fragment]))
             .labelled("RC-word");
 
         let arith_expr = |script_required: Script| {
@@ -423,18 +406,25 @@ where
         //
         // "ADXₚ|ₜQ" should be equivalent to ADXₚ{Qₜ}*.  So we need to
         // generate an RC-word containing Qₜ.
-        let spanned_fragments = program_instruction_fragments // this is Q
+        fn getspan<
+            'srcbody,
+            I: Input<'srcbody, Token = Tok, Span = Span>,
+            E: ParserExtra<'srcbody, I>,
+        >(
+            frag: InstructionFragment,
+            extra: &mut MapExtra<'srcbody, '_, I, E>,
+        ) -> (InstructionFragment, Span) {
+            (frag, extra.span())
+        }
+        let spanned_fragment = program_instruction_fragment // this is Q
             .clone()
-            .map_with(|v: Vec<InstructionFragment>, extra| {
-                let span: Span = extra.span();
-                (v, span)
-            });
+            .map_with(getspan);
         let pipe_construct = (symbol_or_literal(Script::Sub) // this is p
             .then_ignore(just(Tok::Pipe(Script::Sub)))
             .then(
                 symbol_or_literal(Script::Sub), // this is t
             )
-            .then(spanned_fragments))
+            .then(spanned_fragment))
         .map(make_pipe_construct)
         .labelled("pipe construct");
 
@@ -448,9 +438,6 @@ where
             asterisk_indirection_fragment(),
             config_value(),
         ))
-        .repeated()
-        .at_least(1)
-        .collect()
         .labelled("program instruction")
     })
 }
@@ -642,12 +629,12 @@ where
     ))
     .or_not()
     .labelled("instruction hold bit");
-    maybe_hold.then(program_instruction_fragments()).map_with(
-        |(maybe_hold, parts): (Option<HoldBit>, Vec<InstructionFragment>), extra| {
+    maybe_hold.then(program_instruction_fragment()).map_with(
+        |(maybe_hold, inst): (Option<HoldBit>, InstructionFragment), extra| {
             UntaggedProgramInstruction {
                 span: extra.span(),
                 holdbit: maybe_hold.unwrap_or(HoldBit::Unspecified),
-                parts,
+                inst,
             }
         },
     )
@@ -712,13 +699,13 @@ where
     /// Assginments are called "equalities" in the TX-2 Users Handbook.
     /// See section 6-2.2, "SYMEX DEFINITON - TAGS - EQUALITIES -
     /// AUTOMATIC ASSIGNMENT".
-    fn assignment<'a, I>() -> impl Parser<'a, I, (SymbolName, UntaggedProgramInstruction), Extra<'a>>
+    fn assignment<'a, I>() -> impl Parser<'a, I, (SymbolName, EqualityValue), Extra<'a>>
     where
         I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
     {
         (symex::parse_symex(Script::Normal)
             .then_ignore(just(Tok::Equals(Script::Normal)))
-            .then(untagged_program_instruction()))
+            .then(comma_delimited_instructions().map(EqualityValue::from)))
         .labelled("equality (assignment)")
     }
 
