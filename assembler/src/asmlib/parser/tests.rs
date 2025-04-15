@@ -636,21 +636,51 @@ fn test_manuscript_with_origin() {
 #[test]
 fn test_arrow() {
     assert_eq!(
-        parse_successfully_with("FOO->", tag_definition(), no_state_setup),
-        Tag {
-            name: SymbolName {
-                canonical: "FOO".to_string()
-            },
-            span: span(0..3),
+        parse_successfully_with("FOO->0", tagged_program_instruction(), no_state_setup),
+        TaggedProgramInstruction {
+            tag: Some(Tag {
+                name: SymbolName {
+                    canonical: "FOO".to_string()
+                },
+                span: span(0..3),
+            }),
+            instructions: vec![CommaDelimitedInstruction {
+                leading_commas: None,
+                instruction: UntaggedProgramInstruction {
+                    span: span(5..6),
+                    holdbit: HoldBit::Unspecified,
+                    inst: InstructionFragment::Arithmetic(ArithmeticExpression::from(
+                        Atom::Literal(LiteralValue::from((
+                            span(5..6),
+                            Script::Normal,
+                            Unsigned36Bit::ZERO
+                        )))
+                    )),
+                },
+                trailing_commas: None
+            }]
         }
     );
     assert_eq!(
-        parse_successfully_with("BAR  -> ", tag_definition(), no_state_setup),
-        Tag {
-            name: SymbolName {
-                canonical: "BAR".to_string(),
-            },
-            span: span(0..3),
+        parse_successfully_with("BAR  -> 1", tagged_program_instruction(), no_state_setup),
+        TaggedProgramInstruction {
+            tag: Some(Tag {
+                name: SymbolName {
+                    canonical: "BAR".to_string(),
+                },
+                span: span(0..3),
+            }),
+            instructions: vec![CommaDelimitedInstruction {
+                leading_commas: None,
+                instruction: UntaggedProgramInstruction {
+                    span: span(8..9),
+                    holdbit: HoldBit::Unspecified,
+                    inst: InstructionFragment::Arithmetic(ArithmeticExpression::from(
+                        Atom::Literal(LiteralValue::from((span(8..9), Script::Normal, u36!(1),)))
+                    )),
+                },
+                trailing_commas: None
+            }]
         }
     );
 }
@@ -1713,22 +1743,6 @@ fn test_comments_without_newline_manuscript() {
             punch: None,
         }
     )
-}
-
-#[test]
-fn test_commas() {
-    assert_eq!(
-        parse_successfully_with(",", commas(), no_state_setup),
-        Commas::One(span(0..1))
-    );
-    assert_eq!(
-        parse_successfully_with(",,", commas(), no_state_setup),
-        Commas::Two(span(0..2))
-    );
-    assert_eq!(
-        parse_successfully_with(",,,", commas(), no_state_setup),
-        Commas::Three(span(0..3))
-    );
 }
 
 #[test]

@@ -209,19 +209,6 @@ where
     .labelled("symex (symbol)")
 }
 
-fn tag_definition<'a, I>() -> impl Parser<'a, I, Tag, Extra<'a>>
-where
-    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
-{
-    named_symbol(Script::Normal)
-        .map_with(|name, extra| Tag {
-            name,
-            span: extra.span(),
-        })
-        .then_ignore(just(Tok::Arrow(Script::Normal)))
-        .labelled("tag definition")
-}
-
 pub(super) fn operator<'a, I>(
     script_required: Script,
 ) -> impl Parser<'a, I, Operator, Extra<'a>> + Clone
@@ -619,52 +606,53 @@ where
     .labelled("metacommand")
 }
 
-fn untagged_program_instruction<'a, I>() -> impl Parser<'a, I, UntaggedProgramInstruction, Extra<'a>>
-where
-    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
-{
-    let maybe_hold = choice((
-        one_of(Tok::Hold).to(HoldBit::Hold),
-        just(Tok::NotHold).to(HoldBit::NotHold),
-    ))
-    .or_not()
-    .labelled("instruction hold bit");
-    maybe_hold.then(program_instruction_fragment()).map_with(
-        |(maybe_hold, inst): (Option<HoldBit>, InstructionFragment), extra| {
-            UntaggedProgramInstruction {
-                span: extra.span(),
-                holdbit: maybe_hold.unwrap_or(HoldBit::Unspecified),
-                inst,
-            }
-        },
-    )
-}
-
-fn commas<'a, I>() -> impl Parser<'a, I, Commas, Extra<'a>>
-where
-    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
-{
-    just(Tok::Comma(Script::Normal))
-        .repeated()
-        .at_least(1)
-        .at_most(3)
-        .count()
-        .map_with(|count, extra| {
-            let span = extra.span();
-            match count {
-                1 => Commas::One(span),
-                2 => Commas::Two(span),
-                3 => Commas::Three(span),
-                _ => unreachable!(),
-            }
-        })
-}
-
 fn comma_delimited_instructions<'a, I>(
 ) -> impl Parser<'a, I, Vec<CommaDelimitedInstruction>, Extra<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
+    fn commas<'a, I>() -> impl Parser<'a, I, Commas, Extra<'a>>
+    where
+        I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
+    {
+        just(Tok::Comma(Script::Normal))
+            .repeated()
+            .at_least(1)
+            .at_most(3)
+            .count()
+            .map_with(|count, extra| {
+                let span = extra.span();
+                match count {
+                    1 => Commas::One(span),
+                    2 => Commas::Two(span),
+                    3 => Commas::Three(span),
+                    _ => unreachable!(),
+                }
+            })
+    }
+
+    fn untagged_program_instruction<'a, I>(
+    ) -> impl Parser<'a, I, UntaggedProgramInstruction, Extra<'a>>
+    where
+        I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
+    {
+        let maybe_hold = choice((
+            one_of(Tok::Hold).to(HoldBit::Hold),
+            just(Tok::NotHold).to(HoldBit::NotHold),
+        ))
+        .or_not()
+        .labelled("instruction hold bit");
+        maybe_hold.then(program_instruction_fragment()).map_with(
+            |(maybe_hold, inst): (Option<HoldBit>, InstructionFragment), extra| {
+                UntaggedProgramInstruction {
+                    span: extra.span(),
+                    holdbit: maybe_hold.unwrap_or(HoldBit::Unspecified),
+                    inst,
+                }
+            },
+        )
+    }
+
     let commas_or_instructions = choice((
         commas().map(|c| CommasOrInstruction::C(Some(c))),
         untagged_program_instruction().map(CommasOrInstruction::I),
@@ -679,6 +667,19 @@ fn tagged_program_instruction<'a, I>() -> impl Parser<'a, I, TaggedProgramInstru
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
+    fn tag_definition<'a, I>() -> impl Parser<'a, I, Tag, Extra<'a>>
+    where
+        I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
+    {
+        named_symbol(Script::Normal)
+            .map_with(|name, extra| Tag {
+                name,
+                span: extra.span(),
+            })
+            .then_ignore(just(Tok::Arrow(Script::Normal)))
+            .labelled("tag definition")
+    }
+
     tag_definition()
         .or_not()
         .then(comma_delimited_instructions())
@@ -899,7 +900,7 @@ where
                         // similar way we would need to return TAB as
                         // a lexeme.  The problem with doing that
                         // though is that the parser would have to
-                        // permit the TAB token between regulart
+                        // permit the TAB token between regular
                         // tokens everywhere in the grammar except
                         // between two symex components.  That would
                         // make the grammar difficult to maintain (and
