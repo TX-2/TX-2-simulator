@@ -5,7 +5,7 @@ use std::{collections::BTreeMap, fmt::Debug};
 use base::prelude::*;
 use base::u36;
 
-use chumsky::{error::Rich, input::ValueInput, prelude::Input, Parser};
+use chumsky::Parser;
 
 use super::super::{
     ast::{
@@ -224,8 +224,7 @@ fn parse_single_instruction_fragment(input: &str) -> InstructionFragment {
 
 #[cfg(test)]
 fn parse_multiple_instruction_fragments(input: &str) -> Vec<InstructionFragment> {
-    let parse_result =
-        parse_successfully_with(input, comma_delimited_instructions(), no_state_setup);
+    let parse_result = parse_comma_expression(input);
     parse_result
         .into_iter()
         .map(|comma_delimited_insn| match comma_delimited_insn {
@@ -643,6 +642,20 @@ fn parse_tagged_instruction(input: &str) -> TaggedProgramInstruction {
     }
 }
 
+#[cfg(test)]
+fn parse_comma_expression(input: &str) -> Vec<CommaDelimitedInstruction> {
+    let stmt = parse_successfully_with(input, super::statement(), no_state_setup);
+    if let Statement::Instruction(TaggedProgramInstruction {
+        tag: _,
+        instructions,
+    }) = stmt
+    {
+        instructions
+    } else {
+        panic!("expected {input} to be parsed as comma-separated instructions, but instead we got {stmt:?}");
+    }
+}
+
 #[test]
 fn test_arrow() {
     assert_eq!(
@@ -730,7 +743,7 @@ fn test_infix_minus_interpreted_as_subtraction() {
             ))),
         )];
         assert_eq!(
-            parse_successfully_with(input, arithmetic_expression(Script::Normal), no_state_setup),
+            parse_arithmetic_expression(input),
             ArithmeticExpression::with_tail(head.clone(), tail),
             "incorrect parse for '{input}'"
         );
@@ -1055,11 +1068,8 @@ fn test_metacommand_octal() {
     );
 }
 
-type Extra<'a> = super::Extra<'a>;
-fn extract_sole_expr<'a>(
-    mut frags: Vec<CommaDelimitedInstruction>,
-    span: Span,
-) -> Result<ArithmeticExpression, Rich<'a, Tok>> {
+fn parse_arithmetic_expression(input: &str) -> ArithmeticExpression {
+    let mut comma_expression = parse_comma_expression(input);
     if let Some(CommaDelimitedInstruction {
         leading_commas: _,
         instruction:
@@ -1069,30 +1079,16 @@ fn extract_sole_expr<'a>(
                 inst: InstructionFragment::Arithmetic(expr),
             },
         trailing_commas: _,
-    }) = frags.pop()
+    }) = comma_expression.pop()
     {
-        if frags.is_empty() {
-            Ok(expr)
+        if comma_expression.is_empty() {
+            expr
         } else {
-            Err(Rich::custom(span, "too many fragments".to_string()))
+            panic!("too many fragments: {comma_expression:?}");
         }
     } else {
-        Err(Rich::custom(
-            span,
-            "expected one fragment, not zero".to_string(),
-        ))
+        panic!("expected one fragment, not zero");
     }
-}
-
-/// This is just a convenience function so that our tests'
-/// expected-values don't have to contain so much boiler-plate.
-fn arithmetic_expression<'a, I>(
-    _script_required: Script,
-) -> impl Parser<'a, I, ArithmeticExpression, Extra<'a>>
-where
-    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
-{
-    comma_delimited_instructions().try_map(extract_sole_expr)
 }
 
 #[test]
@@ -1268,7 +1264,7 @@ fn test_logical_or_glyph_superscript() {
 #[test]
 fn test_arithmetic_expression_head_only() {
     assert_eq!(
-        parse_successfully_with("6", arithmetic_expression(Script::Normal), no_state_setup),
+        parse_arithmetic_expression("6"),
         ArithmeticExpression::from(Atom::Literal(LiteralValue::from((
             span(0..1),
             Script::Normal,
@@ -1285,11 +1281,7 @@ fn test_arithmetic_expression_two_atoms() {
         Atom::Literal(LiteralValue::from((span(6..7), Script::Normal, u36!(2)))),
     )];
     assert_eq!(
-        parse_successfully_with(
-            "4 ∨ 2",
-            arithmetic_expression(Script::Normal),
-            no_state_setup
-        ),
+        parse_arithmetic_expression("4 ∨ 2"),
         ArithmeticExpression::with_tail(head, tail),
     );
 }
@@ -1297,7 +1289,7 @@ fn test_arithmetic_expression_two_atoms() {
 #[test]
 fn test_parenthesised_expression() {
     assert_eq!(
-        parse_successfully_with("(1)", arithmetic_expression(Script::Normal), no_state_setup),
+        parse_arithmetic_expression("(1)"),
         ArithmeticExpression::from(Atom::Parens(
             Script::Normal,
             Box::new(ArithmeticExpression::from(Atom::from(LiteralValue::from(
@@ -1678,7 +1670,7 @@ fn test_superscript_configuration_literal() {
     )));
 
     assert_eq!(
-        parse_successfully_with(input, super::comma_delimited_instructions(), no_state_setup),
+        parse_comma_expression(input),
         vec![
             CommaDelimitedInstruction {
                 leading_commas: None,
