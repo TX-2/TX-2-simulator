@@ -1101,7 +1101,7 @@ fn test_opcode() {
         operand_address: OperandAddress::Direct(Address::ZERO),
     });
     assert_eq!(
-        parse_successfully_with("AUX", super::program_instruction_fragment(), no_state_setup),
+        parse_single_instruction_fragment("AUX"),
         InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::Literal(
             LiteralValue::from((span(0..3), Script::Normal, expected_instruction.bits(),))
         ))),

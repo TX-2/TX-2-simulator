@@ -310,125 +310,6 @@ fn make_pipe_construct(
     }
 }
 
-fn program_instruction_fragment<'srcbody, I>(
-) -> impl Parser<'srcbody, I, InstructionFragment, Extra<'srcbody>> + Clone
-where
-    I: Input<'srcbody, Token = Tok, Span = Span> + ValueInput<'srcbody>,
-{
-    // Parse a values (symbolic or literal) or arithmetic expression.
-    //
-    // BAT² is not an identifier but a sequence[1] whose value is
-    // computed by OR-ing the value of the symex BAT with the value of
-    // the literal "²" (which is 2<<30, or 0o20_000_000_000).  But BAT²
-    // is itself not an arithmetic_expression (because there is a script
-    // change).
-    //
-    // You could argue that (BAT²) should be parsed as an atom.  Right
-    // now that doesn't work because all the elements of an expression
-    // (i.e. everything within the parens) need to have the same script.
-    recursive(move |program_instruction_fragment| {
-        // Parse {E} where E is some expression.  Since tags are
-        // allowed inside RC-blocks, we should parse E as a
-        // TaggedProgramInstruction.  But if we try to do that without
-        // using recursive() we will blow the stack, unfortunately.
-        let register_containing = program_instruction_fragment
-            .clone()
-            .delimited_by(
-                just(Tok::LeftBrace(Script::Normal)),
-                just(Tok::RightBrace(Script::Normal)),
-            )
-            .map_with(|fragment, extra| Atom::RcRef(extra.span(), vec![fragment]))
-            .labelled("RC-word");
-
-        let arith_expr = |script_required: Script| {
-            {
-                // We use recursive here to prevent the parser blowing the stack
-                // when trying to parse inputs which have parentheses - that is,
-                // inputs that require recursion.
-                recursive(move |arithmetic_expr| {
-                    // Parse (E) where E is some expression.
-                    let parenthesised_arithmetic_expression = arithmetic_expr // this is the recursive call
-                        .clone()
-                        .delimited_by(
-                            just(Tok::LeftParen(script_required)),
-                            just(Tok::RightParen(script_required)),
-                        )
-                        .map(move |expr| Atom::Parens(script_required, Box::new(expr)))
-                        .labelled("parenthesised arithmetic expression");
-
-                    // Parse a literal, symbol, #, or (recursively) an expression in parentheses.
-                    let atom = choice((
-                        literal(script_required).map(Atom::from),
-                        opcode().map(Atom::from),
-                        named_symbol_or_here(script_required).map_with(
-                            move |symbol_or_here, extra| {
-                                Atom::Symbol(extra.span(), script_required, symbol_or_here)
-                            },
-                        ),
-                        register_containing,
-                        parenthesised_arithmetic_expression,
-                    ))
-                    .boxed();
-
-                    // Parse an arithmetic operator (e.g. plus, times) followed by an atom.
-                    let operator_with_atom = operator(script_required).then(atom.clone());
-
-                    // An arithmetic expression is an atom followed by zero or
-                    // more pairs of (arithmetic operator, atom).
-                    atom.then(operator_with_atom.repeated().collect())
-                        .map(|(head, tail)| ArithmeticExpression::with_tail(head, tail))
-                })
-            }
-            .labelled("arithmetic expression")
-        };
-
-        // Parse the pipe-construct described in the User Handbook
-        // section 2-2.8 "SPECIAL SYMBOLS" as "ₚ|ₜ" (though in reality
-        // the pipe should also be subscript and in their example they
-        // use a subscript q).
-        //
-        // The Handbook is not explicit on whether the "ₚ" or "ₜ" can
-        // contain spaces.  We will assume not, for simplicity (at
-        // least for the time being).
-        //
-        // "ADXₚ|ₜQ" should be equivalent to ADXₚ{Qₜ}*.  So we need to
-        // generate an RC-word containing Qₜ.
-        fn getspan<
-            'srcbody,
-            I: Input<'srcbody, Token = Tok, Span = Span>,
-            E: ParserExtra<'srcbody, I>,
-        >(
-            frag: InstructionFragment,
-            extra: &mut MapExtra<'srcbody, '_, I, E>,
-        ) -> (InstructionFragment, Span) {
-            (frag, extra.span())
-        }
-        let spanned_fragment = program_instruction_fragment // this is Q
-            .clone()
-            .map_with(getspan);
-        let pipe_construct = (symbol_or_literal(Script::Sub) // this is p
-            .then_ignore(just(Tok::Pipe(Script::Sub)))
-            .then(
-                symbol_or_literal(Script::Sub), // this is t
-            )
-            .then(spanned_fragment))
-        .map(make_pipe_construct)
-        .labelled("pipe construct");
-
-        let single_script_fragment =
-            |script_required| arith_expr.clone()(script_required).map(InstructionFragment::from);
-
-        choice((
-            pipe_construct,
-            single_script_fragment(Script::Normal),
-            single_script_fragment(Script::Sub),
-            asterisk_indirection_fragment(),
-            config_value(),
-        ))
-        .labelled("program instruction")
-    })
-}
-
 /// Macro terminators are described in section 6-4.5 of the TX-2 User Handbook.
 fn macro_terminator<'a, I>() -> impl Parser<'a, I, char, Extra<'a>>
 where
@@ -655,6 +536,127 @@ fn statement<'a, I>() -> impl Parser<'a, I, Statement, Extra<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
+    fn program_instruction_fragment<'srcbody, I>(
+    ) -> impl Parser<'srcbody, I, InstructionFragment, Extra<'srcbody>> + Clone
+    where
+        I: Input<'srcbody, Token = Tok, Span = Span> + ValueInput<'srcbody>,
+    {
+        // Parse a values (symbolic or literal) or arithmetic expression.
+        //
+        // BAT² is not an identifier but a sequence[1] whose value is
+        // computed by OR-ing the value of the symex BAT with the value of
+        // the literal "²" (which is 2<<30, or 0o20_000_000_000).  But BAT²
+        // is itself not an arithmetic_expression (because there is a script
+        // change).
+        //
+        // You could argue that (BAT²) should be parsed as an atom.  Right
+        // now that doesn't work because all the elements of an expression
+        // (i.e. everything within the parens) need to have the same script.
+        recursive(move |program_instruction_fragment| {
+            // Parse {E} where E is some expression.  Since tags are
+            // allowed inside RC-blocks, we should parse E as a
+            // TaggedProgramInstruction.  But if we try to do that without
+            // using recursive() we will blow the stack, unfortunately.
+            let register_containing = program_instruction_fragment
+                .clone()
+                .delimited_by(
+                    just(Tok::LeftBrace(Script::Normal)),
+                    just(Tok::RightBrace(Script::Normal)),
+                )
+                .map_with(|fragment, extra| Atom::RcRef(extra.span(), vec![fragment]))
+                .labelled("RC-word");
+
+            let arith_expr = |script_required: Script| {
+                {
+                    // We use recursive here to prevent the parser blowing the stack
+                    // when trying to parse inputs which have parentheses - that is,
+                    // inputs that require recursion.
+                    recursive(move |arithmetic_expr| {
+                        // Parse (E) where E is some expression.
+                        let parenthesised_arithmetic_expression =
+                            arithmetic_expr // this is the recursive call
+                                .clone()
+                                .delimited_by(
+                                    just(Tok::LeftParen(script_required)),
+                                    just(Tok::RightParen(script_required)),
+                                )
+                                .map(move |expr| Atom::Parens(script_required, Box::new(expr)))
+                                .labelled("parenthesised arithmetic expression");
+
+                        // Parse a literal, symbol, #, or (recursively) an expression in parentheses.
+                        let atom = choice((
+                            literal(script_required).map(Atom::from),
+                            opcode().map(Atom::from),
+                            named_symbol_or_here(script_required).map_with(
+                                move |symbol_or_here, extra| {
+                                    Atom::Symbol(extra.span(), script_required, symbol_or_here)
+                                },
+                            ),
+                            register_containing,
+                            parenthesised_arithmetic_expression,
+                        ))
+                        .boxed();
+
+                        // Parse an arithmetic operator (e.g. plus, times) followed by an atom.
+                        let operator_with_atom = operator(script_required).then(atom.clone());
+
+                        // An arithmetic expression is an atom followed by zero or
+                        // more pairs of (arithmetic operator, atom).
+                        atom.then(operator_with_atom.repeated().collect())
+                            .map(|(head, tail)| ArithmeticExpression::with_tail(head, tail))
+                    })
+                }
+                .labelled("arithmetic expression")
+            };
+
+            // Parse the pipe-construct described in the User Handbook
+            // section 2-2.8 "SPECIAL SYMBOLS" as "ₚ|ₜ" (though in reality
+            // the pipe should also be subscript and in their example they
+            // use a subscript q).
+            //
+            // The Handbook is not explicit on whether the "ₚ" or "ₜ" can
+            // contain spaces.  We will assume not, for simplicity (at
+            // least for the time being).
+            //
+            // "ADXₚ|ₜQ" should be equivalent to ADXₚ{Qₜ}*.  So we need to
+            // generate an RC-word containing Qₜ.
+            fn getspan<
+                'srcbody,
+                I: Input<'srcbody, Token = Tok, Span = Span>,
+                E: ParserExtra<'srcbody, I>,
+            >(
+                frag: InstructionFragment,
+                extra: &mut MapExtra<'srcbody, '_, I, E>,
+            ) -> (InstructionFragment, Span) {
+                (frag, extra.span())
+            }
+            let spanned_fragment = program_instruction_fragment // this is Q
+                .clone()
+                .map_with(getspan);
+            let pipe_construct = (symbol_or_literal(Script::Sub) // this is p
+                .then_ignore(just(Tok::Pipe(Script::Sub)))
+                .then(
+                    symbol_or_literal(Script::Sub), // this is t
+                )
+                .then(spanned_fragment))
+            .map(make_pipe_construct)
+            .labelled("pipe construct");
+
+            let single_script_fragment = |script_required| {
+                arith_expr.clone()(script_required).map(InstructionFragment::from)
+            };
+
+            choice((
+                pipe_construct,
+                single_script_fragment(Script::Normal),
+                single_script_fragment(Script::Sub),
+                asterisk_indirection_fragment(),
+                config_value(),
+            ))
+            .labelled("program instruction")
+        })
+    }
+
     let mut comma_delimited_instructions = Recursive::declare();
     comma_delimited_instructions.define({
         fn untagged_program_instruction<'a, I>(
