@@ -12,7 +12,7 @@ use chumsky::error::Rich;
 use chumsky::extra::{Full, ParserExtra};
 use chumsky::input::{MapExtra, Stream, ValueInput};
 use chumsky::inspector::SimpleState;
-use chumsky::prelude::{choice, just, one_of, recursive, Input, IterParser, SimpleSpan};
+use chumsky::prelude::{choice, just, one_of, recursive, Input, IterParser, Recursive, SimpleSpan};
 use chumsky::select;
 use chumsky::Parser;
 
@@ -311,7 +311,7 @@ fn make_pipe_construct(
 }
 
 fn program_instruction_fragment<'srcbody, I>(
-) -> impl Parser<'srcbody, I, InstructionFragment, Extra<'srcbody>>
+) -> impl Parser<'srcbody, I, InstructionFragment, Extra<'srcbody>> + Clone
 where
     I: Input<'srcbody, Token = Tok, Span = Span> + ValueInput<'srcbody>,
 {
@@ -619,7 +619,7 @@ where
         .labelled("tag definition")
 }
 
-fn commas<'a, I>() -> impl Parser<'a, I, Commas, Extra<'a>>
+fn commas<'a, I>() -> impl Parser<'a, I, Commas, Extra<'a>> + Clone
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
@@ -639,7 +639,7 @@ where
         })
 }
 
-fn maybe_hold<'a, I>() -> impl Parser<'a, I, Option<HoldBit>, Extra<'a>>
+fn maybe_hold<'a, I>() -> impl Parser<'a, I, Option<HoldBit>, Extra<'a>> + Clone
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
@@ -655,13 +655,10 @@ fn statement<'a, I>() -> impl Parser<'a, I, Statement, Extra<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
-    fn comma_delimited_instructions<'a, I>(
-    ) -> impl Parser<'a, I, Vec<CommaDelimitedInstruction>, Extra<'a>>
-    where
-        I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
-    {
+    let mut comma_delimited_instructions = Recursive::declare();
+    comma_delimited_instructions.define({
         fn untagged_program_instruction<'a, I>(
-        ) -> impl Parser<'a, I, UntaggedProgramInstruction, Extra<'a>>
+        ) -> impl Parser<'a, I, UntaggedProgramInstruction, Extra<'a>> + Clone
         where
             I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
         {
@@ -684,44 +681,40 @@ where
         .at_least(1)
         .collect::<Vec<CommasOrInstruction>>()
         .map(|ci_vec| instructions_with_comma_counts(ci_vec.into_iter()))
-    }
+    });
 
-    /// Assginments are called "equalities" in the TX-2 Users Handbook.
-    /// See section 6-2.2, "SYMEX DEFINITON - TAGS - EQUALITIES -
-    /// AUTOMATIC ASSIGNMENT".
-    fn assignment<'a, I>() -> impl Parser<'a, I, (SymbolName, EqualityValue), Extra<'a>>
-    where
-        I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
-    {
-        (symex::parse_symex(Script::Normal)
-            .then_ignore(just(Tok::Equals(Script::Normal)))
-            .then(comma_delimited_instructions().map(EqualityValue::from)))
-        .labelled("equality (assignment)")
-    }
+    // Assginments are called "equalities" in the TX-2 Users Handbook.
+    // See section 6-2.2, "SYMEX DEFINITON - TAGS - EQUALITIES -
+    // AUTOMATIC ASSIGNMENT".
+    let assignment = (symex::parse_symex(Script::Normal)
+        .then_ignore(just(Tok::Equals(Script::Normal)))
+        .then(
+            comma_delimited_instructions
+                .clone()
+                .map(EqualityValue::from),
+        ))
+    .labelled("equality (assignment)");
 
-    fn tagged_program_instruction<'a, I>() -> impl Parser<'a, I, TaggedProgramInstruction, Extra<'a>>
-    where
-        I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
-    {
-        tag_definition()
-            .or_not()
-            .then(comma_delimited_instructions())
-            .map(
+    let tagged_program_instruction = tag_definition()
+        .or_not()
+        .then(comma_delimited_instructions.clone())
+        .map(
             |(tag, instructions): (Option<Tag>, Vec<CommaDelimitedInstruction>)| {
                 TaggedProgramInstruction { tag, instructions }
             },
         )
-            .labelled(
+        .labelled(
             "optional tag definition followed by a (possibly comma-delimited) program instructions",
-        )
-    }
+        );
 
     choice((
         // We have to parse an assignment first here, in order to
         // accept "FOO=2" as an assignment rather than the instruction
         // fragment "FOO" followed by a syntax error.
-        assignment().map_with(|(sym, inst), extra| Statement::Assignment(extra.span(), sym, inst)),
-        tagged_program_instruction().map(Statement::Instruction),
+        assignment
+            .clone()
+            .map_with(|(sym, inst), extra| Statement::Assignment(extra.span(), sym, inst)),
+        tagged_program_instruction.map(Statement::Instruction),
     ))
 }
 

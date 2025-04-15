@@ -108,7 +108,7 @@ where
 
 pub(super) fn parse_multi_syllable_symex<'a, I>(
     script_required: Script,
-) -> impl Parser<'a, I, String, Extra<'a>>
+) -> impl Parser<'a, I, String, Extra<'a>> + Clone
 where
     I: Input<'a, Token = Tok, Span = SimpleSpan> + ValueInput<'a>,
 {
@@ -119,7 +119,7 @@ where
 
 pub(super) fn parse_symex<'a, I>(
     script_required: Script,
-) -> impl Parser<'a, I, SymbolName, Extra<'a>>
+) -> impl Parser<'a, I, SymbolName, Extra<'a>> + Clone
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
