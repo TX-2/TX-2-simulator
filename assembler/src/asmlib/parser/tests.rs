@@ -633,10 +633,20 @@ fn test_manuscript_with_origin() {
     );
 }
 
+#[cfg(test)]
+fn parse_tagged_instruction(input: &str) -> TaggedProgramInstruction {
+    let stmt = parse_successfully_with(input, statement(), no_state_setup);
+    if let Statement::Instruction(inst) = stmt {
+        inst
+    } else {
+        panic!("expected {input} to be parsed as an instruction, but instead we got {stmt:?}");
+    }
+}
+
 #[test]
 fn test_arrow() {
     assert_eq!(
-        parse_successfully_with("FOO->0", tagged_program_instruction(), no_state_setup),
+        parse_tagged_instruction("FOO->0"),
         TaggedProgramInstruction {
             tag: Some(Tag {
                 name: SymbolName {
@@ -662,7 +672,7 @@ fn test_arrow() {
         }
     );
     assert_eq!(
-        parse_successfully_with("BAR  -> 1", tagged_program_instruction(), no_state_setup),
+        parse_tagged_instruction("BAR  -> 1"),
         TaggedProgramInstruction {
             tag: Some(Tag {
                 name: SymbolName {
@@ -687,13 +697,8 @@ fn test_arrow() {
 
 #[test]
 fn test_multi_syllable_tag() {
-    let inst = parse_successfully_with(
-        "CODE HERE->205 ",
-        tagged_program_instruction(),
-        no_state_setup,
-    );
     assert_eq!(
-        inst,
+        parse_tagged_instruction("CODE HERE->205 "),
         TaggedProgramInstruction::single(
             Some(Tag {
                 name: SymbolName {
@@ -1142,12 +1147,7 @@ fn program_instruction_with_opcode() {
     let mut rc_block =
         make_empty_rc_block_for_test(Address::from(Unsigned18Bit::from(0o20_000u16)));
     assert_eq!(
-        parse_successfully_with(
-            "²¹IOS₅₂ 30106",
-            tagged_program_instruction(),
-            no_state_setup
-        )
-        .evaluate(
+        parse_tagged_instruction("²¹IOS₅₂ 30106").evaluate(
             &HereValue::Address(Address::ZERO),
             &mut nosyms,
             &mut rc_block,
@@ -1617,7 +1617,7 @@ fn test_double_pipe_config_symbolic() {
     // (which would therefore go into the address portion of the
     // instruction word).
     let input_xy = "‖X Y";
-    let got = parse_successfully_with(input_xy, tagged_program_instruction(), no_state_setup);
+    let got = parse_tagged_instruction(input_xy);
     let expected = TaggedProgramInstruction {
         tag: None,
         instructions: vec![
@@ -1652,7 +1652,7 @@ fn test_double_pipe_config_symbolic() {
 #[test]
 fn test_double_pipe_config_literal() {
     let input = "‖10"; // 10 octal = 8 decimal.
-    let got = parse_successfully_with(input, tagged_program_instruction(), no_state_setup);
+    let got = parse_tagged_instruction(input);
     let expected = TaggedProgramInstruction::single(
         None,
         UntaggedProgramInstruction {
@@ -1748,7 +1748,7 @@ fn test_comments_without_newline_manuscript() {
 #[test]
 fn test_commas_instruction() {
     let input = "200,200,,200,200";
-    let got = parse_successfully_with(input, tagged_program_instruction(), no_state_setup);
+    let got = parse_tagged_instruction(input);
     let expected = TaggedProgramInstruction::multiple(
         None,
         vec![
