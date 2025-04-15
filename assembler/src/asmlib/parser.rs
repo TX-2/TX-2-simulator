@@ -606,97 +606,86 @@ where
     .labelled("metacommand")
 }
 
-fn comma_delimited_instructions<'a, I>(
-) -> impl Parser<'a, I, Vec<CommaDelimitedInstruction>, Extra<'a>>
+fn tag_definition<'a, I>() -> impl Parser<'a, I, Tag, Extra<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
-    fn commas<'a, I>() -> impl Parser<'a, I, Commas, Extra<'a>>
-    where
-        I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
-    {
-        just(Tok::Comma(Script::Normal))
-            .repeated()
-            .at_least(1)
-            .at_most(3)
-            .count()
-            .map_with(|count, extra| {
-                let span = extra.span();
-                match count {
-                    1 => Commas::One(span),
-                    2 => Commas::Two(span),
-                    3 => Commas::Three(span),
-                    _ => unreachable!(),
-                }
-            })
-    }
-
-    fn untagged_program_instruction<'a, I>(
-    ) -> impl Parser<'a, I, UntaggedProgramInstruction, Extra<'a>>
-    where
-        I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
-    {
-        let maybe_hold = choice((
-            one_of(Tok::Hold).to(HoldBit::Hold),
-            just(Tok::NotHold).to(HoldBit::NotHold),
-        ))
-        .or_not()
-        .labelled("instruction hold bit");
-        maybe_hold.then(program_instruction_fragment()).map_with(
-            |(maybe_hold, inst): (Option<HoldBit>, InstructionFragment), extra| {
-                UntaggedProgramInstruction {
-                    span: extra.span(),
-                    holdbit: maybe_hold.unwrap_or(HoldBit::Unspecified),
-                    inst,
-                }
-            },
-        )
-    }
-
-    let commas_or_instructions = choice((
-        commas().map(|c| CommasOrInstruction::C(Some(c))),
-        untagged_program_instruction().map(CommasOrInstruction::I),
-    ))
-    .repeated()
-    .at_least(1)
-    .collect::<Vec<CommasOrInstruction>>();
-    commas_or_instructions.map(|ci_vec| instructions_with_comma_counts(ci_vec.into_iter()))
+    named_symbol(Script::Normal)
+        .map_with(|name, extra| Tag {
+            name,
+            span: extra.span(),
+        })
+        .then_ignore(just(Tok::Arrow(Script::Normal)))
+        .labelled("tag definition")
 }
 
-fn tagged_program_instruction<'a, I>() -> impl Parser<'a, I, TaggedProgramInstruction, Extra<'a>>
+fn commas<'a, I>() -> impl Parser<'a, I, Commas, Extra<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
-    fn tag_definition<'a, I>() -> impl Parser<'a, I, Tag, Extra<'a>>
-    where
-        I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
-    {
-        named_symbol(Script::Normal)
-            .map_with(|name, extra| Tag {
-                name,
-                span: extra.span(),
-            })
-            .then_ignore(just(Tok::Arrow(Script::Normal)))
-            .labelled("tag definition")
-    }
+    just(Tok::Comma(Script::Normal))
+        .repeated()
+        .at_least(1)
+        .at_most(3)
+        .count()
+        .map_with(|count, extra| {
+            let span = extra.span();
+            match count {
+                1 => Commas::One(span),
+                2 => Commas::Two(span),
+                3 => Commas::Three(span),
+                _ => unreachable!(),
+            }
+        })
+}
 
-    tag_definition()
-        .or_not()
-        .then(comma_delimited_instructions())
-        .map(
-            |(tag, instructions): (Option<Tag>, Vec<CommaDelimitedInstruction>)| {
-                TaggedProgramInstruction { tag, instructions }
-            },
-        )
-        .labelled(
-            "optional tag definition followed by a (possibly comma-delimited) program instructions",
-        )
+fn maybe_hold<'a, I>() -> impl Parser<'a, I, Option<HoldBit>, Extra<'a>>
+where
+    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
+{
+    choice((
+        one_of(Tok::Hold).to(HoldBit::Hold),
+        just(Tok::NotHold).to(HoldBit::NotHold),
+    ))
+    .or_not()
+    .labelled("instruction hold bit")
 }
 
 fn statement<'a, I>() -> impl Parser<'a, I, Statement, Extra<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
+    fn comma_delimited_instructions<'a, I>(
+    ) -> impl Parser<'a, I, Vec<CommaDelimitedInstruction>, Extra<'a>>
+    where
+        I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
+    {
+        fn untagged_program_instruction<'a, I>(
+        ) -> impl Parser<'a, I, UntaggedProgramInstruction, Extra<'a>>
+        where
+            I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
+        {
+            maybe_hold().then(program_instruction_fragment()).map_with(
+                |(maybe_hold, inst): (Option<HoldBit>, InstructionFragment), extra| {
+                    UntaggedProgramInstruction {
+                        span: extra.span(),
+                        holdbit: maybe_hold.unwrap_or(HoldBit::Unspecified),
+                        inst,
+                    }
+                },
+            )
+        }
+
+        choice((
+            commas().map(|c| CommasOrInstruction::C(Some(c))),
+            untagged_program_instruction().map(CommasOrInstruction::I),
+        ))
+        .repeated()
+        .at_least(1)
+        .collect::<Vec<CommasOrInstruction>>()
+        .map(|ci_vec| instructions_with_comma_counts(ci_vec.into_iter()))
+    }
+
     /// Assginments are called "equalities" in the TX-2 Users Handbook.
     /// See section 6-2.2, "SYMEX DEFINITON - TAGS - EQUALITIES -
     /// AUTOMATIC ASSIGNMENT".
@@ -708,6 +697,23 @@ where
             .then_ignore(just(Tok::Equals(Script::Normal)))
             .then(comma_delimited_instructions().map(EqualityValue::from)))
         .labelled("equality (assignment)")
+    }
+
+    fn tagged_program_instruction<'a, I>() -> impl Parser<'a, I, TaggedProgramInstruction, Extra<'a>>
+    where
+        I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
+    {
+        tag_definition()
+            .or_not()
+            .then(comma_delimited_instructions())
+            .map(
+            |(tag, instructions): (Option<Tag>, Vec<CommaDelimitedInstruction>)| {
+                TaggedProgramInstruction { tag, instructions }
+            },
+        )
+            .labelled(
+            "optional tag definition followed by a (possibly comma-delimited) program instructions",
+        )
     }
 
     choice((
