@@ -8,9 +8,9 @@ use super::super::ast::{
     InstructionFragment, LiteralValue, LocatedBlock, ManuscriptBlock, PunchCommand, SourceFile,
     Statement, TaggedProgramInstruction, UntaggedProgramInstruction,
 };
-use super::super::eval::{make_empty_rc_block_for_test, SymbolContext, SymbolLookup, SymbolValue};
+use super::super::eval::{make_empty_rc_block_for_test, SymbolLookup, SymbolValue};
 use super::super::span::*;
-use super::super::symbol::SymbolName;
+use super::super::symbol::{SymbolContext, SymbolName};
 use super::super::symtab::LookupOperation;
 use super::super::types::BlockIdentifier;
 use super::assemble_pass1;

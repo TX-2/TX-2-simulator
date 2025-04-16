@@ -7,13 +7,13 @@ use tracing::{event, Level};
 use base::prelude::*;
 use base::subword;
 
-use super::ast::{Origin, RcAllocator};
+use super::ast::{EqualityValue, Origin, RcAllocator};
 use super::eval::{
-    BadSymbolDefinition, Evaluate, HereValue, LookupTarget, SymbolContext, SymbolDefinition,
-    SymbolLookup, SymbolLookupFailure, SymbolLookupFailureKind, SymbolValue,
+    Evaluate, HereValue, LookupTarget, SymbolLookup, SymbolLookupFailure, SymbolLookupFailureKind,
+    SymbolValue,
 };
 use super::span::*;
-use super::symbol::SymbolName;
+use super::symbol::{SymbolContext, SymbolName};
 use super::types::{offset_from_origin, BlockIdentifier, MachineLimitExceededFailure};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -558,5 +558,126 @@ impl Display for FinalSymbolTable {
 
         show(f, FinalSymbolType::Tag, "Tags")?;
         show(f, FinalSymbolType::Equality, "Equalities")
+    }
+}
+
+#[derive(PartialEq, Eq, Clone)]
+pub(crate) enum SymbolDefinition {
+    Tag {
+        block_id: BlockIdentifier,
+        block_offset: Unsigned18Bit,
+        span: Span,
+    },
+    Origin(Address),
+    Equality(EqualityValue),
+    Undefined(SymbolContext),
+    DefaultAssigned(Unsigned36Bit, SymbolContext),
+}
+
+impl Debug for SymbolDefinition {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            SymbolDefinition::Origin(address) => write!(f, "Origin({address:o})"),
+            SymbolDefinition::Tag {
+                block_id,
+                block_offset,
+                span: _,
+            } => {
+                write!(
+                    f,
+                    "Tag {{block_id:{block_id:?}, block_offset:{block_offset}}}"
+                )
+            }
+            SymbolDefinition::Equality(expr) => f.debug_tuple("Equality").field(expr).finish(),
+            SymbolDefinition::DefaultAssigned(value, _) => {
+                write!(f, "DefaultAssigned({value:o})")
+            }
+            SymbolDefinition::Undefined(context) => {
+                f.debug_tuple("Undefined").field(context).finish()
+            }
+        }
+    }
+}
+
+impl Display for SymbolDefinition {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            SymbolDefinition::DefaultAssigned(value, _) => {
+                write!(f, "default-assigned as {value}")
+            }
+            SymbolDefinition::Origin(addr) => {
+                write!(f, "{addr:06o}")
+            }
+            SymbolDefinition::Tag {
+                block_id,
+                block_offset,
+                span: _,
+            } => {
+                write!(
+                    f,
+                    "tag at offset {block_offset} in {block_id} with unspecified address"
+                )
+            }
+            SymbolDefinition::Equality(inst) => {
+                // TODO: print the assigned value, too?
+                write!(f, "assignment with value {inst:#?}")
+            }
+            SymbolDefinition::Undefined(_context) => f.write_str("undefined"),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub(crate) enum BadSymbolDefinition {
+    Incompatible(SymbolDefinition, SymbolDefinition),
+}
+
+impl Display for BadSymbolDefinition {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            BadSymbolDefinition::Incompatible(previous, new) => {
+                write!(f, "it is not allowed to override symbol definition {previous} with a new definition {new}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for BadSymbolDefinition {}
+
+impl SymbolDefinition {
+    pub(crate) fn merge_context(&mut self, context: SymbolContext) {
+        if let SymbolDefinition::Undefined(current) = self {
+            match current.merge(context) {
+                Ok(_) => (),
+                Err(e) => {
+                    panic!("cannot have an origin block number conflict if one of the merge sides has no block number: {e:?}")
+                }
+            }
+        }
+    }
+
+    pub(crate) fn override_with(
+        &mut self,
+        update: SymbolDefinition,
+    ) -> Result<(), BadSymbolDefinition> {
+        match (self, update) {
+            (current @ SymbolDefinition::Equality(_), new @ SymbolDefinition::Equality(_)) => {
+                // This is always OK.
+                *current = new;
+                Ok(())
+            }
+            (current @ SymbolDefinition::Undefined(_), new) => {
+                // This is always OK.
+                *current = new;
+                Ok(())
+            }
+            (current, new) => {
+                if current == &new {
+                    Ok(()) // nothing to do.
+                } else {
+                    Err(BadSymbolDefinition::Incompatible(current.clone(), new))
+                }
+            }
+        }
     }
 }

@@ -8,12 +8,20 @@ use std::hash::Hash;
 use base::charset::{subscript_char, superscript_char, Script};
 use base::prelude::*;
 
-use super::eval::{RcBlock, SymbolContext, SymbolDefinition, SymbolUse};
+use super::eval::RcBlock;
 use super::glyph;
 use super::span::*;
 use super::state::NumeralMode;
-use super::symbol::{SymbolName, SymbolOrHere};
+use super::symbol::{SymbolContext, SymbolName, SymbolOrHere};
+use super::symtab::SymbolDefinition;
 use super::types::*;
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+enum SymbolUse {
+    Reference(SymbolContext),
+    Definition(SymbolDefinition),
+    Origin(SymbolName, BlockIdentifier),
+}
 
 pub(crate) trait RcAllocator {
     fn allocate(&mut self, span: Span, value: Unsigned36Bit) -> Address;
@@ -170,7 +178,7 @@ impl ArithmeticExpression {
         ArithmeticExpression { first, tail }
     }
 
-    pub(crate) fn symbol_uses(
+    fn symbol_uses(
         &self,
         block_id: BlockIdentifier,
         block_offset: Unsigned18Bit,
@@ -251,7 +259,7 @@ pub(crate) enum ConfigValue {
 }
 
 impl ConfigValue {
-    pub(crate) fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
+    fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
         match self {
             ConfigValue::Literal(_span, _value) => None,
             ConfigValue::Symbol(_span, SymbolOrHere::Here) => None,
@@ -288,7 +296,7 @@ impl From<SymbolOrLiteral> for Atom {
 }
 
 impl Atom {
-    pub(crate) fn symbol_uses(
+    fn symbol_uses(
         &self,
         block_id: BlockIdentifier,
         block_offset: Unsigned18Bit,
@@ -408,7 +416,7 @@ pub(crate) enum SymbolOrLiteral {
 }
 
 impl SymbolOrLiteral {
-    pub(crate) fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
+    fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
         let mut result: Vec<(SymbolName, Span, SymbolUse)> = Vec::with_capacity(1);
         match self {
             SymbolOrLiteral::Literal(_) => (),
@@ -445,7 +453,7 @@ pub(crate) enum InstructionFragment {
 }
 
 impl InstructionFragment {
-    pub(crate) fn symbol_uses(
+    fn symbol_uses(
         &self,
         block_id: BlockIdentifier,
         block_offset: Unsigned18Bit,
@@ -572,7 +580,7 @@ impl Octal for Origin {
 }
 
 impl Origin {
-    pub(crate) fn symbol_uses(
+    fn symbol_uses(
         &self,
         block_id: BlockIdentifier,
     ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
@@ -637,7 +645,7 @@ impl CommaDelimitedInstruction {
         }
     }
 
-    pub(crate) fn symbol_uses(
+    fn symbol_uses(
         &self,
         block_id: BlockIdentifier,
         block_offset: Unsigned18Bit,
@@ -683,7 +691,7 @@ pub(crate) struct UntaggedProgramInstruction {
 }
 
 impl UntaggedProgramInstruction {
-    pub(crate) fn symbol_uses(
+    fn symbol_uses(
         &self,
         block_id: BlockIdentifier,
         block_offset: Unsigned18Bit,
@@ -703,7 +711,7 @@ pub(crate) struct Tag {
 }
 
 impl Tag {
-    pub(crate) fn symbol_uses(
+    fn symbol_uses(
         &self,
         block_id: BlockIdentifier,
         block_offset: Unsigned18Bit,
@@ -728,7 +736,7 @@ pub(crate) struct TaggedProgramInstruction {
 }
 
 impl TaggedProgramInstruction {
-    pub(crate) fn symbol_uses(
+    fn symbol_uses(
         &self,
         block_id: BlockIdentifier,
         offset: Unsigned18Bit,
@@ -798,7 +806,7 @@ pub(crate) struct SourceFile {
 }
 
 impl SourceFile {
-    pub(crate) fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> + '_ {
+    fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> + '_ {
         self.blocks
             .iter()
             .flat_map(|(block_id, block)| block.symbol_uses(*block_id))
@@ -882,7 +890,7 @@ impl Statement {
         }
     }
 
-    pub(crate) fn symbol_uses(
+    fn symbol_uses(
         &self,
         block_id: BlockIdentifier,
         offset: Unsigned18Bit,
@@ -959,7 +967,7 @@ pub(crate) struct ManuscriptBlock {
 }
 
 impl ManuscriptBlock {
-    pub(crate) fn symbol_uses(
+    fn symbol_uses(
         &self,
         block_id: BlockIdentifier,
     ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
