@@ -534,6 +534,15 @@ fn test_440_330_220_110_with_commas() {
 }
 
 #[test]
+fn test_alternate_base_with_commas() {
+    let input = "10·,11·,,12,13· ** Note that 12 is in the default, octal, base\n";
+    let program = assemble_source(input, Default::default()).expect("program is valid");
+    dbg!(&program);
+    assert_eq!(program.chunks.len(), 1); // one chunk (no RC-block needed).
+    assert_eq!(program.chunks[0].words[0], u36!(0o012_013_012_015));
+}
+
+#[test]
 fn test_440_330_220_110_with_commas_in_rc_word() {
     let input = "{440,330,,220,110}\n";
     let program = assemble_source(input, Default::default()).expect("program is valid");
