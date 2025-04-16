@@ -187,7 +187,7 @@ pub fn write_user_program<W: Write>(
     // standard reader leader uses the "next" field of the header to
     // determine which is the last block.  When the "next" field
     // points at 0o27 instead of 0o3, that means this is the final
-    // block.  WSo we have to emit this one last.
+    // block.  So we have to emit this one last.
     write_data(
         writer,
         output_file_name,
