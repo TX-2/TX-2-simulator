@@ -186,16 +186,49 @@ pub(crate) struct RcBlock {
     pub(crate) words: Vec<(Span, Unsigned36Bit)>,
 }
 
-impl RcAllocator for RcBlock {
-    fn allocate(&mut self, span: Span, value: Unsigned36Bit) -> Address {
+impl RcBlock {
+    fn end(&self) -> Address {
         match Unsigned18Bit::try_from(self.words.len()) {
-            Ok(offset) => {
-                let addr = self.address.index_by(offset);
-                self.words.push((span, value));
-                addr
-            }
+            Ok(offset) => self.address.index_by(offset),
             Err(_) => {
                 panic!("program is too large"); // TODO: fixme: use Result
+            }
+        }
+    }
+}
+
+impl RcAllocator for RcBlock {
+    fn allocate(&mut self, span: Span, value: Unsigned36Bit) -> Address {
+        let addr = self.end();
+        self.words.push((span, value));
+        addr
+    }
+
+    fn update(&mut self, address: Address, value: Unsigned36Bit) {
+        if address < self.address {
+            panic!(
+                "out of range access to address {address} of RC-block starting at {}",
+                self.address
+            );
+        }
+        match Unsigned18Bit::from(address).checked_sub(Unsigned18Bit::from(self.address)) {
+            Some(offset) => match self.words.get_mut(usize::from(offset)) {
+                Some((_span, spot)) => {
+                    *spot = value;
+                }
+                None => {
+                    panic!(
+                        "out of range access to address {address} of RC-block ending at {}",
+                        self.end()
+                    );
+                }
+            },
+            None => {
+                // The checks above should ensure that address >= self.address.
+                panic!(
+                    "inconsistent checks; {address:o} should be greater than {:o}",
+                    self.address
+                );
             }
         }
     }
@@ -427,15 +460,27 @@ impl Evaluate for Atom {
             ),
             Atom::Parens(_script, expr) => expr.evaluate(target_address, symtab, rc_allocator, op),
             Atom::RcRef(span, tagged_program_instructions) => {
-                let value: Unsigned36Bit = evaluate_and_combine_values(
-                    tagged_program_instructions,
-                    target_address,
-                    symtab,
-                    rc_allocator,
-                    op,
-                )?;
-                let addr: Address = rc_allocator.allocate(*span, value);
-                Ok(addr.into())
+                let mut first_addr: Option<Address> = None;
+                for inst in tagged_program_instructions.iter() {
+                    let rc_word_addr: Address = rc_allocator.allocate(*span, Unsigned36Bit::ZERO);
+                    if first_addr.is_none() {
+                        first_addr = Some(rc_word_addr);
+                    }
+                    // Within the RC-word, # ("here") resolves to the
+                    // address of the RC-word itself.  So before we
+                    // evaluate the value to be placed in the RC-word,
+                    // we need to know the value that # will take
+                    // during the evaluation process.
+                    let here = HereValue::Address(rc_word_addr);
+                    let value: Unsigned36Bit = inst.evaluate(&here, symtab, rc_allocator, op)?;
+                    rc_allocator.update(rc_word_addr, value);
+                }
+                match first_addr {
+                    Some(addr) => Ok(addr.into()),
+                    None => {
+                        unreachable!("RC-references should not occupy zero words of storage");
+                    }
+                }
             }
         }
     }

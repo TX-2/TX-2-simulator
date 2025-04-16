@@ -559,3 +559,36 @@ fn test_440_330_220_110_with_commas_in_rc_word() {
     assert_eq!(program.chunks[0].words[0], program.chunks[1].address); // point to first word in RC-block
     assert_eq!(program.chunks[1].words[0], u36!(0o440330220110));
 }
+
+#[test]
+fn test_here_in_rc_word() {
+    let input = "100|{#}\n";
+    let program = assemble_source(input, Default::default()).expect("program is valid");
+    dbg!(&program);
+    assert_eq!(program.chunks.len(), 2); // one regular chunk plus RC-block
+    assert_eq!(program.chunks[0].address, Address::from(u18!(0o100)));
+    assert_eq!(program.chunks[0].words.len(), 1);
+    assert_eq!(program.chunks[0].words[0], u36!(0o101)); // points to first word in RC-block
+
+    assert_eq!(program.chunks[1].address, Address::from(u18!(0o101)));
+    assert_eq!(program.chunks[1].words.len(), 1); // RC block has one word
+    assert_eq!(program.chunks[1].words[0], u36!(0o101)); // # is 0o101 at address 0o101
+}
+
+#[test]
+fn test_here_in_nested_rc_word() {
+    let input = "100|{{#+400}}\n";
+    let program = assemble_source(input, Default::default()).expect("program is valid");
+    dbg!(&program);
+    assert_eq!(program.chunks.len(), 2); // one regular chunk plus RC-block
+    assert_eq!(program.chunks[0].address, Address::from(u18!(0o100)));
+    assert_eq!(program.chunks[0].words.len(), 1);
+    assert_eq!(program.chunks[0].words[0], u36!(0o101)); // points to first word in RC-block
+
+    assert_eq!(program.chunks[1].address, Address::from(u18!(0o101)));
+    assert_eq!(program.chunks[1].words.len(), 2);
+    // The first RC-word points to the second RC-word.
+    assert_eq!(program.chunks[1].words[0], u36!(0o102));
+    // # is 0o102 at address 0o102, so #+400 is 0o502.
+    assert_eq!(program.chunks[1].words[1], u36!(0o502));
+}

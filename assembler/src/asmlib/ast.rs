@@ -25,6 +25,7 @@ enum SymbolUse {
 
 pub(crate) trait RcAllocator {
     fn allocate(&mut self, span: Span, value: Unsigned36Bit) -> Address;
+    fn update(&mut self, address: Address, value: Unsigned36Bit);
 }
 
 /// Eventually we will support symbolic expressions.

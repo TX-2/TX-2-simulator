@@ -378,6 +378,10 @@ impl RcAllocator for NoRcBlock {
     fn allocate(&mut self, _span: Span, _value: Unsigned36Bit) -> Address {
         panic!("Cannot allocate an RC-word before we know the address of the RC block");
     }
+
+    fn update(&mut self, _address: Address, _value: Unsigned36Bit) {
+        panic!("Cannot update an RC-word in an RC-block which cannot allocate words");
+    }
 }
 
 fn assign_block_positions(
