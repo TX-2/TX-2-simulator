@@ -1814,3 +1814,392 @@ fn test_commas_instruction() {
     );
     assert_eq!(got, expected);
 }
+
+#[cfg(test)]
+mod comma_tests {
+    use super::super::super::ast::{
+        CommaDelimitedInstruction, Commas, CommasOrInstruction, UntaggedProgramInstruction,
+    };
+    use super::super::super::span::*;
+    use super::super::instructions_with_comma_counts as parent_instructions_with_comma_counts;
+    use std::fmt::Formatter;
+
+    #[derive(Clone, Eq)]
+    struct Briefly(CommaDelimitedInstruction);
+
+    impl From<(Option<Commas>, UntaggedProgramInstruction, Option<Commas>)> for Briefly {
+        fn from(value: (Option<Commas>, UntaggedProgramInstruction, Option<Commas>)) -> Self {
+            Self(CommaDelimitedInstruction::new(value.0, value.1, value.2))
+        }
+    }
+
+    fn briefly(
+        v: Vec<(Option<Commas>, UntaggedProgramInstruction, Option<Commas>)>,
+    ) -> Vec<Briefly> {
+        v.into_iter().map(Briefly::from).collect()
+    }
+
+    impl PartialEq<CommaDelimitedInstruction> for Briefly {
+        fn eq(&self, other: &CommaDelimitedInstruction) -> bool {
+            self == other
+        }
+    }
+
+    impl PartialEq<Briefly> for Briefly {
+        fn eq(&self, other: &Briefly) -> bool {
+            self.0 == other.0
+        }
+    }
+
+    fn instructions_with_comma_counts(input: Vec<CommasOrInstruction>) -> Vec<Briefly> {
+        dbg!(&input);
+        let output = parent_instructions_with_comma_counts(input.into_iter());
+        output.into_iter().map(Briefly).collect()
+    }
+
+    impl std::fmt::Debug for Briefly {
+        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+            use super::*;
+            let instr_string: String = {
+                match &self.0.instruction.inst {
+                    InstructionFragment::Arithmetic(ArithmeticExpression { first, tail }) => {
+                        if tail.is_empty() {
+                            match first {
+                                Atom::Literal(literal) => {
+                                    format!(
+                                        "span={0:?}, unshifted_value={1}",
+                                        literal.span(),
+                                        literal.unshifted_value()
+                                    )
+                                }
+                                _ => unreachable!(),
+                            }
+                        } else {
+                            unreachable!();
+                        }
+                    }
+                    _ => unreachable!(),
+                }
+            };
+            write!(
+                f,
+                "({:?},UntaggedProgramInstruction({instr_string}),{:?})",
+                self.0.leading_commas, self.0.trailing_commas
+            )
+        }
+    }
+
+    fn inst(sp: Span, n: u16) -> UntaggedProgramInstruction {
+        use super::*;
+        UntaggedProgramInstruction {
+            span: sp,
+            holdbit: HoldBit::Unspecified,
+            inst: InstructionFragment::from(ArithmeticExpression::from(Atom::Literal(
+                LiteralValue::from((sp, Script::Normal, n.into())),
+            ))),
+        }
+    }
+
+    #[test]
+    fn test_instructions_with_comma_counts_len_0_with_0_instructions() {
+        assert_eq!(instructions_with_comma_counts(Vec::new()), briefly(vec![]))
+    }
+
+    #[test]
+    fn test_instructions_with_comma_counts_len_1_with_1_instructions() {
+        assert_eq!(
+            instructions_with_comma_counts(vec![CommasOrInstruction::I(inst(span(0..1), 1))]),
+            briefly(vec![(None, inst(span(0..1), 1), None),])
+        );
+    }
+
+    #[test]
+    fn test_instructions_with_comma_counts_len_1_with_0_instructions() {
+        assert_eq!(
+            instructions_with_comma_counts(vec![CommasOrInstruction::C(Some(Commas::One(span(
+                0..1
+            ))))]),
+            briefly(vec![]),
+        );
+    }
+
+    #[test]
+    fn test_instructions_with_comma_counts_len_2_with_0_instructions() {
+        assert_eq!(
+            instructions_with_comma_counts(vec![
+                CommasOrInstruction::C(Some(Commas::One(span(0..1)))),
+                CommasOrInstruction::C(Some(Commas::Two(span(3..5)))),
+            ]),
+            briefly(vec![(
+                Some(Commas::One(span(0..1))),
+                inst(span(3..3), 0),
+                Some(Commas::Two(span(3..5))),
+            )])
+        );
+    }
+
+    #[test]
+    fn test_instructions_with_comma_counts_len_2_with_1_instruction_a() {
+        assert_eq!(
+            instructions_with_comma_counts(vec![
+                CommasOrInstruction::I(inst(span(0..1), 1)),
+                CommasOrInstruction::C(Some(Commas::One(span(1..2)))),
+            ]),
+            briefly(vec![(
+                None,
+                inst(span(0..1), 1),
+                Some(Commas::One(span(1..2))),
+            )])
+        );
+    }
+
+    #[test]
+    fn test_instructions_with_comma_counts_len_2_with_1_instruction_b() {
+        assert_eq!(
+            instructions_with_comma_counts(vec![
+                CommasOrInstruction::C(Some(Commas::Two(span(0..2)))),
+                CommasOrInstruction::I(inst(span(2..3), 3)),
+            ]),
+            briefly(vec![(
+                Some(Commas::Two(span(0..2))),
+                inst(span(2..3), 3),
+                None,
+            )])
+        );
+    }
+
+    #[test]
+    fn test_instructions_with_comma_counts_len_2_with_2_instructions() {
+        use CommasOrInstruction::*;
+        assert_eq!(
+            instructions_with_comma_counts(vec![I(inst(span(0..1), 1)), I(inst(span(2..3), 2))]),
+            briefly(vec![
+                (None, inst(span(0..1), 1), None),
+                (None, inst(span(2..3), 2), None,),
+            ])
+        );
+    }
+
+    #[test]
+    fn test_instructions_with_comma_counts_len_3_with_0_instructions() {
+        use CommasOrInstruction::*;
+        assert_eq!(
+            instructions_with_comma_counts(vec![
+                C(Some(Commas::One(span(0..1)))),
+                C(Some(Commas::Two(span(2..3)))),
+                C(Some(Commas::Three(span(4..5)))),
+            ]),
+            briefly(vec![
+                (
+                    Some(Commas::One(span(0..1))),
+                    inst(span(2..2), 0),
+                    Some(Commas::Two(span(2..3))),
+                ),
+                (
+                    Some(Commas::Two(span(2..3))),
+                    inst(span(4..4), 0),
+                    Some(Commas::Three(span(4..5))),
+                ),
+            ])
+        );
+    }
+
+    #[test]
+    fn test_instructions_with_comma_counts_len_3_with_1_instructions() {
+        use CommasOrInstruction::*;
+        // CCI cases
+        assert_eq!(
+            instructions_with_comma_counts(vec![
+                C(Some(Commas::One(span(0..1)))),
+                C(Some(Commas::Two(span(2..3)))),
+                I(inst(span(3..4), 3))
+            ]),
+            briefly(vec![
+                (
+                    Some(Commas::One(span(0..1))),
+                    inst(span(2..2), 0),
+                    Some(Commas::Two(span(2..3))),
+                ),
+                (Some(Commas::Two(span(2..3))), inst(span(3..4), 3), None,),
+            ])
+        );
+
+        // CIC cases
+        assert_eq!(
+            instructions_with_comma_counts(vec![
+                C(Some(Commas::One(span(0..1)))),
+                I(inst(span(1..2), 2)),
+                C(Some(Commas::One(span(2..3)))),
+            ]),
+            briefly(vec![(
+                Some(Commas::One(span(0..1))),
+                inst(span(1..2), 2),
+                Some(Commas::One(span(2..3))),
+            )])
+        );
+        assert_eq!(
+            instructions_with_comma_counts(vec![
+                C(Some(Commas::One(span(0..1)))),
+                I(inst(span(1..2), 2)),
+                C(Some(Commas::Three(span(2..3))))
+            ]),
+            briefly(vec![(
+                Some(Commas::One(span(0..1))),
+                inst(span(1..2), 2),
+                Some(Commas::Three(span(2..3))),
+            )])
+        );
+        assert_eq!(
+            instructions_with_comma_counts(vec![
+                C(None),
+                I(inst(span(0..1), 2)),
+                C(Some(Commas::Three(span(1..4))))
+            ]),
+            briefly(vec![(
+                None,
+                inst(span(0..1), 2),
+                Some(Commas::Three(span(1..4)))
+            )])
+        );
+
+        // ICC cases
+        assert_eq!(
+            instructions_with_comma_counts(vec![
+                I(inst(span(0..1), 1)),
+                C(Some(Commas::One(span(1..2)))), // 2..3 is a space
+                C(Some(Commas::Two(span(3..4))))
+            ]),
+            briefly(vec![
+                (None, inst(span(0..1), 1), Some(Commas::One(span(1..2)))),
+                (
+                    Some(Commas::One(span(1..2))),
+                    inst(span(3..3), 0),
+                    Some(Commas::Two(span(3..4)))
+                )
+            ])
+        );
+        assert_eq!(
+            instructions_with_comma_counts(
+                // "1,, ,,,"
+                vec![
+                    I(inst(span(0..1), 1)),
+                    C(Some(Commas::Two(span(1..3)))),
+                    C(Some(Commas::Three(span(4..7))))
+                ]
+            ),
+            briefly(vec![
+                (None, inst(span(0..1), 1), Some(Commas::Two(span(1..3)))),
+                (
+                    Some(Commas::Two(span(1..3))),
+                    inst(span(4..4), 0),
+                    Some(Commas::Three(span(4..7)))
+                ),
+            ])
+        );
+    }
+
+    #[test]
+    fn test_instructions_with_comma_counts_len_3_with_2_instructions() {
+        use CommasOrInstruction::*;
+        // IIC cases
+        assert_eq!(
+            instructions_with_comma_counts(vec![
+                I(inst(span(0..1), 1)),
+                I(inst(span(2..3), 2)),
+                C(Some(Commas::Two(span(3..5)))),
+            ]),
+            briefly(vec![
+                (None, inst(span(0..1), 1), None),
+                (None, inst(span(2..3), 2), Some(Commas::Two(span(3..5)))),
+            ])
+        );
+        assert_eq!(
+            instructions_with_comma_counts(vec![
+                I(inst(span(0..1), 1)),
+                // span 1..2 is a space.
+                I(inst(span(2..3), 2)),
+                C(None)
+            ]),
+            briefly(vec![
+                (None, inst(span(0..1), 1), None,),
+                (None, inst(span(2..3), 2), None,)
+            ])
+        );
+
+        // ICI cases
+        assert_eq!(
+            instructions_with_comma_counts(vec![
+                I(inst(span(0..1), 1)),
+                C(Some(Commas::Two(span(1..3)))),
+                I(inst(span(3..4), 2)),
+            ]),
+            briefly(vec![
+                (None, inst(span(0..1), 1), Some(Commas::Two(span(1..3)))),
+                (Some(Commas::Two(span(1..3))), inst(span(3..4), 2), None)
+            ])
+        );
+        assert_eq!(
+            instructions_with_comma_counts(vec![
+                I(inst(span(0..1), 1)),
+                C(Some(Commas::Three(span(1..4)))),
+                I(inst(span(4..5), 2)),
+            ]),
+            briefly(vec![
+                (None, inst(span(0..1), 1), Some(Commas::Three(span(1..4)))),
+                (Some(Commas::Three(span(1..4))), inst(span(4..5), 2), None)
+            ])
+        );
+        assert_eq!(
+            instructions_with_comma_counts(vec![
+                I(inst(span(0..1), 1)),
+                C(Some(Commas::One(span(1..2)))),
+                I(inst(span(2..3), 2)),
+            ]),
+            briefly(vec![
+                (None, inst(span(0..1), 1), Some(Commas::One(span(1..2)))),
+                (Some(Commas::One(span(1..2))), inst(span(2..3), 2), None)
+            ])
+        );
+
+        // CII cases
+        assert_eq!(
+            instructions_with_comma_counts(vec![
+                C(Some(Commas::Two(span(0..2)))),
+                I(inst(span(2..3), 1)),
+                I(inst(span(4..5), 2)),
+            ]),
+            briefly(vec![
+                (Some(Commas::Two(span(0..2))), inst(span(2..3), 1), None),
+                (None, inst(span(4..5), 2), None)
+            ])
+        );
+        assert_eq!(
+            instructions_with_comma_counts(vec![
+                C(None),
+                I(inst(span(0..1), 1)),
+                I(inst(span(1..3), 2)),
+            ]),
+            briefly(vec![
+                (None, inst(span(0..1), 1), None),
+                (None, inst(span(1..3), 2), None)
+            ])
+        );
+    }
+
+    #[test]
+    fn test_instructions_with_comma_counts_len_3_with_3_instructions() {
+        use CommasOrInstruction::*;
+        assert_eq!(
+            instructions_with_comma_counts(vec![
+                I(inst(span(0..1), 1)),
+                I(inst(span(2..3), 2)),
+                I(inst(span(4..5), 3)),
+            ]),
+            briefly(vec![
+                (None, inst(span(0..1), 1), None),
+                (None, inst(span(2..3), 2), None),
+                (None, inst(span(4..5), 3), None),
+            ])
+        );
+    }
+}

@@ -487,6 +487,114 @@ where
     .labelled("metacommand")
 }
 
+pub(crate) fn instructions_with_comma_counts<I>(it: I) -> Vec<CommaDelimitedInstruction>
+where
+    I: Iterator<Item = CommasOrInstruction>,
+{
+    use CommasOrInstruction::*;
+    let mut it = it.peekable();
+
+    /// Fold operation which estabishes an alternating pattern of
+    /// commas and instructions.
+    ///
+    /// Invariant: acc is non-empty, begins and ends with C(_)
+    /// and does not contain a consecutive pair of C(_) or a
+    /// consecutive pair of Inst(_).
+    fn fold_step(
+        mut acc: Vec<CommasOrInstruction>,
+        item: CommasOrInstruction,
+    ) -> Vec<CommasOrInstruction> {
+        fn null_instruction(span: Span) -> UntaggedProgramInstruction {
+            UntaggedProgramInstruction {
+                span,
+                holdbit: HoldBit::Unspecified,
+                inst: InstructionFragment::from(ArithmeticExpression::from(Atom::Literal(
+                    LiteralValue::from((span, Script::Normal, Unsigned36Bit::ZERO)),
+                ))),
+            }
+        }
+
+        match acc.last_mut() {
+            Some(CommasOrInstruction::C(tail_comma)) => match item {
+                CommasOrInstruction::C(maybe_commas) => {
+                    if tail_comma.is_none() {
+                        *tail_comma = maybe_commas;
+                    } else {
+                        let null_inst_span: Span = match (tail_comma, &maybe_commas) {
+                            (_, Some(ic)) => span(ic.span().start..ic.span().start),
+                            (Some(tc), _) => span(tc.span().start..tc.span().start),
+                            (None, None) => {
+                                unreachable!("should be no need to interpose a null instruction between two instances of zero commas");
+                            }
+                        };
+                        dbg!(&null_inst_span);
+                        acc.push(CommasOrInstruction::I(null_instruction(null_inst_span)));
+                        acc.push(CommasOrInstruction::C(maybe_commas));
+                    }
+                }
+                CommasOrInstruction::I(inst) => {
+                    acc.push(CommasOrInstruction::I(inst));
+                    acc.push(CommasOrInstruction::C(None));
+                }
+            },
+            Some(I(_)) => unreachable!("invariant was broken"),
+            None => unreachable!("invariant was not established"),
+        }
+        assert!(matches!(acc.first(), Some(C(_))));
+        assert!(matches!(acc.last(), Some(C(_))));
+        acc
+    }
+
+    let initial_accumulator: Vec<CommasOrInstruction> = vec![CommasOrInstruction::C({
+        match it.peek() {
+            None => {
+                return Vec::new();
+            }
+            Some(I(_)) => None,
+            Some(C(maybe_commas)) => {
+                let c = maybe_commas.clone();
+                it.next();
+                c
+            }
+        }
+    })];
+
+    let tmp = it.fold(initial_accumulator, fold_step);
+    let mut output: Vec<CommaDelimitedInstruction> = Vec::with_capacity(tmp.len() / 2 + 1);
+    let mut it = tmp.into_iter().peekable();
+    loop {
+        let maybe_before_count = it.next();
+        let maybe_inst = it.next();
+        match (maybe_before_count, maybe_inst) {
+            (None, _) => {
+                break;
+            }
+            (Some(C(before_commas)), Some(I(inst))) => {
+                let after_commas: Option<Commas> = match it.peek() {
+                    Some(CommasOrInstruction::C(commas)) => commas.clone(),
+                    None => None,
+                    Some(CommasOrInstruction::I(_)) => {
+                        unreachable!("fold_step did not maintain its invariant")
+                    }
+                };
+                output.push(CommaDelimitedInstruction::new(
+                    before_commas,
+                    inst,
+                    after_commas,
+                ));
+            }
+            (Some(C(_)), None) => {
+                // No instructions in the input.
+                break;
+            }
+            (Some(I(_)), _) | (Some(C(_)), Some(C(_))) => {
+                unreachable!("fold_step did not maintain its invariant");
+            }
+        }
+    }
+    output
+}
+
 fn tag_definition<'a, I>() -> impl Parser<'a, I, Tag, Extra<'a>> + Clone
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
