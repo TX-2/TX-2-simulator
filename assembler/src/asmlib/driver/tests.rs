@@ -533,13 +533,12 @@ fn test_440_330_220_110_with_commas() {
     assert_eq!(program.chunks[0].words[0], u36!(0o440330220110));
 }
 
-//#[test]
-//fn test_440_330_220_110_with_commas_in_rc_word() {
-//    let input = "{440,330,,220,110}\n";
-//    let program = assemble_source(input, Default::default()).expect("program is valid");
-//    dbg!(&program);
-//    assert_eq!(program.chunks.len(), 2); // one regular chunk plus RC-block
-//    assert_eq!(program.chunks[0].words[0], program.chunks[1].address); // point to first word in RC-block
-//    assert_eq!(program.chunks[1].words[0], u36!(0o440330220110));
-//}
-//
+#[test]
+fn test_440_330_220_110_with_commas_in_rc_word() {
+    let input = "{440,330,,220,110}\n";
+    let program = assemble_source(input, Default::default()).expect("program is valid");
+    dbg!(&program);
+    assert_eq!(program.chunks.len(), 2); // one regular chunk plus RC-block
+    assert_eq!(program.chunks[0].words[0], program.chunks[1].address); // point to first word in RC-block
+    assert_eq!(program.chunks[1].words[0], u36!(0o440330220110));
+}
