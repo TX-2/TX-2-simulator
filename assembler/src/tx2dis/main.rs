@@ -175,7 +175,7 @@ fn disassemble_chunk<R: Read>(input: &mut R, checksum: &mut Signed18Bit) -> Resu
 }
 
 fn check_header<R: Read>(input: &mut R) -> Result<(), Fail> {
-    let expected_leader = reader_leader();
+    let expected_leader = assembler::reader_leader();
     let header = read_splayed_words(input, expected_leader.len(), None)?;
     for (pos, (want, got)) in expected_leader.iter().zip(header.iter()).enumerate() {
         if want != got {
