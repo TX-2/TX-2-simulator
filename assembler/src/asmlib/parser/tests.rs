@@ -524,15 +524,29 @@ fn test_comment_in_rc_block() {
                     UntaggedProgramInstruction {
                         span: span(0..10),
                         holdbit: HoldBit::Unspecified,
+                        // The output is an RC-reference to a location containing the value 1.
                         inst: InstructionFragment::from(ArithmeticExpression::from(Atom::RcRef(
                             span(0..10),
-                            vec![InstructionFragment::Arithmetic(ArithmeticExpression::from(
-                                Atom::Literal(LiteralValue::from((
-                                    span(1..2),
-                                    Script::Normal,
-                                    Unsigned36Bit::ONE
-                                ),))
-                            ))]
+                            vec![TaggedProgramInstruction {
+                                tag: None,
+                                instructions: vec![CommaDelimitedInstruction {
+                                    leading_commas: None,
+                                    instruction: UntaggedProgramInstruction {
+                                        span: span(1..2),
+                                        holdbit: HoldBit::Unspecified,
+                                        inst: InstructionFragment::Arithmetic(
+                                            ArithmeticExpression::from(Atom::Literal(
+                                                LiteralValue::from((
+                                                    span(1..2),
+                                                    Script::Normal,
+                                                    Unsigned36Bit::ONE
+                                                ))
+                                            ))
+                                        )
+                                    },
+                                    trailing_commas: None,
+                                }]
+                            }],
                         )))
                     }
                 ))]

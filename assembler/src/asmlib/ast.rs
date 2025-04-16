@@ -12,7 +12,10 @@ use base::prelude::*;
 use crate::eval::{combine_fragment_values, HereValue, SymbolLookupFailure, SymbolValue};
 use crate::symtab::LookupOperation;
 
-use super::eval::{Evaluate, RcBlock, SymbolContext, SymbolDefinition, SymbolLookup, SymbolUse};
+use super::eval::{
+    evaluate_tagged_program_instructions, Evaluate, RcBlock, SymbolContext, SymbolDefinition,
+    SymbolLookup, SymbolUse,
+};
 use super::glyph;
 use super::span::*;
 use super::state::NumeralMode;
@@ -187,10 +190,18 @@ impl ArithmeticExpression {
         ArithmeticExpression { first, tail }
     }
 
-    pub(crate) fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
+    pub(crate) fn symbol_uses(
+        &self,
+        block_id: BlockIdentifier,
+        block_offset: Unsigned18Bit,
+    ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
         let mut result = Vec::with_capacity(1 + self.tail.len());
-        result.extend(self.first.symbol_uses());
-        result.extend(self.tail.iter().flat_map(|(_op, x)| x.symbol_uses()));
+        result.extend(self.first.symbol_uses(block_id, block_offset));
+        result.extend(
+            self.tail
+                .iter()
+                .flat_map(|(_op, x)| x.symbol_uses(block_id, block_offset)),
+        );
         result.into_iter()
     }
 
@@ -335,7 +346,7 @@ pub(crate) enum Atom {
     Literal(LiteralValue),
     Symbol(Span, Script, SymbolOrHere),
     Parens(Script, Box<ArithmeticExpression>),
-    RcRef(Span, Vec<InstructionFragment>),
+    RcRef(Span, Vec<TaggedProgramInstruction>),
 }
 
 impl From<SymbolOrLiteral> for Atom {
@@ -350,10 +361,14 @@ impl From<SymbolOrLiteral> for Atom {
 }
 
 impl Atom {
-    pub(crate) fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
+    pub(crate) fn symbol_uses(
+        &self,
+        block_id: BlockIdentifier,
+        block_offset: Unsigned18Bit,
+    ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
         let mut result = Vec::with_capacity(1);
         match self {
-            Atom::Literal(_) | Atom::RcRef(_, _) | Atom::Symbol(_, _, SymbolOrHere::Here) => (),
+            Atom::Literal(_) | Atom::Symbol(_, _, SymbolOrHere::Here) => (),
             Atom::Symbol(span, script, SymbolOrHere::Named(name)) => {
                 result.push((
                     name.clone(),
@@ -362,7 +377,47 @@ impl Atom {
                 ));
             }
             Atom::Parens(_script, expr) => {
-                result.extend(expr.symbol_uses());
+                result.extend(expr.symbol_uses(block_id, block_offset));
+            }
+            Atom::RcRef(_span, tagged_instructions) => {
+                // Tags defined inside the RC-word are not counted as
+                // defined outside it.  But if we refer to a symbol
+                // inside the RC-word it counts as a reference for the
+                // purpose of determining which contexts it has been
+                // used in.
+                for symbol_use in tagged_instructions
+                    .iter()
+                    .flat_map(|instr| instr.symbol_uses(block_id, block_offset))
+                {
+                    match &symbol_use {
+                        (_, _, SymbolUse::Reference(_)) => {
+                            result.push(symbol_use);
+                        }
+                        (name, _span, SymbolUse::Definition(SymbolDefinition::Tag { .. })) => {
+                            panic!("Found definition of tag {name} inside an RC-word; this is allowed but is not yet supported.");
+                        }
+                        (name, _span, SymbolUse::Origin(_name, _block)) => {
+                            unreachable!("Found origin {name} inside an RC-word; the parser should have rejected this.");
+                        }
+                        (name, span, SymbolUse::Definition(_)) => {
+                            // e.g. we have an input like
+                            //
+                            // { X = 2 }
+                            //
+                            //
+                            // Ideally we would issue an error for
+                            // this, but since this function cannot
+                            // fail, it's better to do that at the
+                            // time we parse the RC-word reference
+                            // (thus eliminating this case).
+                            //
+                            // When working on this case we should
+                            // figure out if an equality is allowed
+                            // inside a macro expansion.
+                            panic!("Found unexpected definition of {name} inside RC-word reference at {span:?}");
+                        }
+                    }
+                }
             }
         }
         result.into_iter()
@@ -410,9 +465,9 @@ impl Evaluate for Atom {
                 op,
             ),
             Atom::Parens(_script, expr) => expr.evaluate(target_address, symtab, rc_allocator, op),
-            Atom::RcRef(span, fragments) => {
-                let value: Unsigned36Bit = evaluate_instruction_fragments(
-                    fragments,
+            Atom::RcRef(span, tagged_program_instructions) => {
+                let value: Unsigned36Bit = evaluate_tagged_program_instructions(
+                    tagged_program_instructions,
                     target_address,
                     symtab,
                     rc_allocator,
@@ -544,11 +599,15 @@ pub(crate) enum InstructionFragment {
 }
 
 impl InstructionFragment {
-    pub(crate) fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
+    pub(crate) fn symbol_uses(
+        &self,
+        block_id: BlockIdentifier,
+        block_offset: Unsigned18Bit,
+    ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
         let mut result: Vec<_> = Vec::new();
         match self {
             InstructionFragment::Arithmetic(expr) => {
-                result.extend(expr.symbol_uses());
+                result.extend(expr.symbol_uses(block_id, block_offset));
             }
             InstructionFragment::DeferredAddressing => (),
             InstructionFragment::Config(value) => {
@@ -567,8 +626,8 @@ impl InstructionFragment {
                     (name, span, symbol_use)
                 }));
                 let (base, index) = rc_word_value.as_ref();
-                result.extend(base.symbol_uses());
-                result.extend(index.symbol_uses());
+                result.extend(base.symbol_uses(block_id, block_offset));
+                result.extend(index.symbol_uses(block_id, block_offset));
             }
         }
         result.into_iter()
@@ -783,8 +842,12 @@ impl CommaDelimitedInstruction {
         }
     }
 
-    pub(crate) fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> + '_ {
-        self.instruction.symbol_uses()
+    pub(crate) fn symbol_uses(
+        &self,
+        block_id: BlockIdentifier,
+        block_offset: Unsigned18Bit,
+    ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> + '_ {
+        self.instruction.symbol_uses(block_id, block_offset)
     }
 
     pub(crate) fn span(&self) -> Span {
@@ -1762,46 +1825,13 @@ pub(crate) struct UntaggedProgramInstruction {
 }
 
 impl UntaggedProgramInstruction {
-    pub(crate) fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> + '_ {
-        self.inst.symbol_uses()
+    pub(crate) fn symbol_uses(
+        &self,
+        block_id: BlockIdentifier,
+        block_offset: Unsigned18Bit,
+    ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> + '_ {
+        self.inst.symbol_uses(block_id, block_offset)
     }
-}
-
-fn evaluate_instruction_fragments<R: RcAllocator>(
-    parts: &[InstructionFragment],
-    target_address: &HereValue,
-    symtab: &mut SymbolTable,
-    rc_allocator: &mut R,
-    op: &mut LookupOperation,
-) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-    fn or_looked_up_value<R: RcAllocator>(
-        accumulator: Unsigned36Bit,
-        frag: &InstructionFragment,
-        target_address: &HereValue,
-        symtab: &mut SymbolTable,
-        rc_allocator: &mut R,
-        op: &mut LookupOperation,
-    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-        Ok(combine_fragment_values(
-            accumulator,
-            frag.evaluate(target_address, symtab, rc_allocator, op)?,
-        ))
-    }
-
-    parts.iter().try_fold(Unsigned36Bit::ZERO, |acc, curr| {
-        or_looked_up_value(acc, curr, target_address, symtab, rc_allocator, op)
-    })
-}
-
-fn evaluate_instruction_fragment<R: RcAllocator>(
-    // TODO: fold into caller
-    inst: &InstructionFragment,
-    target_address: &HereValue,
-    symtab: &mut SymbolTable,
-    rc_allocator: &mut R,
-    op: &mut LookupOperation,
-) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-    inst.evaluate(target_address, symtab, rc_allocator, op)
 }
 
 impl Evaluate for UntaggedProgramInstruction {
@@ -1812,13 +1842,18 @@ impl Evaluate for UntaggedProgramInstruction {
         rc_allocator: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-        evaluate_instruction_fragment(&self.inst, target_address, symtab, rc_allocator, op).map(
-            |word| match self.holdbit {
+        // TODO: issue a diagnostic if a TaggedProgramInstruction
+        // contains inconsistent values for the hold bit.  We will need to decide
+        // whether something like ",h" sets the hold bit (i.e. whether
+        // the hold bit is supposed to be subject to the same
+        // comma rules that other values are).
+        self.inst
+            .evaluate(target_address, symtab, rc_allocator, op)
+            .map(|word| match self.holdbit {
                 HoldBit::Hold => word | HELD_MASK,
                 HoldBit::NotHold => word & !HELD_MASK,
                 HoldBit::Unspecified => word,
-            },
-        )
+            })
     }
 }
 
@@ -1868,7 +1903,7 @@ impl TaggedProgramInstruction {
             result.extend(tag.symbol_uses(block_id, offset));
         }
         for inst in self.instructions.iter() {
-            result.extend(inst.symbol_uses());
+            result.extend(inst.symbol_uses(block_id, offset));
         }
         result.into_iter()
     }

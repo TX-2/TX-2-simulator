@@ -489,3 +489,13 @@ impl Evaluate for TaggedProgramInstruction {
         evaluate_and_combine_values(&self.instructions, target_address, symtab, rc_allocator, op)
     }
 }
+
+pub(crate) fn evaluate_tagged_program_instructions<R: RcAllocator>(
+    instructions: &[TaggedProgramInstruction],
+    target_address: &HereValue,
+    symtab: &mut SymbolTable,
+    rc_allocator: &mut R,
+    op: &mut LookupOperation,
+) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+    evaluate_and_combine_values(instructions, target_address, symtab, rc_allocator, op)
+}
