@@ -9,8 +9,8 @@ mod symex;
 mod tests;
 
 use chumsky::error::Rich;
-use chumsky::extra::{Full, ParserExtra};
-use chumsky::input::{MapExtra, Stream, ValueInput};
+use chumsky::extra::Full;
+use chumsky::input::{Stream, ValueInput};
 use chumsky::inspector::SimpleState;
 use chumsky::prelude::{choice, just, one_of, recursive, Input, IterParser, Recursive, SimpleSpan};
 use chumsky::select;
@@ -629,19 +629,9 @@ where
         //
         // "ADXₚ|ₜQ" should be equivalent to ADXₚ{Qₜ}*.  So we need to
         // generate an RC-word containing Qₜ.
-        fn getspan<
-            'srcbody,
-            I: Input<'srcbody, Token = Tok, Span = Span>,
-            E: ParserExtra<'srcbody, I>,
-        >(
-            frag: InstructionFragment,
-            extra: &mut MapExtra<'srcbody, '_, I, E>,
-        ) -> (InstructionFragment, Span) {
-            (frag, extra.span())
-        }
         let spanned_fragment = program_instruction_fragment // this is Q
             .clone()
-            .map_with(getspan);
+            .map_with(|frag, extra| (frag, extra.span()));
         let pipe_construct = (symbol_or_literal(Script::Sub) // this is p
             .then_ignore(just(Tok::Pipe(Script::Sub)))
             .then(
