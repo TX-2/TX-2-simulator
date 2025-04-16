@@ -6,6 +6,7 @@ mod driver;
 mod eval;
 mod glyph;
 mod lexer;
+mod listing;
 mod parser;
 mod span;
 mod state;

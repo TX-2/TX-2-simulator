@@ -7,16 +7,19 @@ use base::{
     u36,
 };
 
-use crate::symtab::{LookupOperation, SymbolTable};
+use crate::symtab::{
+    FinalSymbolDefinition, FinalSymbolTable, FinalSymbolType, LookupOperation, SymbolTable,
+};
 
 use super::ast::{
     ArithmeticExpression, Atom, CommaDelimitedInstruction, Commas, ConfigValue, EqualityValue,
-    HoldBit, InstructionFragment, LiteralValue, Operator, RcAllocator, SymbolOrLiteral,
-    TaggedProgramInstruction, UntaggedProgramInstruction,
+    HoldBit, InstructionFragment, LiteralValue, LocatedBlock, Operator, RcAllocator, Statement,
+    SymbolOrLiteral, TaggedProgramInstruction, UntaggedProgramInstruction,
 };
+use super::listing::{Listing, ListingLine};
 use super::span::*;
 use super::symbol::{SymbolContext, SymbolName, SymbolOrHere};
-use super::types::{BlockIdentifier, MachineLimitExceededFailure};
+use super::types::{AssemblerFailure, BlockIdentifier, MachineLimitExceededFailure};
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum LookupTarget {
@@ -167,7 +170,7 @@ impl HereValue {
     }
 }
 
-pub(crate) trait Evaluate {
+pub(super) trait Evaluate {
     fn evaluate<R: RcAllocator>(
         &self,
         target_address: &HereValue,
@@ -921,5 +924,65 @@ impl Evaluate for UntaggedProgramInstruction {
                 HoldBit::NotHold => word & !HELD_MASK,
                 HoldBit::Unspecified => word,
             })
+    }
+}
+
+impl LocatedBlock {
+    pub(super) fn build_binary_block<R: RcAllocator>(
+        &self,
+        location: Address,
+        symtab: &mut SymbolTable,
+        rc_allocator: &mut R,
+        final_symbols: &mut FinalSymbolTable,
+        body: &str,
+        listing: &mut Listing,
+    ) -> Result<Vec<Unsigned36Bit>, AssemblerFailure> {
+        let mut words: Vec<Unsigned36Bit> = Vec::with_capacity(self.emitted_word_count().into());
+        for (offset, statement) in self.statements.iter().enumerate() {
+            let offset: Unsigned18Bit = Unsigned18Bit::try_from(offset)
+                .expect("assembled code block should fit within physical memory");
+            let here: Address = location.index_by(offset);
+            match statement {
+                Statement::Assignment(span, symbol, definition) => {
+                    let mut op = Default::default();
+                    let value = definition
+                        .evaluate(&HereValue::Address(here), symtab, rc_allocator, &mut op)
+                        .expect("lookup on FinalSymbolTable is infallible");
+                    final_symbols.define(
+                        symbol.clone(),
+                        FinalSymbolDefinition::new(
+                            value,
+                            FinalSymbolType::Equality,
+                            extract_span(body, span).trim().to_string(),
+                        ),
+                    );
+                }
+                Statement::Instruction(inst) => {
+                    if let Some(tag) = inst.tag() {
+                        final_symbols.define(
+                            tag.name.clone(),
+                            FinalSymbolDefinition::new(
+                                here.into(),
+                                FinalSymbolType::Tag,
+                                extract_span(body, &tag.span).trim().to_string(),
+                            ),
+                        );
+                    }
+
+                    let mut op = Default::default();
+                    let word = inst
+                        .evaluate(&HereValue::Address(here), symtab, rc_allocator, &mut op)
+                        .expect("lookup on FinalSymbolTable is infallible");
+
+                    listing.push_line(ListingLine::Instruction {
+                        address: here,
+                        instruction: inst.clone(),
+                        binary: word,
+                    });
+                    words.push(word);
+                }
+            }
+        }
+        Ok(words)
     }
 }

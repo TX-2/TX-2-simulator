@@ -6,18 +6,17 @@ mod tests;
 use std::cmp::max;
 use std::collections::BTreeMap;
 use std::ffi::OsStr;
-use std::fmt::Display;
 use std::fs::OpenOptions;
 use std::io::{BufReader, BufWriter, Read};
 use std::path::Path;
 
-use base::subword::split_halves;
 use chumsky::error::Rich;
 use tracing::{event, span, Level};
 
 use super::ast::*;
-use super::eval::{Evaluate, HereValue, RcBlock};
+use super::eval::RcBlock;
 use super::lexer;
+use super::listing::*;
 use super::parser::parse_source_file;
 use super::span::*;
 use super::state::NumeralMode;
@@ -34,8 +33,6 @@ pub use output::write_user_program;
 use base::charset::Script;
 #[cfg(test)]
 use base::u36;
-
-const EMPTY: &str = "";
 
 /// Represents the meta commands which are still relevant in the
 /// directive.  Excludes things like the PUNCH meta command.
@@ -364,110 +361,6 @@ fn assemble_pass2<'a>(
     })
 }
 
-fn extract_span<'a>(body: &'a str, span: &Span) -> &'a str {
-    &body[span.start..span.end]
-}
-
-#[derive(Debug)]
-enum ListingLine {
-    Origin(Origin),
-    Instruction {
-        address: Address,
-        instruction: TaggedProgramInstruction,
-        binary: Unsigned36Bit,
-    },
-}
-
-struct ListingLineWithBody<'a> {
-    line: &'a ListingLine,
-    body: &'a str,
-}
-
-impl Display for ListingLineWithBody<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.line {
-            ListingLine::Origin(origin) => {
-                write!(f, "{origin}|")
-            }
-            ListingLine::Instruction {
-                address,
-                instruction,
-                binary,
-            } => {
-                let displayed_tag: Option<&str> = instruction
-                    .tag
-                    .as_ref()
-                    .map(|t| extract_span(self.body, &t.span));
-                match displayed_tag {
-                    Some(t) => {
-                        write!(f, "{t:10}->")?;
-                    }
-                    None => {
-                        write!(f, "{EMPTY:12}")?;
-                    }
-                }
-                let displayed_instruction: &str =
-                    extract_span(self.body, &instruction.span()).trim();
-                let (left, right) = split_halves(*binary);
-                write!(f, "{displayed_instruction:30}  |{left:06} {right:06}| ")?;
-
-                let addr_value: Unsigned18Bit = (*address).into();
-                if addr_value & 0o7 == 0 {
-                    write!(f, "{addr_value:>06o}")
-                } else {
-                    write!(f, "   {:>03o}", addr_value & 0o777)
-                }
-            }
-        }
-    }
-}
-
-#[derive(Debug, Default)]
-struct Listing {
-    final_symbols: FinalSymbolTable,
-    output: Vec<ListingLine>,
-}
-
-impl Listing {
-    fn set_final_symbols(&mut self, final_symbols: FinalSymbolTable) {
-        self.final_symbols = final_symbols;
-    }
-
-    fn push_line(&mut self, line: ListingLine) {
-        self.output.push(line)
-    }
-
-    fn format_symbol_table(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.final_symbols)
-    }
-}
-
-struct ListingWithBody<'a> {
-    listing: &'a Listing,
-    body: &'a str,
-}
-
-impl Display for ListingWithBody<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "Symbol Table:")?;
-        self.listing.format_symbol_table(f)?;
-        writeln!(f)?;
-
-        writeln!(f, "Directive:")?;
-        for line in self.listing.output.iter() {
-            writeln!(
-                f,
-                "{}",
-                &ListingLineWithBody {
-                    line,
-                    body: self.body,
-                }
-            )?;
-        }
-        Ok(())
-    }
-}
-
 fn inconsistent_origin_definition(
     span: Span,
     name: SymbolName,
@@ -536,66 +429,6 @@ fn assign_block_positions(
     }
 
     Ok((Directive::new(output_blocks, maybe_entry_point), origins))
-}
-
-impl LocatedBlock {
-    fn build_binary_block<R: RcAllocator>(
-        &self,
-        location: Address,
-        symtab: &mut SymbolTable,
-        rc_allocator: &mut R,
-        final_symbols: &mut FinalSymbolTable,
-        body: &str,
-        listing: &mut Listing,
-    ) -> Result<Vec<Unsigned36Bit>, AssemblerFailure> {
-        let mut words: Vec<Unsigned36Bit> = Vec::with_capacity(self.emitted_word_count().into());
-        for (offset, statement) in self.statements.iter().enumerate() {
-            let offset: Unsigned18Bit = Unsigned18Bit::try_from(offset)
-                .expect("assembled code block should fit within physical memory");
-            let here: Address = location.index_by(offset);
-            match statement {
-                Statement::Assignment(span, symbol, definition) => {
-                    let mut op = Default::default();
-                    let value = definition
-                        .evaluate(&HereValue::Address(here), symtab, rc_allocator, &mut op)
-                        .expect("lookup on FinalSymbolTable is infallible");
-                    final_symbols.define(
-                        symbol.clone(),
-                        FinalSymbolDefinition::new(
-                            value,
-                            FinalSymbolType::Equality,
-                            extract_span(body, span).trim().to_string(),
-                        ),
-                    );
-                }
-                Statement::Instruction(inst) => {
-                    if let Some(tag) = inst.tag() {
-                        final_symbols.define(
-                            tag.name.clone(),
-                            FinalSymbolDefinition::new(
-                                here.into(),
-                                FinalSymbolType::Tag,
-                                extract_span(body, &tag.span).trim().to_string(),
-                            ),
-                        );
-                    }
-
-                    let mut op = Default::default();
-                    let word = inst
-                        .evaluate(&HereValue::Address(here), symtab, rc_allocator, &mut op)
-                        .expect("lookup on FinalSymbolTable is infallible");
-
-                    listing.push_line(ListingLine::Instruction {
-                        address: here,
-                        instruction: inst.clone(),
-                        binary: word,
-                    });
-                    words.push(word);
-                }
-            }
-        }
-        Ok(words)
-    }
 }
 
 /// Pass 3 generates binary code.
