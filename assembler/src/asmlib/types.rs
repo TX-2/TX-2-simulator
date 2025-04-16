@@ -171,6 +171,63 @@ pub enum AssemblerFailure {
     MachineLimitExceeded(MachineLimitExceededFailure),
 }
 
+impl PartialEq<AssemblerFailure> for AssemblerFailure {
+    fn eq(&self, other: &AssemblerFailure) -> bool {
+        use AssemblerFailure::*;
+        match (self, other) {
+            (InternalError(s1), InternalError(s2)) if s1 == s2 => true,
+            (BadTapeBlock(s1), BadTapeBlock(s2)) if s1 == s2 => true,
+            (IoErrorOnStdout { error: e1 }, IoErrorOnStdout { error: e2 })
+                if e1.to_string() == e2.to_string() =>
+            {
+                true
+            }
+            (
+                IoErrorOnInput {
+                    error: e1,
+                    filename: f1,
+                },
+                IoErrorOnInput {
+                    error: e2,
+                    filename: f2,
+                },
+            ) => e1.to_string() == e2.to_string() && f1 == f2,
+            (
+                IoErrorOnOutput {
+                    error: e1,
+                    filename: f1,
+                },
+                IoErrorOnOutput {
+                    error: e2,
+                    filename: f2,
+                },
+            ) => e1.to_string() == e2.to_string() && f1 == f2,
+            (
+                InvalidProgram {
+                    span: span1,
+                    msg: msg1,
+                },
+                InvalidProgram {
+                    span: span2,
+                    msg: msg2,
+                },
+            ) => span1 == span2 && msg1 == msg2,
+            (
+                SyntaxError {
+                    location: loc1,
+                    msg: msg1,
+                },
+                SyntaxError {
+                    location: loc2,
+                    msg: msg2,
+                },
+            ) => loc1 == loc2 && msg1 == msg2,
+            (MachineLimitExceeded(e1), MachineLimitExceeded(e2)) if e1 == e2 => true,
+            _ => false,
+        }
+    }
+}
+
 impl From<MachineLimitExceededFailure> for AssemblerFailure {
     fn from(f: MachineLimitExceededFailure) -> AssemblerFailure {
         AssemblerFailure::MachineLimitExceeded(f)

@@ -13,8 +13,8 @@ use super::super::span::*;
 use super::super::symbol::{SymbolContext, SymbolName};
 use super::super::symtab::LookupOperation;
 use super::super::types::BlockIdentifier;
-use super::assemble_pass1;
 use super::{assemble_nonempty_valid_input, assemble_source};
+use super::{assemble_pass1, Binary, BinaryChunk};
 use base::{
     charset::Script,
     prelude::{u18, u36, Address, Unsigned18Bit, Unsigned36Bit},
@@ -535,11 +535,19 @@ fn test_440_330_220_110_with_commas() {
 
 #[test]
 fn test_alternate_base_with_commas() {
-    let input = "10·,11·,,12,13· ** Note that 12 is in the default, octal, base\n";
-    let program = assemble_source(input, Default::default()).expect("program is valid");
-    dbg!(&program);
-    assert_eq!(program.chunks.len(), 1); // one chunk (no RC-block needed).
-    assert_eq!(program.chunks[0].words[0], u36!(0o012_013_012_015));
+    assert_eq!(
+        assemble_source(
+            "10·,11·,,12,13· ** Note that 12 is in the default, octal, base\n",
+            Default::default(),
+        ),
+        Ok(Binary {
+            entry_point: None,
+            chunks: vec![BinaryChunk {
+                address: Address::from(u18!(0o00200000)),
+                words: vec![u36!(0o012_013_012_015)]
+            }]
+        })
+    );
 }
 
 #[test]
