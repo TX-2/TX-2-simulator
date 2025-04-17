@@ -225,10 +225,7 @@ fn run_simulator() -> Result<(), Box<dyn std::error::Error>> {
 
     fn file_size_guess(file_name: &OsStr) -> Option<usize> {
         match std::fs::metadata(file_name) {
-            Ok(metadata) => match usize::try_from(metadata.len()) {
-                Ok(n) => Some(n),
-                Err(_) => None,
-            },
+            Ok(metadata) => usize::try_from(metadata.len()).ok(),
             Err(_) => None,
         }
     }
