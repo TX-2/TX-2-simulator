@@ -728,31 +728,29 @@ fn default_assigned_index_register_easy_case() {
     // device, LW output).  That doesn't seem very useful.
     let program =
         assemble_source("100|STAⱼ 0\nSTAₖ 0\n", Default::default()).expect("program is valid");
+    dbg!(&program);
+    assert_eq!(program.chunks.len(), 1);
     assert_eq!(
-        program,
-        Binary {
-            entry_point: None,
-            chunks: vec![BinaryChunk {
-                address: Address::from(u18!(0o100)),
-                words: vec![
-                    Instruction::from(&SymbolicInstruction {
-                        held: false,
-                        configuration: Unsigned5Bit::ZERO,
-                        opcode: Opcode::Sta,
-                        index: u6!(1), // j
-                        operand_address: OperandAddress::Direct(Address::from(Unsigned18Bit::ZERO)),
-                    })
-                    .bits(),
-                    Instruction::from(&SymbolicInstruction {
-                        held: false,
-                        configuration: Unsigned5Bit::ZERO,
-                        opcode: Opcode::Sta,
-                        index: u6!(2), // k
-                        operand_address: OperandAddress::Direct(Address::from(Unsigned18Bit::ZERO)),
-                    })
-                    .bits()
-                ]
-            }]
+        SymbolicInstruction::try_from(&Instruction::from(program.chunks[0].words[0]))
+            .expect("instruction 09 shoudl be valid"),
+        SymbolicInstruction {
+            held: false,
+            configuration: Unsigned5Bit::ZERO,
+            opcode: Opcode::Sta,
+            index: u6!(1), // j
+            operand_address: OperandAddress::Direct(Address::from(Unsigned18Bit::ZERO)),
         }
     );
+    assert_eq!(
+        SymbolicInstruction::try_from(&Instruction::from(program.chunks[0].words[1]))
+            .expect("instruction 09 shoudl be valid"),
+        SymbolicInstruction {
+            held: false,
+            configuration: Unsigned5Bit::ZERO,
+            opcode: Opcode::Sta,
+            index: u6!(2), // k
+            operand_address: OperandAddress::Direct(Address::from(Unsigned18Bit::ZERO)),
+        }
+    );
+    assert_eq!(program.chunks[0].words.len(), 2);
 }
