@@ -17,7 +17,10 @@ use super::{assemble_nonempty_valid_input, assemble_source};
 use super::{assemble_pass1, Binary, BinaryChunk};
 use base::{
     charset::Script,
-    prelude::{u18, u36, Address, Unsigned18Bit, Unsigned36Bit},
+    prelude::{
+        u18, u36, Address, Instruction, Opcode, OperandAddress, SymbolicInstruction, Unsigned18Bit,
+        Unsigned36Bit, Unsigned5Bit, Unsigned6Bit,
+    },
 };
 
 #[cfg(test)]
@@ -632,6 +635,60 @@ fn tag_definition_in_rc_word() {
                         // global value of 100.  Hence T+400 is 500.
                         u36!(0o500),
                     ]
+                }
+            ]
+        }
+    );
+}
+
+#[test]
+fn default_assigned_rc_word() {
+    // See section 6-2.2 of the User Handbook for a description of how
+    // this is supposed to work.
+    //
+    // It states that for symexes used only in an address context, the
+    // default assignment is,
+    //
+    // The numerical memory location of the next place in the RC words
+    // block. The contents of this RC word are set to zero.  This
+    // provision is useful in assigning temporary storage.
+    let program = assemble_source(
+        concat!("100| STA TEMP1\n", "     STB TEMP2\n"),
+        Default::default(),
+    )
+    .expect("program is valid");
+    assert_eq!(
+        program,
+        Binary {
+            entry_point: None,
+            chunks: vec![
+                BinaryChunk {
+                    address: Address::from(u18!(0o100)),
+                    words: vec![
+                        // The STA instruction
+                        Instruction::from(&SymbolicInstruction {
+                            held: false,
+                            configuration: Unsigned5Bit::ZERO,
+                            opcode: Opcode::Sta,
+                            index: Unsigned6Bit::ZERO,
+                            operand_address: OperandAddress::Direct(Address::from(u18!(0o102))),
+                        })
+                        .bits(),
+                        // The STB instruction
+                        Instruction::from(&SymbolicInstruction {
+                            held: false,
+                            configuration: Unsigned5Bit::ZERO,
+                            opcode: Opcode::Stb,
+                            index: Unsigned6Bit::ZERO,
+                            operand_address: OperandAddress::Direct(Address::from(u18!(0o103))),
+                        })
+                        .bits()
+                    ]
+                },
+                BinaryChunk {
+                    // The RC block
+                    address: Address::from(u18!(0o102)),
+                    words: vec![Unsigned36Bit::ZERO, Unsigned36Bit::ZERO,]
                 }
             ]
         }
