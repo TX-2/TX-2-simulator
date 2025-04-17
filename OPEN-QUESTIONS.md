@@ -71,10 +71,14 @@
 2. Is there a difference between the configuration values 34 and -3?
    Both seem to occur in symbolic code (e.g. the examples memo by
    H. Philip Peterson, 6M-5780, July 23, 1958).
-3. The user handbook (ch. 6) appears to state that it is possible to
-   assemble an instruction into both the left and right halves of a
-   word.  Is the operand address portion of both instructions
-   discarded?  If not, how is it handled?
-4. In the pipe construct "Z ₚ|ₜ Q" described in the User Handbook
+3. In the pipe construct "Z ₚ|ₜ Q" described in the User Handbook
    section 2-2.8 "SPECIAL SYMBOLS", are spaces allowed in the "ₚ" or
    "ₜ"?
+4. Symexes used only for index register values (User Handbook section
+   6-2.2) are assigned as "The lowest numerical index register value
+   not already used".  What does "used" mean?  We currently assume it
+   means "not already default-assigned", meaning that the assembler
+   does not need to track which index registers are used via explicit
+   equalities or numeric literals.  (Otherwise, use of index register
+   0o52 would mean that the first value to be default-assigned would
+   be 0o53, which isn't very helpful).

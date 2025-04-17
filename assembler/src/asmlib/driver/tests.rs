@@ -18,8 +18,8 @@ use super::{assemble_pass1, Binary, BinaryChunk};
 use base::{
     charset::Script,
     prelude::{
-        u18, u36, Address, Instruction, Opcode, OperandAddress, SymbolicInstruction, Unsigned18Bit,
-        Unsigned36Bit, Unsigned5Bit, Unsigned6Bit,
+        u18, u36, u6, Address, Instruction, Opcode, OperandAddress, SymbolicInstruction,
+        Unsigned18Bit, Unsigned36Bit, Unsigned5Bit, Unsigned6Bit,
     },
 };
 
@@ -652,11 +652,8 @@ fn default_assigned_rc_word() {
     // The numerical memory location of the next place in the RC words
     // block. The contents of this RC word are set to zero.  This
     // provision is useful in assigning temporary storage.
-    let program = assemble_source(
-        concat!("100| STA TEMP1\n", "     STB TEMP2\n"),
-        Default::default(),
-    )
-    .expect("program is valid");
+    let program = assemble_source("100| STA TEMP1\n     STB TEMP2\n", Default::default())
+        .expect("program is valid");
     assert_eq!(
         program,
         Binary {
@@ -691,6 +688,71 @@ fn default_assigned_rc_word() {
                     words: vec![Unsigned36Bit::ZERO, Unsigned36Bit::ZERO,]
                 }
             ]
+        }
+    );
+}
+
+#[test]
+fn default_assigned_index_register_easy_case() {
+    // See section 6-2.2 of the User Handbook for a description of how
+    // this is supposed to work.
+    //
+    // It states that for symexes used only in an index register
+    // context, the default assignment is, "The lowest numerical index
+    // register value not already used.  Except zero and no higher
+    // than 77."
+    //
+    // It's not clear what "not already used" really means.  For
+    // example, in this program:
+    //
+    // STAⱼ 0
+    // STAₖ 0
+    //
+    // It seems clear that j and k would be default-addiend to 1 and 2
+    // respectively.  But suppose instead that the program looked like
+    // this:
+    //
+    // STA₁ 0  ** USES INDEX REGISTER 1
+    // STAⱼ 0  ** SHOULD j BE DEFAULT ASSIGNED as 1 or 2?
+    //
+    // Here, index register 1 is used by the first instruction.  Does
+    // index register 1 count as used?
+    //
+    // This test uses the first program above.  IOW it doesn't assume
+    // any particular answer to the second question.
+    //
+    // But, if the intent was that we would avoid assigning j=1 in the
+    // case above, a somewhat legalistic interpretation would be that
+    // any use of hardware-specific sequence 65 (LW input) would cause
+    // the assembler to default-assign 66 (which is also a hardware
+    // device, LW output).  That doesn't seem very useful.
+    let program =
+        assemble_source("100|STAⱼ 0\nSTAₖ 0\n", Default::default()).expect("program is valid");
+    assert_eq!(
+        program,
+        Binary {
+            entry_point: None,
+            chunks: vec![BinaryChunk {
+                address: Address::from(u18!(0o100)),
+                words: vec![
+                    Instruction::from(&SymbolicInstruction {
+                        held: false,
+                        configuration: Unsigned5Bit::ZERO,
+                        opcode: Opcode::Sta,
+                        index: u6!(1), // j
+                        operand_address: OperandAddress::Direct(Address::from(Unsigned18Bit::ZERO)),
+                    })
+                    .bits(),
+                    Instruction::from(&SymbolicInstruction {
+                        held: false,
+                        configuration: Unsigned5Bit::ZERO,
+                        opcode: Opcode::Sta,
+                        index: u6!(2), // k
+                        operand_address: OperandAddress::Direct(Address::from(Unsigned18Bit::ZERO)),
+                    })
+                    .bits()
+                ]
+            }]
         }
     );
 }
