@@ -20,6 +20,7 @@ use super::types::*;
 enum SymbolUse {
     Reference(SymbolContext),
     Definition(SymbolDefinition),
+    LocalDefinition(SymbolDefinition),
     Origin(SymbolName, BlockIdentifier),
 }
 
@@ -325,17 +326,21 @@ impl Atom {
                     .iter()
                     .flat_map(|instr| instr.symbol_uses(block_id, block_offset))
                 {
-                    match &symbol_use {
-                        (_, _, SymbolUse::Reference(_)) => {
-                            result.push(symbol_use);
+                    let (name, span, symbol_definition) = symbol_use;
+                    match symbol_definition {
+                        def @ SymbolUse::Reference(_) => {
+                            result.push((name, span, def));
                         }
-                        (name, _span, SymbolUse::Definition(SymbolDefinition::Tag { .. })) => {
-                            panic!("Found definition of tag {name} inside an RC-word; this is allowed but is not yet supported.");
+                        SymbolUse::Definition(tagdef @ SymbolDefinition::Tag { .. }) => {
+                            result.push((name, span, SymbolUse::LocalDefinition(tagdef)));
                         }
-                        (name, _span, SymbolUse::Origin(_name, _block)) => {
+                        SymbolUse::LocalDefinition(_) => {
+                            panic!("found local definition inside RC-word, don't know how to handle this.");
+                        }
+                        SymbolUse::Origin(_name, _block) => {
                             unreachable!("Found origin {name} inside an RC-word; the parser should have rejected this.");
                         }
-                        (name, span, SymbolUse::Definition(_)) => {
+                        SymbolUse::Definition(_) => {
                             // e.g. we have an input like
                             //
                             // { X = 2 }
@@ -819,7 +824,7 @@ impl SourceFile {
         self.symbol_uses()
             .filter_map(|(name, span, sym_use)| match sym_use {
                 SymbolUse::Reference(context) => Some((name, span, context)),
-                SymbolUse::Definition(_) => None,
+                SymbolUse::Definition(_) | SymbolUse::LocalDefinition(_) => None,
                 // An origin specification is either a reference or a definition, depending on how it is used.
                 SymbolUse::Origin(name, block) => {
                     Some((name, span, SymbolContext::origin(block, span)))
@@ -833,6 +838,11 @@ impl SourceFile {
         self.symbol_uses()
             .filter_map(|(name, span, sym_use)| match sym_use {
                 SymbolUse::Reference(_context) => None,
+                SymbolUse::LocalDefinition(_) => {
+                    // This is a local definition, but we're only
+                    // looking for global definitions.
+                    None
+                }
                 SymbolUse::Definition(def) => Some((name, span, def)),
                 // An origin specification is either a reference or a definition, depending on how it is used.
                 SymbolUse::Origin(name, block) => Some((

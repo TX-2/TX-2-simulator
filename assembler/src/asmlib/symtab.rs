@@ -7,7 +7,7 @@ use tracing::{event, Level};
 use base::prelude::*;
 use base::subword;
 
-use super::ast::{EqualityValue, Origin, RcAllocator};
+use super::ast::{EqualityValue, Origin, RcAllocator, Tag};
 use super::eval::{
     Evaluate, HereValue, LookupTarget, SymbolLookup, SymbolLookupFailure, SymbolLookupFailureKind,
     SymbolValue,
@@ -198,6 +198,9 @@ impl SymbolTable {
                             panic!("failed to finalise origin of {block_id}: {e}");
                         }
                     },
+                    SymbolDefinition::TagOverride(address) => {
+                        Ok(SymbolValue::Final(address.into()))
+                    }
                     SymbolDefinition::Equality(expression) => {
                         // The target address does not matter below
                         // since assignments are not allowed to use
@@ -300,6 +303,9 @@ impl SymbolTable {
                         }
                     }
                     Some(SymbolDefinition::Origin(addr)) => Ok(addr),
+                    Some(SymbolDefinition::TagOverride(_)) => {
+                        unreachable!("{symbol_name} was used as an origin for {block_id}, but its definition is a temporary tag override, which is not supposed to be in effect at the time we're computing the origins for blocks")
+                    }
                     Some(SymbolDefinition::Tag { .. }) => {
                         // e.g.
                         //     FOO|FOO-> 1
@@ -449,6 +455,40 @@ impl SymbolTable {
             }
         }
     }
+
+    pub(crate) fn evaluate_with_temporary_tag_override<E, R>(
+        &mut self,
+        tag_override: Option<(&Tag, Address)>,
+        item: &E,
+        target_address: &HereValue,
+        rc_allocator: &mut R,
+        op: &mut LookupOperation,
+    ) -> Result<Unsigned36Bit, SymbolLookupFailure>
+    where
+        E: Evaluate,
+        R: RcAllocator,
+    {
+        match tag_override {
+            None => item.evaluate(target_address, self, rc_allocator, op),
+            Some((Tag { name, span }, addr)) => {
+                let to_restore: Option<InternalSymbolDef> = self.definitions.remove(name);
+                self.definitions.insert(
+                    name.clone(),
+                    InternalSymbolDef {
+                        span: *span,
+                        def: SymbolDefinition::TagOverride(addr),
+                    },
+                );
+                // Important not to use '?' here as we need to restore
+                // the original definition.
+                let result = item.evaluate(target_address, self, rc_allocator, op);
+                if let Some(prior_definition) = to_restore {
+                    self.definitions.insert(name.clone(), prior_definition);
+                }
+                result
+            }
+        }
+    }
 }
 
 impl SymbolLookup for SymbolTable {
@@ -568,6 +608,7 @@ pub(crate) enum SymbolDefinition {
         block_offset: Unsigned18Bit,
         span: Span,
     },
+    TagOverride(Address),
     Origin(Address),
     Equality(EqualityValue),
     Undefined(SymbolContext),
@@ -578,6 +619,7 @@ impl Debug for SymbolDefinition {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             SymbolDefinition::Origin(address) => write!(f, "Origin({address:o})"),
+            SymbolDefinition::TagOverride(address) => write!(f, "TagOverride({address:o})"),
             SymbolDefinition::Tag {
                 block_id,
                 block_offset,
@@ -605,7 +647,7 @@ impl Display for SymbolDefinition {
             SymbolDefinition::DefaultAssigned(value, _) => {
                 write!(f, "default-assigned as {value}")
             }
-            SymbolDefinition::Origin(addr) => {
+            SymbolDefinition::Origin(addr) | SymbolDefinition::TagOverride(addr) => {
                 write!(f, "{addr:06o}")
             }
             SymbolDefinition::Tag {

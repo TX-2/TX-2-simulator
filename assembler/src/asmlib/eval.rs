@@ -14,7 +14,7 @@ use crate::symtab::{
 use super::ast::{
     ArithmeticExpression, Atom, CommaDelimitedInstruction, Commas, ConfigValue, EqualityValue,
     HoldBit, InstructionFragment, LiteralValue, LocatedBlock, Operator, RcAllocator, Statement,
-    SymbolOrLiteral, TaggedProgramInstruction, UntaggedProgramInstruction,
+    SymbolOrLiteral, Tag, TaggedProgramInstruction, UntaggedProgramInstruction,
 };
 use super::listing::{Listing, ListingLine};
 use super::span::*;
@@ -466,13 +466,26 @@ impl Evaluate for Atom {
                     if first_addr.is_none() {
                         first_addr = Some(rc_word_addr);
                     }
+
                     // Within the RC-word, # ("here") resolves to the
                     // address of the RC-word itself.  So before we
                     // evaluate the value to be placed in the RC-word,
                     // we need to know the value that # will take
                     // during the evaluation process.
                     let here = HereValue::Address(rc_word_addr);
-                    let value: Unsigned36Bit = inst.evaluate(&here, symtab, rc_allocator, op)?;
+
+                    // If inst has a tag, we temporarily override any
+                    // global value for that tag with the address of
+                    // this instruction.
+                    let tag_override: Option<(&Tag, Address)> =
+                        inst.tag.as_ref().map(|t| (t, rc_word_addr));
+                    let value: Unsigned36Bit = symtab.evaluate_with_temporary_tag_override(
+                        tag_override,
+                        inst,
+                        &here,
+                        rc_allocator,
+                        op,
+                    )?;
                     rc_allocator.update(rc_word_addr, value);
                 }
                 match first_addr {

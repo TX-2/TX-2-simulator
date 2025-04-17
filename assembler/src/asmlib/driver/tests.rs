@@ -592,3 +592,48 @@ fn test_here_in_nested_rc_word() {
     // # is 0o102 at address 0o102, so #+400 is 0o502.
     assert_eq!(program.chunks[1].words[1], u36!(0o502));
 }
+
+#[test]
+fn tag_definition_in_rc_word() {
+    let input = concat!(
+        "100| T->6\n",  // address 100=6: T takes the value 100
+        "{T->T+200}\n", // address 101=104 (address of first RC-word)
+        "T\n",          // address 102=100 (global value of T)
+        "{T+400}\n"     // address 103=105 (address of second RC-word)
+    );
+
+    let program = assemble_source(input, Default::default()).expect("program is valid");
+    dbg!(&program);
+    assert_eq!(
+        program,
+        Binary {
+            entry_point: None,
+            chunks: vec![
+                BinaryChunk {
+                    address: Address::from(u18!(0o100)),
+                    words: vec![
+                        u36!(0o6),   // from "T->6".
+                        u36!(0o104), // address of first RC-word
+                        u36!(0o100), // from "T"
+                        u36!(0o105)  // address of second RC-word
+                    ]
+                },
+                BinaryChunk {
+                    // This is the RC-block.
+                    address: Address::from(u18!(0o104)),
+                    words: vec![
+                        // The first RC-word (at address 104) is
+                        // evaluated from T->T+200.  Here T takes the
+                        // value 104, and so its content is T+200=304.
+                        u36!(0o304),
+                        // The second RC word is at 105, and is
+                        // evaluated from T+400.  Here though there is
+                        // no tag definition for T, so we use the
+                        // global value of 100.  Hence T+400 is 500.
+                        u36!(0o500),
+                    ]
+                }
+            ]
+        }
+    );
+}
