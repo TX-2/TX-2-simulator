@@ -4,7 +4,7 @@ use std::hash::{Hash, Hasher};
 
 use super::error::ConversionFailed;
 use super::unsigned::*;
-use super::{Sign, WordCommon};
+use super::{Signum, WordCommon};
 
 #[cfg(test)]
 mod tests18;
@@ -318,13 +318,13 @@ macro_rules! signed_ones_complement_impl {
         }
 
         impl WordCommon for $SelfT {
-            fn signum(&self) -> Sign {
+            fn signum(&self) -> Signum {
                 if self.is_zero() {
-                    Sign::Zero
+                    Signum::Zero
                 } else if self.is_negative() {
-                    Sign::Negative
+                    Signum::Negative
                 } else {
-                    Sign::Positive
+                    Signum::Positive
                 }
             }
         }

@@ -9,7 +9,7 @@ use std::hash::{Hash, Hasher};
 use super::onescomplement::error::ConversionFailed;
 use super::onescomplement::signed::{Signed18Bit, Signed5Bit, Signed6Bit};
 use super::onescomplement::unsigned::{Unsigned18Bit, Unsigned36Bit, Unsigned6Bit};
-use super::onescomplement::{Sign, WordCommon};
+use super::onescomplement::{Signum, WordCommon};
 
 /// The `IndexBy` trait implements address arithmetic (adding a signed
 /// or unsigned value to an address).
@@ -181,9 +181,9 @@ fn signed_idx_impl(base: Address, delta: Signed18Bit) -> Result<Address, Convers
     let (current, mark) = base.split();
     let abs_delta: Unsigned18Bit = Unsigned18Bit::try_from(i32::from(delta.abs()))?;
     let physical = match delta.signum() {
-        Sign::Zero => current,
-        Sign::Positive => current.wrapping_add(abs_delta),
-        Sign::Negative => current.wrapping_sub(abs_delta),
+        Signum::Zero => current,
+        Signum::Positive => current.wrapping_add(abs_delta),
+        Signum::Negative => current.wrapping_sub(abs_delta),
     } & !PLACEHOLDER_MARK_BIT;
     Ok(Address::join(physical, mark))
 }

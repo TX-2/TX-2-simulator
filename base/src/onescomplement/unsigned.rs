@@ -14,7 +14,7 @@ use serde::Serialize;
 use super::super::subword::{right_half, split_halfword, split_halves};
 use super::error::ConversionFailed;
 use super::signed::*;
-use super::{Sign, WordCommon};
+use super::{Signum, WordCommon};
 
 #[cfg(test)]
 mod tests;
@@ -257,13 +257,13 @@ macro_rules! unsigned_ones_complement_impl {
         }
 
         impl WordCommon for $SelfT {
-            fn signum(&self) -> Sign {
+            fn signum(&self) -> Signum {
                 if self.is_zero() {
-                    Sign::Zero
+                    Signum::Zero
                 } else if self.is_negative() {
-                    Sign::Negative
+                    Signum::Negative
                 } else {
-                    Sign::Positive
+                    Signum::Positive
                 }
             }
         }
