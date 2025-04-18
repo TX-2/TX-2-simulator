@@ -14,6 +14,7 @@ use chumsky::input::{Stream, ValueInput};
 use chumsky::inspector::SimpleState;
 use chumsky::prelude::{choice, just, one_of, recursive, Input, IterParser, Recursive, SimpleSpan};
 use chumsky::select;
+use chumsky::Boxed;
 use chumsky::Parser;
 
 use super::ast::*;
@@ -29,47 +30,33 @@ use helpers::Sign;
 pub(crate) type Extra<'a> = Full<Rich<'a, lexer::Token>, SimpleState<NumeralMode>, ()>;
 use lexer::Token as Tok;
 
-fn literal<'a, I>(script_required: Script) -> impl Parser<'a, I, LiteralValue, Extra<'a>> + Clone
+fn maybe_sign<'a, I>(
+    script_required: Script,
+) -> impl Parser<'a, I, Option<(Sign, Span)>, Extra<'a>> + Clone
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
-    let maybe_sign = choice((
+    choice((
         just(Tok::Plus(script_required)).to(Sign::Plus),
         just(Tok::Minus(script_required)).to(Sign::Minus),
     ))
     .map_with(|maybe_sign, extra| (maybe_sign, extra.span()))
-    .or_not();
+    .or_not()
+}
 
+fn literal<'a, I>(script_required: Script) -> impl Parser<'a, I, LiteralValue, Extra<'a>> + Clone
+where
+    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
+{
     let digits = select! {
         Tok::Digits(script, n) if script == script_required => n,
-    }
-    .map_with(|digits, extra| (digits, extra.span()));
+    };
 
-    // We want to accept "-1" as a signed number, but not "- 1".  So
-    // we reject tokens which have a gap between them.  This also
-    // means there cannot be an annotation between them, despite the
-    // fact that annotations are supposed to be otherwise invisible.
-    fn immediately_adjoining<T: Debug, U: Debug>(found: &(Option<(T, Span)>, (U, Span))) -> bool {
-        match found.0.as_ref() {
-            Some((_, sign_span)) => sign_span.end == found.1 .1.start,
-            _ => true,
-        }
-    }
-
-    fn discard_spans<T, U>(spanned: (Option<(T, Span)>, (U, Span))) -> (Option<T>, U) {
-        (spanned.0.map(|x| x.0), spanned.1 .0)
-    }
-
-    let signed_number = maybe_sign
-        .then(digits)
-        .filter(immediately_adjoining)
-        .map(discard_spans);
-
-    signed_number
-        .try_map_with(move |(maybe_sign, number), extra| {
+    digits
+        .try_map_with(move |digits_token_payload, extra| {
             let state: &SimpleState<NumeralMode> = extra.state();
             let mode: &NumeralMode = state.deref();
-            match number.make_num(maybe_sign, mode) {
+            match digits_token_payload.make_num(None, mode) {
                 Ok(value) => Ok(LiteralValue::from((extra.span(), script_required, value))),
                 Err(e) => Err(Rich::custom(extra.span(), e.to_string())),
             }
@@ -640,7 +627,22 @@ where
     .labelled("instruction hold bit")
 }
 
-fn statement<'a, I>() -> impl Parser<'a, I, Statement, Extra<'a>>
+struct Grammar<'a, 'b, I>
+where
+    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
+{
+    statement: Boxed<'a, 'b, I, Statement, Extra<'a>>,
+    #[cfg(test)]
+    normal_arithmetic_expression: Boxed<'a, 'b, I, ArithmeticExpression, Extra<'a>>,
+    #[cfg(test)]
+    subscript_arithmetic_expression: Boxed<'a, 'b, I, ArithmeticExpression, Extra<'a>>,
+    #[cfg(test)]
+    superscript_arithmetic_expression: Boxed<'a, 'b, I, ArithmeticExpression, Extra<'a>>,
+    #[cfg(test)]
+    instruction_fragment: Boxed<'a, 'b, I, InstructionFragment, Extra<'a>>,
+}
+
+fn grammar<'a: 'b, 'b, I>() -> Grammar<'a, 'b, I>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
@@ -657,6 +659,70 @@ where
             "optional tag definition followed by a (possibly comma-delimited) program instructions",
         );
 
+    // Parse {E} where E is some expression.  Since tags are
+    // allowed inside RC-blocks, we should parse E as a
+    // TaggedProgramInstruction.  But if we try to do that without
+    // using recursive() we will blow the stack, unfortunately.
+    let register_containing = tagged_program_instruction
+        .clone()
+        .delimited_by(
+            just(Tok::LeftBrace(Script::Normal)),
+            just(Tok::RightBrace(Script::Normal)),
+        )
+        .map_with(|tagged_instruction, extra| Atom::RcRef(extra.span(), vec![tagged_instruction]))
+        .labelled("RC-word");
+
+    let arith_expr = |script_required: Script| {
+        {
+            // We use recursive here to prevent the parser blowing the stack
+            // when trying to parse inputs which have parentheses - that is,
+            // inputs that require recursion.
+            recursive(move |arithmetic_expr| {
+                // Parse (E) where E is some expression.
+                let parenthesised_arithmetic_expression = arithmetic_expr // this is the recursive call
+                    .clone()
+                    .delimited_by(
+                        just(Tok::LeftParen(script_required)),
+                        just(Tok::RightParen(script_required)),
+                    )
+                    .map_with(move |expr, extra| {
+                        Atom::Parens(extra.span(), script_required, Box::new(expr))
+                    })
+                    .labelled("parenthesised arithmetic expression");
+
+                // Parse a literal, symbol, #, or (recursively) an expression in parentheses.
+                let naked_atom = choice((
+                    literal(script_required).map(Atom::from),
+                    opcode().map(Atom::from),
+                    named_symbol_or_here(script_required).map_with(move |symbol_or_here, extra| {
+                        Atom::Symbol(extra.span(), script_required, symbol_or_here)
+                    }),
+                    register_containing,
+                    parenthesised_arithmetic_expression,
+                ))
+                .boxed();
+
+                let signed_atom = maybe_sign(script_required).then(naked_atom).map_with(
+                    |(possible_sign, magnitude), extra| SignedAtom {
+                        span: extra.span(),
+                        negated: matches!(possible_sign, Some((Sign::Minus, _))),
+                        magnitude,
+                    },
+                );
+
+                // Parse an arithmetic operator (e.g. plus, times) followed by an atom.
+                let operator_with_signed_atom = operator(script_required).then(signed_atom.clone());
+
+                // An arithmetic expression is a signed atom followed by zero or
+                // more pairs of (arithmetic operator, signed atom).
+                signed_atom
+                    .then(operator_with_signed_atom.repeated().collect())
+                    .map(|(head, tail)| ArithmeticExpression::with_tail(head, tail))
+            })
+        }
+        .labelled("arithmetic expression")
+    };
+
     // Parse a values (symbolic or literal) or arithmetic expression.
     //
     // BAT² is not an identifier but a sequence[1] whose value is
@@ -669,63 +735,6 @@ where
     // now that doesn't work because all the elements of an expression
     // (i.e. everything within the parens) need to have the same script.
     let program_instruction_fragment = recursive(|program_instruction_fragment| {
-        // Parse {E} where E is some expression.  Since tags are
-        // allowed inside RC-blocks, we should parse E as a
-        // TaggedProgramInstruction.  But if we try to do that without
-        // using recursive() we will blow the stack, unfortunately.
-        let register_containing = tagged_program_instruction
-            .clone()
-            .delimited_by(
-                just(Tok::LeftBrace(Script::Normal)),
-                just(Tok::RightBrace(Script::Normal)),
-            )
-            .map_with(|tagged_instruction, extra| {
-                Atom::RcRef(extra.span(), vec![tagged_instruction])
-            })
-            .labelled("RC-word");
-
-        let arith_expr = |script_required: Script| {
-            {
-                // We use recursive here to prevent the parser blowing the stack
-                // when trying to parse inputs which have parentheses - that is,
-                // inputs that require recursion.
-                recursive(move |arithmetic_expr| {
-                    // Parse (E) where E is some expression.
-                    let parenthesised_arithmetic_expression = arithmetic_expr // this is the recursive call
-                        .clone()
-                        .delimited_by(
-                            just(Tok::LeftParen(script_required)),
-                            just(Tok::RightParen(script_required)),
-                        )
-                        .map(move |expr| Atom::Parens(script_required, Box::new(expr)))
-                        .labelled("parenthesised arithmetic expression");
-
-                    // Parse a literal, symbol, #, or (recursively) an expression in parentheses.
-                    let atom = choice((
-                        literal(script_required).map(Atom::from),
-                        opcode().map(Atom::from),
-                        named_symbol_or_here(script_required).map_with(
-                            move |symbol_or_here, extra| {
-                                Atom::Symbol(extra.span(), script_required, symbol_or_here)
-                            },
-                        ),
-                        register_containing,
-                        parenthesised_arithmetic_expression,
-                    ))
-                    .boxed();
-
-                    // Parse an arithmetic operator (e.g. plus, times) followed by an atom.
-                    let operator_with_atom = operator(script_required).then(atom.clone());
-
-                    // An arithmetic expression is an atom followed by zero or
-                    // more pairs of (arithmetic operator, atom).
-                    atom.then(operator_with_atom.repeated().collect())
-                        .map(|(head, tail)| ArithmeticExpression::with_tail(head, tail))
-                })
-            }
-            .labelled("arithmetic expression")
-        };
-
         // Parse the pipe-construct described in the User Handbook
         // section 2-2.8 "SPECIAL SYMBOLS" as "ₚ|ₜ" (though in reality
         // the pipe should also be subscript and in their example they
@@ -799,7 +808,7 @@ where
         ))
     .labelled("equality (assignment)");
 
-    choice((
+    let stmt = choice((
         // We have to parse an assignment first here, in order to
         // accept "FOO=2" as an assignment rather than the instruction
         // fragment "FOO" followed by a syntax error.
@@ -809,7 +818,26 @@ where
         tagged_program_instruction
             .clone()
             .map(Statement::Instruction),
-    ))
+    ));
+
+    Grammar {
+        statement: stmt.boxed(),
+        #[cfg(test)]
+        normal_arithmetic_expression: arith_expr.clone()(Script::Normal).boxed(),
+        #[cfg(test)]
+        superscript_arithmetic_expression: arith_expr.clone()(Script::Super).boxed(),
+        #[cfg(test)]
+        subscript_arithmetic_expression: arith_expr.clone()(Script::Sub).boxed(),
+        #[cfg(test)]
+        instruction_fragment: program_instruction_fragment.boxed(),
+    }
+}
+
+fn statement<'a, I>() -> impl Parser<'a, I, Statement, Extra<'a>>
+where
+    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
+{
+    grammar().statement
 }
 
 fn manuscript_line<'a, I>() -> impl Parser<'a, I, ManuscriptLine, Extra<'a>>

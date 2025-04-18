@@ -4,9 +4,9 @@ use std::{
 };
 
 use super::super::ast::{
-    ArithmeticExpression, Atom, CommaDelimitedInstruction, ConfigValue, HoldBit,
-    InstructionFragment, LiteralValue, LocatedBlock, ManuscriptBlock, PunchCommand, SourceFile,
-    Statement, TaggedProgramInstruction, UntaggedProgramInstruction,
+    ArithmeticExpression, Atom, CommaDelimitedInstruction, HoldBit, InstructionFragment,
+    LiteralValue, LocatedBlock, ManuscriptBlock, PunchCommand, SourceFile, Statement,
+    TaggedProgramInstruction, UntaggedProgramInstruction,
 };
 use super::super::eval::{make_empty_rc_block_for_test, SymbolLookup, SymbolValue};
 use super::super::span::*;
@@ -22,71 +22,6 @@ use base::{
         Unsigned18Bit, Unsigned36Bit, Unsigned5Bit, Unsigned6Bit,
     },
 };
-
-#[cfg(test)]
-fn assemble_literal(input: &str, expected: &InstructionFragment) {
-    eprintln!("assemble_literal input: {input}");
-    let (directive, symtab) = assemble_nonempty_valid_input(input);
-    if symtab.has_definitions() {
-        panic!("no symbol should have been generated");
-    }
-    let gotvec: Vec<LocatedBlock> = directive.blocks.into_values().collect();
-    let got = gotvec.as_slice();
-    eprintln!("{got:#?}");
-    match got {
-        [LocatedBlock {
-            location: _,
-            statements,
-        }] => {
-            eprintln!("There are {} items", statements.len());
-            match statements.as_slice() {
-                [] => {
-                    panic!("no statement was assembled");
-                }
-                [Statement::Instruction(TaggedProgramInstruction {
-                    tag: None,
-                    instructions,
-                })] => match instructions.as_slice() {
-                    [] => {
-                        panic!("no instruction was assembled");
-                    }
-                    [CommaDelimitedInstruction {
-                        leading_commas,
-                        instruction:
-                            UntaggedProgramInstruction {
-                                holdbit: HoldBit::Unspecified,
-                                inst: only_frag,
-                                span: _,
-                            },
-                        trailing_commas,
-                    }] => {
-                        assert!(leading_commas.is_none());
-                        assert!(trailing_commas.is_none());
-                        if only_frag == expected {
-                            return;
-                        }
-                        panic!(
-                            "expected single instruction {:?}\ngot {:?}",
-                            &expected, &only_frag,
-                        );
-                    }
-                    _ => {
-                        panic!(
-                                "expected one instruction containing {expected:?}\ngot {} items {statements:?}",
-                                statements.len()
-                            );
-                    }
-                },
-                multiple => {
-                    panic!("more than one statement was assembled: {multiple:?}");
-                }
-            }
-        }
-        got => {
-            panic!("expected one instruction containing {expected:?}\ngot items {got:?}");
-        }
-    }
-}
 
 #[cfg(test)]
 fn assemble_check_symbols(input: &str, target_address: Address, expected: &[(&str, SymbolValue)]) {
@@ -227,30 +162,6 @@ fn test_metacommand_dec_changes_default_base() {
     panic!(
         "expected two items with value 10 octal and 12 octal, got {:?}",
         &directive,
-    );
-}
-
-#[test]
-fn test_assemble_octal_superscript_literal() {
-    assemble_literal(
-        "⁺³⁶\n", // 36, superscript
-        &InstructionFragment::Config(ConfigValue::Literal(span(0..8), u36!(0o36))),
-    );
-}
-
-#[test]
-fn test_assemble_octal_subscript_literal_nosign() {
-    assemble_literal(
-        "₁₃\n", // without sign
-        &InstructionFragment::from((span(0..6), Script::Sub, Unsigned36Bit::from(0o13_u32))),
-    );
-}
-
-#[test]
-fn test_assemble_octal_subscript_literal_plussign() {
-    assemble_literal(
-        "₊₁₃\n", // with optional + sign
-        &InstructionFragment::from((span(0..9), Script::Sub, Unsigned36Bit::from(0o13_u32))),
     );
 }
 

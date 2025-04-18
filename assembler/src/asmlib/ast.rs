@@ -143,11 +143,48 @@ impl std::fmt::Display for Operator {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SignedAtom {
+    pub(super) negated: bool,
+    pub(super) span: Span,
+    pub(super) magnitude: Atom,
+}
+
+impl From<Atom> for SignedAtom {
+    fn from(magnitude: Atom) -> Self {
+        Self {
+            negated: false,
+            span: magnitude.span(),
+            magnitude,
+        }
+    }
+}
+
+impl SignedAtom {
+    fn symbol_uses(
+        &self,
+        block_id: BlockIdentifier,
+        block_offset: Unsigned18Bit,
+    ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
+        self.magnitude.symbol_uses(block_id, block_offset)
+    }
+}
+
+impl std::fmt::Display for SignedAtom {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        if self.negated {
+            write!(f, "-{}", self.magnitude)
+        } else {
+            write!(f, "{}", self.magnitude)
+        }
+    }
+}
+
 /// A molecule is an arithmetic expression all in normal script.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ArithmeticExpression {
-    pub(crate) first: Atom,
-    pub(crate) tail: Vec<(Operator, Atom)>,
+    pub(crate) first: SignedAtom,
+    pub(crate) tail: Vec<(Operator, SignedAtom)>,
 }
 
 impl std::fmt::Display for ArithmeticExpression {
@@ -160,12 +197,18 @@ impl std::fmt::Display for ArithmeticExpression {
     }
 }
 
-impl From<Atom> for ArithmeticExpression {
-    fn from(a: Atom) -> ArithmeticExpression {
+impl From<SignedAtom> for ArithmeticExpression {
+    fn from(a: SignedAtom) -> ArithmeticExpression {
         ArithmeticExpression {
             first: a,
             tail: Vec::new(),
         }
+    }
+}
+
+impl From<Atom> for ArithmeticExpression {
+    fn from(a: Atom) -> ArithmeticExpression {
+        ArithmeticExpression::from(SignedAtom::from(a))
     }
 }
 
@@ -176,7 +219,10 @@ impl From<SymbolOrLiteral> for ArithmeticExpression {
 }
 
 impl ArithmeticExpression {
-    pub(crate) fn with_tail(first: Atom, tail: Vec<(Operator, Atom)>) -> ArithmeticExpression {
+    pub(crate) fn with_tail(
+        first: SignedAtom,
+        tail: Vec<(Operator, SignedAtom)>,
+    ) -> ArithmeticExpression {
         ArithmeticExpression { first, tail }
     }
 
@@ -282,7 +328,7 @@ impl ConfigValue {
 pub(crate) enum Atom {
     Literal(LiteralValue),
     Symbol(Span, Script, SymbolOrHere),
-    Parens(Script, Box<ArithmeticExpression>),
+    Parens(Span, Script, Box<ArithmeticExpression>),
     RcRef(Span, Vec<TaggedProgramInstruction>),
 }
 
@@ -298,6 +344,15 @@ impl From<SymbolOrLiteral> for Atom {
 }
 
 impl Atom {
+    fn span(&self) -> Span {
+        match self {
+            Atom::Literal(literal) => literal.span,
+            Atom::Symbol(span, _, _) => *span,
+            Atom::Parens(span, _script, _bae) => *span,
+            Atom::RcRef(span, _) => *span,
+        }
+    }
+
     fn symbol_uses(
         &self,
         block_id: BlockIdentifier,
@@ -313,7 +368,7 @@ impl Atom {
                     SymbolUse::Reference(SymbolContext::from((script, *span))),
                 ));
             }
-            Atom::Parens(_script, expr) => {
+            Atom::Parens(_span, _script, expr) => {
                 result.extend(expr.symbol_uses(block_id, block_offset));
             }
             Atom::RcRef(_span, tagged_instructions) => {
@@ -405,7 +460,7 @@ impl std::fmt::Display for Atom {
             Atom::Symbol(_span, elevation, SymbolOrHere::Named(name)) => {
                 elevated_string(&name.to_string(), elevation).fmt(f)
             }
-            Atom::Parens(script, expr) => elevated_string(&expr.to_string(), script).fmt(f),
+            Atom::Parens(_span, script, expr) => elevated_string(&expr.to_string(), script).fmt(f),
             Atom::RcRef(_span, _rc_reference) => {
                 // The RcRef doesn't itself record the content of the
                 // {...} because that goes into the rc-block itself.

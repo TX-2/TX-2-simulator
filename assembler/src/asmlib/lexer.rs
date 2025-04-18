@@ -51,7 +51,7 @@ impl Display for NumericLiteral {
 impl NumericLiteral {
     pub(crate) fn make_num(
         &self,
-        maybe_sign: Option<Sign>,
+        maybe_sign: Option<Sign>, // TODO: figure out if we still need to use this parameter.
         mode: &NumeralMode,
     ) -> Result<Unsigned36Bit, StringConversionFailed> {
         helpers::make_num(

@@ -3,7 +3,7 @@ use std::ops::{Shl, Shr};
 
 use base::{
     charset::Script,
-    prelude::{Address, IndexBy, Unsigned18Bit, Unsigned36Bit, DEFER_BIT},
+    prelude::{Address, IndexBy, Signed36Bit, Unsigned18Bit, Unsigned36Bit, DEFER_BIT},
     u36,
 };
 
@@ -13,8 +13,8 @@ use crate::symtab::{
 
 use super::ast::{
     ArithmeticExpression, Atom, CommaDelimitedInstruction, Commas, ConfigValue, EqualityValue,
-    HoldBit, InstructionFragment, LiteralValue, LocatedBlock, Operator, RcAllocator, Statement,
-    SymbolOrLiteral, Tag, TaggedProgramInstruction, UntaggedProgramInstruction,
+    HoldBit, InstructionFragment, LiteralValue, LocatedBlock, Operator, RcAllocator, SignedAtom,
+    Statement, SymbolOrLiteral, Tag, TaggedProgramInstruction, UntaggedProgramInstruction,
 };
 use super::listing::{Listing, ListingLine};
 use super::span::*;
@@ -312,7 +312,7 @@ impl Evaluate for LiteralValue {
 
 fn fold_step<R: RcAllocator>(
     acc: Unsigned36Bit,
-    (binop, right): &(Operator, Atom),
+    (binop, right): &(Operator, SignedAtom),
     target_address: &HereValue,
     symtab: &mut SymbolTable,
     rc_allocator: &mut R,
@@ -458,7 +458,9 @@ impl Evaluate for Atom {
                 rc_allocator,
                 op,
             ),
-            Atom::Parens(_script, expr) => expr.evaluate(target_address, symtab, rc_allocator, op),
+            Atom::Parens(_span, _script, expr) => {
+                expr.evaluate(target_address, symtab, rc_allocator, op)
+            }
             Atom::RcRef(span, tagged_program_instructions) => {
                 let mut first_addr: Option<Address> = None;
                 for inst in tagged_program_instructions.iter() {
@@ -496,6 +498,28 @@ impl Evaluate for Atom {
                 }
             }
         }
+    }
+}
+
+impl Evaluate for SignedAtom {
+    fn evaluate<R: RcAllocator>(
+        &self,
+        target_address: &HereValue,
+        symtab: &mut SymbolTable,
+        rc_allocator: &mut R,
+        op: &mut LookupOperation,
+    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+        self.magnitude
+            .evaluate(target_address, symtab, rc_allocator, op)
+            .map(|magnitude| {
+                if self.negated {
+                    let s36 = magnitude.reinterpret_as_signed();
+                    let signed_result = Signed36Bit::ZERO.wrapping_sub(s36);
+                    signed_result.reinterpret_as_unsigned()
+                } else {
+                    magnitude
+                }
+            })
     }
 }
 

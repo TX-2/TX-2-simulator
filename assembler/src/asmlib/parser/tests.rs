@@ -26,6 +26,26 @@ use super::Span;
 
 type StateInitFn = fn(s: &mut NumeralMode);
 
+type ParseErrors<'a> = Vec<Rich<'a, Tok>>;
+
+#[cfg(test)]
+pub(crate) fn parse_with<'a, O, P>(
+    input: &'a str,
+    parser: P,
+    state_setup: StateInitFn,
+) -> Result<O, ParseErrors<'a>>
+where
+    P: Parser<'a, super::Mi, O, Extra<'a>>,
+    O: Debug,
+{
+    let (output, errors) = tokenize_and_parse_with(input, state_setup, parser);
+    if errors.is_empty() {
+        Ok(output.expect("a successful parse should return an output"))
+    } else {
+        Err(errors)
+    }
+}
+
 #[cfg(test)]
 pub(crate) fn parse_successfully_with<'a, O, P>(
     input: &'a str,
@@ -38,18 +58,15 @@ where
 {
     dbg!(&input);
 
-    let (output, errors) = tokenize_and_parse_with(input, state_setup, parser);
-    if !errors.is_empty() {
-        dbg!(&output);
-        panic!(
-            "{} unexpected parse errors for input '{input}': {:?}",
-            errors.len(),
-            &errors.as_slice()
-        );
-    }
-    match output {
-        Some(out) => out,
-        None => panic!("the parser generated no output"),
+    match parse_with(input, parser, state_setup) {
+        Ok(out) => out,
+        Err(errors) => {
+            panic!(
+                "{} unexpected parse errors for input '{input}': {:?}",
+                errors.len(),
+                &errors.as_slice()
+            );
+        }
     }
 }
 
@@ -120,10 +137,26 @@ fn test_superscript_literal_oct() {
         parse_successfully_with("³⁶", literal(Script::Super), no_state_setup),
         LiteralValue::from((span(0..5), Script::Super, Unsigned36Bit::from(0o36_u32),))
     );
+}
+
+#[test]
+fn test_superscript_unary_plus_expression() {
+    // A leading + isn't part of the literal.  That is, +36 is a valid
+    // arithmetic expression, but not a literal.
+    let input = "\u{207A}³⁶";
+    dbg!(input.len());
     assert_eq!(
         // U+207A: superscript plus
-        parse_successfully_with("\u{207A}³⁶", literal(Script::Super), no_state_setup),
-        LiteralValue::from((span(0..8), Script::Super, Unsigned36Bit::from(0o36_u32),))
+        parse_superscript_arithmetic_expression(input),
+        Ok(ArithmeticExpression::from(SignedAtom {
+            span: span(0..8),
+            negated: false,
+            magnitude: Atom::from(Atom::Literal(LiteralValue::from((
+                span(3..8),
+                Script::Super,
+                Unsigned36Bit::from(0o36_u32)
+            ))))
+        }))
     );
 }
 
@@ -179,10 +212,20 @@ fn test_subscript_literal_oct_defaultmode_nosign() {
 }
 
 #[test]
-fn test_subscript_literal_oct_defaultmode_plus() {
+fn test_subscript_unary_plus() {
     assert_eq!(
-        parse_successfully_with("₊₁₃", literal(Script::Sub), no_state_setup),
-        LiteralValue::from((span(0..9), Script::Sub, Unsigned36Bit::from(0o13_u32),))
+        // This is actually not a valid literal (as they don't have a
+        // leading sign), but it is a valid arithmetic expression.
+        parse_subscript_arithmetic_expression("₊₁₃"),
+        Ok(ArithmeticExpression::from(SignedAtom {
+            span: span(0..9),
+            negated: false,
+            magnitude: Atom::Literal(LiteralValue::from((
+                span(3..9),
+                Script::Sub,
+                Unsigned36Bit::from(0o13_u32)
+            )))
+        }))
     );
 }
 
@@ -207,19 +250,8 @@ fn test_subscript_literal_dec() {
 
 #[cfg(test)]
 fn parse_single_instruction_fragment(input: &str) -> InstructionFragment {
-    let output = parse_multiple_instruction_fragments(input);
-    let mut it = output.into_iter();
-    match it.next() {
-        Some(inst) => match it.next() {
-            None => inst,
-            Some(succ) => {
-                panic!("expected single instruction, got unexpected {succ:?}")
-            }
-        },
-        None => {
-            panic!("expected single instruction, got zero parse output items")
-        }
-    }
+    let parser = grammar().instruction_fragment;
+    parse_successfully_with(input, parser, no_state_setup)
 }
 
 #[cfg(test)]
@@ -240,6 +272,75 @@ fn parse_multiple_instruction_fragments(input: &str) -> Vec<InstructionFragment>
             } => inst,
         })
         .collect()
+}
+
+#[test]
+fn test_assemble_octal_superscript_literal() {
+    let input = "⁺³⁶"; // 36, superscript
+    assert_eq!(input.len(), 8);
+    assert_eq!(
+        parse_superscript_arithmetic_expression(input),
+        Ok(ArithmeticExpression::from(SignedAtom {
+            span: span(0..8),
+            negated: false,
+            magnitude: Atom::from(Atom::Literal(LiteralValue::from((
+                span(3..8),
+                Script::Super,
+                Unsigned36Bit::from(0o36_u32)
+            ))))
+        }))
+    );
+}
+
+#[test]
+fn test_assemble_octal_subscript_literal_nosign() {
+    let input = "₁₃"; // without sign
+    assert_eq!(
+        parse_subscript_arithmetic_expression(input),
+        Ok(ArithmeticExpression::from(SignedAtom {
+            span: span(0..6),
+            negated: false,
+            magnitude: Atom::from(Atom::Literal(LiteralValue::from((
+                span(0..6),
+                Script::Sub,
+                Unsigned36Bit::from(0o13_u32)
+            ))))
+        }))
+    );
+
+    assert_eq!(
+        parse_single_instruction_fragment(input),
+        InstructionFragment::from((span(0..6), Script::Sub, Unsigned36Bit::from(0o13_u32)))
+    );
+}
+
+#[test]
+fn test_assemble_octal_subscript_literal_plussign() {
+    let input = "₊₁₃"; // with optional + sign
+    assert_eq!(input.len(), 9);
+
+    let expression_expected = ArithmeticExpression::from(SignedAtom {
+        span: span(0..9),
+        negated: false,
+        magnitude: Atom::from(Atom::Literal(LiteralValue::from((
+            span(3..9),
+            Script::Sub,
+            Unsigned36Bit::from(0o13_u32),
+        )))),
+    });
+
+    // Parse it as an arithmetic expression
+    assert_eq!(
+        parse_subscript_arithmetic_expression(input),
+        Ok(expression_expected.clone())
+    );
+
+    // Verify that it parses identically as part of a larger syntactic
+    // unit.
+    assert_eq!(
+        parse_single_instruction_fragment(input),
+        InstructionFragment::from(expression_expected),
+    );
 }
 
 #[test]
@@ -746,19 +847,23 @@ fn test_multi_syllable_tag() {
 
 #[test]
 fn test_infix_minus_interpreted_as_subtraction() {
-    let head = Atom::Literal(LiteralValue::from((span(0..1), Script::Normal, u36!(4))));
+    let head = SignedAtom::from(Atom::Literal(LiteralValue::from((
+        span(0..1),
+        Script::Normal,
+        u36!(4),
+    ))));
     for (input, rhs_span) in [("4 - 2", 4..5), ("4-2", 2..3), ("4 -2", 3..4)] {
         let tail = vec![(
             Operator::Subtract,
-            Atom::Literal(LiteralValue::from((
+            SignedAtom::from(Atom::Literal(LiteralValue::from((
                 span(rhs_span),
                 Script::Normal,
                 u36!(2),
-            ))),
+            )))),
         )];
         assert_eq!(
-            parse_arithmetic_expression(input),
-            ArithmeticExpression::with_tail(head.clone(), tail),
+            parse_normal_arithmetic_expression(input),
+            Ok(ArithmeticExpression::with_tail(head.clone(), tail)),
             "incorrect parse for '{input}'"
         );
     }
@@ -1082,27 +1187,21 @@ fn test_metacommand_octal() {
     );
 }
 
-fn parse_arithmetic_expression(input: &str) -> ArithmeticExpression {
-    let mut comma_expression = parse_comma_expression(input);
-    if let Some(CommaDelimitedInstruction {
-        leading_commas: _,
-        instruction:
-            UntaggedProgramInstruction {
-                span: _,
-                holdbit: _,
-                inst: InstructionFragment::Arithmetic(expr),
-            },
-        trailing_commas: _,
-    }) = comma_expression.pop()
-    {
-        if comma_expression.is_empty() {
-            expr
-        } else {
-            panic!("too many fragments: {comma_expression:?}");
-        }
-    } else {
-        panic!("expected one fragment, not zero");
-    }
+fn parse_normal_arithmetic_expression(input: &str) -> Result<ArithmeticExpression, ParseErrors> {
+    let g = grammar();
+    parse_with(input, g.normal_arithmetic_expression, no_state_setup)
+}
+
+fn parse_superscript_arithmetic_expression(
+    input: &str,
+) -> Result<ArithmeticExpression, ParseErrors> {
+    let g = grammar();
+    parse_with(input, g.superscript_arithmetic_expression, no_state_setup)
+}
+
+fn parse_subscript_arithmetic_expression(input: &str) -> Result<ArithmeticExpression, ParseErrors> {
+    let g = grammar();
+    parse_with(input, g.subscript_arithmetic_expression, no_state_setup)
 }
 
 #[test]
@@ -1278,38 +1377,45 @@ fn test_logical_or_glyph_superscript() {
 #[test]
 fn test_arithmetic_expression_head_only() {
     assert_eq!(
-        parse_arithmetic_expression("6"),
-        ArithmeticExpression::from(Atom::Literal(LiteralValue::from((
-            span(0..1),
-            Script::Normal,
-            u36!(6)
-        ))))
+        parse_normal_arithmetic_expression("6"),
+        Ok(ArithmeticExpression::from(Atom::Literal(
+            LiteralValue::from((span(0..1), Script::Normal, u36!(6)))
+        )))
     );
 }
 
 #[test]
 fn test_arithmetic_expression_two_atoms() {
-    let head = Atom::Literal(LiteralValue::from((span(0..1), Script::Normal, u36!(4))));
+    let head = SignedAtom::from(Atom::Literal(LiteralValue::from((
+        span(0..1),
+        Script::Normal,
+        u36!(4),
+    ))));
     let tail = vec![(
         Operator::LogicalOr,
-        Atom::Literal(LiteralValue::from((span(6..7), Script::Normal, u36!(2)))),
+        SignedAtom::from(Atom::Literal(LiteralValue::from((
+            span(6..7),
+            Script::Normal,
+            u36!(2),
+        )))),
     )];
     assert_eq!(
-        parse_arithmetic_expression("4 ∨ 2"),
-        ArithmeticExpression::with_tail(head, tail),
+        parse_normal_arithmetic_expression("4 ∨ 2"),
+        Ok(ArithmeticExpression::with_tail(head, tail)),
     );
 }
 
 #[test]
 fn test_parenthesised_expression() {
     assert_eq!(
-        parse_arithmetic_expression("(1)"),
-        ArithmeticExpression::from(Atom::Parens(
+        parse_normal_arithmetic_expression("(1)"),
+        Ok(ArithmeticExpression::from(Atom::Parens(
+            span(0..3),
             Script::Normal,
             Box::new(ArithmeticExpression::from(Atom::from(LiteralValue::from(
                 (span(1..2), Script::Normal, u36!(1))
             ))))
-        ))
+        )))
     );
 }
 
@@ -1865,9 +1971,14 @@ mod comma_tests {
                     InstructionFragment::Arithmetic(ArithmeticExpression { first, tail }) => {
                         if tail.is_empty() {
                             match first {
-                                Atom::Literal(literal) => {
+                                SignedAtom {
+                                    span: _,
+                                    negated,
+                                    magnitude: Atom::Literal(literal),
+                                } => {
+                                    let sign_str = if *negated { "-" } else { "" };
                                     format!(
-                                        "span={0:?}, unshifted_value={1}",
+                                        "span={0:?}, unshifted_value={sign_str}{1}",
                                         literal.span(),
                                         literal.unshifted_value()
                                     )

@@ -105,11 +105,6 @@ impl SymbolTable {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn has_definitions(&self) -> bool {
-        !self.definitions.is_empty()
-    }
-
     pub(crate) fn get(&self, name: &SymbolName) -> Option<&SymbolDefinition> {
         self.definitions.get(name).map(|internal| &internal.def)
     }
