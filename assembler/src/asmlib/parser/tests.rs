@@ -351,14 +351,22 @@ fn test_program_instruction_fragments() {
     );
     assert_eq!(
         parse_single_instruction_fragment("⁶³"),
-        InstructionFragment::Config(ConfigValue::Literal(
-            span(0..5),
-            Unsigned36Bit::from(0o63_u32)
-        ))
+        InstructionFragment::Config(ConfigValue {
+            already_superscript: true,
+            expr: ArithmeticExpression::from(Atom::from((
+                span(0..5),
+                Script::Super,
+                Unsigned36Bit::from(0o63_u32)
+            )))
+        }),
     );
     assert_eq!(
         parse_single_instruction_fragment("6510"),
-        InstructionFragment::from((span(0..4), Script::Normal, Unsigned36Bit::from(0o6510_u32),))
+        InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::from((
+            span(0..4),
+            Script::Normal,
+            Unsigned36Bit::from(0o6510_u32)
+        ))))
     );
 }
 
@@ -379,11 +387,43 @@ fn test_program_instruction() {
     assert_eq!(
         parse_multiple_instruction_fragments("⁶673₃₁"),
         vec![
-            InstructionFragment::Config(ConfigValue::Literal(span(0..3), u36!(0o6),)),
-            InstructionFragment::from(
-                (span(3..6), Script::Normal, Unsigned36Bit::from(0o673_u32),)
-            ),
-            InstructionFragment::from((span(6..12), Script::Sub, Unsigned36Bit::from(0o31_u32),)),
+            InstructionFragment::Config(ConfigValue {
+                already_superscript: true,
+                expr: ArithmeticExpression::from(SignedAtom::from(Atom::from((
+                    span(0..3),
+                    Script::Super,
+                    u36!(0o6)
+                ))))
+            }),
+            InstructionFragment::Arithmetic(ArithmeticExpression::from(SignedAtom::from(
+                Atom::from((span(3..6), Script::Normal, Unsigned36Bit::from(0o673_u32)))
+            ))),
+            InstructionFragment::Arithmetic(ArithmeticExpression::from(SignedAtom::from(
+                Atom::from((span(6..12), Script::Sub, Unsigned36Bit::from(0o31_u32)))
+            ))),
+        ]
+    );
+}
+
+#[test]
+fn test_program_instruction_negative_config_value() {
+    assert_eq!(
+        parse_multiple_instruction_fragments("⁻⁶673₃₁"),
+        vec![
+            InstructionFragment::Config(ConfigValue {
+                already_superscript: true,
+                expr: ArithmeticExpression::from(SignedAtom {
+                    span: span(0..6),
+                    negated: true,
+                    magnitude: Atom::from((span(3..6), Script::Super, u36!(0o6)))
+                })
+            }),
+            InstructionFragment::Arithmetic(ArithmeticExpression::from(SignedAtom::from(
+                Atom::from((span(6..9), Script::Normal, Unsigned36Bit::from(0o673_u32)))
+            ))),
+            InstructionFragment::Arithmetic(ArithmeticExpression::from(SignedAtom::from(
+                Atom::from((span(9..15), Script::Sub, Unsigned36Bit::from(0o31_u32)))
+            ))),
         ]
     );
 }
@@ -421,8 +461,11 @@ fn test_parse_symex() {
         ("SCRATCH @apostrophe@N@apostrophe@ SNIFF", "SCRATCH'N'SNIFF"),
         ("F '", "F'"),
     ] {
-        let got: SymbolName =
-            parse_successfully_with(input, parse_symex(Script::Normal), no_state_setup);
+        let got: SymbolName = parse_successfully_with(
+            input,
+            parse_symex(SymexSyllableRule::Multiple, Script::Normal),
+            no_state_setup,
+        );
         assert_eq!(got.canonical, expected);
     }
 }
@@ -663,7 +706,7 @@ fn test_symbol_name_one_syllable() {
     assert_eq!(
         parse_successfully_with(
             "START4",
-            named_symbol_or_here(Script::Normal),
+            named_symbol_or_here(SymexSyllableRule::Multiple, Script::Normal),
             no_state_setup
         ),
         SymbolOrHere::from("START4")
@@ -675,7 +718,7 @@ fn test_symbol_name_two_syllables() {
     assert_eq!(
         parse_successfully_with(
             "TWO WORDS",
-            named_symbol_or_here(Script::Normal),
+            named_symbol_or_here(SymexSyllableRule::Multiple, Script::Normal),
             no_state_setup
         ),
         SymbolOrHere::from("TWOWORDS")
@@ -1027,10 +1070,14 @@ fn test_assignment_superscript() {
                     instruction: UntaggedProgramInstruction {
                         span: span(*val_begin..*val_end),
                         holdbit: HoldBit::Unspecified,
-                        inst: InstructionFragment::Config(ConfigValue::Literal(
-                            span(*val_begin..*val_end),
-                            u36!(0o2)
-                        )),
+                        inst: InstructionFragment::Config(ConfigValue {
+                            already_superscript: true,
+                            expr: ArithmeticExpression::from(Atom::from((
+                                span(*val_begin..*val_end),
+                                Script::Super,
+                                u36!(0o2)
+                            )))
+                        }),
                     },
                     trailing_commas: None
                 }])
@@ -1189,19 +1236,31 @@ fn test_metacommand_octal() {
 
 fn parse_normal_arithmetic_expression(input: &str) -> Result<ArithmeticExpression, ParseErrors> {
     let g = grammar();
-    parse_with(input, g.normal_arithmetic_expression, no_state_setup)
+    parse_with(
+        input,
+        g.normal_arithmetic_expression_allowing_spaces,
+        no_state_setup,
+    )
 }
 
 fn parse_superscript_arithmetic_expression(
     input: &str,
 ) -> Result<ArithmeticExpression, ParseErrors> {
     let g = grammar();
-    parse_with(input, g.superscript_arithmetic_expression, no_state_setup)
+    parse_with(
+        input,
+        g.superscript_arithmetic_expression_allowing_spaces,
+        no_state_setup,
+    )
 }
 
 fn parse_subscript_arithmetic_expression(input: &str) -> Result<ArithmeticExpression, ParseErrors> {
     let g = grammar();
-    parse_with(input, g.subscript_arithmetic_expression, no_state_setup)
+    parse_with(
+        input,
+        g.subscript_arithmetic_expression_allowing_spaces,
+        no_state_setup,
+    )
 }
 
 #[test]
@@ -1226,7 +1285,7 @@ fn test_multi_syllable_symex() {
     assert_eq!(
         parse_successfully_with(
             "FOO",
-            parse_multi_syllable_symex(Script::Normal),
+            parse_multi_syllable_symex(SymexSyllableRule::Multiple, Script::Normal),
             no_state_setup
         ),
         "FOO"
@@ -1234,7 +1293,7 @@ fn test_multi_syllable_symex() {
     assert_eq!(
         parse_successfully_with(
             "FOO BAR",
-            parse_multi_syllable_symex(Script::Normal),
+            parse_multi_syllable_symex(SymexSyllableRule::Multiple, Script::Normal),
             no_state_setup
         ),
         "FOOBAR"
@@ -1242,7 +1301,7 @@ fn test_multi_syllable_symex() {
     assert_eq!(
         parse_successfully_with(
             "FOO  BAR",
-            parse_multi_syllable_symex(Script::Normal),
+            parse_multi_syllable_symex(SymexSyllableRule::Multiple, Script::Normal),
             no_state_setup
         ),
         "FOOBAR"
@@ -1289,7 +1348,7 @@ fn test_subs() {
     fn check(input: &str, expected: &str) {
         let got = parse_successfully_with(
             input,
-            parse_multi_syllable_symex(Script::Normal),
+            parse_multi_syllable_symex(SymexSyllableRule::Multiple, Script::Normal),
             no_state_setup,
         );
         if got != expected {
@@ -1319,7 +1378,7 @@ fn test_greek_letters() {
     fn check(input: &str) {
         let got = parse_successfully_with(
             input,
-            parse_multi_syllable_symex(Script::Normal),
+            parse_multi_syllable_symex(SymexSyllableRule::Multiple, Script::Normal),
             no_state_setup,
         );
         if got != input {
@@ -1337,7 +1396,11 @@ fn test_greek_letters() {
 #[test]
 fn test_annotation() {
     assert_eq!(
-        parse_successfully_with("[hello] FOO", parse_symex(Script::Normal), no_state_setup),
+        parse_successfully_with(
+            "[hello] FOO",
+            parse_symex(SymexSyllableRule::Multiple, Script::Normal),
+            no_state_setup
+        ),
         SymbolName::from("FOO".to_string()),
     );
 }
@@ -1702,7 +1765,14 @@ fn test_asterisk_for_deferred_addressing() {
     assert_eq!(
         parse_multiple_instruction_fragments("@sup_1@DPX@sub_0@ *B"),
         vec![
-            InstructionFragment::Config(ConfigValue::Literal(span(0..7), u36!(0o1))),
+            InstructionFragment::Config(ConfigValue {
+                already_superscript: true,
+                expr: ArithmeticExpression::from(Atom::Literal(LiteralValue::from((
+                    span(0..7),
+                    Script::Super,
+                    u36!(0o1)
+                ))))
+            }),
             InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::Literal(
                 LiteralValue::from((span(7..10), Script::Normal, u36!(0o1600000000)))
             ))),
@@ -1738,10 +1808,14 @@ fn test_double_pipe_config_symbolic() {
                 instruction: UntaggedProgramInstruction {
                     span: span(0..4),
                     holdbit: HoldBit::Unspecified,
-                    inst: InstructionFragment::Config(ConfigValue::Symbol(
-                        span(3..4),
-                        SymbolOrHere::from("X"),
-                    )),
+                    inst: InstructionFragment::Config(ConfigValue {
+                        already_superscript: false,
+                        expr: ArithmeticExpression::from(Atom::Symbol(
+                            span(3..4),
+                            Script::Normal,
+                            SymbolOrHere::from("X"),
+                        )),
+                    }),
                 },
                 trailing_commas: None,
             },
@@ -1762,6 +1836,94 @@ fn test_double_pipe_config_symbolic() {
 }
 
 #[test]
+fn test_double_pipe_config_expression() {
+    // Asd described in section 6-2.1 of the Users Handbook, "‖Q Y"
+    // should be parsed as a configuration syllable Q followed by the
+    // symbolic value Y (which would therefore go into the address
+    // portion of the instruction word).  Spaces are not allowed in
+    // the configuration syllable, but the syllable can contain
+    // expressions.  See for example the use of unary minus in Leonard
+    // Kleinrock's network simulator (e.g. the body of the TAKE macro
+    // on page 14 of the PDF).
+    let input_qy = "‖-(Q×2) Y";
+    assert_eq!(input_qy.len(), 12);
+    let got = parse_tagged_instruction(input_qy);
+    let expected = TaggedProgramInstruction {
+        tag: None,
+        instructions: vec![
+            CommaDelimitedInstruction {
+                leading_commas: None,
+                instruction: UntaggedProgramInstruction {
+                    span: span(0..10),
+                    holdbit: HoldBit::Unspecified,
+                    inst: InstructionFragment::Config(ConfigValue {
+                        already_superscript: false,
+                        expr: ArithmeticExpression {
+                            first: SignedAtom {
+                                span: span(3..10),
+                                negated: true,
+                                magnitude: Atom::Parens(
+                                    span(4..10),
+                                    Script::Normal,
+                                    Box::new(ArithmeticExpression {
+                                        first: SignedAtom {
+                                            span: span(5..6),
+                                            negated: false,
+                                            magnitude: Atom::Symbol(
+                                                span(5..6),
+                                                Script::Normal,
+                                                SymbolOrHere::from("Q"),
+                                            ),
+                                        },
+                                        tail: vec![(
+                                            Operator::Multiply,
+                                            SignedAtom {
+                                                span: span(8..9),
+                                                negated: false,
+                                                magnitude: Atom::from((
+                                                    span(8..9),
+                                                    Script::Normal,
+                                                    u36!(2),
+                                                )),
+                                            },
+                                        )],
+                                    }),
+                                ),
+                            },
+                            tail: Vec::new(),
+                        },
+                    }),
+                },
+                trailing_commas: None,
+            },
+            CommaDelimitedInstruction {
+                leading_commas: None,
+                instruction: UntaggedProgramInstruction {
+                    span: span(11..12),
+                    holdbit: HoldBit::Unspecified,
+                    inst: InstructionFragment::Arithmetic(ArithmeticExpression::from(
+                        Atom::Symbol(span(11..12), Script::Normal, SymbolOrHere::from("Y")),
+                    )),
+                },
+                trailing_commas: None,
+            },
+        ],
+    };
+    assert_eq!(got, expected);
+}
+
+// This test doesn't pass yet, so it is commented out.
+//#[test]
+//fn test_double_pipe_config_expression_disallows_spaces() {
+//    // Spaces are not allowed in config expressions.
+//    let input_qy = "‖-(Q × 2) Y";
+//    assert_eq!(input_qy.len(), 14);
+//    let result = parse_with(input_qy, statement(), no_state_setup);
+//    dbg!(&result);
+//    assert!(result.is_err());
+//}
+
+#[test]
 fn test_double_pipe_config_literal() {
     let input = "‖10"; // 10 octal = 8 decimal.
     let got = parse_tagged_instruction(input);
@@ -1770,7 +1932,10 @@ fn test_double_pipe_config_literal() {
         UntaggedProgramInstruction {
             span: span(0..5),
             holdbit: HoldBit::Unspecified,
-            inst: InstructionFragment::Config(ConfigValue::Literal(span(3..5), u36!(8))),
+            inst: InstructionFragment::Config(ConfigValue {
+                already_superscript: false,
+                expr: ArithmeticExpression::from(Atom::from((span(3..5), Script::Normal, u36!(8)))),
+            }),
         },
     );
     assert_eq!(got, expected);
@@ -1779,7 +1944,10 @@ fn test_double_pipe_config_literal() {
 #[test]
 fn test_superscript_configuration_literal() {
     let input = "@sup_1@AUX";
-    let config = InstructionFragment::Config(ConfigValue::Literal(span(0..7), u36!(0o1)));
+    let config = InstructionFragment::Config(ConfigValue {
+        already_superscript: true,
+        expr: ArithmeticExpression::from(Atom::from((span(0..7), Script::Super, u36!(0o1)))),
+    });
     let aux = InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::Literal(
         LiteralValue::from((
             span(7..10),
@@ -1816,9 +1984,17 @@ fn test_superscript_configuration_literal() {
 
 #[test]
 fn test_superscript_configuration_hash() {
+    // TODO: negated hash
     assert_eq!(
         parse_single_instruction_fragment("@sup_hash@"),
-        InstructionFragment::Config(ConfigValue::Symbol(span(0..10), SymbolOrHere::Here))
+        InstructionFragment::Config(ConfigValue {
+            already_superscript: true,
+            expr: ArithmeticExpression::from(SignedAtom {
+                negated: false,
+                span: span(0..10),
+                magnitude: Atom::Symbol(span(0..10), Script::Super, SymbolOrHere::Here),
+            })
+        }),
     );
 }
 

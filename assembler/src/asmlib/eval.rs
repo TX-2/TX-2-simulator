@@ -400,21 +400,14 @@ impl Evaluate for ConfigValue {
         rc_allocator: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-        match self {
-            ConfigValue::Literal(_span, value) => Ok(*value),
-            ConfigValue::Symbol(span, SymbolOrHere::Here) => {
-                Ok(Unsigned36Bit::from(target_address.get_address(span)?))
-            }
-            ConfigValue::Symbol(span, SymbolOrHere::Named(name)) => {
-                let context = SymbolContext::configuration();
-                match symtab.lookup_with_op(name, *span, target_address, rc_allocator, &context, op)
-                {
-                    Ok(SymbolValue::Final(value)) => Ok(value),
-                    Err(e) => Err(e),
-                }
-            }
-        }
-        .map(|value| value.shl(30u32))
+        // The `expr` member was either originally in superscript (in
+        // which case the `evaluate` value will already have been
+        // shifted into the correct position in the word, or in normal
+        // script (in which case we need to shift it ourselves).
+        let shift = if self.already_superscript { 0 } else { 30u32 };
+        self.expr
+            .evaluate(target_address, symtab, rc_allocator, op)
+            .map(|value| value.shl(shift))
     }
 }
 

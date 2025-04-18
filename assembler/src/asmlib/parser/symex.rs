@@ -106,25 +106,39 @@ where
     })
 }
 
-pub(super) fn parse_multi_syllable_symex<'a, I>(
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
+pub(super) enum SymexSyllableRule {
+    OneOnly,
+    Multiple,
+}
+
+pub(super) fn parse_multi_syllable_symex<'a: 'b, 'b, I>(
+    rule: SymexSyllableRule,
     script_required: Script,
-) -> impl Parser<'a, I, String, Extra<'a>> + Clone
+) -> Boxed<'a, 'b, I, String, Extra<'a>>
 where
     I: Input<'a, Token = Tok, Span = SimpleSpan> + ValueInput<'a>,
 {
-    parse_symex_non_reserved_syllable(script_required)
-        .foldl(symex_syllable(script_required).repeated(), concat_strings)
-        .labelled("multi-syllable symex")
+    match rule {
+        SymexSyllableRule::OneOnly => symex_syllable(script_required)
+            .labelled("single-syllable symex")
+            .boxed(),
+        SymexSyllableRule::Multiple => parse_symex_non_reserved_syllable(script_required)
+            .foldl(symex_syllable(script_required).repeated(), concat_strings)
+            .labelled("multi-syllable symex")
+            .boxed(),
+    }
 }
 
 pub(super) fn parse_symex<'a, I>(
+    rule: SymexSyllableRule,
     script_required: Script,
 ) -> impl Parser<'a, I, SymbolName, Extra<'a>> + Clone
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
     choice((
-        parse_multi_syllable_symex(script_required),
+        parse_multi_syllable_symex(rule, script_required),
         parse_symex_reserved_syllable(script_required),
     ))
     .map(|s| canonical_symbol_name(&s))

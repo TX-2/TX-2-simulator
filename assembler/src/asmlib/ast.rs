@@ -42,6 +42,7 @@ impl LiteralValue {
         self.value << self.elevation.shift()
     }
 
+    #[cfg(test)]
     pub(crate) fn unshifted_value(&self) -> Unsigned36Bit {
         self.value
     }
@@ -300,24 +301,31 @@ impl ArithmeticExpression {
 /// superscript, or by putting it in normal script after a ‖ symbol
 /// (‖x or ‖2, for example).  This is described in section 6-2.1 of
 /// the Users Handbook.
+///
+/// In the description of the parts of an instruction (section 6-2.1,
+/// "INSTRUCTION WORDS" of the Users Handbook) we see the
+/// specification that the configuration syllable cannot contain any
+/// spaces.  But this doesn't prevent the config syllable containing,
+/// say, an arithmetic expression.  Indeed, Leonard Kleinrock's
+/// program for network similation does exactly that (by using a
+/// negated symbol as a configuration value).
+///
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ConfigValue {
-    Literal(Span, Unsigned36Bit),
-    Symbol(Span, SymbolOrHere),
+pub(crate) struct ConfigValue {
+    pub(crate) already_superscript: bool,
+    pub(crate) expr: ArithmeticExpression,
 }
 
 impl ConfigValue {
-    fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
-        match self {
-            ConfigValue::Literal(_span, _value) => None,
-            ConfigValue::Symbol(_span, SymbolOrHere::Here) => None,
-            ConfigValue::Symbol(span, SymbolOrHere::Named(name)) => Some((
-                name.to_owned(),
-                *span,
-                SymbolUse::Reference(SymbolContext::configuration()),
-            )),
-        }
-        .into_iter()
+    fn symbol_uses(
+        &self,
+        block_id: BlockIdentifier,
+        block_offset: Unsigned18Bit,
+    ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
+        let used_as_config = SymbolUse::Reference(SymbolContext::configuration());
+        self.expr
+            .symbol_uses(block_id, block_offset)
+            .map(move |(name, span, _ignore_symbol_use)| (name, span, used_as_config.clone()))
     }
 }
 
@@ -526,7 +534,7 @@ impl InstructionFragment {
             }
             InstructionFragment::DeferredAddressing => (),
             InstructionFragment::Config(value) => {
-                result.extend(value.symbol_uses());
+                result.extend(value.symbol_uses(block_id, block_offset));
             }
             InstructionFragment::PipeConstruct {
                 index,

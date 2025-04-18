@@ -26,6 +26,7 @@ use super::symbol::{SymbolName, SymbolOrHere};
 use base::charset::Script;
 use base::prelude::*;
 use helpers::Sign;
+use symex::SymexSyllableRule;
 
 pub(crate) type Extra<'a> = Full<Rich<'a, lexer::Token>, SimpleState<NumeralMode>, ()>;
 use lexer::Token as Tok;
@@ -176,14 +177,18 @@ where
         .labelled("opcode")
 }
 
-fn named_symbol<'a, I>(script_required: Script) -> impl Parser<'a, I, SymbolName, Extra<'a>> + Clone
+fn named_symbol<'a, I>(
+    rule: SymexSyllableRule,
+    script_required: Script,
+) -> impl Parser<'a, I, SymbolName, Extra<'a>> + Clone
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
-    symex::parse_symex(script_required).labelled("symex (symbol) name")
+    symex::parse_symex(rule, script_required)
 }
 
 fn named_symbol_or_here<'a, I>(
+    rule: SymexSyllableRule,
     script_required: Script,
 ) -> impl Parser<'a, I, SymbolOrHere, Extra<'a>>
 where
@@ -191,9 +196,8 @@ where
 {
     choice((
         here(script_required),
-        named_symbol(script_required).map(SymbolOrHere::Named),
+        named_symbol(rule, script_required).map(SymbolOrHere::Named),
     ))
-    .labelled("symex (symbol)")
 }
 
 pub(super) fn operator<'a, I>(
@@ -214,59 +218,6 @@ where
         Tok::Plus(got) if script_required == got => Operator::Add,
     }
     .labelled("arithmetic operator")
-}
-
-fn config_value<'a, I>() -> impl Parser<'a, I, InstructionFragment, Extra<'a>> + Clone
-where
-    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
-{
-    fn single_syllable_name_or_here<'a, I>(
-        script_required: Script,
-    ) -> impl Parser<'a, I, SymbolOrHere, Extra<'a>> + Clone
-    where
-        I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
-    {
-        let label = match script_required {
-            Script::Super => "superscript symex (symbol) without spaces",
-            Script::Normal => "symex (symbol) without spaces",
-            Script::Sub => unreachable!(),
-        };
-        choice((
-            here(script_required),
-            // Spaces are not allowed within configuration values, so
-            // we only accept one symex syllable here.
-            symex::symex_syllable(script_required)
-                .map(|name| SymbolOrHere::Named(SymbolName::from(name))),
-        ))
-        .labelled(label)
-    }
-
-    choice((
-        just(Tok::DoublePipe(Script::Normal)).ignore_then(choice((
-            // We try to parse the config syllable as a literal first,
-            // because symexes can also contain (and start with)
-            // digits (so the symbolic version would accept numeric
-            // literals also).
-            //
-            // The numeric literal of a config value introduced by '‖'
-            // must be in normal script, so ConfigValue::Literal
-            // directly contains an Unsigned36Bit value instead of
-            // using the LiteralValue type.
-            literal(Script::Normal)
-                .map_with(|literal, extra| ConfigValue::Literal(extra.span(), literal.value())),
-            single_syllable_name_or_here(Script::Normal)
-                .map_with(|name_or_here, extra| ConfigValue::Symbol(extra.span(), name_or_here)),
-        ))),
-        // Again, we try to parse the literal first, because symexes
-        // can also contain (and start with) digits.
-        literal(Script::Super).map_with(|literal, extra| {
-            ConfigValue::Literal(extra.span(), literal.unshifted_value())
-        }),
-        single_syllable_name_or_here(Script::Super)
-            .map_with(|name_or_here, extra| ConfigValue::Symbol(extra.span(), name_or_here)),
-    ))
-    .map(InstructionFragment::Config)
-    .labelled("configuration value")
 }
 
 fn asterisk_indirection_fragment<'srcbody, I>(
@@ -347,7 +298,9 @@ fn macro_argument<'a, I>() -> impl Parser<'a, I, MacroArgument, Extra<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
-    (macro_terminator().then(named_symbol(Script::Normal))).map_with(
+    // The TX-2 Users Handbook section 6-4.4 ("DUMMY PARAMETERS")
+    // doesn't disallow spaces in macro argument names.
+    (macro_terminator().then(named_symbol(SymexSyllableRule::Multiple, Script::Normal))).map_with(
         |(terminator, symbol), extra| MacroArgument {
             name: symbol,
             span: extra.span(),
@@ -377,7 +330,7 @@ where
 {
     named_metacommand(Metacommand::DefineMacro)
         .ignore_then(
-            named_symbol(Script::Normal), // the macro's name (# is not allowed)
+            named_symbol(SymexSyllableRule::Multiple, Script::Normal).labelled("macro name"), // the macro's name (# is not allowed)
         )
         .then(macro_arguments())
         .then_ignore(end_of_line())
@@ -586,7 +539,7 @@ fn tag_definition<'a, I>() -> impl Parser<'a, I, Tag, Extra<'a>> + Clone
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
-    named_symbol(Script::Normal)
+    named_symbol(SymexSyllableRule::Multiple, Script::Normal)
         .map_with(|name, extra| Tag {
             name,
             span: extra.span(),
@@ -633,11 +586,13 @@ where
 {
     statement: Boxed<'a, 'b, I, Statement, Extra<'a>>,
     #[cfg(test)]
-    normal_arithmetic_expression: Boxed<'a, 'b, I, ArithmeticExpression, Extra<'a>>,
+    normal_arithmetic_expression_allowing_spaces: Boxed<'a, 'b, I, ArithmeticExpression, Extra<'a>>,
     #[cfg(test)]
-    subscript_arithmetic_expression: Boxed<'a, 'b, I, ArithmeticExpression, Extra<'a>>,
+    subscript_arithmetic_expression_allowing_spaces:
+        Boxed<'a, 'b, I, ArithmeticExpression, Extra<'a>>,
     #[cfg(test)]
-    superscript_arithmetic_expression: Boxed<'a, 'b, I, ArithmeticExpression, Extra<'a>>,
+    superscript_arithmetic_expression_allowing_spaces:
+        Boxed<'a, 'b, I, ArithmeticExpression, Extra<'a>>,
     #[cfg(test)]
     instruction_fragment: Boxed<'a, 'b, I, InstructionFragment, Extra<'a>>,
 }
@@ -672,8 +627,13 @@ where
         .map_with(|tagged_instruction, extra| Atom::RcRef(extra.span(), vec![tagged_instruction]))
         .labelled("RC-word");
 
-    let arith_expr = |script_required: Script| {
+    let arith_expr = |allow_spaces: bool, script_required: Script| {
         {
+            let symex_syllable_rule = if allow_spaces {
+                SymexSyllableRule::Multiple
+            } else {
+                SymexSyllableRule::OneOnly
+            };
             // We use recursive here to prevent the parser blowing the stack
             // when trying to parse inputs which have parentheses - that is,
             // inputs that require recursion.
@@ -694,9 +654,11 @@ where
                 let naked_atom = choice((
                     literal(script_required).map(Atom::from),
                     opcode().map(Atom::from),
-                    named_symbol_or_here(script_required).map_with(move |symbol_or_here, extra| {
-                        Atom::Symbol(extra.span(), script_required, symbol_or_here)
-                    }),
+                    named_symbol_or_here(symex_syllable_rule, script_required).map_with(
+                        move |symbol_or_here, extra| {
+                            Atom::Symbol(extra.span(), script_required, symbol_or_here)
+                        },
+                    ),
                     register_containing,
                     parenthesised_arithmetic_expression,
                 ))
@@ -758,15 +720,35 @@ where
         .map(make_pipe_construct)
         .labelled("pipe construct");
 
-        let single_script_fragment =
-            |script_required| arith_expr.clone()(script_required).map(InstructionFragment::from);
+        let single_script_fragment = |script_required| {
+            arith_expr.clone()(true, script_required).map(InstructionFragment::from)
+        };
+
+        // A configuration syllable is not permitted to contain spaces
+        // (per section 6-1.2 "INSTRUCTION WORDS" of the Users
+        // Handbook).  So we need to prevent symex matching accepting
+        // spaces.
+        let config_value = choice((
+            just(Tok::DoublePipe(Script::Normal)).ignore_then(
+                arith_expr.clone()(false, Script::Normal).map(|expr| ConfigValue {
+                    already_superscript: false,
+                    expr,
+                }),
+            ),
+            arith_expr.clone()(false, Script::Super).map(|expr| ConfigValue {
+                already_superscript: true,
+                expr,
+            }),
+        ))
+        .map(InstructionFragment::Config)
+        .labelled("configuration value");
 
         choice((
             pipe_construct,
             single_script_fragment(Script::Normal),
             single_script_fragment(Script::Sub),
             asterisk_indirection_fragment(),
-            config_value(),
+            config_value,
         ))
         .labelled("program instruction")
     });
@@ -799,7 +781,7 @@ where
     // Assginments are called "equalities" in the TX-2 Users Handbook.
     // See section 6-2.2, "SYMEX DEFINITON - TAGS - EQUALITIES -
     // AUTOMATIC ASSIGNMENT".
-    let assignment = (symex::parse_symex(Script::Normal)
+    let assignment = (symex::parse_symex(SymexSyllableRule::Multiple, Script::Normal)
         .then_ignore(just(Tok::Equals(Script::Normal)))
         .then(
             comma_delimited_instructions
@@ -820,14 +802,29 @@ where
             .map(Statement::Instruction),
     ));
 
+    #[cfg(test)]
+    const ALLOW_SPACES: bool = true;
+
     Grammar {
         statement: stmt.boxed(),
         #[cfg(test)]
-        normal_arithmetic_expression: arith_expr.clone()(Script::Normal).boxed(),
+        normal_arithmetic_expression_allowing_spaces: arith_expr.clone()(
+            ALLOW_SPACES,
+            Script::Normal,
+        )
+        .boxed(),
         #[cfg(test)]
-        superscript_arithmetic_expression: arith_expr.clone()(Script::Super).boxed(),
+        superscript_arithmetic_expression_allowing_spaces: arith_expr.clone()(
+            ALLOW_SPACES,
+            Script::Super,
+        )
+        .boxed(),
         #[cfg(test)]
-        subscript_arithmetic_expression: arith_expr.clone()(Script::Sub).boxed(),
+        subscript_arithmetic_expression_allowing_spaces: arith_expr.clone()(
+            ALLOW_SPACES,
+            Script::Sub,
+        )
+        .boxed(),
         #[cfg(test)]
         instruction_fragment: program_instruction_fragment.boxed(),
     }
@@ -900,7 +897,7 @@ where
             where
                 I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
             {
-                named_symbol(Script::Normal)
+                named_symbol(SymexSyllableRule::Multiple, Script::Normal)
                     .map_with(|name, extra| Origin::Symbolic(extra.span(), name))
                     .labelled("symbolic address expression")
             }
