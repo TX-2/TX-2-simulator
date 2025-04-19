@@ -206,7 +206,7 @@ impl SymbolTable {
                             .map(SymbolValue::Final)
                     }
                     SymbolDefinition::Undefined(context_union) => {
-                        match dbg!(t.get_default_value(name, &span, &context_union, rc_allocator)) {
+                        match t.get_default_value(name, &span, &context_union, rc_allocator) {
                             Ok(value) => {
                                 match t.define(
                                     span,
