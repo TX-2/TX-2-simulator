@@ -28,7 +28,19 @@ use base::prelude::*;
 use helpers::Sign;
 use symex::SymexSyllableRule;
 
-pub(crate) type Extra<'a> = Full<Rich<'a, lexer::Token>, SimpleState<NumeralMode>, ()>;
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub(crate) struct State<'src> {
+    numeral_mode: NumeralMode,
+    body: &'src str,
+}
+
+impl<'src> State<'src> {
+    pub(crate) fn new(body: &'src str, numeral_mode: NumeralMode) -> State<'src> {
+        State { numeral_mode, body }
+    }
+}
+
+pub(crate) type Extra<'a> = Full<Rich<'a, lexer::Token>, SimpleState<State<'a>>, ()>;
 use lexer::Token as Tok;
 
 fn maybe_sign<'a, I>(
@@ -55,8 +67,8 @@ where
 
     digits
         .try_map_with(move |digits_token_payload, extra| {
-            let state: &SimpleState<NumeralMode> = extra.state();
-            let mode: &NumeralMode = state.deref();
+            let state: &SimpleState<State> = extra.state();
+            let mode: &NumeralMode = &state.deref().numeral_mode;
             match digits_token_payload.make_num(None, mode) {
                 Ok(value) => Ok(LiteralValue::from((extra.span(), script_required, value))),
                 Err(e) => Err(Rich::custom(extra.span(), e.to_string())),
@@ -740,7 +752,22 @@ where
                 expr,
             }),
         ))
-        .map(InstructionFragment::Config)
+        .try_map_with(|config_val, extra| {
+            let span: Span = extra.span();
+            let range: Range<usize> = span.into();
+            let slice: &str = &extra.state().body[range];
+
+            if slice.contains(' ') {
+                // Spaces in configuration values are prohibited by
+                // the rule given in the Users handbook, section 6-2.1.
+                Err(Rich::custom(
+                    span,
+                    format!("configuration value '{slice}' should not contain spaces"),
+                ))
+            } else {
+                Ok(InstructionFragment::Config(config_val))
+            }
+        })
         .labelled("configuration value");
 
         choice((
@@ -858,7 +885,7 @@ where
     {
         metacommand()
             .map_with(|cmd, extra| {
-                execute_metacommand(extra.state(), &cmd);
+                execute_metacommand(&mut extra.state().numeral_mode, &cmd);
                 ManuscriptLine::MetaCommand(cmd)
             })
             .labelled("metacommand")
@@ -996,8 +1023,8 @@ pub(crate) fn tokenize_and_parse_with<'a, P, T>(
 where
     P: Parser<'a, Mi, T, Extra<'a>>,
 {
-    let mut state = SimpleState::from(NumeralMode::default());
-    setup(&mut state);
+    let mut state = SimpleState::from(State::new(input, NumeralMode::default()));
+    setup(&mut state.numeral_mode);
 
     // These conversions are adapted from the Logos example in the
     // Chumsky documentation.

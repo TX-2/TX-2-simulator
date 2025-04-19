@@ -1912,16 +1912,21 @@ fn test_double_pipe_config_expression() {
     assert_eq!(got, expected);
 }
 
-// This test doesn't pass yet, so it is commented out.
-//#[test]
-//fn test_double_pipe_config_expression_disallows_spaces() {
-//    // Spaces are not allowed in config expressions.
-//    let input_qy = "‖-(Q × 2) Y";
-//    assert_eq!(input_qy.len(), 14);
-//    let result = parse_with(input_qy, statement(), no_state_setup);
-//    dbg!(&result);
-//    assert!(result.is_err());
-//}
+#[test]
+fn test_double_pipe_config_expression_disallows_spaces() {
+    // Spaces are not allowed in config expressions.  First we verify
+    // that an expression without spaces is valid:
+    let input_qy_unspaced = "‖-(Q×2) Y";
+    assert!(dbg!(parse_with(input_qy_unspaced, statement(), no_state_setup)).is_ok());
+
+    // Now we verify that a similae expression with spaces is
+    // rejected:
+    let input_qy_spaced = "‖-(Q × 2) Y";
+    assert_eq!(input_qy_spaced.len(), 14);
+    let result = parse_with(input_qy_spaced, statement(), no_state_setup);
+    dbg!(&result);
+    assert!(result.is_err());
+}
 
 #[test]
 fn test_double_pipe_config_literal() {
