@@ -2495,3 +2495,63 @@ mod comma_tests {
         );
     }
 }
+
+#[test]
+fn test_mnemonic_suz() {
+    // SUZ is an alternate mnemonic for SMK (opcode 0o17) which also
+    // sets the configuration syllable to 0o12.
+    let input = "START -> SUZ 200013";
+    dbg!(input.len());
+    let insn = parse_tagged_instruction(input);
+    assert_eq!(
+        insn,
+        TaggedProgramInstruction {
+            tag: Some(Tag {
+                name: SymbolName {
+                    canonical: "START".to_string()
+                },
+                span: span(0..5),
+            }),
+            instructions: vec![
+                CommaDelimitedInstruction {
+                    leading_commas: None,
+                    instruction: UntaggedProgramInstruction {
+                        span: span(9..12),
+                        holdbit: HoldBit::Unspecified,
+                        inst: InstructionFragment::from((
+                            span(9..12),
+                            Script::Normal,
+                            u36!(0o121_700_000_000)
+                        ))
+                    },
+                    trailing_commas: None,
+                },
+                CommaDelimitedInstruction {
+                    leading_commas: None,
+                    instruction: UntaggedProgramInstruction {
+                        span: span(13..19),
+                        holdbit: HoldBit::Unspecified,
+                        inst: InstructionFragment::from((
+                            span(13..19),
+                            Script::Normal,
+                            u36!(0o000_000_200_013)
+                        ))
+                    },
+                    trailing_commas: None,
+                },
+            ]
+        }
+    );
+}
+
+#[test]
+fn test_opcode_to_literal() {
+    assert_eq!(
+        opcode_to_literal(
+            u6!(0o17), // SKM
+            u5!(0o12), // as if the mnemonic were SUZ
+            span(0..3)
+        ),
+        LiteralValue::from((span(0..3), Script::Normal, u36!(0o121_700_000_000)))
+    );
+}

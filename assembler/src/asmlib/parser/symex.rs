@@ -6,8 +6,8 @@ use chumsky::Parser;
 use super::super::lexer::{DOT_CHAR, DOT_STR};
 use super::super::span::*;
 use super::super::symbol::SymbolName;
-use super::helpers::{self, DecodedOpcode};
-use super::{Extra, Tok};
+use super::helpers::{self};
+use super::{opcode_code, Extra, Tok};
 
 fn canonical_symbol_name(s: &str) -> SymbolName {
     // TODO: avoid copy where possible.
@@ -19,9 +19,8 @@ fn canonical_symbol_name(s: &str) -> SymbolName {
     }
 }
 
-fn is_reserved_identifier(ident: &str, mapper: &helpers::OpcodeMapper) -> bool {
-    let is_opcode = move |s: &str| -> bool { matches!(mapper.get(s), DecodedOpcode::Valid(_)) };
-    helpers::is_register_name(ident) || is_opcode(ident)
+fn is_reserved_identifier(ident: &str) -> bool {
+    helpers::is_register_name(ident) || opcode_code(ident).is_some()
 }
 
 fn concat_strings(mut s: String, next: String) -> String {
@@ -93,9 +92,8 @@ fn parse_symex_non_reserved_syllable<'a, I>(
 where
     I: Input<'a, Token = Tok, Span = SimpleSpan> + ValueInput<'a>,
 {
-    let opcode_mapper = helpers::OpcodeMapper::default();
     symex_syllable(script_required).try_map(move |syllable, span| {
-        if is_reserved_identifier(&syllable, &opcode_mapper) {
+        if is_reserved_identifier(&syllable) {
             Err(Rich::custom(
                 span,
                 format!("'{syllable}' is a reserved identifier"),
@@ -151,10 +149,9 @@ pub(super) fn parse_symex_reserved_syllable<'a, I>(
 where
     I: Input<'a, Token = Tok, Span = SimpleSpan> + ValueInput<'a>,
 {
-    let opcode_mapper = helpers::OpcodeMapper::default();
     symex_syllable(script_required)
         .try_map(move |syllable, span| {
-            if is_reserved_identifier(&syllable, &opcode_mapper) {
+            if is_reserved_identifier(&syllable) {
                 Ok(syllable)
             } else {
                 Err(Rich::custom(span, "expected reserved syllable".to_string()))

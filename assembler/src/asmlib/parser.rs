@@ -86,61 +86,98 @@ where
     }
 }
 
-/// TODO: redundant if we use helpers::opcode_mapping.
-fn opcode_code(s: &str) -> Option<Unsigned6Bit> {
+fn opcode_code(s: &str) -> Option<(Unsigned5Bit, Unsigned6Bit)> {
     match s {
-        "IOS" => Some(u6!(0o4)),
-        "JMP" => Some(u6!(0o5)),
-        "JPX" => Some(u6!(0o6)),
-        "JNX" => Some(u6!(0o7)),
-        "AUX" => Some(u6!(0o10)),
-        "RSX" => Some(u6!(0o11)),
-        "SKX" => Some(u6!(0o12)),
-        "REX" => Some(u6!(0o12)),
-        "SEX" => Some(u6!(0o12)),
-        "EXX" => Some(u6!(0o14)),
-        "ADX" => Some(u6!(0o15)),
-        "DPX" => Some(u6!(0o16)),
-        "SKM" => Some(u6!(0o17)),
-        "LDE" => Some(u6!(0o20)),
-        "SPF" => Some(u6!(0o21)),
-        "SPG" => Some(u6!(0o22)),
-        "LDA" => Some(u6!(0o24)),
-        "LDB" => Some(u6!(0o25)),
-        "LDC" => Some(u6!(0o26)),
-        "LDD" => Some(u6!(0o27)),
-        "STE" => Some(u6!(0o30)),
-        "FLF" => Some(u6!(0o31)),
-        "FLG" => Some(u6!(0o32)),
-        "STA" => Some(u6!(0o34)),
-        "STB" => Some(u6!(0o35)),
-        "STC" => Some(u6!(0o36)),
-        "STD" => Some(u6!(0o37)),
-        "ITE" => Some(u6!(0o40)),
-        "ITA" => Some(u6!(0o41)),
-        "UNA" => Some(u6!(0o42)),
-        "SED" => Some(u6!(0o43)),
-        "JOV" => Some(u6!(0o45)),
-        "JPA" => Some(u6!(0o46)),
-        "JNA" => Some(u6!(0o47)),
-        "EXA" => Some(u6!(0o54)),
-        "INS" => Some(u6!(0o55)),
-        "COM" => Some(u6!(0o56)),
-        "TSD" => Some(u6!(0o57)),
-        "CYA" => Some(u6!(0o60)),
-        "CYB" => Some(u6!(0o61)),
-        "CAB" => Some(u6!(0o62)),
-        "NOA" => Some(u6!(0o64)),
-        "DSA" => Some(u6!(0o65)),
-        "NAB" => Some(u6!(0o66)),
-        "ADD" => Some(u6!(0o67)),
-        "SCA" => Some(u6!(0o70)),
-        "SCB" => Some(u6!(0o71)),
-        "SAB" => Some(u6!(0o72)),
-        "TLY" => Some(u6!(0o74)),
-        "DIV" => Some(u6!(0o75)),
-        "MUL" => Some(u6!(0o76)),
-        "SUB" => Some(u6!(0o77)),
+        "IOS" => Some((u5!(0o00), u6!(0o04))),
+        "JMP" => Some((u5!(0o00), u6!(0o05))),
+        "BRC" => Some((u5!(0o01), u6!(0o05))),
+        "JPS" => Some((u5!(0o02), u6!(0o05))),
+        "BRS" => Some((u5!(0o03), u6!(0o05))),
+        "JPQ" => Some((u5!(0o14), u6!(0o05))),
+        "BPQ" => Some((u5!(0o15), u6!(0o05))),
+        "JES" => Some((u5!(0o16), u6!(0o05))),
+        "JPD" => Some((u5!(0o20), u6!(0o05))),
+        "BRD" => Some((u5!(0o21), u6!(0o05))),
+        "JDS" => Some((u5!(0o22), u6!(0o05))),
+        "BDS" => Some((u5!(0o23), u6!(0o05))),
+        "JPX" => Some((u5!(0o00), u6!(0o06))),
+        "JNX" => Some((u5!(0o00), u6!(0o07))),
+        "AUX" => Some((u5!(0o00), u6!(0o10))),
+        "RSX" => Some((u5!(0o00), u6!(0o11))),
+        "SKX" | "REX" | "SEX" => Some((u5!(0o00), u6!(0o12))),
+        "INX" => Some((u5!(0o02), u6!(0o12))),
+        "DEX" => Some((u5!(0o03), u6!(0o12))),
+        "SXD" => Some((u5!(0o04), u6!(0o12))),
+        "SXL" => Some((u5!(0o06), u6!(0o12))),
+        "SXG" => Some((u5!(0o07), u6!(0o12))),
+        "RXF" => Some((u5!(0o10), u6!(0o12))),
+        "RXD" => Some((u5!(0o20), u6!(0o12))),
+        "RFD" => Some((u5!(0o30), u6!(0o12))),
+        "EXX" => Some((u5!(0o00), u6!(0o14))),
+        "ADX" => Some((u5!(0o00), u6!(0o15))),
+        "DPX" => Some((u5!(0o00), u6!(0o16))),
+        "SKM" => Some((u5!(0o00), u6!(0o17))),
+        "MKC" => Some((u5!(0o01), u6!(0o17))),
+        "MKZ" => Some((u5!(0o02), u6!(0o17))),
+        "MKN" => Some((u5!(0o03), u6!(0o17))),
+        "SKU" => Some((u5!(0o10), u6!(0o17))),
+        "SUC" => Some((u5!(0o11), u6!(0o17))),
+        "SUZ" => Some((u5!(0o12), u6!(0o17))),
+        "SUN" => Some((u5!(0o13), u6!(0o17))),
+        "SKZ" => Some((u5!(0o20), u6!(0o17))),
+        "SZC" => Some((u5!(0o21), u6!(0o17))),
+        "SZZ" => Some((u5!(0o22), u6!(0o17))),
+        "SZN" => Some((u5!(0o23), u6!(0o17))),
+        "SKN" => Some((u5!(0o30), u6!(0o17))),
+        "SNC" => Some((u5!(0o31), u6!(0o17))),
+        "SNZ" => Some((u5!(0o32), u6!(0o17))),
+        "SNN" => Some((u5!(0o33), u6!(0o17))),
+        "CYR" => Some((u5!(0o04), u6!(0o17))),
+        "MCR" => Some((u5!(0o05), u6!(0o17))),
+        "MZR" => Some((u5!(0o06), u6!(0o17))),
+        "MNR" => Some((u5!(0o07), u6!(0o17))),
+        "SNR" => Some((u5!(0o34), u6!(0o17))),
+        "SZR" => Some((u5!(0o24), u6!(0o17))),
+        "SUR" => Some((u5!(0o14), u6!(0o17))),
+        "LDE" => Some((u5!(0o00), u6!(0o20))),
+        "SPF" => Some((u5!(0o00), u6!(0o21))),
+        "SPG" => Some((u5!(0o00), u6!(0o22))),
+        "LDA" => Some((u5!(0o00), u6!(0o24))),
+        "LDB" => Some((u5!(0o00), u6!(0o25))),
+        "LDC" => Some((u5!(0o00), u6!(0o26))),
+        "LDD" => Some((u5!(0o00), u6!(0o27))),
+        "STE" => Some((u5!(0o00), u6!(0o30))),
+        "FLF" => Some((u5!(0o00), u6!(0o31))),
+        "FLG" => Some((u5!(0o00), u6!(0o32))),
+        "STA" => Some((u5!(0o00), u6!(0o34))),
+        "STB" => Some((u5!(0o00), u6!(0o35))),
+        "STC" => Some((u5!(0o00), u6!(0o36))),
+        "STD" => Some((u5!(0o00), u6!(0o37))),
+        "ITE" => Some((u5!(0o00), u6!(0o40))),
+        "ITA" => Some((u5!(0o00), u6!(0o41))),
+        "UNA" => Some((u5!(0o00), u6!(0o42))),
+        "SED" => Some((u5!(0o00), u6!(0o43))),
+        "JOV" => Some((u5!(0o00), u6!(0o45))),
+        "JPA" => Some((u5!(0o00), u6!(0o46))),
+        "JNA" => Some((u5!(0o00), u6!(0o47))),
+        "EXA" => Some((u5!(0o00), u6!(0o54))),
+        "INS" => Some((u5!(0o00), u6!(0o55))),
+        "COM" => Some((u5!(0o00), u6!(0o56))),
+        "TSD" => Some((u5!(0o00), u6!(0o57))),
+        "CYA" => Some((u5!(0o00), u6!(0o60))),
+        "CYB" => Some((u5!(0o00), u6!(0o61))),
+        "CAB" => Some((u5!(0o00), u6!(0o62))),
+        "NOA" => Some((u5!(0o00), u6!(0o64))),
+        "DSA" => Some((u5!(0o00), u6!(0o65))),
+        "NAB" => Some((u5!(0o00), u6!(0o66))),
+        "ADD" => Some((u5!(0o00), u6!(0o67))),
+        "SCA" => Some((u5!(0o00), u6!(0o70))),
+        "SCB" => Some((u5!(0o00), u6!(0o71))),
+        "SAB" => Some((u5!(0o00), u6!(0o72))),
+        "TLY" => Some((u5!(0o00), u6!(0o74))),
+        "DIV" => Some((u5!(0o00), u6!(0o75))),
+        "MUL" => Some((u5!(0o00), u6!(0o76))),
+        "SUB" => Some((u5!(0o00), u6!(0o77))),
         _ => None,
     }
 }
@@ -164,23 +201,22 @@ where
     })
 }
 
+fn opcode_to_literal(code: Unsigned6Bit, cfgbits: Unsigned5Bit, span: Span) -> LiteralValue {
+    let bits = Unsigned36Bit::ZERO
+        .bitor(u64::from(code).shl(24))
+        .bitor(u64::from(cfgbits).shl(30))
+        .bitor(helpers::opcode_auto_hold_bit(code));
+    LiteralValue::from((span, Script::Normal, bits))
+}
+
 pub(super) fn opcode<'a, I>() -> impl Parser<'a, I, LiteralValue, Extra<'a>> + Clone
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
-    fn opcode_to_literal(code: Unsigned6Bit, span: Span) -> LiteralValue {
-        // Some opcodes automatically set the hold bit, so do that
-        // here.
-        let bits = Unsigned36Bit::from(code)
-            .shl(24)
-            .bitor(helpers::opcode_auto_hold_bit(code));
-        LiteralValue::from((span, Script::Normal, bits))
-    }
-
     symex::symex_syllable(Script::Normal)
         .filter(|mnemonic| opcode_code(mnemonic).is_some())
         .try_map_with(|mnemonic, extra| match opcode_code(mnemonic.as_str()) {
-            Some(code) => Ok(opcode_to_literal(code, extra.span())),
+            Some((cfgbits, code)) => Ok(opcode_to_literal(code, cfgbits, extra.span())),
             None => Err(Rich::custom(
                 extra.span(),
                 format!("'{mnemonic}' is not an opcode mnemonic"),
