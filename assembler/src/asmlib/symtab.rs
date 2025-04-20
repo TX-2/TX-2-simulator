@@ -592,7 +592,9 @@ impl Display for FinalSymbolTable {
         };
 
         show(f, FinalSymbolType::Tag, "Tags")?;
-        show(f, FinalSymbolType::Equality, "Equalities")
+        show(f, FinalSymbolType::Equality, "Equalities")?;
+        show(f, FinalSymbolType::Default, "Default-assigned values")?;
+        Ok(())
     }
 }
 
