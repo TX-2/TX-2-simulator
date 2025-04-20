@@ -69,21 +69,14 @@ now, use the browser-based interface.
 
 ### assembler
 
-This is a command-line assembler which will eventually read Unicode
-input files and generate data files suitable to be loaded as simulated
-paper tapes.
+This is a command-line assembler which reads Unicode input files and
+generates data files suitable to be loaded as simulated paper tapes.
 
 The syntax of the assembler input is intended to follow that of the
 standard TX-2 assembler which was called M4.
 
-Right now we support a quite limited subset (no support for symbols,
-for example).  This is enough to generate some test programs.
-
-The reason for using Unicode as input is so that the input file can,
-as far as possible, look like the normal representation of M4 source
-code.  At some point we may also define a pure-ASCII equivalent so
-that something like `\\doublehand` would be understood to be a synonym
-for `☛☛`.  But nothing like this is implemented right now.
+We support Unicode as input is so that the input file can, as far as
+possible, look like the normal representation of M4 source code.
 
 ### Browser-based User Interface
 
@@ -99,7 +92,7 @@ We were inspired to create this by the example of Matt Godbolt's
 
 Clearly, we hope to implement more of the missing features
 (e.g. remaining opcodes and hardware devices).  Most of all, we would
-like to locate authentic TX-2 code to test our simulator.
+like to locate additional authentic TX-2 code to test our simulator.
 
 ## Other Sources of Information
 

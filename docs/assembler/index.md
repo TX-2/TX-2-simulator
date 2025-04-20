@@ -30,15 +30,12 @@ or output.
 The assembler is incomplete and changes quite often.  It has a lot of
 limitations right now, including:
 
-- No support for arithmetic expressions
-- No support for RC-blocks
-- No support for assigning index registers to undefined symbols
-- No support for macros
+- No support for macro expansion
 - Compound characters are not supported
 
 ### Compound Characters
 
- Compound chars are described in item 7 on page 607 of the TX-2 Users
+Compound chars are described in item 7 on page 607 of the TX-2 Users
 Handbook (Nov 63).
 
 Compound characters are described like so:
