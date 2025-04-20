@@ -843,7 +843,13 @@ const ALL_GLYPHS: &[Glyph] = &[
         // This is a centre dot, not a period.  We use a centre dot so
         // that it's not confused with a subscript dot.
         normal: Some('\u{00B7}'), // ·
-        subscript: None,
+
+        // Using an ASCII full stop / period (".") would be too
+        // confusing for the user, who (when preparing source code
+        // input) might expect this to be interpreted as the
+        // normal-script PERIOD.  So for subscript we instead use
+        // U+2024, "One Dot Leader".
+        subscript: Some('\u{2024}'), // "․" (not ASCII ".")
         superscript: None,
         ..GDEF
     },

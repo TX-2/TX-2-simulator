@@ -235,6 +235,10 @@ fn test_subscript_literal_oct_decmode() {
         parse_successfully_with("₃₁@sub_dot@", literal(Script::Sub), set_decimal_mode),
         LiteralValue::from((span(0..15), Script::Sub, Unsigned36Bit::from(0o31_u32),))
     );
+    assert_eq!(
+        parse_successfully_with("₃₁․", literal(Script::Sub), set_decimal_mode),
+        LiteralValue::from((span(0..9), Script::Sub, Unsigned36Bit::from(0o31_u32),))
+    );
 }
 
 #[test]

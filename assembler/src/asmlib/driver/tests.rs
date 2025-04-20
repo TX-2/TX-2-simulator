@@ -668,12 +668,11 @@ fn default_assigned_index_register_easy_case() {
 
 #[test]
 fn test_bit_designator_evaluation_result() {
-    let program = assemble_source("100|SKM@sub_2@@sub_dot@@sub_1@ 0\n", Default::default())
-        .expect("program is valid");
+    let program = assemble_source("100|SKM₂․₁ 0\n", Default::default()).expect("program is valid");
     dbg!(&program);
     assert_eq!(program.chunks.len(), 1);
     assert_eq!(program.chunks[0].words.len(), 1);
-    // SKM is opcode 0o17.  bit designator 2.1 is 0o41.  The opcode
+    // SKM is opcode 0o17.  bit designator 2·1 is 0o41.  The opcode
     // gets shifted left 24 bit positions, the index valis is shiifted
     // left by 18 bit positions.
     assert_eq!(program.chunks[0].words[0], u36!(0o001_741_000_000));
