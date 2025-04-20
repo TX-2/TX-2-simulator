@@ -677,3 +677,30 @@ fn test_bit_designator_evaluation_result() {
     // left by 18 bit positions.
     assert_eq!(program.chunks[0].words[0], u36!(0o001_741_000_000));
 }
+
+#[test]
+fn test_kleinrock_200016() {
+    let input = concat!(
+        "t = 6\n",
+        "MKN ₄․₁₀@sub_pipe@ₜ 022122\n",
+        // We manipulate the location of the RC block, so that the
+        // RC-word allocated by the pipe construct is placed at
+        // 206336.
+        "206335|0\n",
+    );
+    let program = assemble_source(input, Default::default()).expect("program is valid");
+    dbg!(&program);
+    assert_eq!(program.chunks.len(), 3);
+    assert_eq!(program.chunks[0].words.len(), 1); // program length
+    assert_eq!(program.chunks[2].words.len(), 1); // RC block length
+
+    assert_eq!(program.chunks[0].address, Address::from(u18!(0o200_000))); // Location of program code
+    assert_eq!(program.chunks[0].words[0], u36!(0o031_712_606_336));
+
+    // The placeholder block at 206335 is part of the test set-up, its
+    // single word of content is not material to the test (only its
+    // location is important).
+
+    assert_eq!(program.chunks[2].address, Address::from(u18!(0o206_336))); // Location of RC-block
+    assert_eq!(program.chunks[2].words[0], u36!(0o000_006_022_122)); // ₜ 022122
+}

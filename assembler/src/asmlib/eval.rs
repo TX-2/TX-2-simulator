@@ -349,10 +349,6 @@ impl Evaluate for InstructionFragment {
         rc_allocator: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-        fn index_value_of(unshifted: Unsigned36Bit) -> Unsigned36Bit {
-            unshifted.shl(Script::Sub.shift())
-        }
-
         match self {
             InstructionFragment::Arithmetic(expr) => {
                 expr.evaluate(target_address, symtab, rc_allocator, op)
@@ -381,7 +377,7 @@ impl Evaluate for InstructionFragment {
                 let index_value = index.evaluate(target_address, symtab, rc_allocator, op)?;
                 let rc_word_val: Unsigned36Bit = combine_fragment_values(base_value, index_value);
                 let p_value: Unsigned36Bit =
-                    index_value_of(p.evaluate(target_address, symtab, rc_allocator, op)?);
+                    p.evaluate(target_address, symtab, rc_allocator, op)?;
                 let addr: Address = rc_allocator.allocate(*rc_word_span, rc_word_val);
                 Ok(combine_fragment_values(
                     combine_fragment_values(Unsigned36Bit::from(addr), p_value),

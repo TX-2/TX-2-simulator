@@ -620,7 +620,6 @@ where
                                 unreachable!("should be no need to interpose a null instruction between two instances of zero commas");
                             }
                         };
-                        dbg!(&null_inst_span);
                         acc.push(CommasOrInstruction::I(null_instruction(null_inst_span)));
                         acc.push(CommasOrInstruction::C(maybe_commas));
                     }
