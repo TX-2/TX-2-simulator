@@ -1687,3 +1687,57 @@ fn test_subscript_symex_bad() {
         Err(_) => (),
     }
 }
+
+#[test]
+fn merge_makes_bit_selector() {
+    let input = "@sub_4@@sub_dot@@sub_1@";
+    assert_eq!(input.len(), 23);
+
+    let left = Token::Digits(
+        Script::Sub,
+        NumericLiteral {
+            digits: "4".to_string(),
+            has_trailing_dot: true,
+        },
+    );
+    let right = Token::Digits(
+        Script::Sub,
+        NumericLiteral {
+            digits: "1".to_string(),
+            has_trailing_dot: false,
+        },
+    );
+    assert_eq!(
+        merge_tokens((Ok(left), 0..16), (Ok(right), 16..23)),
+        TokenMergeResult::Merged(
+            Token::BitPosition(Script::Sub, "4".to_string(), "1".to_string()),
+            0..23
+        )
+    )
+}
+
+#[test]
+fn merge_another_dot_onto_bit_selector() {
+    let input = "@sub_4@@sub_dot@@sub_1@@sub_dot@";
+    assert_eq!(input.len(), 32);
+
+    let left = Token::BitPosition(Script::Sub, "4".to_string(), "1".to_string());
+    let right = Token::Dot(Script::Sub);
+    assert_eq!(
+        merge_tokens((Ok(left), 0..23), (Ok(right), 23..32)),
+        TokenMergeResult::Merged(Token::SymexSyllable(Script::Sub, "4·1·".to_string()), 0..32)
+    )
+}
+
+#[test]
+fn merge_letter_onto_bit_selector() {
+    let input = "@sub_4@@sub_dot@@sub_1@@sub_C@";
+    assert_eq!(input.len(), 30);
+
+    let left = Token::BitPosition(Script::Sub, "4".to_string(), "1".to_string());
+    let right = Token::SymexSyllable(Script::Sub, "C".to_string());
+    assert_eq!(
+        merge_tokens((Ok(left), 0..23), (Ok(right), 23..30)),
+        TokenMergeResult::Merged(Token::SymexSyllable(Script::Sub, "4·1C".to_string()), 0..30)
+    )
+}

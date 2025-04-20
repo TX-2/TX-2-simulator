@@ -143,6 +143,9 @@ pub(crate) enum Token {
     // Any unary "-" is handled in the parser.
     Digits(Script, NumericLiteral),
 
+    // Used as the index component of instructions like MKZ₄.₁₀
+    BitPosition(Script, String, String),
+
     // TODO: missing from this are: overbar, square, circle.
     /// The rules concerning which characters can be part of a symex
     /// are given in the TX-2 Users Handbook, section 6-3.2, "RULES
@@ -210,6 +213,16 @@ impl Display for Token {
             Token::LogicalAnd(script) => write_elevated(script, "∧"),
             Token::Digits(script, numeric_literal) => {
                 write!(f, "{}", elevate(*script, numeric_literal.to_string()))
+            }
+            Token::BitPosition(script, quarter, bit) => {
+                let q_string = elevate(*script, quarter.to_string());
+                let bit_string = elevate(*script, bit.to_string());
+                let dotname = match script {
+                    Script::Normal => "@dot@",
+                    Script::Sub => "@sub_dot@",
+                    Script::Super => "@sup_dot@",
+                };
+                write!(f, "{q_string}{dotname}{bit_string}")
             }
             Token::SymexSyllable(script, name) => {
                 fn nochange(ch: char) -> Result<char, ()> {
@@ -552,7 +565,7 @@ fn tokenise_single_glyph(g: Elevated<&'static Glyph>) -> Option<Token> {
     output
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 enum TokenMergeResult {
     Merged(Token, Span),
     Failed {
@@ -628,33 +641,102 @@ fn merge_tokens(
                 incoming_span,
             },
         },
-        Token::Digits(existing_script, mut existing_literal) => match incoming {
-            Token::Digits(incoming_script, incoming_name) if existing_script == incoming_script => {
-                existing_literal.append_digits_of_literal(incoming_name);
+        Token::Digits(existing_script, mut existing_literal) => {
+            if !existing_literal.has_trailing_dot {
+                match incoming {
+                    Token::Digits(incoming_script, incoming_name)
+                        if existing_script == incoming_script =>
+                    {
+                        existing_literal.append_digits_of_literal(incoming_name);
+                        TokenMergeResult::Merged(
+                            Token::Digits(existing_script, existing_literal),
+                            merged_span,
+                        )
+                    }
+                    Token::Dot(right_script)
+                        if existing_script == right_script
+                            && !existing_literal.has_trailing_dot =>
+                    {
+                        existing_literal.has_trailing_dot = true;
+                        TokenMergeResult::Merged(
+                            Token::Digits(existing_script, existing_literal),
+                            merged_span,
+                        )
+                    }
+                    Token::SymexSyllable(incoming_script, sym)
+                        if existing_script == incoming_script =>
+                    {
+                        let mut existing_name: String = existing_literal.digits;
+                        existing_name.push_str(&sym);
+                        TokenMergeResult::Merged(
+                            Token::SymexSyllable(existing_script, existing_name),
+                            merged_span,
+                        )
+                    }
+                    other => TokenMergeResult::Failed {
+                        current: Ok(Token::Digits(existing_script, existing_literal)),
+                        current_span,
+                        incoming: Ok(other),
+                        incoming_span,
+                    },
+                }
+            } else {
+                // The left-hand literal has a dot.  So the valid
+                // cases are where we're part-way through a symex, or
+                // a bit position specification.
+                match incoming {
+                    Token::Digits(
+                        Script::Sub,
+                        NumericLiteral {
+                            digits: incoming_digit,
+                            has_trailing_dot: false,
+                        },
+                    ) if existing_script == Script::Sub => TokenMergeResult::Merged(
+                        Token::BitPosition(
+                            existing_script,
+                            existing_literal.digits,
+                            incoming_digit,
+                        ),
+                        merged_span,
+                    ),
+                    // Not valid for RHS to be Dot, as we already have one.
+                    other => TokenMergeResult::Failed {
+                        current: Ok(Token::Digits(existing_script, existing_literal)),
+                        current_span,
+                        incoming: Ok(other),
+                        incoming_span,
+                    },
+                }
+            }
+        }
+        Token::BitPosition(existing_script, existing_quarter, mut existing_bit) => match incoming {
+            Token::Digits(
+                incoming_script,
+                NumericLiteral {
+                    digits: incoming_digit,
+                    has_trailing_dot: false,
+                },
+            ) if existing_script == incoming_script => {
+                existing_bit.push_str(incoming_digit.as_str());
                 TokenMergeResult::Merged(
-                    Token::Digits(existing_script, existing_literal),
+                    Token::BitPosition(existing_script, existing_quarter, existing_bit),
                     merged_span,
                 )
             }
-            Token::Dot(right_script)
-                if existing_script == right_script && !existing_literal.has_trailing_dot =>
-            {
-                existing_literal.has_trailing_dot = true;
-                TokenMergeResult::Merged(
-                    Token::Digits(existing_script, existing_literal),
-                    merged_span,
-                )
+            Token::Dot(incoming_script) if existing_script == incoming_script => {
+                let name = format!("{existing_quarter}\u{00B7}{existing_bit}\u{00B7}");
+                TokenMergeResult::Merged(Token::SymexSyllable(Script::Sub, name), merged_span)
             }
-            Token::SymexSyllable(incoming_script, sym) if existing_script == incoming_script => {
-                let mut existing_name: String = existing_literal.digits;
-                existing_name.push_str(&sym);
-                TokenMergeResult::Merged(
-                    Token::SymexSyllable(existing_script, existing_name),
-                    merged_span,
-                )
+            Token::SymexSyllable(incoming_script, symbol) if existing_script == incoming_script => {
+                let name = format!("{existing_quarter}\u{00B7}{existing_bit}{symbol}");
+                TokenMergeResult::Merged(Token::SymexSyllable(Script::Sub, name), merged_span)
             }
             other => TokenMergeResult::Failed {
-                current: Ok(Token::Digits(existing_script, existing_literal)),
+                current: Ok(Token::BitPosition(
+                    existing_script,
+                    existing_quarter,
+                    existing_bit,
+                )),
                 current_span,
                 incoming: Ok(other),
                 incoming_span,
@@ -720,7 +802,7 @@ impl<'a> GlyphTokenizer<'a> {
                                     Some((Ok(token), span))
                                 }
                                 None => {
-                                    unimplemented!("unable to convert glyph '{g:?}' to a token")
+                                    unimplemented!("unable) to convert glyph '{g:?}' to a token")
                                 }
                             }
                         }

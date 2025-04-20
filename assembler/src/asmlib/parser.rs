@@ -1,6 +1,6 @@
 use std::{
     fmt::Debug,
-    ops::{Deref, Range, Shl},
+    ops::{BitOr, Deref, Range, Shl},
 };
 
 pub(crate) mod helpers;
@@ -9,8 +9,8 @@ mod symex;
 mod tests;
 
 use chumsky::error::Rich;
-use chumsky::extra::Full;
-use chumsky::input::{Stream, ValueInput};
+use chumsky::extra::{Full, ParserExtra};
+use chumsky::input::{Emitter, MapExtra, Stream, ValueInput};
 use chumsky::inspector::SimpleState;
 use chumsky::prelude::{choice, just, one_of, recursive, Input, IterParser, Recursive, SimpleSpan};
 use chumsky::select;
@@ -57,16 +57,120 @@ where
     .or_not()
 }
 
+#[derive(Debug, PartialEq, Eq, Clone)]
+enum BitDesignatorValidation {
+    Good(LiteralValue),
+    Suspect(u8, u8, LiteralValue),
+}
+
+fn make_bit_designator_literal(
+    script: Script,
+    quarter: u8,
+    bitnum: u8,
+    span: Span,
+) -> BitDesignatorValidation {
+    fn build(q: u64, b: u64) -> Unsigned36Bit {
+        // When used as a subscript, the quarter number goes into bits
+        // 3.6-3.5 (bits 23,22).  The bit number goes into bits
+        // 3.4-3.1 (bits 21-18).  However, subscript values are
+        // shifted left by 18 bits.  Meaning, if this is used as a
+        // normal-script value, it should not be shifted.
+        let qmod4: u64 = q % 4_u64;
+        dbg!(qmod4);
+        dbg!(b);
+        dbg!(Unsigned36Bit::ZERO.bitor(qmod4.shl(4_u32).bitor(b)))
+    }
+    // Apparently-invalid bit designators should still be accepted.
+    // See for example the description of the SKM instruction (in
+    // chapter 3 of the Users Handbook which explains what the machine
+    // does with invalid bit designators.  See also the example in the
+    // table in section 6-2.4 of the Users Handbook.
+    //
+    // So we arrange to issue a warning message for this case.
+    let value = LiteralValue::from((span, script, build(quarter.into(), bitnum.into())));
+    match (quarter, bitnum) {
+        (1..=4, 1..=9) | (4, 10) => BitDesignatorValidation::Good(value),
+        _ => BitDesignatorValidation::Suspect(quarter, bitnum, value),
+    }
+}
+
+// I'm not really defining my own type here, this is just for
+// abbreviation purposes.
+type MyEmitter<'a, I> = Emitter<
+    <chumsky::extra::Full<
+        chumsky::error::Rich<'a, lexer::Token>,
+        SimpleState<State<'a>>,
+        (),
+    > as ParserExtra<'a, I>>::Error,
+>;
+
+fn warn_bad_bitpos<'src, I>(
+    validated: BitDesignatorValidation,
+    extra: &mut MapExtra<'src, '_, I, Extra<'src>>,
+    emitter: &mut MyEmitter<'src, I>,
+) -> LiteralValue
+where
+    I: Input<'src, Token = Tok, Span = Span> + ValueInput<'src>,
+{
+    match validated {
+        // This is a warning message only, because it's
+        // allowed to specify a nonexistent bit position (see
+        // description of SKM instruction).
+        BitDesignatorValidation::Suspect(q, b, literal) => {
+            emitter.emit(Rich::custom(
+                extra.span(),
+                format!("bit position {q}\u{00B7}{b} does not exist"),
+            ));
+            literal
+        }
+        BitDesignatorValidation::Good(literal) => literal,
+    }
+}
+
+fn bit_selector<'a, I>(
+    script_required: Script,
+) -> impl Parser<'a, I, LiteralValue, Extra<'a>> + Clone
+where
+    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
+{
+    select! {
+        Tok::BitPosition(script, quarter, bits) if script == script_required => (quarter, bits)
+    }
+    .try_map_with(move |(quarter, bit), extra| {
+        // Bit designators are always in decimal.  They end up in the "j bits" of the instruction word (bits 3.6 to 3.1).
+        // This is described in the Users Handbook on page 3-34 (in the description of the SKM instruction)
+        match quarter.as_str().parse::<u8>() {
+            Err(_) => Err(Rich::custom(
+                extra.span(),
+                format!("quarter {quarter} is not a valid decimal number"),
+            )),
+            Ok(q) => match bit.as_str().parse::<u8>() {
+                Ok(bit) => Ok(make_bit_designator_literal(
+                    script_required,
+                    q,
+                    bit,
+                    extra.span(),
+                )),
+                Err(_) => Err(Rich::custom(
+                    extra.span(),
+                    format!("bit position {bit} is not a valid decimal number"),
+                )),
+            },
+        }
+    })
+    .validate(warn_bad_bitpos)
+}
+
 fn literal<'a, I>(script_required: Script) -> impl Parser<'a, I, LiteralValue, Extra<'a>> + Clone
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
-    let digits = select! {
-        Tok::Digits(script, n) if script == script_required => n,
-    };
+    let plain_literal = {
+        let digits = select! {
+            Tok::Digits(script, n) if script == script_required => n,
+        };
 
-    digits
-        .try_map_with(move |digits_token_payload, extra| {
+        digits.try_map_with(move |digits_token_payload, extra| {
             let state: &SimpleState<State> = extra.state();
             let mode: &NumeralMode = &state.deref().numeral_mode;
             match digits_token_payload.make_num(None, mode) {
@@ -74,7 +178,8 @@ where
                 Err(e) => Err(Rich::custom(extra.span(), e.to_string())),
             }
         })
-        .labelled("numeric literal")
+    };
+    choice((bit_selector(script_required), plain_literal)).labelled("numeric literal")
 }
 
 fn here<'a, I>(script_required: Script) -> impl Parser<'a, I, SymbolOrHere, Extra<'a>> + Clone

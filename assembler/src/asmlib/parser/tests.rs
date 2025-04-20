@@ -1,9 +1,8 @@
+use base::prelude::*;
+use base::u36;
 #[cfg(test)]
 use std::ops::Range;
 use std::{collections::BTreeMap, fmt::Debug};
-
-use base::prelude::*;
-use base::u36;
 
 use chumsky::Parser;
 
@@ -2554,4 +2553,60 @@ fn test_opcode_to_literal() {
         ),
         LiteralValue::from((span(0..3), Script::Normal, u36!(0o121_700_000_000)))
     );
+}
+
+#[test]
+fn test_bit_designator_example_from_handbook() {
+    // The TX-2 Users Handbook states (in the table on page 6-7) that
+    // bit designator 2.10 in normal script produces the bit patern
+    // 0b0101010, or in octal 0o52.
+    let span = span(0..4);
+    assert_eq!(
+        make_bit_designator_literal(Script::Normal, 2, 10, span),
+        BitDesignatorValidation::Suspect(
+            2_u8,
+            10_u8,
+            LiteralValue::from((span, Script::Normal, u36!(0o52)))
+        )
+    );
+}
+
+#[test]
+fn test_make_bit_designator_literal() {
+    for script in [Script::Sub] {
+        const MASK: u64 = 0o77;
+        fn makename(q: u8, b: u8) -> String {
+            format!("{q}\u{00B7}{b}")
+        }
+        let mut seen = std::collections::HashMap::new();
+        for q in 1..=4 {
+            for bit in 1..=10 {
+                if bit == 10 && q != 4 {
+                    continue;
+                }
+                let what = makename(q, bit);
+                let span: Span = span(0..what.len());
+                match make_bit_designator_literal(script, q, bit, span) {
+                    BitDesignatorValidation::Good(literal) => {
+                        dbg!(&literal);
+                        let n = literal.unshifted_value();
+                        if (n & (!MASK)) != 0 {
+                            panic!("bit designator {what} produced output {n:o} but that has bits set outside the allowed mask {MASK:o}");
+                        }
+                        if let Some((prevq, prevb)) = seen.insert(n.clone(), (q, bit)) {
+                            panic!(
+                                "two distinct bit designators both evaluate to {n}: {what} and {}",
+                                makename(prevq, prevb)
+                            );
+                        }
+                        assert_eq!(literal.span(), &span);
+                    }
+                    do_not_like => {
+                        panic!("unexpectedly suspect bit designator {what}: {do_not_like:?}");
+                    }
+                }
+            }
+        }
+        assert_eq!(seen.len(), 4 * 9 + 1);
+    }
 }
