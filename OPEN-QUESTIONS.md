@@ -82,3 +82,9 @@
    equalities or numeric literals.  (Otherwise, use of index register
    0o52 would mean that the first value to be default-assigned would
    be 0o53, which isn't very helpful).
+5. In the Kleinrock network simulator source, why does the RC-word
+   from the instruction assembled at 200150 end up first in the
+   RC-block (at 206325), despite the fact that lots of other RC-word
+   references (e.g. the one at 200003) precede it?  In fact the words
+   assembled at 200147 and 200151 also have RC-word references which
+   are assigned in the obvious way.
