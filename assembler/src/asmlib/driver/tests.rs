@@ -471,7 +471,14 @@ fn test_here_in_rc_word() {
 }
 
 #[test]
-fn test_here_in_nested_rc_word() {
+fn test_here_in_nested_rc_word_simplistic() {
+    // This test makes some assumptions about the order in which
+    // RC-words are allocated.  Therefore there are some correct
+    // assembler implementations which might not pass this test.
+    //
+    // See also test_here_in_nested_rc_word_careful() for a more
+    // careful test which is on the other hand not so easy to diagnose
+    // when it fails.
     let input = "100|{{#+400}}\n";
     let program = assemble_source(input, Default::default()).expect("program is valid");
     dbg!(&program);
@@ -486,6 +493,71 @@ fn test_here_in_nested_rc_word() {
     assert_eq!(program.chunks[1].words[0], u36!(0o102));
     // # is 0o102 at address 0o102, so #+400 is 0o502.
     assert_eq!(program.chunks[1].words[1], u36!(0o502));
+}
+
+#[test]
+fn test_here_in_nested_rc_word_careful() {
+    // This test is a little complex because out real requirenent is
+    // that the outer RC-word points to the inner RC-word and that the
+    // inner RC-word contains the right content.  But we don't
+    // specifically require these RC-words to be allocated within the
+    // RC-block in any particular order.
+    //
+    // See also test_here_in_nested_rc_word_simplistic() which is a
+    // version of this test which is easier to understand but might
+    // reject some correct implementations.
+    let input = "100|{{#+400}}\n";
+
+    fn rc_word_at_addr(addr: Unsigned36Bit, rcwords: &BinaryChunk) -> Option<&Unsigned36Bit> {
+        match addr.checked_sub(rcwords.address.into()) {
+            None => {
+                panic!("failed to subtract {} from {addr}", rcwords.address);
+            }
+            Some(x) => match Unsigned18Bit::try_from(x) {
+                Err(_) => {
+                    panic!("failed to convert {x} into an Unsigned18Bit value");
+                }
+                Ok(x) => {
+                    let offset: usize = x.into();
+                    rcwords.words.get(offset)
+                }
+            },
+        }
+    }
+
+    let program = assemble_source(input, Default::default()).expect("program is valid");
+    dbg!(&program);
+
+    // The program should contain a single program chunk containing
+    // one words, and a second chunk (the RC block) containing two
+    // words.
+    assert_eq!(program.chunks.len(), 2); // one regular chunk plus RC-block
+    assert_eq!(program.chunks[0].words.len(), 1);
+    assert_eq!(program.chunks[1].words.len(), 2);
+    assert_eq!(program.chunks[0].address, Address::from(u18!(0o100)));
+    assert_eq!(program.chunks[1].address, Address::from(u18!(0o101)));
+    // In the program code there should be a reference into the RC block.
+    let first_ref = program.chunks[0].words[0];
+
+    // The RC word that the program code points directly to contains a
+    // reference to another RC word.
+    let inner_location: Unsigned36Bit = match rc_word_at_addr(first_ref, &program.chunks[1]) {
+        Some(w) => *w,
+        None => {
+            panic!("unable to find an RC word at address {first_ref}");
+        }
+    };
+    match rc_word_at_addr(inner_location, &program.chunks[1]) {
+        Some(w) => {
+            let expected = inner_location
+                .checked_add(u36!(0o400))
+                .expect("should not overflow");
+            assert_eq!(*w, expected);
+        }
+        None => {
+            panic!("outer RC-word does not point to inner RC-word");
+        }
+    }
 }
 
 #[test]
