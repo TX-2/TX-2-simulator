@@ -8,7 +8,6 @@ use std::hash::Hash;
 use base::charset::{subscript_char, superscript_char, Script};
 use base::prelude::*;
 
-use super::eval::RcBlock;
 use super::glyph;
 use super::span::*;
 use super::state::NumeralMode;
@@ -266,7 +265,7 @@ impl ArithmeticExpression {
             Operator::Subtract => match left.checked_sub(right) {
                 Some(result) => result,
                 None => {
-                    todo!("subtraction overflow occurred but this is not implemented")
+                    todo!("subtraction overflow occurred in {left}-{right} but this is not implemented")
                 }
             },
             Operator::Multiply => match left.checked_mul(right) {
@@ -517,6 +516,7 @@ pub(crate) enum InstructionFragment {
         rc_word_span: Span,
         rc_word_value: Box<(InstructionFragment, Atom)>,
     },
+    Null,
     // TODO: subscript/superscript atom (if the `Arithmetic` variant
     // disallows subscript/superscript).
 }
@@ -529,6 +529,7 @@ impl InstructionFragment {
     ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
         let mut result: Vec<_> = Vec::new();
         match self {
+            InstructionFragment::Null => (),
             InstructionFragment::Arithmetic(expr) => {
                 result.extend(expr.symbol_uses(block_id, block_offset));
             }
@@ -1097,13 +1098,12 @@ impl Directive {
         }
     }
 
-    pub(crate) fn take_rc_block(&mut self) -> RcBlock {
-        let max_occupied_addr: Option<Address> =
-            self.blocks.values().map(LocatedBlock::following_addr).max();
-        RcBlock {
-            address: max_occupied_addr.unwrap_or_else(Origin::default_address),
-            words: Vec::new(),
-        }
+    pub(crate) fn position_rc_block(&mut self) -> Address {
+        self.blocks
+            .values()
+            .map(LocatedBlock::following_addr)
+            .max()
+            .unwrap_or_else(Origin::default_address)
     }
 
     pub(crate) fn entry_point(&self) -> Option<Address> {

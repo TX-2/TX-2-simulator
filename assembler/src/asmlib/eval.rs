@@ -350,6 +350,7 @@ impl Evaluate for InstructionFragment {
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         match self {
+            InstructionFragment::Null => Ok(Unsigned36Bit::ZERO),
             InstructionFragment::Arithmetic(expr) => {
                 expr.evaluate(target_address, symtab, rc_allocator, op)
             }

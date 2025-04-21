@@ -601,9 +601,7 @@ where
             UntaggedProgramInstruction {
                 span,
                 holdbit: HoldBit::Unspecified,
-                inst: InstructionFragment::from(ArithmeticExpression::from(Atom::Literal(
-                    LiteralValue::from((span, Script::Normal, Unsigned36Bit::ZERO)),
-                ))),
+                inst: InstructionFragment::Null,
             }
         }
 

@@ -2099,7 +2099,8 @@ fn test_commas_instruction() {
 #[cfg(test)]
 mod comma_tests {
     use super::super::super::ast::{
-        CommaDelimitedInstruction, Commas, CommasOrInstruction, UntaggedProgramInstruction,
+        CommaDelimitedInstruction, Commas, CommasOrInstruction, HoldBit, InstructionFragment,
+        UntaggedProgramInstruction,
     };
     use super::super::super::span::*;
     use super::super::instructions_with_comma_counts as parent_instructions_with_comma_counts;
@@ -2141,37 +2142,20 @@ mod comma_tests {
     impl std::fmt::Debug for Briefly {
         fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
             use super::*;
-            let instr_string: String = {
-                match &self.0.instruction.inst {
-                    InstructionFragment::Arithmetic(ArithmeticExpression { first, tail }) => {
-                        if tail.is_empty() {
-                            match first {
-                                SignedAtom {
-                                    span: _,
-                                    negated,
-                                    magnitude: Atom::Literal(literal),
-                                } => {
-                                    let sign_str = if *negated { "-" } else { "" };
-                                    format!(
-                                        "span={0:?}, unshifted_value={sign_str}{1}",
-                                        literal.span(),
-                                        literal.unshifted_value()
-                                    )
-                                }
-                                _ => unreachable!(),
-                            }
-                        } else {
-                            unreachable!();
-                        }
-                    }
-                    _ => unreachable!(),
-                }
-            };
+            let u: &UntaggedProgramInstruction = &self.0.instruction;
             write!(
                 f,
-                "({:?},UntaggedProgramInstruction({instr_string}),{:?})",
-                self.0.leading_commas, self.0.trailing_commas
+                "({0:?},UntaggedProgramInstruction{{span:{1:?},holdbit:{2:?},inst:{3:?}}}{4:?})",
+                &self.0.leading_commas, &u.span, &u.holdbit, &u.inst, &self.0.trailing_commas
             )
+        }
+    }
+
+    fn null_inst(sp: Span) -> UntaggedProgramInstruction {
+        UntaggedProgramInstruction {
+            span: sp,
+            holdbit: HoldBit::Unspecified,
+            inst: InstructionFragment::Null,
         }
     }
 
@@ -2218,7 +2202,7 @@ mod comma_tests {
             ]),
             briefly(vec![(
                 Some(Commas::One(span(0..1))),
-                inst(span(3..3), 0),
+                null_inst(span(3..3)),
                 Some(Commas::Two(span(3..5))),
             )])
         );
@@ -2278,12 +2262,12 @@ mod comma_tests {
             briefly(vec![
                 (
                     Some(Commas::One(span(0..1))),
-                    inst(span(2..2), 0),
+                    null_inst(span(2..2)),
                     Some(Commas::Two(span(2..3))),
                 ),
                 (
                     Some(Commas::Two(span(2..3))),
-                    inst(span(4..4), 0),
+                    null_inst(span(4..4)),
                     Some(Commas::Three(span(4..5))),
                 ),
             ])
@@ -2303,7 +2287,7 @@ mod comma_tests {
             briefly(vec![
                 (
                     Some(Commas::One(span(0..1))),
-                    inst(span(2..2), 0),
+                    null_inst(span(2..2)),
                     Some(Commas::Two(span(2..3))),
                 ),
                 (Some(Commas::Two(span(2..3))), inst(span(3..4), 3), None,),
@@ -2359,7 +2343,7 @@ mod comma_tests {
                 (None, inst(span(0..1), 1), Some(Commas::One(span(1..2)))),
                 (
                     Some(Commas::One(span(1..2))),
-                    inst(span(3..3), 0),
+                    null_inst(span(3..3)),
                     Some(Commas::Two(span(3..4)))
                 )
             ])
@@ -2377,7 +2361,7 @@ mod comma_tests {
                 (None, inst(span(0..1), 1), Some(Commas::Two(span(1..3)))),
                 (
                     Some(Commas::Two(span(1..3))),
-                    inst(span(4..4), 0),
+                    null_inst(span(4..4)),
                     Some(Commas::Three(span(4..7)))
                 ),
             ])

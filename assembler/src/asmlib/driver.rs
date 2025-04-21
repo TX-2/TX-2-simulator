@@ -455,7 +455,11 @@ fn assemble_pass3(
         binary.set_entry_point(address);
     }
 
-    let mut rcblock: RcBlock = directive.take_rc_block();
+    let mut rcblock = RcBlock {
+        address: directive.position_rc_block(),
+        words: Vec::new(),
+    };
+
     let Directive {
         blocks,
         entry_point: _,
