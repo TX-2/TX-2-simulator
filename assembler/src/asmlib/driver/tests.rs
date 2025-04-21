@@ -1,7 +1,4 @@
-use std::{
-    collections::BTreeMap,
-    ops::{Range, Shl},
-};
+use std::ops::{Range, Shl};
 
 use super::super::ast::{
     ArithmeticExpression, Atom, CommaDelimitedInstruction, HoldBit, InstructionFragment,
@@ -12,7 +9,6 @@ use super::super::eval::{make_empty_rc_block_for_test, SymbolLookup, SymbolValue
 use super::super::span::*;
 use super::super::symbol::{SymbolContext, SymbolName};
 use super::super::symtab::LookupOperation;
-use super::super::types::BlockIdentifier;
 use super::{assemble_nonempty_valid_input, assemble_source};
 use super::{assemble_pass1, Binary, BinaryChunk};
 use base::{
@@ -55,23 +51,8 @@ fn atom_to_fragment(atom: Atom) -> InstructionFragment {
     InstructionFragment::Arithmetic(ArithmeticExpression::from(atom))
 }
 
-fn one_item_map<K, V>(key: K, value: V) -> BTreeMap<K, V>
-where
-    K: Ord,
-{
-    let mut result = BTreeMap::new();
-    result.insert(key, value);
-    result
-}
-
 #[test]
 fn test_assemble_pass1() {
-    fn single_manuscript_block_map(
-        mb: ManuscriptBlock,
-    ) -> BTreeMap<BlockIdentifier, ManuscriptBlock> {
-        one_item_map(BlockIdentifier::from(0), mb)
-    }
-
     let input = concat!("14\n", "☛☛PUNCH 26\n");
     let mut errors = Vec::new();
     let (source_file, _options) =
@@ -81,7 +62,7 @@ fn test_assemble_pass1() {
         source_file,
         Some(SourceFile {
             punch: Some(PunchCommand(Some(Address::from(u18!(0o26))))),
-            blocks: single_manuscript_block_map(ManuscriptBlock {
+            blocks: vec![ManuscriptBlock {
                 origin: None,
                 statements: vec![Statement::Instruction(TaggedProgramInstruction {
                     tag: None,
@@ -99,7 +80,7 @@ fn test_assemble_pass1() {
                         trailing_commas: None,
                     }]
                 })]
-            }),
+            }],
             macros: Vec::new(), // no macros
         })
     );

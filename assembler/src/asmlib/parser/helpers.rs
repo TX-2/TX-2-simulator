@@ -1,12 +1,9 @@
+use std::fmt::{Display, Write};
 use std::num::IntErrorKind;
-use std::{
-    collections::BTreeMap,
-    fmt::{Display, Write},
-};
 
 use base::prelude::*;
 
-use super::super::{ast::*, state::NumeralMode, types::BlockIdentifier};
+use super::super::{ast::*, state::NumeralMode};
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub(crate) enum Sign {
@@ -102,11 +99,11 @@ pub(super) fn punch_address(a: Option<LiteralValue>) -> Result<PunchCommand, Str
 pub(super) fn manuscript_lines_to_blocks(
     lines: Vec<ManuscriptLine>,
 ) -> (
-    BTreeMap<BlockIdentifier, ManuscriptBlock>,
+    Vec<ManuscriptBlock>,
     Vec<MacroDefinition>,
     Option<PunchCommand>,
 ) {
-    let mut result: BTreeMap<BlockIdentifier, ManuscriptBlock> = BTreeMap::new();
+    let mut result: Vec<ManuscriptBlock> = Vec::new();
     let mut macros: Vec<MacroDefinition> = Vec::new();
     let mut current_statements: Vec<Statement> = Vec::new();
     let mut maybe_punch: Option<PunchCommand> = None;
@@ -115,22 +112,13 @@ pub(super) fn manuscript_lines_to_blocks(
     fn ship_block(
         statements: &[Statement],
         maybe_origin: Option<Origin>,
-        result: &mut BTreeMap<BlockIdentifier, ManuscriptBlock>,
+        result: &mut Vec<ManuscriptBlock>,
     ) {
         if !statements.is_empty() {
-            let next_id: BlockIdentifier = match result.last_key_value() {
-                Some((id, _)) => id
-                    .next_block()
-                    .expect("manuscript block numbers can always be incremented"),
-                None => BlockIdentifier::from(0),
-            };
-            result.insert(
-                next_id,
-                ManuscriptBlock {
-                    origin: maybe_origin,
-                    statements: statements.to_vec(),
-                },
-            );
+            result.push(ManuscriptBlock {
+                origin: maybe_origin,
+                statements: statements.to_vec(),
+            });
         }
     }
 

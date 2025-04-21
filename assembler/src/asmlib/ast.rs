@@ -870,7 +870,7 @@ impl TaggedProgramInstruction {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SourceFile {
     pub(crate) punch: Option<PunchCommand>,
-    pub(crate) blocks: BTreeMap<BlockIdentifier, ManuscriptBlock>,
+    pub(crate) blocks: Vec<ManuscriptBlock>,
     pub(crate) macros: Vec<MacroDefinition>,
 }
 
@@ -878,7 +878,8 @@ impl SourceFile {
     fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> + '_ {
         self.blocks
             .iter()
-            .flat_map(|(block_id, block)| block.symbol_uses(*block_id))
+            .enumerate()
+            .flat_map(|(block_id, block)| block.symbol_uses(BlockIdentifier::from(block_id)))
     }
 
     pub(crate) fn global_symbol_references(

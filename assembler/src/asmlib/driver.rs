@@ -65,7 +65,12 @@ fn convert_source_file_to_blocks(
     let mut blocks = BTreeMap::new();
     let mut block_default_location: Address = Origin::default_address();
 
-    for (block_id, mblock) in source_file.blocks.iter() {
+    for (block_id, mblock) in source_file
+        .blocks
+        .iter()
+        .enumerate()
+        .map(|(id, b)| (BlockIdentifier::from(id), b))
+    {
         // We still include zero-word blocks in the directive output
         // so that we don't change the block numbering.
         let len = mblock.instruction_count();
@@ -104,7 +109,7 @@ fn convert_source_file_to_blocks(
             }
         };
         blocks.insert(
-            *block_id,
+            block_id,
             Block {
                 origin: mblock.origin.clone(),
                 location,
@@ -285,7 +290,7 @@ fn initial_symbol_table<'a>(
     source_file: &SourceFile,
 ) -> Result<SymbolTable, Vec<Rich<'a, lexer::Token>>> {
     let mut errors = Vec::new();
-    let mut symtab = SymbolTable::new(source_file.blocks.values().map(|block| {
+    let mut symtab = SymbolTable::new(source_file.blocks.iter().map(|block| {
         let span: Span = block.origin_span();
         (span, block.origin.clone(), block.instruction_count())
     }));
@@ -671,11 +676,7 @@ fn test_assemble_pass1() {
         (
             Some(SourceFile {
                 punch: Some(PunchCommand(expected_directive_entry_point)),
-                blocks: {
-                    let mut m = BTreeMap::new();
-                    m.insert(BlockIdentifier::from(0), expected_block);
-                    m
-                },
+                blocks: vec![expected_block],
                 macros: Vec::new(),
             }),
             OutputOptions { list: false }
