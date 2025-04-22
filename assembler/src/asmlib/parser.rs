@@ -1024,13 +1024,16 @@ where
         metacommand()
             .map_with(|cmd, extra| {
                 execute_metacommand(&mut extra.state().numeral_mode, &cmd);
-                ManuscriptLine::MetaCommand(cmd)
+                ManuscriptLine::Meta(cmd)
             })
             .labelled("metacommand")
     }
 
-    fn build_code_line(parts: (Option<Origin>, Statement)) -> ManuscriptLine {
-        ManuscriptLine::Code(parts.0, parts.1)
+    fn build_code_line((maybe_origin, statement): (Option<Origin>, Statement)) -> ManuscriptLine {
+        match maybe_origin {
+            None => ManuscriptLine::StatementOnly(statement),
+            Some(origin) => ManuscriptLine::OriginAndStatement(origin, statement),
+        }
     }
 
     fn line<'a, I>() -> impl Parser<'a, I, ManuscriptLine, Extra<'a>>
@@ -1080,7 +1083,7 @@ where
             .map(build_code_line)
             .labelled("statement with origin");
 
-        let origin_only = origin().map(ManuscriptLine::JustOrigin).labelled("origin");
+        let origin_only = origin().map(|origin| ManuscriptLine::OriginOnly(origin));
 
         choice((
             // Ignore whitespace after the metacommand but not before it.
@@ -1109,14 +1112,18 @@ where
         .labelled("comment or end-of-line")
 }
 
-fn terminated_manuscript_line<'a, I>() -> impl Parser<'a, I, Option<ManuscriptLine>, Extra<'a>>
+fn terminated_manuscript_line<'a, I>(
+) -> impl Parser<'a, I, Option<(Span, ManuscriptLine)>, Extra<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
     // If we support INSERT, DELETE, REPLACE, we will need to
     // separate the processing of the metacommands and the
     // generation of the assembled code.
-    manuscript_line().or_not().then_ignore(end_of_line())
+    manuscript_line()
+        .or_not()
+        .map_with(|maybe_line, extra| maybe_line.map(|line| (extra.span(), line)))
+        .then_ignore(end_of_line())
 }
 
 pub(crate) fn source_file<'a, I>() -> impl Parser<'a, I, SourceFile, Extra<'a>>
@@ -1130,9 +1137,9 @@ where
         I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
     {
         terminated_manuscript_line().repeated().collect().map(
-            |lines: Vec<Option<ManuscriptLine>>| {
+            |lines: Vec<Option<(Span, ManuscriptLine)>>| {
                 // Filter out empty lines.
-                let lines: Vec<ManuscriptLine> = lines.into_iter().flatten().collect();
+                let lines: Vec<(Span, ManuscriptLine)> = lines.into_iter().flatten().collect();
                 let (blocks, macros, punch) = helpers::manuscript_lines_to_blocks(lines);
                 SourceFile {
                     blocks,

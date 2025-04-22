@@ -935,9 +935,10 @@ pub(crate) enum ManuscriptMetaCommand {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ManuscriptLine {
-    MetaCommand(ManuscriptMetaCommand), // can actually span several lines.
-    JustOrigin(Origin),
-    Code(Option<Origin>, Statement),
+    Meta(ManuscriptMetaCommand),
+    OriginOnly(Origin),
+    StatementOnly(Statement),
+    OriginAndStatement(Origin, Statement),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1039,7 +1040,7 @@ pub(crate) struct MacroDefinition {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ManuscriptBlock {
     pub(crate) origin: Option<Origin>,
-    pub(crate) statements: Vec<Statement>,
+    pub(crate) statements: Vec<(Span, Statement)>,
 }
 
 impl ManuscriptBlock {
@@ -1051,7 +1052,7 @@ impl ManuscriptBlock {
         if let Some(origin) = self.origin.as_ref() {
             result.extend(origin.symbol_uses(block_id));
         }
-        for (offset, statement) in self.statements.iter().enumerate() {
+        for (offset, (_, statement)) in self.statements.iter().enumerate() {
             let off: Unsigned18Bit = Unsigned18Bit::try_from(offset)
                 .expect("block should not be larger than the TX-2's memory");
             result.extend(statement.symbol_uses(block_id, off));
@@ -1062,14 +1063,14 @@ impl ManuscriptBlock {
     pub(crate) fn instruction_count(&self) -> Unsigned18Bit {
         self.statements
             .iter()
-            .map(|st| st.emitted_instruction_count())
+            .map(|(_, st)| st.emitted_instruction_count())
             .sum()
     }
 
     pub(crate) fn origin_span(&self) -> Span {
         if let Some(origin) = self.origin.as_ref() {
             *origin.span()
-        } else if let Some(first) = self.statements.first() {
+        } else if let Some((_line_span, first)) = self.statements.first() {
             first.span()
         } else {
             Span::from(0..0)
@@ -1115,14 +1116,14 @@ impl Directive {
 pub(crate) struct Block {
     pub(crate) origin: Option<Origin>,
     pub(crate) location: Option<Address>,
-    pub(crate) statements: Vec<Statement>,
+    pub(crate) statements: Vec<(Span, Statement)>,
 }
 
 impl Block {
     pub(crate) fn emitted_instruction_count(&self) -> Unsigned18Bit {
         self.statements
             .iter()
-            .map(|stmt| stmt.emitted_instruction_count())
+            .map(|(_span, stmt)| stmt.emitted_instruction_count())
             .sum()
     }
 }
@@ -1130,14 +1131,14 @@ impl Block {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct LocatedBlock {
     pub(crate) location: Address,
-    pub(crate) statements: Vec<Statement>,
+    pub(crate) statements: Vec<(Span, Statement)>,
 }
 
 impl LocatedBlock {
     pub(crate) fn emitted_word_count(&self) -> Unsigned18Bit {
         self.statements
             .iter()
-            .map(|stmt| stmt.emitted_instruction_count())
+            .map(|(_span, stmt)| stmt.emitted_instruction_count())
             .sum()
     }
 

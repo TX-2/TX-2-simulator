@@ -494,7 +494,11 @@ fn assemble_pass3(
         if let Some(Some(origin)) = origins.get(block_id) {
             // This is an origin (Users Handbook section 6-2.5)
             // not a tag (6-2.2).
-            listing.push_line(ListingLine::Origin(origin.clone()));
+            listing.push_line(ListingLine {
+                origin: Some(origin.clone()),
+                source: Some(*origin.span()),
+                content: None,
+            });
         }
 
         let words = directive_block.build_binary_block(
@@ -656,22 +660,25 @@ fn test_assemble_pass1() {
     let expected_directive_entry_point = Some(Address::new(Unsigned18Bit::from(0o26_u8)));
     let expected_block = ManuscriptBlock {
         origin: None,
-        statements: vec![Statement::Instruction(TaggedProgramInstruction {
-            tag: None,
-            instructions: vec![CommaDelimitedInstruction {
-                leading_commas: None,
-                instruction: UntaggedProgramInstruction {
-                    span: span(0..2),
-                    holdbit: HoldBit::Unspecified,
-                    inst: atom_to_fragment(Atom::Literal(LiteralValue::from((
-                        span(0..2),
-                        Script::Normal,
-                        u36!(0o14),
-                    )))),
-                },
-                trailing_commas: None,
-            }],
-        })],
+        statements: vec![(
+            span(0..2),
+            Statement::Instruction(TaggedProgramInstruction {
+                tag: None,
+                instructions: vec![CommaDelimitedInstruction {
+                    leading_commas: None,
+                    instruction: UntaggedProgramInstruction {
+                        span: span(0..2),
+                        holdbit: HoldBit::Unspecified,
+                        inst: atom_to_fragment(Atom::Literal(LiteralValue::from((
+                            span(0..2),
+                            Script::Normal,
+                            u36!(0o14),
+                        )))),
+                    },
+                    trailing_commas: None,
+                }],
+            }),
+        )],
     };
 
     let mut errors = Vec::new();

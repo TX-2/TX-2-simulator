@@ -64,22 +64,25 @@ fn test_assemble_pass1() {
             punch: Some(PunchCommand(Some(Address::from(u18!(0o26))))),
             blocks: vec![ManuscriptBlock {
                 origin: None,
-                statements: vec![Statement::Instruction(TaggedProgramInstruction {
-                    tag: None,
-                    instructions: vec![CommaDelimitedInstruction {
-                        leading_commas: None,
-                        instruction: UntaggedProgramInstruction {
-                            span: Span::from(0..2),
-                            holdbit: HoldBit::Unspecified,
-                            inst: atom_to_fragment(Atom::Literal(LiteralValue::from((
-                                Span::from(0..2),
-                                Script::Normal,
-                                u36!(0o14)
-                            ))))
-                        },
-                        trailing_commas: None,
-                    }]
-                })]
+                statements: vec![(
+                    span(0..2),
+                    Statement::Instruction(TaggedProgramInstruction {
+                        tag: None,
+                        instructions: vec![CommaDelimitedInstruction {
+                            leading_commas: None,
+                            instruction: UntaggedProgramInstruction {
+                                span: Span::from(0..2),
+                                holdbit: HoldBit::Unspecified,
+                                inst: atom_to_fragment(Atom::Literal(LiteralValue::from((
+                                    Span::from(0..2),
+                                    Script::Normal,
+                                    u36!(0o14)
+                                ))))
+                            },
+                            trailing_commas: None,
+                        }]
+                    })
+                )]
             }],
             macros: Vec::new(), // no macros
         })
@@ -104,13 +107,19 @@ fn test_metacommand_dec_changes_default_base() {
         .collect::<Vec<_>>()
         .as_slice()
     {
-        if let [Statement::Instruction(TaggedProgramInstruction {
-            tag: None,
-            instructions: first_instructions,
-        }), Statement::Instruction(TaggedProgramInstruction {
-            tag: None,
-            instructions: second_instructions,
-        })] = statements.as_slice()
+        if let [(
+            _,
+            Statement::Instruction(TaggedProgramInstruction {
+                tag: None,
+                instructions: first_instructions,
+            }),
+        ), (
+            _,
+            Statement::Instruction(TaggedProgramInstruction {
+                tag: None,
+                instructions: second_instructions,
+            }),
+        )] = statements.as_slice()
         {
             if let [first_instruction] = first_instructions.as_slice() {
                 if let [second_instruction] = second_instructions.as_slice() {

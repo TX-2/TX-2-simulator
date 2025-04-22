@@ -180,7 +180,7 @@ pub(super) trait Evaluate {
     ) -> Result<Unsigned36Bit, SymbolLookupFailure>;
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct RcBlock {
     pub(crate) address: Address,
     pub(crate) words: Vec<(Span, Unsigned36Bit)>,
@@ -1010,7 +1010,7 @@ impl LocatedBlock {
         listing: &mut Listing,
     ) -> Result<Vec<Unsigned36Bit>, AssemblerFailure> {
         let mut words: Vec<Unsigned36Bit> = Vec::with_capacity(self.emitted_word_count().into());
-        for (offset, statement) in self.statements.iter().enumerate() {
+        for (offset, (line_span, statement)) in self.statements.iter().enumerate() {
             let offset: Unsigned18Bit = Unsigned18Bit::try_from(offset)
                 .expect("assembled code block should fit within physical memory");
             let here: Address = location.index_by(offset);
@@ -1029,8 +1029,8 @@ impl LocatedBlock {
                         ),
                     );
                 }
-                Statement::Instruction(inst) => {
-                    if let Some(tag) = inst.tag() {
+                Statement::Instruction(instruction) => {
+                    if let Some(tag) = instruction.tag() {
                         final_symbols.define(
                             tag.name.clone(),
                             FinalSymbolDefinition::new(
@@ -1042,14 +1042,14 @@ impl LocatedBlock {
                     }
 
                     let mut op = Default::default();
-                    let word = inst
+                    let word = instruction
                         .evaluate(&HereValue::Address(here), symtab, rc_allocator, &mut op)
                         .expect("lookup on FinalSymbolTable is infallible");
 
-                    listing.push_line(ListingLine::Instruction {
-                        address: here,
-                        instruction: inst.clone(),
-                        binary: word,
+                    listing.push_line(ListingLine {
+                        origin: None,
+                        source: Some(*line_span),
+                        content: Some((here, word)),
                     });
                     words.push(word);
                 }

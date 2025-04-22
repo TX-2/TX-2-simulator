@@ -3,7 +3,7 @@ use std::num::IntErrorKind;
 
 use base::prelude::*;
 
-use super::super::{ast::*, state::NumeralMode};
+use super::super::{ast::*, span::Span, state::NumeralMode};
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub(crate) enum Sign {
@@ -97,7 +97,7 @@ pub(super) fn punch_address(a: Option<LiteralValue>) -> Result<PunchCommand, Str
 }
 
 pub(super) fn manuscript_lines_to_blocks(
-    lines: Vec<ManuscriptLine>,
+    lines: Vec<(Span, ManuscriptLine)>,
 ) -> (
     Vec<ManuscriptBlock>,
     Vec<MacroDefinition>,
@@ -105,12 +105,12 @@ pub(super) fn manuscript_lines_to_blocks(
 ) {
     let mut result: Vec<ManuscriptBlock> = Vec::new();
     let mut macros: Vec<MacroDefinition> = Vec::new();
-    let mut current_statements: Vec<Statement> = Vec::new();
+    let mut current_statements: Vec<(Span, Statement)> = Vec::new();
     let mut maybe_punch: Option<PunchCommand> = None;
     let mut effective_origin: Option<Origin> = None;
 
     fn ship_block(
-        statements: &[Statement],
+        statements: &[(Span, Statement)],
         maybe_origin: Option<Origin>,
         result: &mut Vec<ManuscriptBlock>,
     ) {
@@ -122,32 +122,33 @@ pub(super) fn manuscript_lines_to_blocks(
         }
     }
 
-    for line in lines {
+    for (span, line) in lines {
         match line {
-            ManuscriptLine::MetaCommand(ManuscriptMetaCommand::Punch(punch)) => {
+            ManuscriptLine::Meta(ManuscriptMetaCommand::Punch(punch)) => {
                 maybe_punch = Some(punch);
             }
-            ManuscriptLine::MetaCommand(ManuscriptMetaCommand::BaseChange(_)) => {
+            ManuscriptLine::Meta(ManuscriptMetaCommand::BaseChange(_)) => {
                 // These already took effect on the statements which
                 // were parsed following them, so no need to keep them
                 // now.
             }
-            ManuscriptLine::MetaCommand(ManuscriptMetaCommand::Macro(macro_def)) => {
+            ManuscriptLine::Meta(ManuscriptMetaCommand::Macro(macro_def)) => {
                 macros.push(macro_def);
             }
-            ManuscriptLine::JustOrigin(new_origin) => {
+            ManuscriptLine::OriginOnly(origin) => {
                 ship_block(&current_statements, effective_origin, &mut result);
                 current_statements.clear();
-                effective_origin = Some(new_origin);
-                // There is no statement to push, though.
+                effective_origin = Some(origin.clone());
             }
-            ManuscriptLine::Code(new_origin, statement) => {
-                if new_origin.is_some() {
-                    ship_block(&current_statements, effective_origin, &mut result);
-                    current_statements.clear();
-                    effective_origin = new_origin;
-                }
-                current_statements.push(statement);
+            ManuscriptLine::StatementOnly(statement) => {
+                current_statements.push((span, statement));
+            }
+            ManuscriptLine::OriginAndStatement(origin, statement) => {
+                ship_block(&current_statements, effective_origin, &mut result);
+                current_statements.clear();
+                effective_origin = Some(origin.clone());
+
+                current_statements.push((span, statement));
             }
         }
     }
