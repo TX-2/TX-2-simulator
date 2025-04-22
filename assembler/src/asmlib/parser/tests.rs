@@ -2036,7 +2036,7 @@ fn test_pipe_construct() {
     let got = parse_single_instruction_fragment(input);
     let expected = InstructionFragment::PipeConstruct {
         index: SymbolOrLiteral::Symbol(Script::Sub, SymbolName::from("α"), span(0..11)),
-        rc_word_span: span(31..38),
+        rc_word_span: span(21..38),
         rc_word_value: Box::new((
             InstructionFragment::Arithmetic(ArithmeticExpression::from(SymbolOrLiteral::Symbol(
                 Script::Normal,

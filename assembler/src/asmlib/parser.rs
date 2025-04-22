@@ -379,23 +379,30 @@ where
     just(Tok::Asterisk(Script::Normal)).to(InstructionFragment::DeferredAddressing)
 }
 
+#[derive(Debug, PartialEq, Eq, Clone)]
+struct SpannedSymbolOrLiteral {
+    item: SymbolOrLiteral,
+    span: Span,
+}
+
 /// The pipe construct is described in section 6-2.8 "SPECIAL SYMBOLS"
 /// of the Users Handbook.
 ///
 /// "ADXₚ|ₜQ" should be equivalent to "ADXₚ{Qₜ}*".  So during
 /// evaluation we will need to generate an RC-word containing Qₜ.
 fn make_pipe_construct(
-    ((p_index, t), (qfrag, qspan)): (
-        (SymbolOrLiteral, SymbolOrLiteral),
-        (InstructionFragment, Span),
+    (p, (t, (q, q_span))): (
+        SpannedSymbolOrLiteral,
+        (SpannedSymbolOrLiteral, (InstructionFragment, Span)),
     ),
 ) -> InstructionFragment {
     // The variable names here are taken from the example in the
     // documentation comment.
+    let tqspan = span(t.span.start..q_span.end);
     InstructionFragment::PipeConstruct {
-        index: p_index,
-        rc_word_span: qspan,
-        rc_word_value: Box::new((qfrag, Atom::from(t))),
+        index: p.item,
+        rc_word_span: tqspan,
+        rc_word_value: Box::new((q, Atom::from(t.item))),
     }
 }
 
@@ -854,19 +861,32 @@ where
         // contain spaces.  We will assume not, for simplicity (at
         // least for the time being).
         //
-        // "ADXₚ|ₜQ" should be equivalent to ADXₚ{Qₜ}*.  So we need to
+        // "ADXₚ|ₜQ" should be equvialent to ADXₚ{Qₜ}*.  So we need to
         // generate an RC-word containing Qₜ.
-        let spanned_fragment = program_instruction_fragment // this is Q
-            .clone()
-            .map_with(|frag, extra| (frag, extra.span()));
-        let pipe_construct = (symbol_or_literal(Script::Sub) // this is p
-            .then_ignore(just(Tok::Pipe(Script::Sub)))
+
+        let spanned_p_fragment = symbol_or_literal(Script::Sub) // this is p
+            .map_with(|p, extra| SpannedSymbolOrLiteral {
+                item: p,
+                span: extra.span(),
+            })
+            .boxed();
+
+        let spanned_tq_fragment = symbol_or_literal(Script::Sub) // this is t
+            .map_with(|t, extra| SpannedSymbolOrLiteral {
+                item: t,
+                span: extra.span(),
+            })
             .then(
-                symbol_or_literal(Script::Sub), // this is t
+                program_instruction_fragment // this is Q
+                    .clone()
+                    .map_with(|q, extra| (q, extra.span())),
             )
-            .then(spanned_fragment))
-        .map(make_pipe_construct)
-        .labelled("pipe construct");
+            .boxed();
+        let pipe_construct = spanned_p_fragment
+            .then_ignore(just(Tok::Pipe(Script::Sub)))
+            .then(spanned_tq_fragment)
+            .map(make_pipe_construct)
+            .labelled("pipe construct");
 
         let single_script_fragment = |script_required| {
             arith_expr.clone()(true, script_required).map(InstructionFragment::from)
