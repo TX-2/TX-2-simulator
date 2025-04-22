@@ -76,9 +76,7 @@ fn make_bit_designator_literal(
         // shifted left by 18 bits.  Meaning, if this is used as a
         // normal-script value, it should not be shifted.
         let qmod4: u64 = q % 4_u64;
-        dbg!(qmod4);
-        dbg!(b);
-        dbg!(Unsigned36Bit::ZERO.bitor(qmod4.shl(4_u32).bitor(b)))
+        Unsigned36Bit::ZERO.bitor(qmod4.shl(4_u32).bitor(b))
     }
     // Apparently-invalid bit designators should still be accepted.
     // See for example the description of the SKM instruction (in
