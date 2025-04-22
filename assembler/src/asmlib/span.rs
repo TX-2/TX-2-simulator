@@ -17,7 +17,12 @@ pub(crate) fn extract_prefix<'a>(body: &'a str, pos: usize) -> &'a str {
         None => 0,
         Some(n) => n + 1,
     };
-    &body[line_start..pos]
+    let prefix = &body[line_start..pos];
+    if prefix.chars().all(|ch| ch.is_whitespace()) {
+        prefix
+    } else {
+        ""
+    }
 }
 
 #[test]
@@ -27,4 +32,5 @@ fn test_extract_prefix() {
     assert_eq!(extract_prefix(" hello", 1), " ");
     assert_eq!(extract_prefix("x\nhello", 2), "");
     assert_eq!(extract_prefix("x\n hello", 3), " ");
+    assert_eq!(extract_prefix("x\nY hello", 4), "");
 }

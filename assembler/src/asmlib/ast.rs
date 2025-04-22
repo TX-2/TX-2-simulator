@@ -23,8 +23,15 @@ enum SymbolUse {
     Origin(SymbolName, BlockIdentifier),
 }
 
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub(crate) enum RcWordSource {
+    PipeConstruct(Span),
+    Braces(Span),
+    DefaultAssignment(SymbolName),
+}
+
 pub(crate) trait RcAllocator {
-    fn allocate(&mut self, span: Span, value: Unsigned36Bit) -> Address;
+    fn allocate(&mut self, source: RcWordSource, value: Unsigned36Bit) -> Address;
     fn update(&mut self, address: Address, value: Unsigned36Bit);
 }
 

@@ -13,8 +13,9 @@ use crate::symtab::{
 
 use super::ast::{
     ArithmeticExpression, Atom, CommaDelimitedInstruction, Commas, ConfigValue, EqualityValue,
-    HoldBit, InstructionFragment, LiteralValue, LocatedBlock, Operator, RcAllocator, SignedAtom,
-    Statement, SymbolOrLiteral, Tag, TaggedProgramInstruction, UntaggedProgramInstruction,
+    HoldBit, InstructionFragment, LiteralValue, LocatedBlock, Operator, RcAllocator, RcWordSource,
+    SignedAtom, Statement, SymbolOrLiteral, Tag, TaggedProgramInstruction,
+    UntaggedProgramInstruction,
 };
 use super::listing::{Listing, ListingLine};
 use super::span::*;
@@ -183,7 +184,7 @@ pub(super) trait Evaluate {
 #[derive(Debug, Default, Clone)]
 pub(crate) struct RcBlock {
     pub(crate) address: Address,
-    pub(crate) words: Vec<(Span, Unsigned36Bit)>,
+    pub(crate) words: Vec<(RcWordSource, Unsigned36Bit)>,
 }
 
 impl RcBlock {
@@ -198,9 +199,9 @@ impl RcBlock {
 }
 
 impl RcAllocator for RcBlock {
-    fn allocate(&mut self, span: Span, value: Unsigned36Bit) -> Address {
+    fn allocate(&mut self, source: RcWordSource, value: Unsigned36Bit) -> Address {
         let addr = self.end();
-        self.words.push((span, value));
+        self.words.push((source, value));
         addr
     }
 
@@ -213,7 +214,7 @@ impl RcAllocator for RcBlock {
         }
         match Unsigned18Bit::from(address).checked_sub(Unsigned18Bit::from(self.address)) {
             Some(offset) => match self.words.get_mut(usize::from(offset)) {
-                Some((_span, spot)) => {
+                Some((_source, spot)) => {
                     *spot = value;
                 }
                 None => {
@@ -379,7 +380,8 @@ impl Evaluate for InstructionFragment {
                 let rc_word_val: Unsigned36Bit = combine_fragment_values(base_value, index_value);
                 let p_value: Unsigned36Bit =
                     p.evaluate(target_address, symtab, rc_allocator, op)?;
-                let addr: Address = rc_allocator.allocate(*rc_word_span, rc_word_val);
+                let rc_source = RcWordSource::PipeConstruct(*rc_word_span);
+                let addr: Address = rc_allocator.allocate(rc_source, rc_word_val);
                 Ok(combine_fragment_values(
                     combine_fragment_values(Unsigned36Bit::from(addr), p_value),
                     DEFER_BIT,
@@ -454,7 +456,9 @@ impl Evaluate for Atom {
             Atom::RcRef(span, tagged_program_instructions) => {
                 let mut first_addr: Option<Address> = None;
                 for inst in tagged_program_instructions.iter() {
-                    let rc_word_addr: Address = rc_allocator.allocate(*span, Unsigned36Bit::ZERO);
+                    let rc_source = RcWordSource::Braces(*span);
+                    let rc_word_addr: Address =
+                        rc_allocator.allocate(rc_source, Unsigned36Bit::ZERO);
                     if first_addr.is_none() {
                         first_addr = Some(rc_word_addr);
                     }
@@ -1048,7 +1052,8 @@ impl LocatedBlock {
 
                     listing.push_line(ListingLine {
                         origin: None,
-                        source: Some(*line_span),
+                        span: Some(*line_span),
+                        rc_source: None,
                         content: Some((here, word)),
                     });
                     words.push(word);

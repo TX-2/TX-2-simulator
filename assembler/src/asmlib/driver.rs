@@ -242,7 +242,11 @@ impl From<RcBlock> for BinaryChunk {
     fn from(block: RcBlock) -> Self {
         BinaryChunk {
             address: block.address,
-            words: block.words.into_iter().map(|(_span, word)| word).collect(),
+            words: block
+                .words
+                .into_iter()
+                .map(|(_source, word)| word)
+                .collect(),
         }
     }
 }
@@ -380,7 +384,7 @@ fn inconsistent_origin_definition(
 struct NoRcBlock {}
 
 impl RcAllocator for NoRcBlock {
-    fn allocate(&mut self, _span: Span, _value: Unsigned36Bit) -> Address {
+    fn allocate(&mut self, _source: RcWordSource, _value: Unsigned36Bit) -> Address {
         panic!("Cannot allocate an RC-word before we know the address of the RC block");
     }
 
@@ -496,7 +500,8 @@ fn assemble_pass3(
             // not a tag (6-2.2).
             listing.push_line(ListingLine {
                 origin: Some(origin.clone()),
-                source: Some(*origin.span()),
+                span: Some(*origin.span()),
+                rc_source: None,
                 content: None,
             });
         }
@@ -529,6 +534,21 @@ fn assemble_pass3(
     final_symbols.import_all_defined(&*symtab);
 
     // If the RC-word block is non-empty, emit it.
+    if !rcblock.words.is_empty() {
+        for (i, (rc_source, word)) in rcblock.words.iter().enumerate() {
+            let address = rcblock.address.index_by(
+                Unsigned18Bit::try_from(i)
+                    .expect("RC block size shoudl be limite to physical address space"),
+            );
+
+            listing.push_rc_line(ListingLine {
+                origin: None,
+                span: None,
+                rc_source: Some(rc_source.clone()),
+                content: Some((address, *word)),
+            });
+        }
+    }
     let chunk: BinaryChunk = rcblock.into();
     if chunk.is_empty() {
         event!(

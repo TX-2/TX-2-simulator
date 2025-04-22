@@ -7,7 +7,7 @@ use tracing::{event, Level};
 use base::prelude::*;
 use base::subword;
 
-use super::ast::{EqualityValue, Origin, RcAllocator, Tag};
+use super::ast::{EqualityValue, Origin, RcAllocator, RcWordSource, Tag};
 use super::eval::{
     Evaluate, HereValue, LookupTarget, SymbolLookup, SymbolLookupFailure, SymbolLookupFailureKind,
     SymbolValue,
@@ -444,7 +444,10 @@ impl SymbolTable {
             }
             [false, false, true, false] => {
                 // address only, assign the next RC word.
-                let rc_addr: Address = rc_allocator.allocate(*span, Unsigned36Bit::ZERO);
+                let rc_addr: Address = rc_allocator.allocate(
+                    RcWordSource::DefaultAssignment(name.clone()),
+                    Unsigned36Bit::ZERO,
+                );
                 let symbol_value: Unsigned36Bit = Unsigned36Bit::from(rc_addr);
                 Ok(symbol_value)
             }
