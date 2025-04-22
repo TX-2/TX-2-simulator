@@ -108,7 +108,7 @@ fn final_lookup_helper_body<R: RcAllocator>(
                 // '#' on the right-hand-side of the
                 // assignment.
                 expression
-                    .evaluate(target_address, t, rc_allocator, op)
+                    .evaluate(expression.span(), target_address, t, rc_allocator, op)
                     .map(SymbolValue::Final)
             }
             SymbolDefinition::Undefined(context_union) => {
@@ -261,7 +261,7 @@ impl SymbolTable {
                     Some(SymbolDefinition::Equality(rhs)) => {
                         let mut new_op = LookupOperation::default();
                         let op: &mut LookupOperation = maybe_op.unwrap_or(&mut new_op);
-                        match rhs.evaluate(&HereValue::NotAllowed, self, rc_allocator, op) {
+                        match rhs.evaluate(rhs.span(), &HereValue::NotAllowed, self, rc_allocator, op) {
                             Ok(value) => Ok(Address::from(subword::right_half(value))),
                             Err(e) => {
                                 panic!("no code to handle symbol lookup failure in finalise_origin: {e}"); // TODO
@@ -429,6 +429,7 @@ impl SymbolTable {
         &mut self,
         tag_override: Option<(&Tag, Address)>,
         item: &E,
+        item_span: Span,
         target_address: &HereValue,
         rc_allocator: &mut R,
         op: &mut LookupOperation,
@@ -438,7 +439,7 @@ impl SymbolTable {
         R: RcAllocator,
     {
         match tag_override {
-            None => item.evaluate(target_address, self, rc_allocator, op),
+            None => item.evaluate(item_span, target_address, self, rc_allocator, op),
             Some((Tag { name, span }, addr)) => {
                 let to_restore: Option<InternalSymbolDef> = self.definitions.remove(name);
                 self.definitions.insert(
@@ -450,7 +451,7 @@ impl SymbolTable {
                 );
                 // Important not to use '?' here as we need to restore
                 // the original definition.
-                let result = item.evaluate(target_address, self, rc_allocator, op);
+                let result = item.evaluate(item_span, target_address, self, rc_allocator, op);
                 if let Some(prior_definition) = to_restore {
                     self.definitions.insert(name.clone(), prior_definition);
                 }
@@ -722,17 +723,24 @@ fn test_loop_detection() {
         .define(
             span(0..1),
             SymbolName::from("A"),
-            SymbolDefinition::Equality(EqualityValue::from(vec![CommaDelimitedInstruction {
-                leading_commas: None,
-                instruction: UntaggedProgramInstruction {
-                    span: span(0..1),
-                    holdbit: HoldBit::Unspecified,
-                    inst: InstructionFragment::from(ArithmeticExpression::from(
-                        SymbolOrLiteral::Symbol(Script::Normal, SymbolName::from("B"), span(2..3)),
-                    )),
-                },
-                trailing_commas: None,
-            }])),
+            SymbolDefinition::Equality(EqualityValue::from((
+                span(0..1),
+                vec![CommaDelimitedInstruction {
+                    leading_commas: None,
+                    instruction: UntaggedProgramInstruction {
+                        span: span(0..1),
+                        holdbit: HoldBit::Unspecified,
+                        inst: InstructionFragment::from(ArithmeticExpression::from(
+                            SymbolOrLiteral::Symbol(
+                                Script::Normal,
+                                SymbolName::from("B"),
+                                span(2..3),
+                            ),
+                        )),
+                    },
+                    trailing_commas: None,
+                }],
+            ))),
         )
         .expect("definition of A should be correct");
     // define "B"
@@ -740,17 +748,24 @@ fn test_loop_detection() {
         .define(
             span(4..5),
             SymbolName::from("B"),
-            SymbolDefinition::Equality(EqualityValue::from(vec![CommaDelimitedInstruction {
-                leading_commas: None,
-                instruction: UntaggedProgramInstruction {
-                    span: span(4..5),
-                    holdbit: HoldBit::Unspecified,
-                    inst: InstructionFragment::from(ArithmeticExpression::from(
-                        SymbolOrLiteral::Symbol(Script::Normal, SymbolName::from("A"), span(6..7)),
-                    )),
-                },
-                trailing_commas: None,
-            }])),
+            SymbolDefinition::Equality(EqualityValue::from((
+                span(4..5),
+                vec![CommaDelimitedInstruction {
+                    leading_commas: None,
+                    instruction: UntaggedProgramInstruction {
+                        span: span(4..5),
+                        holdbit: HoldBit::Unspecified,
+                        inst: InstructionFragment::from(ArithmeticExpression::from(
+                            SymbolOrLiteral::Symbol(
+                                Script::Normal,
+                                SymbolName::from("A"),
+                                span(6..7),
+                            ),
+                        )),
+                    },
+                    trailing_commas: None,
+                }],
+            ))),
         )
         .expect("definition of B should be correct");
 

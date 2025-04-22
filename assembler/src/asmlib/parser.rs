@@ -379,12 +379,6 @@ where
     just(Tok::Asterisk(Script::Normal)).to(InstructionFragment::DeferredAddressing)
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
-struct SpannedSymbolOrLiteral {
-    item: SymbolOrLiteral,
-    span: Span,
-}
-
 /// The pipe construct is described in section 6-2.8 "SPECIAL SYMBOLS"
 /// of the Users Handbook.
 ///
@@ -400,7 +394,7 @@ fn make_pipe_construct(
     // documentation comment.
     let tqspan = span(t.span.start..q_span.end);
     InstructionFragment::PipeConstruct {
-        index: p.item,
+        index: p,
         rc_word_span: tqspan,
         rc_word_value: Box::new((q, Atom::from(t.item))),
     }
@@ -969,7 +963,7 @@ where
         .then(
             comma_delimited_instructions
                 .clone()
-                .map(EqualityValue::from),
+                .map_with(|val, extra| EqualityValue::from((extra.span(), val))),
         ))
     .labelled("equality (assignment)");
 

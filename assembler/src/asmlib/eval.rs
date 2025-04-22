@@ -173,6 +173,7 @@ impl HereValue {
 pub(super) trait Evaluate {
     fn evaluate<R: RcAllocator>(
         &self,
+        span: Span,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
         rc_allocator: &mut R,
@@ -243,7 +244,7 @@ pub(crate) fn make_empty_rc_block_for_test(location: Address) -> RcBlock {
 }
 
 pub(crate) fn evaluate_and_combine_values<R, E>(
-    items: &[E],
+    items: &[(&E, Span)],
     target_address: &HereValue,
     symtab: &mut SymbolTable,
     rc_allocator: &mut R,
@@ -253,15 +254,18 @@ where
     R: RcAllocator,
     E: Evaluate,
 {
-    items.iter().try_fold(Unsigned36Bit::ZERO, |acc, item| {
-        item.evaluate(target_address, symtab, rc_allocator, op)
-            .map(|value| combine_fragment_values(acc, value))
-    })
+    items
+        .iter()
+        .try_fold(Unsigned36Bit::ZERO, |acc, (item, span)| {
+            item.evaluate(*span, target_address, symtab, rc_allocator, op)
+                .map(|value| combine_fragment_values(acc, value))
+        })
 }
 
 impl Evaluate for EqualityValue {
     fn evaluate<R: RcAllocator>(
         &self,
+        _span: Span,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
         rc_allocator: &mut R,
@@ -271,7 +275,12 @@ impl Evaluate for EqualityValue {
         // (b) in section 6-2.4, "NUMERICAL FORMAT - USE OF COMMAS" of
         // the Users Handbook.  The initial value is zero (as
         // specified in item (a) in the same place).
-        evaluate_and_combine_values(self.items(), target_address, symtab, rc_allocator, op)
+        let to_eval: Vec<(&CommaDelimitedInstruction, Span)> = self
+            .items()
+            .iter()
+            .map(|cdi| (cdi, cdi.instruction.span))
+            .collect();
+        evaluate_and_combine_values(to_eval.as_slice(), target_address, symtab, rc_allocator, op)
     }
 }
 
@@ -286,6 +295,7 @@ pub(crate) fn combine_fragment_values(left: Unsigned36Bit, right: Unsigned36Bit)
 impl Evaluate for TaggedProgramInstruction {
     fn evaluate<R: RcAllocator>(
         &self,
+        _span: Span,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
         rc_allocator: &mut R,
@@ -294,13 +304,19 @@ impl Evaluate for TaggedProgramInstruction {
         if self.instructions.is_empty() {
             panic!("invariant broken: TaggedProgramInstruction contains zero instructions");
         }
-        evaluate_and_combine_values(&self.instructions, target_address, symtab, rc_allocator, op)
+        let to_eval: Vec<(&CommaDelimitedInstruction, Span)> = self
+            .instructions
+            .iter()
+            .map(|inst| (inst, inst.span()))
+            .collect();
+        evaluate_and_combine_values(&to_eval, target_address, symtab, rc_allocator, op)
     }
 }
 
 impl Evaluate for LiteralValue {
     fn evaluate<R: RcAllocator>(
         &self,
+        _span: Span,
         _target_address: &HereValue,
         _symtab: &mut SymbolTable,
         _rc_allocator: &mut R,
@@ -318,21 +334,23 @@ fn fold_step<R: RcAllocator>(
     rc_allocator: &mut R,
     op: &mut LookupOperation,
 ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-    let right: Unsigned36Bit = right.evaluate(target_address, symtab, rc_allocator, op)?;
+    let right: Unsigned36Bit =
+        right.evaluate(right.span, target_address, symtab, rc_allocator, op)?;
     Ok(ArithmeticExpression::eval_binop(acc, binop, right))
 }
 
 impl Evaluate for ArithmeticExpression {
     fn evaluate<R: RcAllocator>(
         &self,
+        span: Span,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
         rc_allocator: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-        let first: Unsigned36Bit = self
-            .first
-            .evaluate(target_address, symtab, rc_allocator, op)?;
+        let first: Unsigned36Bit =
+            self.first
+                .evaluate(span, target_address, symtab, rc_allocator, op)?;
         let result: Result<Unsigned36Bit, SymbolLookupFailure> =
             self.tail.iter().try_fold(first, |acc, curr| {
                 fold_step(acc, curr, target_address, symtab, rc_allocator, op)
@@ -344,6 +362,7 @@ impl Evaluate for ArithmeticExpression {
 impl Evaluate for InstructionFragment {
     fn evaluate<R: RcAllocator>(
         &self,
+        span: Span,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
         rc_allocator: &mut R,
@@ -352,11 +371,11 @@ impl Evaluate for InstructionFragment {
         match self {
             InstructionFragment::Null => Ok(Unsigned36Bit::ZERO),
             InstructionFragment::Arithmetic(expr) => {
-                expr.evaluate(target_address, symtab, rc_allocator, op)
+                expr.evaluate(span, target_address, symtab, rc_allocator, op)
             }
             InstructionFragment::DeferredAddressing => Ok(DEFER_BIT),
             InstructionFragment::Config(value) => {
-                value.evaluate(target_address, symtab, rc_allocator, op)
+                value.evaluate(span, target_address, symtab, rc_allocator, op)
             }
             InstructionFragment::PipeConstruct {
                 index: p,
@@ -374,11 +393,14 @@ impl Evaluate for InstructionFragment {
                 // rc_word_value tuple.  We evaluate Qₜ as
                 // rc_word_val.
                 let (base, index) = rc_word_value.as_ref();
-                let base_value = base.evaluate(target_address, symtab, rc_allocator, op)?;
-                let index_value = index.evaluate(target_address, symtab, rc_allocator, op)?;
+                let base_value =
+                    base.evaluate(*rc_word_span, target_address, symtab, rc_allocator, op)?;
+                let index_value =
+                    index.evaluate(*rc_word_span, target_address, symtab, rc_allocator, op)?;
                 let rc_word_val: Unsigned36Bit = combine_fragment_values(base_value, index_value);
                 let p_value: Unsigned36Bit =
-                    p.evaluate(target_address, symtab, rc_allocator, op)?;
+                    p.item
+                        .evaluate(p.span, target_address, symtab, rc_allocator, op)?;
                 let rc_source = RcWordSource::PipeConstruct(*rc_word_span);
                 let addr: Address = rc_allocator.allocate(rc_source, rc_word_val);
                 Ok(combine_fragment_values(
@@ -393,6 +415,7 @@ impl Evaluate for InstructionFragment {
 impl Evaluate for ConfigValue {
     fn evaluate<R: RcAllocator>(
         &self,
+        span: Span,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
         rc_allocator: &mut R,
@@ -404,7 +427,7 @@ impl Evaluate for ConfigValue {
         // script (in which case we need to shift it ourselves).
         let shift = if self.already_superscript { 0 } else { 30u32 };
         self.expr
-            .evaluate(target_address, symtab, rc_allocator, op)
+            .evaluate(span, target_address, symtab, rc_allocator, op)
             .map(|value| value.shl(shift))
     }
 }
@@ -428,6 +451,7 @@ fn symbol_name_lookup<R: RcAllocator>(
 impl Evaluate for Atom {
     fn evaluate<R: RcAllocator>(
         &self,
+        _span: Span,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
         rc_allocator: &mut R,
@@ -448,8 +472,8 @@ impl Evaluate for Atom {
                 rc_allocator,
                 op,
             ),
-            Atom::Parens(_span, _script, expr) => {
-                expr.evaluate(target_address, symtab, rc_allocator, op)
+            Atom::Parens(span, _script, expr) => {
+                expr.evaluate(*span, target_address, symtab, rc_allocator, op)
             }
             Atom::RcRef(span, tagged_program_instructions) => {
                 let mut first_addr: Option<Address> = None;
@@ -476,6 +500,7 @@ impl Evaluate for Atom {
                     let value: Unsigned36Bit = symtab.evaluate_with_temporary_tag_override(
                         tag_override,
                         inst,
+                        inst.span(),
                         &here,
                         rc_allocator,
                         op,
@@ -496,13 +521,14 @@ impl Evaluate for Atom {
 impl Evaluate for SignedAtom {
     fn evaluate<R: RcAllocator>(
         &self,
+        span: Span,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
         rc_allocator: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         self.magnitude
-            .evaluate(target_address, symtab, rc_allocator, op)
+            .evaluate(span, target_address, symtab, rc_allocator, op)
             .map(|magnitude| {
                 if self.negated {
                     let s36 = magnitude.reinterpret_as_signed();
@@ -518,6 +544,7 @@ impl Evaluate for SignedAtom {
 impl Evaluate for SymbolOrLiteral {
     fn evaluate<R: RcAllocator>(
         &self,
+        span: Span,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
         rc_allocator: &mut R,
@@ -534,7 +561,7 @@ impl Evaluate for SymbolOrLiteral {
                 op,
             ),
             SymbolOrLiteral::Literal(literal_value) => {
-                literal_value.evaluate(target_address, symtab, rc_allocator, op)
+                literal_value.evaluate(span, target_address, symtab, rc_allocator, op)
             }
         }
     }
@@ -587,13 +614,20 @@ fn comma_transformation(
 impl Evaluate for CommaDelimitedInstruction {
     fn evaluate<R: RcAllocator>(
         &self,
+        _span: Span,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
         rc_allocator: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         self.instruction
-            .evaluate(target_address, symtab, rc_allocator, op)
+            .evaluate(
+                self.instruction.span,
+                target_address,
+                symtab,
+                rc_allocator,
+                op,
+            )
             .map(|value| comma_transformation(&self.leading_commas, value, &self.trailing_commas))
     }
 }
@@ -980,6 +1014,7 @@ mod comma_tests {
 impl Evaluate for UntaggedProgramInstruction {
     fn evaluate<R: RcAllocator>(
         &self,
+        _span: Span,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
         rc_allocator: &mut R,
@@ -992,7 +1027,7 @@ impl Evaluate for UntaggedProgramInstruction {
         // comma rules that other values are).
         const HELD_MASK: Unsigned36Bit = u36!(1 << 35);
         self.inst
-            .evaluate(target_address, symtab, rc_allocator, op)
+            .evaluate(self.span, target_address, symtab, rc_allocator, op)
             .map(|word| match self.holdbit {
                 HoldBit::Hold => word | HELD_MASK,
                 HoldBit::NotHold => word & !HELD_MASK,
@@ -1020,7 +1055,13 @@ impl LocatedBlock {
                 Statement::Assignment(span, symbol, definition) => {
                     let mut op = Default::default();
                     let value = definition
-                        .evaluate(&HereValue::Address(here), symtab, rc_allocator, &mut op)
+                        .evaluate(
+                            *span,
+                            &HereValue::Address(here),
+                            symtab,
+                            rc_allocator,
+                            &mut op,
+                        )
                         .expect("lookup on FinalSymbolTable is infallible");
                     final_symbols.define(
                         symbol.clone(),
@@ -1045,7 +1086,13 @@ impl LocatedBlock {
 
                     let mut op = Default::default();
                     let word = instruction
-                        .evaluate(&HereValue::Address(here), symtab, rc_allocator, &mut op)
+                        .evaluate(
+                            instruction.span(),
+                            &HereValue::Address(here),
+                            symtab,
+                            rc_allocator,
+                            &mut op,
+                        )
                         .expect("lookup on FinalSymbolTable is infallible");
 
                     listing.push_line(ListingLine {

@@ -1027,15 +1027,18 @@ fn assignment_of_literal(name: &str, assignment_span: Span, literal: LiteralValu
     Statement::Assignment(
         assignment_span,
         symbol,
-        EqualityValue::from(vec![CommaDelimitedInstruction {
-            leading_commas: None,
-            instruction: UntaggedProgramInstruction {
-                span: span((literal.span().start)..(assignment_span.end)),
-                holdbit: HoldBit::Unspecified,
-                inst: atom_to_fragment(Atom::Literal(literal)),
-            },
-            trailing_commas: None,
-        }]),
+        EqualityValue::from((
+            *literal.span(),
+            vec![CommaDelimitedInstruction {
+                leading_commas: None,
+                instruction: UntaggedProgramInstruction {
+                    span: span((literal.span().start)..(assignment_span.end)),
+                    holdbit: HoldBit::Unspecified,
+                    inst: atom_to_fragment(Atom::Literal(literal)),
+                },
+                trailing_commas: None,
+            }],
+        )),
     )
 }
 
@@ -1070,6 +1073,7 @@ fn test_assignment_superscript() {
     ];
     for (input, val_begin, val_end) in INPUTS {
         dbg!(input);
+        let val_span = span(*val_begin..*val_end);
         assert_eq!(
             parse_successfully_with(*input, statement(), no_state_setup),
             Statement::Assignment(
@@ -1077,22 +1081,25 @@ fn test_assignment_superscript() {
                 SymbolName {
                     canonical: "FOO".to_string()
                 },
-                EqualityValue::from(vec![CommaDelimitedInstruction {
-                    leading_commas: None,
-                    instruction: UntaggedProgramInstruction {
-                        span: span(*val_begin..*val_end),
-                        holdbit: HoldBit::Unspecified,
-                        inst: InstructionFragment::Config(ConfigValue {
-                            already_superscript: true,
-                            expr: ArithmeticExpression::from(Atom::from((
-                                span(*val_begin..*val_end),
-                                Script::Super,
-                                u36!(0o2)
-                            )))
-                        }),
-                    },
-                    trailing_commas: None
-                }])
+                EqualityValue::from((
+                    val_span,
+                    vec![CommaDelimitedInstruction {
+                        leading_commas: None,
+                        instruction: UntaggedProgramInstruction {
+                            span: span(*val_begin..*val_end),
+                            holdbit: HoldBit::Unspecified,
+                            inst: InstructionFragment::Config(ConfigValue {
+                                already_superscript: true,
+                                expr: ArithmeticExpression::from(Atom::from((
+                                    span(*val_begin..*val_end),
+                                    Script::Super,
+                                    u36!(0o2)
+                                )))
+                            }),
+                        },
+                        trailing_commas: None
+                    }]
+                ))
             )
         );
     }
@@ -1341,8 +1348,10 @@ fn program_instruction_with_opcode() {
     let mut op = LookupOperation::default();
     let mut rc_block =
         make_empty_rc_block_for_test(Address::from(Unsigned18Bit::from(0o20_000u16)));
+    let input = "²¹IOS₅₂ 30106";
     assert_eq!(
-        parse_tagged_instruction("²¹IOS₅₂ 30106").evaluate(
+        parse_tagged_instruction(input).evaluate(
+            span(0..input.len()),
             &HereValue::Address(Address::ZERO),
             &mut nosyms,
             &mut rc_block,
@@ -2035,7 +2044,10 @@ fn test_pipe_construct() {
     let input = "@sub_alpha@@sub_pipe@@sub_beta@DISPTBL";
     let got = parse_single_instruction_fragment(input);
     let expected = InstructionFragment::PipeConstruct {
-        index: SymbolOrLiteral::Symbol(Script::Sub, SymbolName::from("α"), span(0..11)),
+        index: SpannedSymbolOrLiteral {
+            item: SymbolOrLiteral::Symbol(Script::Sub, SymbolName::from("α"), span(0..11)),
+            span: span(0..11),
+        },
         rc_word_span: span(21..38),
         rc_word_value: Box::new((
             InstructionFragment::Arithmetic(ArithmeticExpression::from(SymbolOrLiteral::Symbol(

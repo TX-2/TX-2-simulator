@@ -505,6 +505,12 @@ impl SymbolOrLiteral {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub(crate) struct SpannedSymbolOrLiteral {
+    pub(crate) item: SymbolOrLiteral,
+    pub(crate) span: Span,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum InstructionFragment {
     /// Arithmetic expressions are permitted in normal case according
@@ -519,7 +525,7 @@ pub(crate) enum InstructionFragment {
     Config(ConfigValue),
     /// Described in section 6-2.8 "SPECIAL SYMBOLS" of the Users Handbook.
     PipeConstruct {
-        index: SymbolOrLiteral,
+        index: SpannedSymbolOrLiteral,
         rc_word_span: Span,
         rc_word_value: Box<(InstructionFragment, Atom)>,
     },
@@ -549,13 +555,18 @@ impl InstructionFragment {
                 rc_word_span: _,
                 rc_word_value,
             } => {
-                result.extend(index.symbol_uses().map(|(name, span, mut symbol_use)| {
-                    if let SymbolUse::Reference(context) = &mut symbol_use {
-                        assert!(!context.is_address());
-                        context.also_set_index();
-                    };
-                    (name, span, symbol_use)
-                }));
+                result.extend(
+                    index
+                        .item
+                        .symbol_uses()
+                        .map(|(name, span, mut symbol_use)| {
+                            if let SymbolUse::Reference(context) = &mut symbol_use {
+                                assert!(!context.is_address());
+                                context.also_set_index();
+                            };
+                            (name, span, symbol_use)
+                        }),
+                );
                 let (base, index) = rc_word_value.as_ref();
                 result.extend(base.symbol_uses(block_id, block_offset));
                 result.extend(index.symbol_uses(block_id, block_offset));
@@ -746,17 +757,24 @@ impl CommaDelimitedInstruction {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct EqualityValue(Vec<CommaDelimitedInstruction>);
+pub(crate) struct EqualityValue {
+    span: Span,
+    parts: Vec<CommaDelimitedInstruction>,
+}
 
 impl EqualityValue {
     pub(crate) fn items(&self) -> &[CommaDelimitedInstruction] {
-        &self.0
+        &self.parts
+    }
+
+    pub(crate) fn span(&self) -> Span {
+        self.span
     }
 }
 
-impl From<Vec<CommaDelimitedInstruction>> for EqualityValue {
-    fn from(value: Vec<CommaDelimitedInstruction>) -> Self {
-        Self(value)
+impl From<(Span, Vec<CommaDelimitedInstruction>)> for EqualityValue {
+    fn from((span, parts): (Span, Vec<CommaDelimitedInstruction>)) -> Self {
+        Self { span, parts }
     }
 }
 
