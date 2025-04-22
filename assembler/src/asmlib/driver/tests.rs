@@ -7,7 +7,7 @@ use super::super::ast::{
 };
 use super::super::eval::{make_empty_rc_block_for_test, SymbolLookup, SymbolValue};
 use super::super::span::*;
-use super::super::symbol::{SymbolContext, SymbolName};
+use super::super::symbol::SymbolName;
 use super::super::symtab::LookupOperation;
 use super::{assemble_nonempty_valid_input, assemble_source};
 use super::{assemble_pass1, Binary, BinaryChunk};
@@ -29,12 +29,11 @@ fn assemble_check_symbols(input: &str, target_address: Address, expected: &[(&st
             canonical: name.to_string(),
         };
         let span = span(0..(name.len()));
-        let context = SymbolContext::from((Script::Normal, span));
         let here = HereValue::Address(target_address);
         let mut op = LookupOperation::default();
         let mut rc_block =
             make_empty_rc_block_for_test(Address::from(Unsigned18Bit::from(0o020_000u16)));
-        match symtab.lookup_with_op(&sym, span, &here, &mut rc_block, &context, &mut op) {
+        match symtab.lookup_with_op(&sym, span, &here, &mut rc_block, &mut op) {
             Ok(got) => {
                 if got != *expected_value {
                     panic!("incorrect value for symbol {name}; expected {expected_value:?}, got {got:?}");

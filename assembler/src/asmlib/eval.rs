@@ -19,7 +19,7 @@ use super::ast::{
 };
 use super::listing::{Listing, ListingLine};
 use super::span::*;
-use super::symbol::{SymbolContext, SymbolName, SymbolOrHere};
+use super::symbol::{SymbolName, SymbolOrHere};
 use super::types::{AssemblerFailure, BlockIdentifier, MachineLimitExceededFailure};
 
 #[derive(Debug, PartialEq, Eq)]
@@ -144,7 +144,6 @@ pub(crate) trait SymbolLookup {
         span: Span, // TODO: use &Span?
         target_address: &HereValue,
         rc_allocator: &mut R,
-        context: &SymbolContext,
         op: &mut Self::Operation<'_>,
     ) -> Result<SymbolValue, SymbolLookupFailure>;
 }
@@ -419,8 +418,7 @@ fn symbol_name_lookup<R: RcAllocator>(
     rc_allocator: &mut R,
     op: &mut LookupOperation,
 ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-    let context = SymbolContext::from((elevation, span));
-    match symtab.lookup_with_op(name, span, target_address, rc_allocator, &context, op) {
+    match symtab.lookup_with_op(name, span, target_address, rc_allocator, op) {
         Ok(SymbolValue::Final(value)) => Ok(value),
         Err(e) => Err(e),
     }

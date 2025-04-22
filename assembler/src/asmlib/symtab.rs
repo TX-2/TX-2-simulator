@@ -76,6 +76,64 @@ pub(crate) struct LookupOperation {
     deps_in_order: Vec<SymbolName>,
 }
 
+fn final_lookup_helper_body<R: RcAllocator>(
+    t: &mut SymbolTable,
+    name: &SymbolName,
+    span: Span,
+    target_address: &HereValue,
+    rc_allocator: &mut R,
+    op: &mut LookupOperation,
+) -> Result<SymbolValue, SymbolLookupFailure> {
+    if let Some(def) = t.get_clone(name) {
+        match def {
+            SymbolDefinition::DefaultAssigned(value, _) => Ok(SymbolValue::Final(value)),
+            SymbolDefinition::Origin(addr) => Ok(SymbolValue::Final(addr.into())),
+            SymbolDefinition::Tag {
+                block_id,
+                block_offset,
+                span: _,
+            } => match t.finalise_origin(block_id, rc_allocator, Some(op)) {
+                Ok(address) => {
+                    let computed_address: Address = address.index_by(block_offset);
+                    Ok(SymbolValue::Final(computed_address.into()))
+                }
+                Err(e) => {
+                    panic!("failed to finalise origin of {block_id}: {e}");
+                }
+            },
+            SymbolDefinition::TagOverride(address) => Ok(SymbolValue::Final(address.into())),
+            SymbolDefinition::Equality(expression) => {
+                // The target address does not matter below
+                // since assignments are not allowed to use
+                // '#' on the right-hand-side of the
+                // assignment.
+                expression
+                    .evaluate(target_address, t, rc_allocator, op)
+                    .map(SymbolValue::Final)
+            }
+            SymbolDefinition::Undefined(context_union) => {
+                match t.get_default_value(name, &span, &context_union, rc_allocator) {
+                    Ok(value) => {
+                        match t.define(
+                            span,
+                            name.clone(),
+                            SymbolDefinition::DefaultAssigned(value, context_union),
+                        ) {
+                            Err(e) => {
+                                panic!("got a bad symbol definition error ({e}) on a previously undefined symbol, which should be impossible");
+                            }
+                            Ok(()) => Ok(SymbolValue::Final(value)),
+                        }
+                    }
+                    Err(e) => Err(e),
+                }
+            }
+        }
+    } else {
+        panic!("final symbol lookup of symbol '{name}' happened in an evaluation context which was not previously returned by SourceFile::global_symbol_references(): {op:?}");
+    }
+}
+
 impl SymbolTable {
     pub(crate) fn new<I>(block_sizes: I) -> SymbolTable
     where
@@ -157,93 +215,6 @@ impl SymbolTable {
                 span,
                 def: SymbolDefinition::Undefined(context.clone()),
             });
-    }
-
-    fn final_lookup_helper<R: RcAllocator>(
-        &mut self,
-        name: &SymbolName,
-        span: Span,
-        target_address: &HereValue,
-        rc_allocator: &mut R,
-        _context: &SymbolContext,
-        op: &mut LookupOperation,
-    ) -> Result<SymbolValue, SymbolLookupFailure> {
-        fn body<R: RcAllocator>(
-            t: &mut SymbolTable,
-            name: &SymbolName,
-            span: Span,
-            target_address: &HereValue,
-            rc_allocator: &mut R,
-            op: &mut LookupOperation,
-        ) -> Result<SymbolValue, SymbolLookupFailure> {
-            if let Some(def) = t.get_clone(name) {
-                match def {
-                    SymbolDefinition::DefaultAssigned(value, _) => Ok(SymbolValue::Final(value)),
-                    SymbolDefinition::Origin(addr) => Ok(SymbolValue::Final(addr.into())),
-                    SymbolDefinition::Tag {
-                        block_id,
-                        block_offset,
-                        span: _,
-                    } => match t.finalise_origin(block_id, rc_allocator, Some(op)) {
-                        Ok(address) => {
-                            let computed_address: Address = address.index_by(block_offset);
-                            Ok(SymbolValue::Final(computed_address.into()))
-                        }
-                        Err(e) => {
-                            panic!("failed to finalise origin of {block_id}: {e}");
-                        }
-                    },
-                    SymbolDefinition::TagOverride(address) => {
-                        Ok(SymbolValue::Final(address.into()))
-                    }
-                    SymbolDefinition::Equality(expression) => {
-                        // The target address does not matter below
-                        // since assignments are not allowed to use
-                        // '#' on the right-hand-side of the
-                        // assignment.
-                        expression
-                            .evaluate(target_address, t, rc_allocator, op)
-                            .map(SymbolValue::Final)
-                    }
-                    SymbolDefinition::Undefined(context_union) => {
-                        match t.get_default_value(name, &span, &context_union, rc_allocator) {
-                            Ok(value) => {
-                                match t.define(
-                                    span,
-                                    name.clone(),
-                                    SymbolDefinition::DefaultAssigned(value, context_union),
-                                ) {
-                                    Err(e) => {
-                                        panic!("got a bad symbol definition error ({e}) on a previously undefined symbol, which should be impossible");
-                                    }
-                                    Ok(()) => Ok(SymbolValue::Final(value)),
-                                }
-                            }
-                            Err(e) => Err(e),
-                        }
-                    }
-                }
-            } else {
-                panic!("final symbol lookup of symbol '{name}' happened in an evaluation context which was not previously returned by SourceFile::global_symbol_references(): {op:?}");
-            }
-        }
-
-        op.deps_in_order.push(name.clone());
-        if !op.depends_on.insert(name.clone()) {
-            // `name` was already in `depends_on`; in other words,
-            // we have a loop.
-            return Err(SymbolLookupFailure::from((
-                name.clone(),
-                span,
-                SymbolLookupFailureKind::Loop {
-                    deps_in_order: op.deps_in_order.to_vec(),
-                },
-            )));
-        }
-        let result = body(self, name, span, target_address, rc_allocator, op);
-        op.deps_in_order.pop();
-        op.depends_on.remove(name);
-        result
     }
 
     pub(crate) fn finalise_origin<R: RcAllocator>(
@@ -498,10 +469,24 @@ impl SymbolLookup for SymbolTable {
         span: Span,
         target_address: &HereValue,
         rc_allocator: &mut R,
-        context: &SymbolContext,
         op: &mut Self::Operation<'_>,
     ) -> Result<SymbolValue, SymbolLookupFailure> {
-        self.final_lookup_helper(name, span, target_address, rc_allocator, context, op)
+        op.deps_in_order.push(name.clone());
+        if !op.depends_on.insert(name.clone()) {
+            // `name` was already in `depends_on`; in other words,
+            // we have a loop.
+            return Err(SymbolLookupFailure::from((
+                name.clone(),
+                span,
+                SymbolLookupFailureKind::Loop {
+                    deps_in_order: op.deps_in_order.to_vec(),
+                },
+            )));
+        }
+        let result = final_lookup_helper_body(self, name, span, target_address, rc_allocator, op);
+        op.deps_in_order.pop();
+        op.depends_on.remove(name);
+        result
     }
 }
 
@@ -722,4 +707,71 @@ impl SymbolDefinition {
             }
         }
     }
+}
+
+#[test]
+fn test_loop_detection() {
+    use super::ast::*;
+    use super::eval::RcBlock;
+    use base::charset::Script;
+    let blocks = [(span(0..10), None, u18!(2))];
+    let mut symtab = SymbolTable::new(blocks);
+
+    // define "A"
+    symtab
+        .define(
+            span(0..1),
+            SymbolName::from("A"),
+            SymbolDefinition::Equality(EqualityValue::from(vec![CommaDelimitedInstruction {
+                leading_commas: None,
+                instruction: UntaggedProgramInstruction {
+                    span: span(0..1),
+                    holdbit: HoldBit::Unspecified,
+                    inst: InstructionFragment::from(ArithmeticExpression::from(
+                        SymbolOrLiteral::Symbol(Script::Normal, SymbolName::from("B"), span(2..3)),
+                    )),
+                },
+                trailing_commas: None,
+            }])),
+        )
+        .expect("definition of A should be correct");
+    // define "B"
+    symtab
+        .define(
+            span(4..5),
+            SymbolName::from("B"),
+            SymbolDefinition::Equality(EqualityValue::from(vec![CommaDelimitedInstruction {
+                leading_commas: None,
+                instruction: UntaggedProgramInstruction {
+                    span: span(4..5),
+                    holdbit: HoldBit::Unspecified,
+                    inst: InstructionFragment::from(ArithmeticExpression::from(
+                        SymbolOrLiteral::Symbol(Script::Normal, SymbolName::from("A"), span(6..7)),
+                    )),
+                },
+                trailing_commas: None,
+            }])),
+        )
+        .expect("definition of B should be correct");
+
+    let mut rc_block = RcBlock::default();
+
+    // An attempt to look up A should fail because we detect a loop.
+    let mut op = Default::default();
+    let r = symtab.lookup_with_op(
+        &SymbolName::from("A"),
+        span(0..1),
+        &HereValue::NotAllowed,
+        &mut rc_block,
+        &mut op,
+    );
+    dbg!(&r);
+    assert!(matches!(
+        r,
+        Err(SymbolLookupFailure {
+            target: _,
+            kind: SymbolLookupFailureKind::Loop { .. }
+        })
+    ));
+    assert!(false);
 }
