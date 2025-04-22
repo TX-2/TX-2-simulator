@@ -773,5 +773,4 @@ fn test_loop_detection() {
             kind: SymbolLookupFailureKind::Loop { .. }
         })
     ));
-    assert!(false);
 }
