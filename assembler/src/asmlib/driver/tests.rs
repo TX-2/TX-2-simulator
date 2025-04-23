@@ -765,3 +765,28 @@ fn test_kleinrock_200016() {
     assert_eq!(program.chunks[2].address, Address::from(u18!(0o206_336))); // Location of RC-block
     assert_eq!(program.chunks[2].words[0], u36!(0o000_006_022_122)); // ₜ 022122
 }
+
+#[test]
+fn test_undefined_symbol_in_calculation() {
+    let input = concat!(
+        "A = B + 2\n",
+        // B is used only in an index context, so should be
+        // default-assigned as 1 (being the first free index
+        // register).
+        "DPX @sub_B@ 4\n",
+        // When we evaluate A, it should be evaluated as B+2, and so
+        // it should take the value 3.
+        "A\n",
+    );
+    let program = assemble_source(input, Default::default()).expect("program is valid");
+    dbg!(&program);
+
+    assert_eq!(program.chunks.len(), 1);
+    assert_eq!(program.chunks[0].words.len(), 2); // program length
+
+    // The potential bug we care about here is the situation in which
+    // evaluation of A fails (e.g. because it depends on a value which
+    // needs to be default-assigned) and itself gets default-assigned
+    // (which would be incorrect, since it has a definition).
+    assert_eq!(program.chunks[0].words[1], u36!(0o3));
+}

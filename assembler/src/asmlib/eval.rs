@@ -7,10 +7,6 @@ use base::{
     u36,
 };
 
-use crate::symtab::{
-    FinalSymbolDefinition, FinalSymbolTable, FinalSymbolType, LookupOperation, SymbolTable,
-};
-
 use super::ast::{
     ArithmeticExpression, Atom, CommaDelimitedInstruction, Commas, ConfigValue, EqualityValue,
     HoldBit, InstructionFragment, LiteralValue, LocatedBlock, Operator, RcAllocator, RcWordSource,
@@ -21,6 +17,10 @@ use super::listing::{Listing, ListingLine};
 use super::span::*;
 use super::symbol::{SymbolName, SymbolOrHere};
 use super::types::{AssemblerFailure, BlockIdentifier, MachineLimitExceededFailure};
+use crate::symbol::SymbolContext;
+use crate::symtab::{
+    FinalSymbolDefinition, FinalSymbolTable, FinalSymbolType, LookupOperation, SymbolTable,
+};
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum LookupTarget {
@@ -82,6 +82,7 @@ pub(crate) enum SymbolValue {
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum SymbolLookupFailureKind {
     Inconsistent(String),
+    Missing { uses: SymbolContext },
     Loop { deps_in_order: Vec<SymbolName> },
     MachineLimitExceeded(MachineLimitExceededFailure),
     HereIsNotAllowedHere,
@@ -97,6 +98,7 @@ impl Display for SymbolLookupFailure {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         let desc = self.target.to_string();
         match self.kind() {
+            SymbolLookupFailureKind::Missing { .. } => f.write_str("no definition found"),
             SymbolLookupFailureKind::Inconsistent(msg) => f.write_str(msg.as_str()),
             SymbolLookupFailureKind::Loop { deps_in_order } => {
                 let names: Vec<String> = deps_in_order.iter().map(|dep| dep.to_string()).collect();

@@ -76,58 +76,87 @@ pub(crate) struct LookupOperation {
     deps_in_order: Vec<SymbolName>,
 }
 
+impl Evaluate for (&SymbolName, &SymbolDefinition) {
+    fn evaluate<R: RcAllocator>(
+        &self,
+        span: Span,
+        target_address: &HereValue,
+        symtab: &mut SymbolTable,
+        rc_allocator: &mut R,
+        op: &mut LookupOperation,
+    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+        let (name, def): (&SymbolName, &SymbolDefinition) = *self;
+        match def {
+            SymbolDefinition::DefaultAssigned(value, _) => Ok(*value),
+            SymbolDefinition::Origin(addr) => Ok((*addr).into()),
+            SymbolDefinition::Tag {
+                block_id,
+                block_offset,
+                span: _,
+            } => match symtab.finalise_origin(*block_id, rc_allocator, Some(op)) {
+                Ok(address) => {
+                    let computed_address: Address = address.index_by(*block_offset);
+                    Ok(computed_address.into())
+                }
+                Err(e) => {
+                    panic!("failed to finalise origin of {block_id}: {e}");
+                }
+            },
+            SymbolDefinition::TagOverride(address) => Ok(address.into()),
+            SymbolDefinition::Equality(expression) => {
+                // The target address does not matter below
+                // since assignments are not allowed to use
+                // '#' on the right-hand-side of the
+                // assignment.
+                expression.evaluate(expression.span(), target_address, symtab, rc_allocator, op)
+            }
+            SymbolDefinition::Undefined(context_union) => Err(SymbolLookupFailure {
+                target: LookupTarget::Symbol(name.to_owned(), span),
+                kind: SymbolLookupFailureKind::Missing {
+                    uses: context_union.clone(),
+                },
+            }),
+        }
+    }
+}
+
 fn final_lookup_helper_body<R: RcAllocator>(
-    t: &mut SymbolTable,
+    symtab: &mut SymbolTable,
     name: &SymbolName,
     span: Span,
     target_address: &HereValue,
     rc_allocator: &mut R,
     op: &mut LookupOperation,
 ) -> Result<SymbolValue, SymbolLookupFailure> {
-    if let Some(def) = t.get_clone(name) {
-        match def {
-            SymbolDefinition::DefaultAssigned(value, _) => Ok(SymbolValue::Final(value)),
-            SymbolDefinition::Origin(addr) => Ok(SymbolValue::Final(addr.into())),
-            SymbolDefinition::Tag {
-                block_id,
-                block_offset,
-                span: _,
-            } => match t.finalise_origin(block_id, rc_allocator, Some(op)) {
-                Ok(address) => {
-                    let computed_address: Address = address.index_by(block_offset);
-                    Ok(SymbolValue::Final(computed_address.into()))
-                }
-                Err(e) => {
-                    panic!("failed to finalise origin of {block_id}: {e}");
-                }
-            },
-            SymbolDefinition::TagOverride(address) => Ok(SymbolValue::Final(address.into())),
-            SymbolDefinition::Equality(expression) => {
-                // The target address does not matter below
-                // since assignments are not allowed to use
-                // '#' on the right-hand-side of the
-                // assignment.
-                expression
-                    .evaluate(expression.span(), target_address, t, rc_allocator, op)
-                    .map(SymbolValue::Final)
-            }
-            SymbolDefinition::Undefined(context_union) => {
-                match t.get_default_value(name, &span, &context_union, rc_allocator) {
-                    Ok(value) => {
-                        match t.define(
-                            span,
-                            name.clone(),
-                            SymbolDefinition::DefaultAssigned(value, context_union),
-                        ) {
-                            Err(e) => {
-                                panic!("got a bad symbol definition error ({e}) on a previously undefined symbol, which should be impossible");
-                            }
-                            Ok(()) => Ok(SymbolValue::Final(value)),
+    if let Some(def) = symtab.get_clone(name) {
+        let what = (name, &def);
+        match what
+            .evaluate(span, target_address, symtab, rc_allocator, op)
+            .map(SymbolValue::Final)
+        {
+            Ok(value) => Ok(value),
+            Err(SymbolLookupFailure {
+                target: _,
+                kind:
+                    SymbolLookupFailureKind::Missing {
+                        uses: context_union,
+                    },
+            }) => match symtab.get_default_value(name, &span, &context_union, rc_allocator) {
+                Ok(value) => {
+                    match symtab.define(
+                        span,
+                        name.clone(),
+                        SymbolDefinition::DefaultAssigned(value, context_union),
+                    ) {
+                        Err(e) => {
+                            panic!("got a bad symbol definition error ({e}) on a previously undefined symbol, which should be impossible");
                         }
+                        Ok(()) => Ok(SymbolValue::Final(value)),
                     }
-                    Err(e) => Err(e),
                 }
-            }
+                Err(e) => Err(e),
+            },
+            Err(other) => Err(other),
         }
     } else {
         panic!("final symbol lookup of symbol '{name}' happened in an evaluation context which was not previously returned by SourceFile::global_symbol_references(): {op:?}");
