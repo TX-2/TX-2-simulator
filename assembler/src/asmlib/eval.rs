@@ -15,7 +15,7 @@ use super::ast::{
 };
 use super::listing::{Listing, ListingLine};
 use super::span::*;
-use super::symbol::{SymbolName, SymbolOrHere};
+use super::symbol::SymbolName;
 use super::types::{AssemblerFailure, BlockIdentifier, MachineLimitExceededFailure};
 use crate::symbol::SymbolContext;
 use crate::symtab::{
@@ -460,20 +460,10 @@ impl Evaluate for Atom {
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         match self {
-            Atom::Symbol(span, elevation, SymbolOrHere::Here) => {
-                let value: Unsigned36Bit = target_address.get_address(span)?.into();
-                Ok(value.shl(elevation.shift()))
+            Atom::SymbolOrLiteral(value) => {
+                let span: Span = *value.span();
+                value.evaluate(span, target_address, symtab, rc_allocator, op)
             }
-            Atom::Literal(literal) => Ok(literal.value()),
-            Atom::Symbol(span, elevation, SymbolOrHere::Named(name)) => symbol_name_lookup(
-                name,
-                *elevation,
-                *span,
-                target_address,
-                symtab,
-                rc_allocator,
-                op,
-            ),
             Atom::Parens(span, _script, expr) => {
                 expr.evaluate(*span, target_address, symtab, rc_allocator, op)
             }
@@ -565,6 +555,9 @@ impl Evaluate for SymbolOrLiteral {
             SymbolOrLiteral::Literal(literal_value) => {
                 literal_value.evaluate(span, target_address, symtab, rc_allocator, op)
             }
+            SymbolOrLiteral::Here(script, span) => target_address
+                .evaluate(*span, target_address, symtab, rc_allocator, op)
+                .map(|value| value.shl(script.shift())),
         }
     }
 }
@@ -1035,6 +1028,19 @@ impl Evaluate for UntaggedProgramInstruction {
                 HoldBit::NotHold => word & !HELD_MASK,
                 HoldBit::Unspecified => word,
             })
+    }
+}
+
+impl Evaluate for HereValue {
+    fn evaluate<R: RcAllocator>(
+        &self,
+        span: Span,
+        _: &HereValue,
+        _symtab: &mut SymbolTable,
+        _rc_allocator: &mut R,
+        _op: &mut LookupOperation,
+    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+        self.get_address(&span).map(|addr| addr.into())
     }
 }
 

@@ -72,11 +72,11 @@ fn test_assemble_pass1() {
                             instruction: UntaggedProgramInstruction {
                                 span: Span::from(0..2),
                                 holdbit: HoldBit::Unspecified,
-                                inst: atom_to_fragment(Atom::Literal(LiteralValue::from((
+                                inst: atom_to_fragment(Atom::from(LiteralValue::from((
                                     Span::from(0..2),
                                     Script::Normal,
                                     u36!(0o14)
-                                ))))
+                                )),)),
                             },
                             trailing_commas: None,
                         }]

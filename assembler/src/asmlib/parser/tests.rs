@@ -149,11 +149,11 @@ fn test_superscript_unary_plus_expression() {
         Ok(ArithmeticExpression::from(SignedAtom {
             span: span(0..8),
             negated: false,
-            magnitude: Atom::from(Atom::Literal(LiteralValue::from((
+            magnitude: Atom::from(LiteralValue::from((
                 span(3..8),
                 Script::Super,
                 Unsigned36Bit::from(0o36_u32)
-            ))))
+            )))
         }))
     );
 }
@@ -218,7 +218,7 @@ fn test_subscript_unary_plus() {
         Ok(ArithmeticExpression::from(SignedAtom {
             span: span(0..9),
             negated: false,
-            magnitude: Atom::Literal(LiteralValue::from((
+            magnitude: Atom::from(LiteralValue::from((
                 span(3..9),
                 Script::Sub,
                 Unsigned36Bit::from(0o13_u32)
@@ -285,7 +285,7 @@ fn test_assemble_octal_superscript_literal() {
         Ok(ArithmeticExpression::from(SignedAtom {
             span: span(0..8),
             negated: false,
-            magnitude: Atom::from(Atom::Literal(LiteralValue::from((
+            magnitude: Atom::from(Atom::from(LiteralValue::from((
                 span(3..8),
                 Script::Super,
                 Unsigned36Bit::from(0o36_u32)
@@ -302,7 +302,7 @@ fn test_assemble_octal_subscript_literal_nosign() {
         Ok(ArithmeticExpression::from(SignedAtom {
             span: span(0..6),
             negated: false,
-            magnitude: Atom::from(Atom::Literal(LiteralValue::from((
+            magnitude: Atom::from(Atom::from(LiteralValue::from((
                 span(0..6),
                 Script::Sub,
                 Unsigned36Bit::from(0o13_u32)
@@ -324,11 +324,11 @@ fn test_assemble_octal_subscript_literal_plussign() {
     let expression_expected = ArithmeticExpression::from(SignedAtom {
         span: span(0..9),
         negated: false,
-        magnitude: Atom::from(Atom::Literal(LiteralValue::from((
+        magnitude: Atom::from(LiteralValue::from((
             span(3..9),
             Script::Sub,
             Unsigned36Bit::from(0o13_u32),
-        )))),
+        ))),
     });
 
     // Parse it as an arithmetic expression
@@ -680,7 +680,7 @@ fn test_comment_in_rc_block() {
                                                 span: span(1..2),
                                                 holdbit: HoldBit::Unspecified,
                                                 inst: InstructionFragment::Arithmetic(
-                                                    ArithmeticExpression::from(Atom::Literal(
+                                                    ArithmeticExpression::from(Atom::from(
                                                         LiteralValue::from((
                                                             span(1..2),
                                                             Script::Normal,
@@ -709,10 +709,10 @@ fn test_symbol_name_one_syllable() {
     assert_eq!(
         parse_successfully_with(
             "START4",
-            named_symbol_or_here(SymexSyllableRule::Multiple, Script::Normal),
+            named_symbol(SymexSyllableRule::Multiple, Script::Normal),
             no_state_setup
         ),
-        SymbolOrHere::from("START4")
+        SymbolName::from("START4")
     );
 }
 
@@ -721,10 +721,10 @@ fn test_symbol_name_two_syllables() {
     assert_eq!(
         parse_successfully_with(
             "TWO WORDS",
-            named_symbol_or_here(SymexSyllableRule::Multiple, Script::Normal),
+            named_symbol(SymexSyllableRule::Multiple, Script::Normal),
             no_state_setup
         ),
-        SymbolOrHere::from("TWOWORDS")
+        SymbolName::from("TWOWORDS")
     );
 }
 
@@ -839,13 +839,9 @@ fn test_arrow() {
                 instruction: UntaggedProgramInstruction {
                     span: span(5..6),
                     holdbit: HoldBit::Unspecified,
-                    inst: InstructionFragment::Arithmetic(ArithmeticExpression::from(
-                        Atom::Literal(LiteralValue::from((
-                            span(5..6),
-                            Script::Normal,
-                            Unsigned36Bit::ZERO
-                        )))
-                    )),
+                    inst: InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::from(
+                        LiteralValue::from((span(5..6), Script::Normal, Unsigned36Bit::ZERO))
+                    ))),
                 },
                 trailing_commas: None
             }]
@@ -865,9 +861,9 @@ fn test_arrow() {
                 instruction: UntaggedProgramInstruction {
                     span: span(8..9),
                     holdbit: HoldBit::Unspecified,
-                    inst: InstructionFragment::Arithmetic(ArithmeticExpression::from(
-                        Atom::Literal(LiteralValue::from((span(8..9), Script::Normal, u36!(1),)))
-                    )),
+                    inst: InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::from(
+                        LiteralValue::from((span(8..9), Script::Normal, u36!(1),))
+                    ))),
                 },
                 trailing_commas: None
             }]
@@ -899,7 +895,7 @@ fn test_multi_syllable_tag() {
 
 #[test]
 fn test_infix_minus_interpreted_as_subtraction() {
-    let head = SignedAtom::from(Atom::Literal(LiteralValue::from((
+    let head = SignedAtom::from(Atom::from(LiteralValue::from((
         span(0..1),
         Script::Normal,
         u36!(4),
@@ -907,7 +903,7 @@ fn test_infix_minus_interpreted_as_subtraction() {
     for (input, rhs_span) in [("4 - 2", 4..5), ("4-2", 2..3), ("4 -2", 3..4)] {
         let tail = vec![(
             Operator::Subtract,
-            SignedAtom::from(Atom::Literal(LiteralValue::from((
+            SignedAtom::from(Atom::from(LiteralValue::from((
                 span(rhs_span),
                 Script::Normal,
                 u36!(2),
@@ -1034,7 +1030,7 @@ fn assignment_of_literal(name: &str, assignment_span: Span, literal: LiteralValu
                 instruction: UntaggedProgramInstruction {
                     span: span((literal.span().start)..(assignment_span.end)),
                     holdbit: HoldBit::Unspecified,
-                    inst: atom_to_fragment(Atom::Literal(literal)),
+                    inst: atom_to_fragment(Atom::from(literal)),
                 },
                 trailing_commas: None,
             }],
@@ -1177,7 +1173,7 @@ fn test_assignment_lines() {
                             UntaggedProgramInstruction {
                                 span: span(19..20),
                                 holdbit: HoldBit::Unspecified,
-                                inst: atom_to_fragment(Atom::Literal(LiteralValue::from((
+                                inst: atom_to_fragment(Atom::from(LiteralValue::from((
                                     span(19..20),
                                     Script::Normal,
                                     u36!(6)
@@ -1308,7 +1304,7 @@ fn test_opcode() {
     });
     assert_eq!(
         parse_single_instruction_fragment("AUX"),
-        InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::Literal(
+        InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::from(
             LiteralValue::from((span(0..3), Script::Normal, expected_instruction.bits(),))
         ))),
     );
@@ -1477,22 +1473,22 @@ fn test_logical_or_glyph_superscript() {
 fn test_arithmetic_expression_head_only() {
     assert_eq!(
         parse_normal_arithmetic_expression("6"),
-        Ok(ArithmeticExpression::from(Atom::Literal(
-            LiteralValue::from((span(0..1), Script::Normal, u36!(6)))
-        )))
+        Ok(ArithmeticExpression::from(Atom::from(LiteralValue::from(
+            (span(0..1), Script::Normal, u36!(6))
+        ))))
     );
 }
 
 #[test]
 fn test_arithmetic_expression_two_atoms() {
-    let head = SignedAtom::from(Atom::Literal(LiteralValue::from((
+    let head = SignedAtom::from(Atom::from(LiteralValue::from((
         span(0..1),
         Script::Normal,
         u36!(4),
     ))));
     let tail = vec![(
         Operator::LogicalOr,
-        SignedAtom::from(Atom::Literal(LiteralValue::from((
+        SignedAtom::from(Atom::from(LiteralValue::from((
             span(6..7),
             Script::Normal,
             u36!(2),
@@ -1738,26 +1734,29 @@ fn test_macro_definition_with_trivial_body() {
         macro_definition(),
         no_state_setup,
     );
-    let expected =
-        MacroDefinition {
-            name: SymbolName::from("JUST".to_string()),
-            args: MacroArguments::OneOrMore(vec![MacroArgument {
-                name: SymbolName::from("A".to_string()),
-                span: span(14..16),
-                preceding_terminator: '|',
-            }]),
-            body: vec![Statement::Instruction(TaggedProgramInstruction::single(
-                None,
-                UntaggedProgramInstruction {
-                    span: span(17..18),
-                    holdbit: HoldBit::Unspecified,
-                    inst: InstructionFragment::Arithmetic(ArithmeticExpression::from(
-                        Atom::Symbol(span(17..18), Script::Normal, SymbolOrHere::from("A")),
+    let expected = MacroDefinition {
+        name: SymbolName::from("JUST".to_string()),
+        args: MacroArguments::OneOrMore(vec![MacroArgument {
+            name: SymbolName::from("A".to_string()),
+            span: span(14..16),
+            preceding_terminator: '|',
+        }]),
+        body: vec![Statement::Instruction(TaggedProgramInstruction::single(
+            None,
+            UntaggedProgramInstruction {
+                span: span(17..18),
+                holdbit: HoldBit::Unspecified,
+                inst: InstructionFragment::Arithmetic(ArithmeticExpression::from(
+                    Atom::SymbolOrLiteral(SymbolOrLiteral::Symbol(
+                        Script::Normal,
+                        SymbolName::from("A"),
+                        span(17..18),
                     )),
-                },
-            ))],
-            span: span(0..66),
-        };
+                )),
+            },
+        ))],
+        span: span(0..66),
+    };
     assert_eq!(got, expected);
 }
 
@@ -1782,9 +1781,9 @@ fn test_macro_definition_as_entire_source_file() {
                 UntaggedProgramInstruction {
                     span: span(17..18),
                     holdbit: HoldBit::Unspecified,
-                    inst: InstructionFragment::Arithmetic(ArithmeticExpression::from(
-                        Atom::Symbol(span(17..18), Script::Normal, SymbolOrHere::from("A")),
-                    )),
+                    inst: InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::from(
+                        (span(17..18), Script::Normal, SymbolName::from("A")),
+                    ))),
                 },
             ))],
             span: span(0..28),
@@ -1803,24 +1802,24 @@ fn test_asterisk_for_deferred_addressing() {
         vec![
             InstructionFragment::Config(ConfigValue {
                 already_superscript: true,
-                expr: ArithmeticExpression::from(Atom::Literal(LiteralValue::from((
+                expr: ArithmeticExpression::from(Atom::from(LiteralValue::from((
                     span(0..7),
                     Script::Super,
                     u36!(0o1)
                 ))))
             }),
-            InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::Literal(
+            InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::from(
                 LiteralValue::from((span(7..10), Script::Normal, u36!(0o1600000000)))
             ))),
-            InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::Literal(
+            InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::from(
                 LiteralValue::from((span(10..17), Script::Sub, Unsigned36Bit::ZERO))
             ),)),
             InstructionFragment::DeferredAddressing,
-            InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::Symbol(
+            InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::from((
                 span(19..20),
                 Script::Normal,
-                SymbolOrHere::from("B"),
-            ),)),
+                SymbolName::from("B"),
+            ))),)
         ]
     );
 }
@@ -1846,11 +1845,11 @@ fn test_double_pipe_config_symbolic() {
                     holdbit: HoldBit::Unspecified,
                     inst: InstructionFragment::Config(ConfigValue {
                         already_superscript: false,
-                        expr: ArithmeticExpression::from(Atom::Symbol(
+                        expr: ArithmeticExpression::from(Atom::from((
                             span(3..4),
                             Script::Normal,
-                            SymbolOrHere::from("X"),
-                        )),
+                            SymbolName::from("X"),
+                        ))),
                     }),
                 },
                 trailing_commas: None,
@@ -1860,9 +1859,9 @@ fn test_double_pipe_config_symbolic() {
                 instruction: UntaggedProgramInstruction {
                     span: span(5..6),
                     holdbit: HoldBit::Unspecified,
-                    inst: InstructionFragment::Arithmetic(ArithmeticExpression::from(
-                        Atom::Symbol(span(5..6), Script::Normal, SymbolOrHere::from("Y")),
-                    )),
+                    inst: InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::from(
+                        (span(5..6), Script::Normal, SymbolName::from("Y")),
+                    ))),
                 },
                 trailing_commas: None,
             },
@@ -1905,11 +1904,11 @@ fn test_double_pipe_config_expression() {
                                         first: SignedAtom {
                                             span: span(5..6),
                                             negated: false,
-                                            magnitude: Atom::Symbol(
+                                            magnitude: Atom::from((
                                                 span(5..6),
                                                 Script::Normal,
-                                                SymbolOrHere::from("Q"),
-                                            ),
+                                                SymbolName::from("Q"),
+                                            )),
                                         },
                                         tail: vec![(
                                             Operator::Multiply,
@@ -1937,9 +1936,9 @@ fn test_double_pipe_config_expression() {
                 instruction: UntaggedProgramInstruction {
                     span: span(11..12),
                     holdbit: HoldBit::Unspecified,
-                    inst: InstructionFragment::Arithmetic(ArithmeticExpression::from(
-                        Atom::Symbol(span(11..12), Script::Normal, SymbolOrHere::from("Y")),
-                    )),
+                    inst: InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::from(
+                        (span(11..12), Script::Normal, SymbolName::from("Y")),
+                    ))),
                 },
                 trailing_commas: None,
             },
@@ -1989,7 +1988,7 @@ fn test_superscript_configuration_literal() {
         already_superscript: true,
         expr: ArithmeticExpression::from(Atom::from((span(0..7), Script::Super, u36!(0o1)))),
     });
-    let aux = InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::Literal(
+    let aux = InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::from(
         LiteralValue::from((
             span(7..10),
             Script::Normal,
@@ -2033,7 +2032,7 @@ fn test_superscript_configuration_hash() {
             expr: ArithmeticExpression::from(SignedAtom {
                 negated: false,
                 span: span(0..10),
-                magnitude: Atom::Symbol(span(0..10), Script::Super, SymbolOrHere::Here),
+                magnitude: Atom::SymbolOrLiteral(SymbolOrLiteral::Here(Script::Super, span(0..10))),
             })
         }),
     );
@@ -2055,11 +2054,7 @@ fn test_pipe_construct() {
                 SymbolName::from("DISPTBL"),
                 span(31..38),
             ))),
-            Atom::Symbol(
-                span(21..31),
-                Script::Sub,
-                SymbolOrHere::Named(SymbolName::from("β")),
-            ),
+            Atom::from((span(21..31), Script::Sub, SymbolName::from("β"))),
         )),
     };
     assert_eq!(got, expected, "incorrect parse of input {input}");
@@ -2209,7 +2204,7 @@ mod comma_tests {
         UntaggedProgramInstruction {
             span: sp,
             holdbit: HoldBit::Unspecified,
-            inst: InstructionFragment::from(ArithmeticExpression::from(Atom::Literal(
+            inst: InstructionFragment::from(ArithmeticExpression::from(Atom::from(
                 LiteralValue::from((sp, Script::Normal, n.into())),
             ))),
         }

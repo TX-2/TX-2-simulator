@@ -11,7 +11,7 @@ use base::prelude::*;
 use super::glyph;
 use super::span::*;
 use super::state::NumeralMode;
-use super::symbol::{SymbolContext, SymbolName, SymbolOrHere};
+use super::symbol::{SymbolContext, SymbolName};
 use super::symtab::SymbolDefinition;
 use super::types::*;
 
@@ -340,28 +340,28 @@ impl ConfigValue {
 /// User Handbook).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Atom {
-    Literal(LiteralValue),
-    Symbol(Span, Script, SymbolOrHere),
+    SymbolOrLiteral(SymbolOrLiteral),
     Parens(Span, Script, Box<ArithmeticExpression>),
     RcRef(Span, Vec<TaggedProgramInstruction>),
 }
 
+impl From<(Span, Script, SymbolName)> for Atom {
+    fn from((span, script, name): (Span, Script, SymbolName)) -> Self {
+        Atom::SymbolOrLiteral(SymbolOrLiteral::Symbol(script, name, span))
+    }
+}
+
 impl From<SymbolOrLiteral> for Atom {
     fn from(value: SymbolOrLiteral) -> Self {
-        match value {
-            SymbolOrLiteral::Symbol(script, symbol_name, span) => {
-                Atom::Symbol(span, script, SymbolOrHere::Named(symbol_name))
-            }
-            SymbolOrLiteral::Literal(literal_value) => Atom::Literal(literal_value),
-        }
+        Atom::SymbolOrLiteral(value)
     }
 }
 
 impl Atom {
     fn span(&self) -> Span {
+        // TODO: return &Span instead?
         match self {
-            Atom::Literal(literal) => literal.span,
-            Atom::Symbol(span, _, _) => *span,
+            Atom::SymbolOrLiteral(value) => *value.span(),
             Atom::Parens(span, _script, _bae) => *span,
             Atom::RcRef(span, _) => *span,
         }
@@ -374,14 +374,14 @@ impl Atom {
     ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
         let mut result = Vec::with_capacity(1);
         match self {
-            Atom::Literal(_) | Atom::Symbol(_, _, SymbolOrHere::Here) => (),
-            Atom::Symbol(span, script, SymbolOrHere::Named(name)) => {
+            Atom::SymbolOrLiteral(SymbolOrLiteral::Symbol(script, name, span)) => {
                 result.push((
                     name.clone(),
                     *span,
                     SymbolUse::Reference(SymbolContext::from((script, *span))),
                 ));
             }
+            Atom::SymbolOrLiteral(SymbolOrLiteral::Literal(_) | SymbolOrLiteral::Here(_, _)) => (),
             Atom::Parens(_span, _script, expr) => {
                 result.extend(expr.symbol_uses(block_id, block_offset));
             }
@@ -436,7 +436,7 @@ impl Atom {
 
 impl From<LiteralValue> for Atom {
     fn from(literal: LiteralValue) -> Atom {
-        Atom::Literal(literal)
+        Atom::SymbolOrLiteral(SymbolOrLiteral::Literal(literal))
     }
 }
 
@@ -465,15 +465,7 @@ fn elevated_string<'a>(s: &'a str, elevation: &Script) -> Cow<'a, str> {
 impl std::fmt::Display for Atom {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Atom::Symbol(_span, elevation, SymbolOrHere::Here) => match elevation {
-                Script::Super => f.write_str("@super_hash@"),
-                Script::Normal => f.write_char('#'),
-                Script::Sub => f.write_str("@sub_hash@"),
-            },
-            Atom::Literal(value) => value.fmt(f),
-            Atom::Symbol(_span, elevation, SymbolOrHere::Named(name)) => {
-                elevated_string(&name.to_string(), elevation).fmt(f)
-            }
+            Atom::SymbolOrLiteral(value) => write!(f, "{value}"),
             Atom::Parens(_span, script, expr) => elevated_string(&expr.to_string(), script).fmt(f),
             Atom::RcRef(_span, _rc_reference) => {
                 // The RcRef doesn't itself record the content of the
@@ -488,13 +480,22 @@ impl std::fmt::Display for Atom {
 pub(crate) enum SymbolOrLiteral {
     Symbol(Script, SymbolName, Span),
     Literal(LiteralValue),
+    Here(Script, Span),
 }
 
 impl SymbolOrLiteral {
+    pub(crate) fn span(&self) -> &Span {
+        match self {
+            SymbolOrLiteral::Symbol(_, _, span) => span,
+            SymbolOrLiteral::Literal(literal_value) => &literal_value.span,
+            SymbolOrLiteral::Here(_, span) => span,
+        }
+    }
+
     fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
         let mut result: Vec<(SymbolName, Span, SymbolUse)> = Vec::with_capacity(1);
         match self {
-            SymbolOrLiteral::Literal(_) => (),
+            SymbolOrLiteral::Here(_, _) | SymbolOrLiteral::Literal(_) => (),
             SymbolOrLiteral::Symbol(script, name, span) => {
                 let context: SymbolContext = (script, *span).into();
                 let sym_use: SymbolUse = SymbolUse::Reference(context);
@@ -502,6 +503,22 @@ impl SymbolOrLiteral {
             }
         }
         result.into_iter()
+    }
+}
+
+impl Display for SymbolOrLiteral {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            SymbolOrLiteral::Here(script, _span) => match script {
+                Script::Super => f.write_str("@super_hash@"),
+                Script::Normal => f.write_char('#'),
+                Script::Sub => f.write_str("@sub_hash@"),
+            },
+            SymbolOrLiteral::Symbol(script, name, _) => {
+                elevated_string(&name.to_string(), script).fmt(f)
+            }
+            SymbolOrLiteral::Literal(value) => value.fmt(f),
+        }
     }
 }
 
@@ -1021,7 +1038,7 @@ impl From<(Span, Unsigned36Bit)> for Statement {
             UntaggedProgramInstruction {
                 span,
                 holdbit: HoldBit::Unspecified,
-                inst: InstructionFragment::from(ArithmeticExpression::from(Atom::Literal(
+                inst: InstructionFragment::from(ArithmeticExpression::from(Atom::from(
                     LiteralValue {
                         span,
                         elevation: Script::Normal,

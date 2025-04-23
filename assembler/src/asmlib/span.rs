@@ -11,7 +11,7 @@ pub(crate) fn extract_span<'a>(body: &'a str, span: &Span) -> &'a str {
     &body[span.start..span.end]
 }
 
-pub(crate) fn extract_prefix<'a>(body: &'a str, pos: usize) -> &'a str {
+pub(crate) fn extract_prefix(body: &str, pos: usize) -> &str {
     let body_prefix = &body[0..pos];
     let line_start = match body_prefix.rfind('\n') {
         None => 0,

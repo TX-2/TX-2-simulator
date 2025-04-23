@@ -22,7 +22,7 @@ use super::glyph::Unrecognised;
 use super::lexer::{self};
 use super::span::*;
 use super::state::NumeralMode;
-use super::symbol::{SymbolName, SymbolOrHere};
+use super::symbol::SymbolName;
 use base::charset::Script;
 use base::prelude::*;
 use helpers::Sign;
@@ -180,13 +180,14 @@ where
     choice((bit_selector(script_required), plain_literal)).labelled("numeric literal")
 }
 
-fn here<'a, I>(script_required: Script) -> impl Parser<'a, I, SymbolOrHere, Extra<'a>> + Clone
+fn here<'a, I>(script_required: Script) -> impl Parser<'a, I, SymbolOrLiteral, Extra<'a>> + Clone
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
     select! {
-        Tok::Hash(script) if script == script_required => SymbolOrHere::Here,
+        Tok::Hash(script) if script == script_required => (),
     }
+    .map_with(move |(), extra| SymbolOrLiteral::Here(script_required, extra.span()))
 }
 
 fn opcode_code(s: &str) -> Option<(Unsigned5Bit, Unsigned6Bit)> {
@@ -336,19 +337,6 @@ where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
     symex::parse_symex(rule, script_required)
-}
-
-fn named_symbol_or_here<'a, I>(
-    rule: SymexSyllableRule,
-    script_required: Script,
-) -> impl Parser<'a, I, SymbolOrHere, Extra<'a>>
-where
-    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
-{
-    choice((
-        here(script_required),
-        named_symbol(rule, script_required).map(SymbolOrHere::Named),
-    ))
 }
 
 pub(super) fn operator<'a, I>(
@@ -803,9 +791,14 @@ where
                 let naked_atom = choice((
                     literal(script_required).map(Atom::from),
                     opcode().map(Atom::from),
-                    named_symbol_or_here(symex_syllable_rule, script_required).map_with(
-                        move |symbol_or_here, extra| {
-                            Atom::Symbol(extra.span(), script_required, symbol_or_here)
+                    here(script_required).map(Atom::SymbolOrLiteral),
+                    named_symbol(symex_syllable_rule, script_required).map_with(
+                        move |symbol_name, extra| {
+                            Atom::SymbolOrLiteral(SymbolOrLiteral::Symbol(
+                                script_required,
+                                symbol_name,
+                                extra.span(),
+                            ))
                         },
                     ),
                     register_containing,
@@ -1095,7 +1088,7 @@ where
             .map(build_code_line)
             .labelled("statement with origin");
 
-        let origin_only = origin().map(|origin| ManuscriptLine::OriginOnly(origin));
+        let origin_only = origin().map(ManuscriptLine::OriginOnly);
 
         choice((
             // Ignore whitespace after the metacommand but not before it.
