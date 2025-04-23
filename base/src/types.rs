@@ -149,6 +149,18 @@ impl From<Address> for Unsigned18Bit {
     }
 }
 
+impl From<&Address> for Unsigned18Bit {
+    fn from(addr: &Address) -> Self {
+        addr.0
+    }
+}
+
+impl From<&Address> for Unsigned36Bit {
+    fn from(addr: &Address) -> Self {
+        addr.0.into()
+    }
+}
+
 impl From<Address> for Unsigned36Bit {
     fn from(addr: Address) -> Self {
         Unsigned36Bit::from(u32::from(addr))
