@@ -486,6 +486,10 @@ fn assemble_pass3(
         }
     }
 
+    for (_, directive_block) in blocks.iter() {
+        directive_block.extract_final_equalities(symtab, &mut rcblock, &mut final_symbols, body)?;
+    }
+
     // Emit the binary code.
     for (block_id, directive_block) in blocks.iter() {
         event!(
@@ -538,7 +542,7 @@ fn assemble_pass3(
         for (i, (rc_source, word)) in rcblock.words.iter().enumerate() {
             let address = rcblock.address.index_by(
                 Unsigned18Bit::try_from(i)
-                    .expect("RC block size shoudl be limite to physical address space"),
+                    .expect("RC block size should be limite to physical address space"),
             );
 
             listing.push_rc_line(ListingLine {

@@ -790,3 +790,18 @@ fn test_undefined_symbol_in_calculation() {
     // (which would be incorrect, since it has a definition).
     assert_eq!(program.chunks[0].words[1], u36!(0o3));
 }
+
+#[test]
+fn test_symbol_definition_loop_detection() {
+    use super::super::types::AssemblerFailure;
+    let input = concat!("A = B\n", "B = A\n", "A\n",);
+    match assemble_source(input, Default::default()) {
+        Err(AssemblerFailure::InvalidProgram { .. }) => (),
+        Err(e) => {
+            panic!("excpected an error from the assembler, but not this one: {e:?}");
+        }
+        Ok(program) => {
+            panic!("excpected an error from the assembler, not an assembled program: {program:?}");
+        }
+    }
+}
