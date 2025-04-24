@@ -335,6 +335,92 @@ impl ConfigValue {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RegistersContaining(Vec<RegisterContaining>);
+
+impl RegistersContaining {
+    pub(crate) fn from_words(words: Vec<RegisterContaining>) -> RegistersContaining {
+        Self(words)
+    }
+
+    pub(crate) fn words(&self) -> &[RegisterContaining] {
+        &self.0
+    }
+
+    fn symbol_uses(
+        &self,
+        block_id: BlockIdentifier,
+        block_offset: Unsigned18Bit,
+    ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> + use<'_> {
+        self.0
+            .iter()
+            .flat_map(move |rc| rc.symbol_uses(block_id, block_offset))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RegisterContaining(Box<TaggedProgramInstruction>);
+
+impl From<TaggedProgramInstruction> for RegisterContaining {
+    fn from(inst: TaggedProgramInstruction) -> Self {
+        Self(Box::new(inst))
+    }
+}
+
+impl RegisterContaining {
+    pub(crate) fn instruction(&self) -> &TaggedProgramInstruction {
+        &self.0
+    }
+
+    fn symbol_uses(
+        &self,
+        block_id: BlockIdentifier,
+        block_offset: Unsigned18Bit,
+    ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> + use<'_> {
+        // Tags defined inside the RC-word are not counted as
+        // defined outside it.  But if we refer to a symbol
+        // inside the RC-word it counts as a reference for the
+        // purpose of determining which contexts it has been
+        // used in.
+        let mut result = Vec::new();
+        for symbol_use in self.0.symbol_uses(block_id, block_offset) {
+            let (name, span, symbol_definition) = symbol_use;
+            match symbol_definition {
+                def @ SymbolUse::Reference(_) => {
+                    result.push((name, span, def));
+                }
+                SymbolUse::Definition(tagdef @ SymbolDefinition::Tag { .. }) => {
+                    result.push((name, span, SymbolUse::LocalDefinition(tagdef)));
+                }
+                SymbolUse::LocalDefinition(_) => {
+                    panic!("found local definition inside RC-word, don't know how to handle this.");
+                }
+                SymbolUse::Origin(_name, _block) => {
+                    unreachable!("Found origin {name} inside an RC-word; the parser should have rejected this.");
+                }
+                SymbolUse::Definition(_) => {
+                    // e.g. we have an input like
+                    //
+                    // { X = 2 }
+                    //
+                    //
+                    // Ideally we would issue an error for
+                    // this, but since this function cannot
+                    // fail, it's better to do that at the
+                    // time we parse the RC-word reference
+                    // (thus eliminating this case).
+                    //
+                    // When working on this case we should
+                    // figure out if an equality is allowed
+                    // inside a macro expansion.
+                    panic!("Found unexpected definition of {name} inside RC-word reference at {span:?}");
+                }
+            }
+        }
+        result.into_iter()
+    }
+}
+
 /// Eventually we will support real expressions, but for now we only
 /// suport literals and references to symbols ("equalities" in the
 /// User Handbook).
@@ -342,7 +428,7 @@ impl ConfigValue {
 pub(crate) enum Atom {
     SymbolOrLiteral(SymbolOrLiteral),
     Parens(Span, Script, Box<ArithmeticExpression>),
-    RcRef(Span, Vec<TaggedProgramInstruction>),
+    RcRef(Span, RegistersContaining),
 }
 
 impl From<(Span, Script, SymbolName)> for Atom {
@@ -385,49 +471,8 @@ impl Atom {
             Atom::Parens(_span, _script, expr) => {
                 result.extend(expr.symbol_uses(block_id, block_offset));
             }
-            Atom::RcRef(_span, tagged_instructions) => {
-                // Tags defined inside the RC-word are not counted as
-                // defined outside it.  But if we refer to a symbol
-                // inside the RC-word it counts as a reference for the
-                // purpose of determining which contexts it has been
-                // used in.
-                for symbol_use in tagged_instructions
-                    .iter()
-                    .flat_map(|instr| instr.symbol_uses(block_id, block_offset))
-                {
-                    let (name, span, symbol_definition) = symbol_use;
-                    match symbol_definition {
-                        def @ SymbolUse::Reference(_) => {
-                            result.push((name, span, def));
-                        }
-                        SymbolUse::Definition(tagdef @ SymbolDefinition::Tag { .. }) => {
-                            result.push((name, span, SymbolUse::LocalDefinition(tagdef)));
-                        }
-                        SymbolUse::LocalDefinition(_) => {
-                            panic!("found local definition inside RC-word, don't know how to handle this.");
-                        }
-                        SymbolUse::Origin(_name, _block) => {
-                            unreachable!("Found origin {name} inside an RC-word; the parser should have rejected this.");
-                        }
-                        SymbolUse::Definition(_) => {
-                            // e.g. we have an input like
-                            //
-                            // { X = 2 }
-                            //
-                            //
-                            // Ideally we would issue an error for
-                            // this, but since this function cannot
-                            // fail, it's better to do that at the
-                            // time we parse the RC-word reference
-                            // (thus eliminating this case).
-                            //
-                            // When working on this case we should
-                            // figure out if an equality is allowed
-                            // inside a macro expansion.
-                            panic!("Found unexpected definition of {name} inside RC-word reference at {span:?}");
-                        }
-                    }
-                }
+            Atom::RcRef(_span, rc_words) => {
+                result.extend(rc_words.symbol_uses(block_id, block_offset));
             }
         }
         result.into_iter()
@@ -544,7 +589,7 @@ pub(crate) enum InstructionFragment {
     PipeConstruct {
         index: SpannedSymbolOrLiteral,
         rc_word_span: Span,
-        rc_word_value: Box<(InstructionFragment, Atom)>,
+        rc_word_value: RegisterContaining,
     },
     Null,
     // TODO: subscript/superscript atom (if the `Arithmetic` variant
@@ -584,9 +629,7 @@ impl InstructionFragment {
                             (name, span, symbol_use)
                         }),
                 );
-                let (base, index) = rc_word_value.as_ref();
-                result.extend(base.symbol_uses(block_id, block_offset));
-                result.extend(index.symbol_uses(block_id, block_offset));
+                result.extend(rc_word_value.symbol_uses(block_id, block_offset));
             }
         }
         result.into_iter()

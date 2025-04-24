@@ -672,26 +672,28 @@ fn test_comment_in_rc_block() {
                             inst: InstructionFragment::from(ArithmeticExpression::from(
                                 Atom::RcRef(
                                     span(0..10),
-                                    vec![TaggedProgramInstruction {
-                                        tag: None,
-                                        instructions: vec![CommaDelimitedInstruction {
-                                            leading_commas: None,
-                                            instruction: UntaggedProgramInstruction {
-                                                span: span(1..2),
-                                                holdbit: HoldBit::Unspecified,
-                                                inst: InstructionFragment::Arithmetic(
-                                                    ArithmeticExpression::from(Atom::from(
-                                                        LiteralValue::from((
-                                                            span(1..2),
-                                                            Script::Normal,
-                                                            Unsigned36Bit::ONE
+                                    RegistersContaining::from_words(vec![
+                                        RegisterContaining::from(TaggedProgramInstruction {
+                                            tag: None,
+                                            instructions: vec![CommaDelimitedInstruction {
+                                                leading_commas: None,
+                                                instruction: UntaggedProgramInstruction {
+                                                    span: span(1..2),
+                                                    holdbit: HoldBit::Unspecified,
+                                                    inst: InstructionFragment::Arithmetic(
+                                                        ArithmeticExpression::from(Atom::from(
+                                                            LiteralValue::from((
+                                                                span(1..2),
+                                                                Script::Normal,
+                                                                Unsigned36Bit::ONE
+                                                            ))
                                                         ))
-                                                    ))
-                                                )
-                                            },
-                                            trailing_commas: None,
-                                        }]
-                                    }],
+                                                    )
+                                                },
+                                                trailing_commas: None,
+                                            }]
+                                        })
+                                    ]),
                                 )
                             ))
                         }
@@ -2048,14 +2050,51 @@ fn test_pipe_construct() {
             span: span(0..11),
         },
         rc_word_span: span(21..38),
-        rc_word_value: Box::new((
-            InstructionFragment::Arithmetic(ArithmeticExpression::from(SymbolOrLiteral::Symbol(
-                Script::Normal,
-                SymbolName::from("DISPTBL"),
-                span(31..38),
-            ))),
-            Atom::from((span(21..31), Script::Sub, SymbolName::from("β"))),
-        )),
+        rc_word_value: RegisterContaining::from(TaggedProgramInstruction {
+            tag: None,
+            instructions: vec![
+                CommaDelimitedInstruction {
+                    leading_commas: None,
+                    instruction: UntaggedProgramInstruction {
+                        span: span(31..38),
+                        holdbit: HoldBit::Unspecified,
+                        inst: InstructionFragment::Arithmetic(ArithmeticExpression {
+                            first: SignedAtom {
+                                negated: false,
+                                span: span(31..38),
+                                magnitude: Atom::SymbolOrLiteral(SymbolOrLiteral::Symbol(
+                                    Script::Normal,
+                                    SymbolName::from("DISPTBL".to_string()),
+                                    span(31..38),
+                                )),
+                            },
+                            tail: Vec::new(),
+                        }),
+                    },
+                    trailing_commas: None,
+                },
+                CommaDelimitedInstruction {
+                    leading_commas: None,
+                    instruction: UntaggedProgramInstruction {
+                        span: span(21..31),
+                        holdbit: HoldBit::Unspecified,
+                        inst: InstructionFragment::Arithmetic(ArithmeticExpression {
+                            first: SignedAtom {
+                                negated: false,
+                                span: span(21..31),
+                                magnitude: Atom::SymbolOrLiteral(SymbolOrLiteral::Symbol(
+                                    Script::Sub,
+                                    SymbolName::from("β"),
+                                    span(21..31),
+                                )),
+                            },
+                            tail: Vec::new(),
+                        }),
+                    },
+                    trailing_commas: None,
+                },
+            ],
+        }),
     };
     assert_eq!(got, expected, "incorrect parse of input {input}");
 }

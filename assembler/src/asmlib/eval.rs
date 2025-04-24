@@ -10,8 +10,8 @@ use base::{
 use super::ast::{
     ArithmeticExpression, Atom, CommaDelimitedInstruction, Commas, ConfigValue, EqualityValue,
     HoldBit, InstructionFragment, LiteralValue, LocatedBlock, Operator, RcAllocator, RcWordSource,
-    SignedAtom, Statement, SymbolOrLiteral, Tag, TaggedProgramInstruction,
-    UntaggedProgramInstruction,
+    RegisterContaining, RegistersContaining, SignedAtom, Statement, SymbolOrLiteral, Tag,
+    TaggedProgramInstruction, UntaggedProgramInstruction,
 };
 use super::listing::{Listing, ListingLine};
 use super::span::*;
@@ -394,19 +394,20 @@ impl Evaluate for InstructionFragment {
                 // of Q and ₜ were combined into the two parts of the
                 // rc_word_value tuple.  We evaluate Qₜ as
                 // rc_word_val.
-                let (base, index) = rc_word_value.as_ref();
-                let base_value =
-                    base.evaluate(*rc_word_span, target_address, symtab, rc_allocator, op)?;
-                let index_value =
-                    index.evaluate(*rc_word_span, target_address, symtab, rc_allocator, op)?;
-                let rc_word_val: Unsigned36Bit = combine_fragment_values(base_value, index_value);
                 let p_value: Unsigned36Bit =
                     p.item
                         .evaluate(p.span, target_address, symtab, rc_allocator, op)?;
-                let rc_source = RcWordSource::PipeConstruct(*rc_word_span);
-                let addr: Address = rc_allocator.allocate(rc_source, rc_word_val);
+                let source_and_val: (&RcWordSource, &RegisterContaining) =
+                    (&RcWordSource::PipeConstruct(*rc_word_span), rc_word_value);
+                let rc_word_addr: Unsigned36Bit = source_and_val.evaluate(
+                    *rc_word_span,
+                    target_address,
+                    symtab,
+                    rc_allocator,
+                    op,
+                )?;
                 Ok(combine_fragment_values(
-                    combine_fragment_values(Unsigned36Bit::from(addr), p_value),
+                    combine_fragment_values(p_value, rc_word_addr),
                     DEFER_BIT,
                 ))
             }
@@ -467,44 +468,10 @@ impl Evaluate for Atom {
             Atom::Parens(span, _script, expr) => {
                 expr.evaluate(*span, target_address, symtab, rc_allocator, op)
             }
-            Atom::RcRef(span, tagged_program_instructions) => {
-                let mut first_addr: Option<Address> = None;
-                for inst in tagged_program_instructions.iter() {
-                    let rc_source = RcWordSource::Braces(*span);
-                    let rc_word_addr: Address =
-                        rc_allocator.allocate(rc_source, Unsigned36Bit::ZERO);
-                    if first_addr.is_none() {
-                        first_addr = Some(rc_word_addr);
-                    }
-
-                    // Within the RC-word, # ("here") resolves to the
-                    // address of the RC-word itself.  So before we
-                    // evaluate the value to be placed in the RC-word,
-                    // we need to know the value that # will take
-                    // during the evaluation process.
-                    let here = HereValue::Address(rc_word_addr);
-
-                    // If inst has a tag, we temporarily override any
-                    // global value for that tag with the address of
-                    // this instruction.
-                    let tag_override: Option<(&Tag, Address)> =
-                        inst.tag.as_ref().map(|t| (t, rc_word_addr));
-                    let value: Unsigned36Bit = symtab.evaluate_with_temporary_tag_override(
-                        tag_override,
-                        inst,
-                        inst.span(),
-                        &here,
-                        rc_allocator,
-                        op,
-                    )?;
-                    rc_allocator.update(rc_word_addr, value);
-                }
-                match first_addr {
-                    Some(addr) => Ok(addr.into()),
-                    None => {
-                        unreachable!("RC-references should not occupy zero words of storage");
-                    }
-                }
+            Atom::RcRef(span, registers_containing) => {
+                let source_and_val: (&RcWordSource, &RegistersContaining) =
+                    (&RcWordSource::Braces(*span), registers_containing);
+                source_and_val.evaluate(*span, target_address, symtab, rc_allocator, op)
             }
         }
     }
@@ -1182,5 +1149,84 @@ impl LocatedBlock {
             });
         }
         Ok(words)
+    }
+}
+
+impl Evaluate for (&RcWordSource, &RegistersContaining) {
+    fn evaluate<R: RcAllocator>(
+        &self,
+        span: Span,
+        _target_address: &HereValue,
+        symtab: &mut SymbolTable,
+        rc_allocator: &mut R,
+        op: &mut LookupOperation,
+    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+        let rc_source: &RcWordSource = self.0;
+        let registers_containing: &RegistersContaining = self.1;
+        let mut first_addr: Option<Unsigned36Bit> = None;
+        for rc_word in registers_containing.words() {
+            // Evaluation of the RegisterContaining value will compute
+            // a correct here-value, we don't need to pass it in.  But
+            // we can't pass None, and so instead we pass NotAllowed
+            // so that if a bug is introduced we will see a failure
+            // rather than an incorrect result.
+            let must_recompute_here_address = HereValue::NotAllowed;
+            let addr: Unsigned36Bit = (rc_source, rc_word).evaluate(
+                span,
+                &must_recompute_here_address,
+                symtab,
+                rc_allocator,
+                op,
+            )?;
+            if first_addr.is_none() {
+                first_addr = Some(addr);
+            }
+        }
+        match first_addr {
+            Some(addr) => Ok(addr),
+            None => {
+                unreachable!("RC-references should not occupy zero words of storage");
+            }
+        }
+    }
+}
+
+impl Evaluate for (&RcWordSource, &RegisterContaining) {
+    fn evaluate<R: RcAllocator>(
+        &self,
+        _span: Span,
+        _target_address: &HereValue,
+        symtab: &mut SymbolTable,
+        rc_allocator: &mut R,
+        op: &mut LookupOperation,
+    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+        let rc_source: &RcWordSource = self.0;
+        let register_containing: &RegisterContaining = self.1;
+
+        let rc_word_addr: Address = rc_allocator.allocate(rc_source.clone(), Unsigned36Bit::ZERO);
+        dbg!(&(rc_source, rc_word_addr));
+
+        // Within the RC-word, # ("here") resolves to the
+        // address of the RC-word itself.  So before we
+        // evaluate the value to be placed in the RC-word,
+        // we need to know the value that # will take
+        // during the evaluation process.
+        let here = HereValue::Address(rc_word_addr);
+
+        // If inst has a tag, we temporarily override any
+        // global value for that tag with the address of
+        // this instruction.
+        let inst: &TaggedProgramInstruction = register_containing.instruction();
+        let tag_override: Option<(&Tag, Address)> = inst.tag.as_ref().map(|t| (t, rc_word_addr));
+        let value: Unsigned36Bit = symtab.evaluate_with_temporary_tag_override(
+            tag_override,
+            inst,
+            inst.span(),
+            &here,
+            rc_allocator,
+            op,
+        )?;
+        rc_allocator.update(rc_word_addr, value);
+        Ok(Unsigned36Bit::from(rc_word_addr))
     }
 }

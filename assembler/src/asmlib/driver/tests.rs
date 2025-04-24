@@ -752,8 +752,12 @@ fn test_kleinrock_200016() {
     let program = assemble_source(input, Default::default()).expect("program is valid");
     dbg!(&program);
     assert_eq!(program.chunks.len(), 3);
-    assert_eq!(program.chunks[0].words.len(), 1); // program length
-    assert_eq!(program.chunks[2].words.len(), 1); // RC block length
+    assert_eq!(
+        program.chunks[0].words.len(),
+        1,
+        "Program code has wrong length"
+    );
+    assert_eq!(program.chunks[2].words.len(), 1, "RC block length is wrong");
 
     assert_eq!(program.chunks[0].address, Address::from(u18!(0o200_000))); // Location of program code
     assert_eq!(program.chunks[0].words[0], u36!(0o031_712_606_336));

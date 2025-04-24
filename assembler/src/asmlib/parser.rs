@@ -381,10 +381,36 @@ fn make_pipe_construct(
     // The variable names here are taken from the example in the
     // documentation comment.
     let tqspan = span(t.span.start..q_span.end);
+
+    let rc_word_value: RegisterContaining = RegisterContaining::from(TaggedProgramInstruction {
+        tag: None,
+        instructions: vec![
+            CommaDelimitedInstruction {
+                leading_commas: None,
+                instruction: UntaggedProgramInstruction {
+                    span: q_span,
+                    holdbit: HoldBit::Unspecified,
+                    inst: q,
+                },
+                trailing_commas: None,
+            },
+            CommaDelimitedInstruction {
+                leading_commas: None,
+                instruction: UntaggedProgramInstruction {
+                    span: t.span,
+                    holdbit: HoldBit::Unspecified,
+                    inst: InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::from(
+                        t.item,
+                    ))),
+                },
+                trailing_commas: None,
+            },
+        ],
+    });
     InstructionFragment::PipeConstruct {
         index: p,
         rc_word_span: tqspan,
-        rc_word_value: Box::new((q, Atom::from(t.item))),
+        rc_word_value,
     }
 }
 
@@ -761,7 +787,12 @@ where
             just(Tok::LeftBrace(Script::Normal)),
             just(Tok::RightBrace(Script::Normal)),
         )
-        .map_with(|tagged_instruction, extra| Atom::RcRef(extra.span(), vec![tagged_instruction]))
+        .map_with(|tagged_instruction, extra| {
+            Atom::RcRef(
+                extra.span(),
+                RegistersContaining::from_words(vec![RegisterContaining::from(tagged_instruction)]),
+            )
+        })
         .labelled("RC-word");
 
     let arith_expr = |allow_spaces: bool, script_required: Script| {
