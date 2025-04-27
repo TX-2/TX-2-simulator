@@ -7,7 +7,7 @@ use tracing::{event, Level};
 use base::prelude::*;
 use base::subword;
 
-use super::ast::{EqualityValue, Origin, RcAllocator, RcWordSource, Tag};
+use super::ast::{EqualityValue, Origin, RcAllocator, RcUpdater, RcWordSource, Tag};
 use super::eval::{
     Evaluate, HereValue, LookupTarget, SymbolLookup, SymbolLookupFailure, SymbolLookupFailureKind,
     SymbolValue,
@@ -77,12 +77,12 @@ pub(crate) struct LookupOperation {
 }
 
 impl Evaluate for (&SymbolName, &SymbolDefinition) {
-    fn evaluate<R: RcAllocator>(
+    fn evaluate<R: RcUpdater>(
         &self,
         span: Span,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
-        rc_allocator: &mut R,
+        rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         let (name, def): (&SymbolName, &SymbolDefinition) = *self;
@@ -93,7 +93,7 @@ impl Evaluate for (&SymbolName, &SymbolDefinition) {
                 block_id,
                 block_offset,
                 span: _,
-            } => match symtab.finalise_origin(*block_id, rc_allocator, Some(op)) {
+            } => match symtab.finalise_origin(*block_id, rc_updater, Some(op)) {
                 Ok(address) => {
                     let computed_address: Address = address.index_by(*block_offset);
                     Ok(computed_address.into())
@@ -108,7 +108,7 @@ impl Evaluate for (&SymbolName, &SymbolDefinition) {
                 // since assignments are not allowed to use
                 // '#' on the right-hand-side of the
                 // assignment.
-                expression.evaluate(expression.span(), target_address, symtab, rc_allocator, op)
+                expression.evaluate(expression.span(), target_address, symtab, rc_updater, op)
             }
             SymbolDefinition::Undefined(context_union) => Err(SymbolLookupFailure {
                 target: LookupTarget::Symbol(name.to_owned(), span),
@@ -120,18 +120,18 @@ impl Evaluate for (&SymbolName, &SymbolDefinition) {
     }
 }
 
-fn final_lookup_helper_body<R: RcAllocator>(
+fn final_lookup_helper_body<R: RcUpdater>(
     symtab: &mut SymbolTable,
     name: &SymbolName,
     span: Span,
     target_address: &HereValue,
-    rc_allocator: &mut R,
+    rc_updater: &mut R,
     op: &mut LookupOperation,
 ) -> Result<SymbolValue, SymbolLookupFailure> {
     if let Some(def) = symtab.get_clone(name) {
         let what = (name, &def);
         match what
-            .evaluate(span, target_address, symtab, rc_allocator, op)
+            .evaluate(span, target_address, symtab, rc_updater, op)
             .map(SymbolValue::Final)
         {
             Ok(value) => Ok(value),
@@ -141,7 +141,7 @@ fn final_lookup_helper_body<R: RcAllocator>(
                     SymbolLookupFailureKind::Missing {
                         uses: context_union,
                     },
-            }) => match symtab.get_default_value(name, &span, &context_union, rc_allocator) {
+            }) => match symtab.get_default_value(name, &span, &context_union) {
                 Ok(value) => {
                     match symtab.define(
                         span,
@@ -246,10 +246,10 @@ impl SymbolTable {
             });
     }
 
-    pub(crate) fn finalise_origin<R: RcAllocator>(
+    pub(crate) fn finalise_origin<R: RcUpdater>(
         &mut self,
         block_id: BlockIdentifier,
-        rc_allocator: &mut R,
+        rc_updater: &mut R,
         maybe_op: Option<&mut LookupOperation>,
     ) -> Result<Address, DefaultValueAssignmentError> {
         let mut newdef: Option<(SymbolName, SymbolDefinition, Span)> = None;
@@ -275,7 +275,7 @@ impl SymbolTable {
             } => {
                 let mut new_op = LookupOperation::default();
                 let op: &mut LookupOperation = maybe_op.unwrap_or(&mut new_op);
-                self.assign_default_for_block(block_id, rc_allocator, op)
+                self.assign_default_for_block(block_id, rc_updater, op)
             }
             BlockPosition {
                 origin: Some(Origin::Symbolic(span, symbol_name)),
@@ -290,7 +290,7 @@ impl SymbolTable {
                     Some(SymbolDefinition::Equality(rhs)) => {
                         let mut new_op = LookupOperation::default();
                         let op: &mut LookupOperation = maybe_op.unwrap_or(&mut new_op);
-                        match rhs.evaluate(rhs.span(), &HereValue::NotAllowed, self, rc_allocator, op) {
+                        match rhs.evaluate(rhs.span(), &HereValue::NotAllowed, self, rc_updater, op) {
                             Ok(value) => Ok(Address::from(subword::right_half(value))),
                             Err(e) => {
                                 panic!("no code to handle symbol lookup failure in finalise_origin: {e}"); // TODO
@@ -323,14 +323,14 @@ impl SymbolTable {
                         let context = SymbolContext::origin(block_id, span);
                         let mut new_op = LookupOperation::default();
                         let op: &mut LookupOperation = maybe_op.unwrap_or(&mut new_op);
-                        let addr = self.assign_default_for_block(block_id, rc_allocator, op)?;
+                        let addr = self.assign_default_for_block(block_id, rc_updater, op)?;
                         newdef = Some((symbol_name.clone(), SymbolDefinition::DefaultAssigned(addr.into(), context), span));
                         Ok(addr)
                     }
                     Some(SymbolDefinition::Undefined(context)) => {
                         let mut new_op = LookupOperation::default();
                         let op: &mut LookupOperation = maybe_op.unwrap_or(&mut new_op);
-                        let addr = self.assign_default_for_block(block_id, rc_allocator, op)?;
+                        let addr = self.assign_default_for_block(block_id, rc_updater, op)?;
                         newdef = Some((symbol_name.clone(), SymbolDefinition::DefaultAssigned(addr.into(), context), block_span));
                         Ok(addr)
                     }
@@ -355,10 +355,10 @@ impl SymbolTable {
         })
     }
 
-    fn assign_default_for_block<R: RcAllocator>(
+    fn assign_default_for_block<R: RcUpdater>(
         &mut self,
         block_id: BlockIdentifier,
-        rc_allocator: &mut R,
+        rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Address, DefaultValueAssignmentError> {
         let address = match block_id.previous_block() {
@@ -369,7 +369,7 @@ impl SymbolTable {
             Some(previous_block) => match self.blocks.get(&previous_block).cloned() {
                 Some(previous) => {
                     let previous_block_origin =
-                        self.finalise_origin(previous_block, rc_allocator, Some(op))?;
+                        self.finalise_origin(previous_block, rc_updater, Some(op))?;
                     match offset_from_origin(&previous_block_origin, previous.block_size) {
                         Ok(addr) => Ok(addr),
                         Err(_) => Err(DefaultValueAssignmentError::MachineLimitExceeded(
@@ -396,12 +396,15 @@ impl SymbolTable {
     /// Assign a default value for a symbol, using the rules from
     /// section 6-2.2 of the Users Handbook ("SYMEX DEFINITON - TAGS -
     /// EQUALITIES - AUTOMATIC ASSIGNMENT").
-    pub(crate) fn get_default_value<R: RcAllocator>(
+    ///
+    /// Values which refer to addresses (and which therefore should
+    /// point to a zero-initialised RC-word) should already have a
+    /// default value assigned.
+    pub(crate) fn get_default_value(
         &mut self,
         name: &SymbolName,
         span: &Span,
         contexts_used: &SymbolContext,
-        rc_allocator: &mut R,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         let get_target = || LookupTarget::Symbol(name.clone(), *span);
         event!(
@@ -443,13 +446,7 @@ impl SymbolTable {
                 }
             }
             [false, false, true, false] => {
-                // address only, assign the next RC word.
-                let rc_addr: Address = rc_allocator.allocate(
-                    RcWordSource::DefaultAssignment(name.clone()),
-                    Unsigned36Bit::ZERO,
-                );
-                let symbol_value: Unsigned36Bit = Unsigned36Bit::from(rc_addr);
-                Ok(symbol_value)
+                unreachable!("default assignments for address-context symexes should be assigned before evaluation starts")
             }
         }
     }
@@ -465,7 +462,7 @@ impl SymbolTable {
     ) -> Result<Unsigned36Bit, SymbolLookupFailure>
     where
         E: Evaluate,
-        R: RcAllocator,
+        R: RcUpdater,
     {
         match tag_override {
             None => item.evaluate(item_span, target_address, self, rc_allocator, op),
@@ -493,12 +490,12 @@ impl SymbolTable {
 impl SymbolLookup for SymbolTable {
     type Operation<'a> = LookupOperation;
 
-    fn lookup_with_op<R: RcAllocator>(
+    fn lookup_with_op<R: RcUpdater>(
         &mut self,
         name: &SymbolName,
         span: Span,
         target_address: &HereValue,
-        rc_allocator: &mut R,
+        rc_updater: &mut R,
         op: &mut Self::Operation<'_>,
     ) -> Result<SymbolValue, SymbolLookupFailure> {
         op.deps_in_order.push(name.clone());
@@ -513,7 +510,7 @@ impl SymbolLookup for SymbolTable {
                 },
             )));
         }
-        let result = final_lookup_helper_body(self, name, span, target_address, rc_allocator, op);
+        let result = final_lookup_helper_body(self, name, span, target_address, rc_updater, op);
         op.deps_in_order.pop();
         op.depends_on.remove(name);
         result

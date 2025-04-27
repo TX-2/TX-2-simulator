@@ -32,6 +32,9 @@ pub(crate) enum RcWordSource {
 
 pub(crate) trait RcAllocator {
     fn allocate(&mut self, source: RcWordSource, value: Unsigned36Bit) -> Address;
+}
+
+pub(crate) trait RcUpdater {
     fn update(&mut self, address: Address, value: Unsigned36Bit);
 }
 
@@ -161,7 +164,7 @@ impl From<Atom> for SignedAtom {
     fn from(magnitude: Atom) -> Self {
         Self {
             negated: false,
-            span: magnitude.span(),
+            span: *magnitude.span(),
             magnitude,
         }
     }
@@ -454,12 +457,11 @@ impl From<SymbolOrLiteral> for Atom {
 }
 
 impl Atom {
-    fn span(&self) -> Span {
-        // TODO: return &Span instead?
+    fn span(&self) -> &Span {
         match self {
-            Atom::SymbolOrLiteral(value) => *value.span(),
-            Atom::Parens(span, _script, _bae) => *span,
-            Atom::RcRef(span, _) => *span,
+            Atom::SymbolOrLiteral(value) => value.span(),
+            Atom::Parens(span, _script, _bae) => span,
+            Atom::RcRef(span, _) => span,
         }
     }
 
@@ -602,8 +604,6 @@ pub(crate) enum InstructionFragment {
         rc_word_value: RegisterContaining,
     },
     Null,
-    // TODO: subscript/superscript atom (if the `Arithmetic` variant
-    // disallows subscript/superscript).
 }
 
 impl InstructionFragment {

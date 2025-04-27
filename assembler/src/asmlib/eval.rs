@@ -135,12 +135,12 @@ impl std::error::Error for SymbolLookupFailure {}
 pub(crate) trait SymbolLookup {
     type Operation<'a>;
 
-    fn lookup_with_op<R: RcAllocator>(
+    fn lookup_with_op<R: RcUpdater>(
         &mut self,
         name: &SymbolName,
         span: Span, // TODO: use &Span?
         target_address: &HereValue,
-        rc_allocator: &mut R,
+        rc_updater: &mut R,
         op: &mut Self::Operation<'_>,
     ) -> Result<SymbolValue, SymbolLookupFailure>;
 }
@@ -168,12 +168,14 @@ impl HereValue {
 }
 
 pub(super) trait Evaluate {
-    fn evaluate<R: RcAllocator>(
+    // By separating the RcUpdater and RcAllocator traits we ensure
+    // that evaluation cannot allocate more RC words.
+    fn evaluate<R: RcUpdater>(
         &self,
         span: Span,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
-        rc_allocator: &mut R,
+        rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure>;
 }
@@ -201,7 +203,9 @@ impl RcAllocator for RcBlock {
         self.words.push((source, value));
         addr
     }
+}
 
+impl RcUpdater for RcBlock {
     fn update(&mut self, address: Address, value: Unsigned36Bit) {
         if address < self.address {
             panic!(
@@ -244,28 +248,28 @@ pub(crate) fn evaluate_and_combine_values<R, E>(
     items: &[(&E, Span)],
     target_address: &HereValue,
     symtab: &mut SymbolTable,
-    rc_allocator: &mut R,
+    rc_updater: &mut R,
     op: &mut LookupOperation,
 ) -> Result<Unsigned36Bit, SymbolLookupFailure>
 where
-    R: RcAllocator,
+    R: RcUpdater,
     E: Evaluate,
 {
     items
         .iter()
         .try_fold(Unsigned36Bit::ZERO, |acc, (item, span)| {
-            item.evaluate(*span, target_address, symtab, rc_allocator, op)
+            item.evaluate(*span, target_address, symtab, rc_updater, op)
                 .map(|value| combine_fragment_values(acc, value))
         })
 }
 
 impl Evaluate for EqualityValue {
-    fn evaluate<R: RcAllocator>(
+    fn evaluate<R: RcUpdater>(
         &self,
         _span: Span,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
-        rc_allocator: &mut R,
+        rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         // Comma delimited values are evaluated left-to-right, as stated in item
@@ -277,7 +281,7 @@ impl Evaluate for EqualityValue {
             .iter()
             .map(|cdi| (cdi, cdi.instruction.span))
             .collect();
-        evaluate_and_combine_values(to_eval.as_slice(), target_address, symtab, rc_allocator, op)
+        evaluate_and_combine_values(to_eval.as_slice(), target_address, symtab, rc_updater, op)
     }
 }
 
@@ -290,12 +294,12 @@ pub(crate) fn combine_fragment_values(left: Unsigned36Bit, right: Unsigned36Bit)
 }
 
 impl Evaluate for TaggedProgramInstruction {
-    fn evaluate<R: RcAllocator>(
+    fn evaluate<R: RcUpdater>(
         &self,
         _span: Span,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
-        rc_allocator: &mut R,
+        rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         if self.instructions.is_empty() {
@@ -306,73 +310,73 @@ impl Evaluate for TaggedProgramInstruction {
             .iter()
             .map(|inst| (inst, inst.span()))
             .collect();
-        evaluate_and_combine_values(&to_eval, target_address, symtab, rc_allocator, op)
+        evaluate_and_combine_values(&to_eval, target_address, symtab, rc_updater, op)
     }
 }
 
 impl Evaluate for LiteralValue {
-    fn evaluate<R: RcAllocator>(
+    fn evaluate<R: RcUpdater>(
         &self,
         _span: Span,
         _target_address: &HereValue,
         _symtab: &mut SymbolTable,
-        _rc_allocator: &mut R,
+        _rc_updater: &mut R,
         _op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         Ok(self.value())
     }
 }
 
-fn fold_step<R: RcAllocator>(
+fn fold_step<R: RcUpdater>(
     acc: Unsigned36Bit,
     (binop, right): &(Operator, SignedAtom),
     target_address: &HereValue,
     symtab: &mut SymbolTable,
-    rc_allocator: &mut R,
+    rc_updater: &mut R,
     op: &mut LookupOperation,
 ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
     let right: Unsigned36Bit =
-        right.evaluate(right.span, target_address, symtab, rc_allocator, op)?;
+        right.evaluate(right.span, target_address, symtab, rc_updater, op)?;
     Ok(ArithmeticExpression::eval_binop(acc, binop, right))
 }
 
 impl Evaluate for ArithmeticExpression {
-    fn evaluate<R: RcAllocator>(
+    fn evaluate<R: RcUpdater>(
         &self,
         span: Span,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
-        rc_allocator: &mut R,
+        rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         let first: Unsigned36Bit =
             self.first
-                .evaluate(span, target_address, symtab, rc_allocator, op)?;
+                .evaluate(span, target_address, symtab, rc_updater, op)?;
         let result: Result<Unsigned36Bit, SymbolLookupFailure> =
             self.tail.iter().try_fold(first, |acc, curr| {
-                fold_step(acc, curr, target_address, symtab, rc_allocator, op)
+                fold_step(acc, curr, target_address, symtab, rc_updater, op)
             });
         result
     }
 }
 
 impl Evaluate for InstructionFragment {
-    fn evaluate<R: RcAllocator>(
+    fn evaluate<R: RcUpdater>(
         &self,
         span: Span,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
-        rc_allocator: &mut R,
+        rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         match self {
             InstructionFragment::Null => Ok(Unsigned36Bit::ZERO),
             InstructionFragment::Arithmetic(expr) => {
-                expr.evaluate(span, target_address, symtab, rc_allocator, op)
+                expr.evaluate(span, target_address, symtab, rc_updater, op)
             }
             InstructionFragment::DeferredAddressing => Ok(DEFER_BIT),
             InstructionFragment::Config(value) => {
-                value.evaluate(span, target_address, symtab, rc_allocator, op)
+                value.evaluate(span, target_address, symtab, rc_updater, op)
             }
             InstructionFragment::PipeConstruct {
                 index: p,
@@ -391,12 +395,12 @@ impl Evaluate for InstructionFragment {
                 // rc_word_val.
                 let p_value: Unsigned36Bit =
                     p.item
-                        .evaluate(p.span, target_address, symtab, rc_allocator, op)?;
+                        .evaluate(p.span, target_address, symtab, rc_updater, op)?;
                 let rc_word_addr: Unsigned36Bit = rc_word_value.evaluate(
                     *rc_word_span,
                     target_address,
                     symtab,
-                    rc_allocator,
+                    rc_updater,
                     op,
                 )?;
                 Ok(combine_fragment_values(
@@ -409,12 +413,12 @@ impl Evaluate for InstructionFragment {
 }
 
 impl Evaluate for ConfigValue {
-    fn evaluate<R: RcAllocator>(
+    fn evaluate<R: RcUpdater>(
         &self,
         span: Span,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
-        rc_allocator: &mut R,
+        rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         // The `expr` member was either originally in superscript (in
@@ -423,21 +427,21 @@ impl Evaluate for ConfigValue {
         // script (in which case we need to shift it ourselves).
         let shift = if self.already_superscript { 0 } else { 30u32 };
         self.expr
-            .evaluate(span, target_address, symtab, rc_allocator, op)
+            .evaluate(span, target_address, symtab, rc_updater, op)
             .map(|value| value.shl(shift))
     }
 }
 
-fn symbol_name_lookup<R: RcAllocator>(
+fn symbol_name_lookup<R: RcUpdater>(
     name: &SymbolName,
     elevation: Script,
     span: Span,
     target_address: &HereValue,
     symtab: &mut SymbolTable,
-    rc_allocator: &mut R,
+    rc_updater: &mut R,
     op: &mut LookupOperation,
 ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-    match symtab.lookup_with_op(name, span, target_address, rc_allocator, op) {
+    match symtab.lookup_with_op(name, span, target_address, rc_updater, op) {
         Ok(SymbolValue::Final(value)) => Ok(value),
         Err(e) => Err(e),
     }
@@ -445,40 +449,40 @@ fn symbol_name_lookup<R: RcAllocator>(
 }
 
 impl Evaluate for Atom {
-    fn evaluate<R: RcAllocator>(
+    fn evaluate<R: RcUpdater>(
         &self,
         _span: Span,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
-        rc_allocator: &mut R,
+        rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         match self {
             Atom::SymbolOrLiteral(value) => {
                 let span: Span = *value.span();
-                value.evaluate(span, target_address, symtab, rc_allocator, op)
+                value.evaluate(span, target_address, symtab, rc_updater, op)
             }
             Atom::Parens(span, _script, expr) => {
-                expr.evaluate(*span, target_address, symtab, rc_allocator, op)
+                expr.evaluate(*span, target_address, symtab, rc_updater, op)
             }
             Atom::RcRef(span, registers_containing) => {
-                registers_containing.evaluate(*span, target_address, symtab, rc_allocator, op)
+                registers_containing.evaluate(*span, target_address, symtab, rc_updater, op)
             }
         }
     }
 }
 
 impl Evaluate for SignedAtom {
-    fn evaluate<R: RcAllocator>(
+    fn evaluate<R: RcUpdater>(
         &self,
         span: Span,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
-        rc_allocator: &mut R,
+        rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         self.magnitude
-            .evaluate(span, target_address, symtab, rc_allocator, op)
+            .evaluate(span, target_address, symtab, rc_updater, op)
             .map(|magnitude| {
                 if self.negated {
                     let s36 = magnitude.reinterpret_as_signed();
@@ -492,12 +496,12 @@ impl Evaluate for SignedAtom {
 }
 
 impl Evaluate for SymbolOrLiteral {
-    fn evaluate<R: RcAllocator>(
+    fn evaluate<R: RcUpdater>(
         &self,
         span: Span,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
-        rc_allocator: &mut R,
+        rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         match self {
@@ -507,14 +511,14 @@ impl Evaluate for SymbolOrLiteral {
                 *span,
                 target_address,
                 symtab,
-                rc_allocator,
+                rc_updater,
                 op,
             ),
             SymbolOrLiteral::Literal(literal_value) => {
-                literal_value.evaluate(span, target_address, symtab, rc_allocator, op)
+                literal_value.evaluate(span, target_address, symtab, rc_updater, op)
             }
             SymbolOrLiteral::Here(script, span) => target_address
-                .evaluate(*span, target_address, symtab, rc_allocator, op)
+                .evaluate(*span, target_address, symtab, rc_updater, op)
                 .map(|value| value.shl(script.shift())),
         }
     }
@@ -565,12 +569,12 @@ fn comma_transformation(
 }
 
 impl Evaluate for CommaDelimitedInstruction {
-    fn evaluate<R: RcAllocator>(
+    fn evaluate<R: RcUpdater>(
         &self,
         _span: Span,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
-        rc_allocator: &mut R,
+        rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         self.instruction
@@ -578,7 +582,7 @@ impl Evaluate for CommaDelimitedInstruction {
                 self.instruction.span,
                 target_address,
                 symtab,
-                rc_allocator,
+                rc_updater,
                 op,
             )
             .map(|value| comma_transformation(&self.leading_commas, value, &self.trailing_commas))
@@ -965,12 +969,12 @@ mod comma_tests {
 }
 
 impl Evaluate for UntaggedProgramInstruction {
-    fn evaluate<R: RcAllocator>(
+    fn evaluate<R: RcUpdater>(
         &self,
         _span: Span,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
-        rc_allocator: &mut R,
+        rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         // TODO: issue a diagnostic if a TaggedProgramInstruction
@@ -980,7 +984,7 @@ impl Evaluate for UntaggedProgramInstruction {
         // comma rules that other values are).
         const HELD_MASK: Unsigned36Bit = u36!(1 << 35);
         self.inst
-            .evaluate(self.span, target_address, symtab, rc_allocator, op)
+            .evaluate(self.span, target_address, symtab, rc_updater, op)
             .map(|word| match self.holdbit {
                 HoldBit::Hold => word | HELD_MASK,
                 HoldBit::NotHold => word & !HELD_MASK,
@@ -990,12 +994,12 @@ impl Evaluate for UntaggedProgramInstruction {
 }
 
 impl Evaluate for HereValue {
-    fn evaluate<R: RcAllocator>(
+    fn evaluate<R: RcUpdater>(
         &self,
         span: Span,
         _: &HereValue,
         _symtab: &mut SymbolTable,
-        _rc_allocator: &mut R,
+        _rc_updater: &mut R,
         _op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         self.get_address(&span).map(|addr| addr.into())
@@ -1030,23 +1034,20 @@ fn translate_symbol_lookup_failure(
     }
 }
 
-pub(super) fn extract_final_equalities<R: RcAllocator>(
+pub(super) fn extract_final_equalities<R: RcUpdater>(
     equalities: &[Equality],
     body: &str,
     symtab: &mut SymbolTable,
-    rc_allocator: &mut R,
+    rc_updater: &mut R,
     final_symbols: &mut FinalSymbolTable,
 ) -> Result<(), AssemblerFailure> {
     let mut undefined_symbols: Vec<(Span, SymbolName)> = Vec::new();
     for eq in equalities {
         let mut op = Default::default();
-        match eq.value.evaluate(
-            eq.span,
-            &HereValue::NotAllowed,
-            symtab,
-            rc_allocator,
-            &mut op,
-        ) {
+        match eq
+            .value
+            .evaluate(eq.span, &HereValue::NotAllowed, symtab, rc_updater, &mut op)
+        {
             Ok(value) => {
                 final_symbols.define(
                     eq.name.clone(),
@@ -1083,11 +1084,11 @@ pub(super) fn extract_final_equalities<R: RcAllocator>(
 }
 
 impl LocatedBlock {
-    pub(super) fn build_binary_block<R: RcAllocator>(
+    pub(super) fn build_binary_block<R: RcUpdater>(
         &self,
         location: Address,
         symtab: &mut SymbolTable,
-        rc_allocator: &mut R,
+        rc_updater: &mut R,
         final_symbols: &mut FinalSymbolTable,
         body: &str,
         listing: &mut Listing,
@@ -1115,7 +1116,7 @@ impl LocatedBlock {
                         instruction.span(),
                         &here,
                         symtab,
-                        rc_allocator,
+                        rc_updater,
                         &mut op,
                     ) {
                         Ok(word) => {
@@ -1150,12 +1151,12 @@ impl LocatedBlock {
 }
 
 impl Evaluate for RegistersContaining {
-    fn evaluate<R: RcAllocator>(
+    fn evaluate<R: RcUpdater>(
         &self,
         span: Span,
         _target_address: &HereValue,
         symtab: &mut SymbolTable,
-        rc_allocator: &mut R,
+        rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         let mut first_addr: Option<Unsigned36Bit> = None;
@@ -1167,7 +1168,7 @@ impl Evaluate for RegistersContaining {
             // rather than an incorrect result.
             let must_recompute_here_address = HereValue::NotAllowed;
             let addr: Unsigned36Bit =
-                rc_word.evaluate(span, &must_recompute_here_address, symtab, rc_allocator, op)?;
+                rc_word.evaluate(span, &must_recompute_here_address, symtab, rc_updater, op)?;
             if first_addr.is_none() {
                 first_addr = Some(addr);
             }
@@ -1182,12 +1183,12 @@ impl Evaluate for RegistersContaining {
 }
 
 impl Evaluate for RegisterContaining {
-    fn evaluate<R: RcAllocator>(
+    fn evaluate<R: RcUpdater>(
         &self,
         _span: Span,
         _target_address: &HereValue,
         symtab: &mut SymbolTable,
-        rc_allocator: &mut R,
+        rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         match self {
@@ -1214,10 +1215,10 @@ impl Evaluate for RegisterContaining {
                     inst.as_ref(),
                     inst.span(),
                     &here,
-                    rc_allocator,
+                    rc_updater,
                     op,
                 )?;
-                rc_allocator.update(*rc_word_addr, value);
+                rc_updater.update(*rc_word_addr, value);
                 Ok(Unsigned36Bit::from(rc_word_addr))
             }
         }
