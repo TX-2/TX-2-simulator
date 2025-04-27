@@ -88,3 +88,4 @@
    references (e.g. the one at 200003) precede it?  In fact the words
    assembled at 200147 and 200151 also have RC-word references which
    are assigned in the obvious way.
+6. What did M4's ☛☛DEMO meta-command do?
