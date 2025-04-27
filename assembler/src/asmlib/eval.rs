@@ -187,21 +187,22 @@ pub(crate) struct RcBlock {
 }
 
 impl RcBlock {
-    fn end(&self) -> Address {
-        match Unsigned18Bit::try_from(self.words.len()) {
-            Ok(offset) => self.address.index_by(offset),
-            Err(_) => {
-                panic!("program is too large"); // TODO: fixme: use Result
-            }
-        }
+    fn end(&self) -> Result<Address, MachineLimitExceededFailure> {
+        Unsigned18Bit::try_from(self.words.len())
+            .map(|offset| self.address.index_by(offset))
+            .map_err(|_| MachineLimitExceededFailure::RcBlockTooLarge)
     }
 }
 
 impl RcAllocator for RcBlock {
-    fn allocate(&mut self, source: RcWordSource, value: Unsigned36Bit) -> Address {
-        let addr = self.end();
+    fn allocate(
+        &mut self,
+        source: RcWordSource,
+        value: Unsigned36Bit,
+    ) -> Result<Address, MachineLimitExceededFailure> {
+        let addr = self.end()?;
         self.words.push((source, value));
-        addr
+        Ok(addr)
     }
 }
 
@@ -220,8 +221,8 @@ impl RcUpdater for RcBlock {
                 }
                 None => {
                     panic!(
-                        "out of range access to address {address} of RC-block ending at {}",
-                        self.end()
+                        "out of range access to offset {offset} of RC-block having length {}",
+                        self.words.len()
                     );
                 }
             },
@@ -1230,7 +1231,7 @@ impl LocatedBlock {
         &mut self,
         symtab: &mut SymbolTable,
         rc_allocator: &mut R,
-    ) -> Result<(), AssemblerFailure> {
+    ) -> Result<(), MachineLimitExceededFailure> {
         for (_span, ref mut statement) in self.statements.iter_mut() {
             statement.assign_rc_words(symtab, rc_allocator)?;
         }
@@ -1243,7 +1244,7 @@ impl Statement {
         &mut self,
         symtab: &mut SymbolTable,
         rc_allocator: &mut R,
-    ) -> Result<(), AssemblerFailure> {
+    ) -> Result<(), MachineLimitExceededFailure> {
         match self {
             Statement::Instruction(inst) => inst.assign_rc_words(symtab, rc_allocator),
         }
@@ -1255,7 +1256,7 @@ impl TaggedProgramInstruction {
         &mut self,
         symtab: &mut SymbolTable,
         rc_allocator: &mut R,
-    ) -> Result<(), AssemblerFailure> {
+    ) -> Result<(), MachineLimitExceededFailure> {
         for inst in self.instructions.iter_mut() {
             inst.assign_rc_words(symtab, rc_allocator)?;
         }
@@ -1268,7 +1269,7 @@ impl CommaDelimitedInstruction {
         &mut self,
         symtab: &mut SymbolTable,
         rc_allocator: &mut R,
-    ) -> Result<(), AssemblerFailure> {
+    ) -> Result<(), MachineLimitExceededFailure> {
         self.instruction.assign_rc_words(symtab, rc_allocator)
     }
 }
@@ -1278,7 +1279,7 @@ impl UntaggedProgramInstruction {
         &mut self,
         symtab: &mut SymbolTable,
         rc_allocator: &mut R,
-    ) -> Result<(), AssemblerFailure> {
+    ) -> Result<(), MachineLimitExceededFailure> {
         self.inst.assign_rc_words(symtab, rc_allocator)
     }
 }
@@ -1288,7 +1289,7 @@ impl InstructionFragment {
         &mut self,
         symtab: &mut SymbolTable,
         rc_allocator: &mut R,
-    ) -> Result<(), AssemblerFailure> {
+    ) -> Result<(), MachineLimitExceededFailure> {
         use InstructionFragment::*;
         match self {
             Null | DeferredAddressing => Ok(()),
@@ -1315,10 +1316,10 @@ impl RegisterContaining {
         source: RcWordSource,
         symtab: &mut SymbolTable,
         rc_allocator: &mut R,
-    ) -> Result<RegisterContaining, AssemblerFailure> {
+    ) -> Result<RegisterContaining, MachineLimitExceededFailure> {
         match self {
             RegisterContaining::Unallocated(mut tpibox) => {
-                let addr: Address = rc_allocator.allocate(source, Unsigned36Bit::ZERO);
+                let addr: Address = rc_allocator.allocate(source, Unsigned36Bit::ZERO)?;
                 tpibox.assign_rc_words(symtab, rc_allocator)?;
                 let tpi: Box<TaggedProgramInstruction> = tpibox;
                 Ok(RegisterContaining::Allocated(addr, tpi))
@@ -1334,7 +1335,7 @@ impl RegistersContaining {
         span: Span,
         symtab: &mut SymbolTable,
         rc_allocator: &mut R,
-    ) -> Result<(), AssemblerFailure> {
+    ) -> Result<(), MachineLimitExceededFailure> {
         let source = RcWordSource::Braces(span);
         for rc in self.words_mut() {
             *rc = rc
@@ -1350,7 +1351,7 @@ impl ArithmeticExpression {
         &mut self,
         symtab: &mut SymbolTable,
         rc_allocator: &mut R,
-    ) -> Result<(), AssemblerFailure> {
+    ) -> Result<(), MachineLimitExceededFailure> {
         self.first.assign_rc_words(symtab, rc_allocator)?;
         for (_op, atom) in self.tail.iter_mut() {
             atom.assign_rc_words(symtab, rc_allocator)?;
@@ -1364,7 +1365,7 @@ impl ConfigValue {
         &mut self,
         symtab: &mut SymbolTable,
         rc_allocator: &mut R,
-    ) -> Result<(), AssemblerFailure> {
+    ) -> Result<(), MachineLimitExceededFailure> {
         self.expr.assign_rc_words(symtab, rc_allocator)
     }
 }
@@ -1374,7 +1375,7 @@ impl SignedAtom {
         &mut self,
         symtab: &mut SymbolTable,
         rc_allocator: &mut R,
-    ) -> Result<(), AssemblerFailure> {
+    ) -> Result<(), MachineLimitExceededFailure> {
         self.magnitude.assign_rc_words(symtab, rc_allocator)
     }
 }
@@ -1384,7 +1385,7 @@ impl Atom {
         &mut self,
         symtab: &mut SymbolTable,
         rc_allocator: &mut R,
-    ) -> Result<(), AssemblerFailure> {
+    ) -> Result<(), MachineLimitExceededFailure> {
         match self {
             Atom::SymbolOrLiteral(thing) => thing.assign_rc_words(symtab, rc_allocator),
             Atom::Parens(_, _, expr) => expr.assign_rc_words(symtab, rc_allocator),
@@ -1398,7 +1399,7 @@ impl SymbolOrLiteral {
         &mut self,
         _symtab: &mut SymbolTable,
         _rc_allocator: &mut R,
-    ) -> Result<(), AssemblerFailure> {
+    ) -> Result<(), MachineLimitExceededFailure> {
         Ok(())
     }
 }

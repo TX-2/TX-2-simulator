@@ -716,7 +716,7 @@ pub(super) fn assign_default_rc_word_tags<R: RcAllocator>(
     symtab: &mut SymbolTable,
     rcblock: &mut R,
     final_symbols: &mut FinalSymbolTable,
-) {
+) -> Result<(), MachineLimitExceededFailure> {
     for (name, def) in symtab.definitions.iter_mut() {
         *def = match &def {
             InternalSymbolDef {
@@ -724,7 +724,8 @@ pub(super) fn assign_default_rc_word_tags<R: RcAllocator>(
                 def: SymbolDefinition::Undefined(context),
             } if context.requires_rc_word_allocation() => {
                 let value = Unsigned36Bit::ZERO;
-                let addr = rcblock.allocate(RcWordSource::DefaultAssignment(name.clone()), value);
+                let addr =
+                    rcblock.allocate(RcWordSource::DefaultAssignment(name.clone()), value)?;
                 final_symbols.define(
                     name.clone(),
                     FinalSymbolType::Equality,
@@ -740,4 +741,5 @@ pub(super) fn assign_default_rc_word_tags<R: RcAllocator>(
             other => (*other).clone(),
         }
     }
+    Ok(())
 }

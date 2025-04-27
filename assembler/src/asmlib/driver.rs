@@ -442,7 +442,11 @@ fn inconsistent_origin_definition(
 struct NoRcBlock {}
 
 impl RcAllocator for NoRcBlock {
-    fn allocate(&mut self, _source: RcWordSource, _value: Unsigned36Bit) -> Address {
+    fn allocate(
+        &mut self,
+        _source: RcWordSource,
+        _value: Unsigned36Bit,
+    ) -> Result<Address, MachineLimitExceededFailure> {
         panic!("Cannot allocate an RC-word before we know the address of the RC block");
     }
 }
@@ -503,10 +507,14 @@ fn assemble_pass3(
     )?;
 
     for (_, directive_block) in memory_map.values_mut() {
-        directive_block.assign_rc_words(symtab, &mut rcblock)?;
+        if let Err(e) = directive_block.assign_rc_words(symtab, &mut rcblock) {
+            return Err(AssemblerFailure::MachineLimitExceeded(e));
+        }
     }
 
-    assign_default_rc_word_tags(symtab, &mut rcblock, &mut final_symbols);
+    if let Err(e) = assign_default_rc_word_tags(symtab, &mut rcblock, &mut final_symbols) {
+        return Err(AssemblerFailure::MachineLimitExceeded(e));
+    }
 
     // Emit the binary code.
     for (block_id, (maybe_origin, directive_block)) in memory_map.into_iter() {

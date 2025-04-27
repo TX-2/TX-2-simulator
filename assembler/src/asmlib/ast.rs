@@ -31,7 +31,11 @@ pub(crate) enum RcWordSource {
 }
 
 pub(crate) trait RcAllocator {
-    fn allocate(&mut self, source: RcWordSource, value: Unsigned36Bit) -> Address;
+    fn allocate(
+        &mut self,
+        source: RcWordSource,
+        value: Unsigned36Bit,
+    ) -> Result<Address, MachineLimitExceededFailure>;
 }
 
 pub(crate) trait RcUpdater {
