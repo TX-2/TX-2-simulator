@@ -100,10 +100,12 @@ pub(super) fn manuscript_lines_to_blocks(
     lines: Vec<(Span, ManuscriptLine)>,
 ) -> (
     Vec<ManuscriptBlock>,
+    Vec<Equality>,
     Vec<MacroDefinition>,
     Option<PunchCommand>,
 ) {
     let mut result: Vec<ManuscriptBlock> = Vec::new();
+    let mut equalities: Vec<Equality> = Vec::new();
     let mut macros: Vec<MacroDefinition> = Vec::new();
     let mut current_statements: Vec<(Span, Statement)> = Vec::new();
     let mut maybe_punch: Option<PunchCommand> = None;
@@ -150,11 +152,14 @@ pub(super) fn manuscript_lines_to_blocks(
 
                 current_statements.push((span, statement));
             }
+            ManuscriptLine::Eq(equality) => {
+                equalities.push(equality);
+            }
         }
     }
     ship_block(&current_statements, effective_origin, &mut result);
     current_statements.clear();
-    (result, macros, maybe_punch)
+    (result, equalities, macros, maybe_punch)
 }
 
 /// Some instructions are assembled with the hold bit automatically

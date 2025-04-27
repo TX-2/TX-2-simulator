@@ -14,6 +14,7 @@ use chumsky::error::Rich;
 use tracing::{event, span, Level};
 
 use super::ast::*;
+use super::eval::extract_final_equalities;
 use super::eval::RcBlock;
 use super::lexer;
 use super::listing::*;
@@ -57,110 +58,174 @@ impl OutputOptions {
     }
 }
 
-fn convert_source_file_to_blocks(
-    source_file: &SourceFile,
-    symtab: &mut SymbolTable,
-) -> Result<(BTreeMap<BlockIdentifier, Block>, Option<Address>), AssemblerFailure> {
-    let mut entry_point: Option<Address> = None;
-    let mut blocks = BTreeMap::new();
-    let mut block_default_location: Address = Origin::default_address();
+impl SourceFile {
+    fn into_directive(self, symtab: &mut SymbolTable) -> Result<Directive, AssemblerFailure> {
+        type MemoryMap = BTreeMap<BlockIdentifier, (Option<Origin>, LocatedBlock)>;
 
-    for (block_id, mblock) in source_file
-        .blocks
-        .iter()
-        .enumerate()
-        .map(|(id, b)| (BlockIdentifier::from(id), b))
-    {
-        // We still include zero-word blocks in the directive output
-        // so that we don't change the block numbering.
-        let len = mblock.instruction_count();
-        let location: Option<Address> = match mblock.origin.as_ref() {
-            None => {
-                event!(
+        fn assign_block_positions(
+            blocks: BTreeMap<BlockIdentifier, Block>,
+            symtab: &mut SymbolTable,
+        ) -> Result<MemoryMap, AssemblerFailure> {
+            let mut no_rc_block = NoRcBlock {};
+            let mut memory_map: BTreeMap<BlockIdentifier, (Option<Origin>, LocatedBlock)> =
+                BTreeMap::new();
+
+            for (block_id, directive_block) in blocks.into_iter() {
+                let mut op = LookupOperation::default();
+                let address: Address =
+                    match symtab.finalise_origin(block_id, &mut no_rc_block, Some(&mut op)) {
+                        Ok(a) => a,
+                        Err(_) => {
+                            return Err(AssemblerFailure::InternalError(format!(
+                                "starting address for {block_id} was not calculated"
+                            )));
+                        }
+                    };
+
+                if let Some(Origin::Symbolic(span, symbol_name)) = directive_block.origin.as_ref() {
+                    if !symtab.is_defined(symbol_name) {
+                        if let Err(e) = symtab.define(
+                            *span,
+                            symbol_name.clone(),
+                            SymbolDefinition::Origin(address),
+                        ) {
+                            // Inconsistent definition.
+                            return Err(inconsistent_origin_definition(
+                                *span,
+                                symbol_name.clone(),
+                                e,
+                            ));
+                        }
+                    }
+                }
+
+                memory_map.insert(
+                    block_id,
+                    (
+                        directive_block.origin.clone(),
+                        LocatedBlock {
+                            location: address,
+                            statements: directive_block.statements,
+                        },
+                    ),
+                );
+            }
+
+            Ok(memory_map)
+        }
+
+        let SourceFile {
+            punch,
+            blocks: input_blocks,
+            equalities,
+            macros: _,
+        } = self;
+        let mut output_blocks = BTreeMap::new();
+        let mut block_default_location: Address = Origin::default_address();
+
+        for (block_id, mblock) in input_blocks
+            .iter()
+            .enumerate()
+            .map(|(id, b)| (BlockIdentifier::from(id), b))
+        {
+            // We still include zero-word blocks in the directive output
+            // so that we don't change the block numbering.
+            let len = mblock.instruction_count();
+            let location: Option<Address> = match mblock.origin.as_ref() {
+                None => {
+                    event!(
                     Level::DEBUG,
                     "Locating directive {block_id} having {len} words at default origin {block_default_location:o}",
                 );
-                Some(block_default_location)
-            }
-            Some(Origin::Literal(_, address)) => {
-                event!(
-                    Level::DEBUG,
-                    "Locating directive {block_id} having {len} words at origin {address:o}",
-                );
-                Some(*address)
-            }
-            Some(Origin::Symbolic(span, name)) => {
-                event!(
+                    Some(block_default_location)
+                }
+                Some(Origin::Literal(_, address)) => {
+                    event!(
+                        Level::DEBUG,
+                        "Locating directive {block_id} having {len} words at origin {address:o}",
+                    );
+                    Some(*address)
+                }
+                Some(Origin::Symbolic(span, name)) => {
+                    event!(
                     Level::DEBUG,
                     "Locating directive {block_id} having {len} words at symbolic location {name}, which we now known to be {block_default_location}",
                 );
-                if !symtab.is_defined(name) {
-                    if let Err(e) = symtab.define(
-                        *span,
-                        name.clone(),
-                        SymbolDefinition::Origin(block_default_location),
-                    ) {
-                        return Err(inconsistent_origin_definition(*span, name.clone(), e));
+                    if !symtab.is_defined(name) {
+                        if let Err(e) = symtab.define(
+                            *span,
+                            name.clone(),
+                            SymbolDefinition::Origin(block_default_location),
+                        ) {
+                            return Err(inconsistent_origin_definition(*span, name.clone(), e));
+                        }
+                        Some(block_default_location)
+                    } else {
+                        None
                     }
-                    Some(block_default_location)
-                } else {
-                    None
                 }
+            };
+            output_blocks.insert(
+                block_id,
+                Block {
+                    origin: mblock.origin.clone(),
+                    location,
+                    statements: mblock.statements.clone(),
+                },
+            );
+            if let Some(loc) = location {
+                // Some programs could use equates or explicit origin
+                // specifications to generate blocks that overlap.  From
+                // my understanding of the User Handbook, such programs
+                // are not rejected.  The tape loader will happily load
+                // such programs.  But we don't have clear tests for such
+                // cases.  We can add these if we come across programs
+                // that seem to do this.
+                let block_end: Address = loc.index_by(len);
+                block_default_location = max(block_default_location, block_end);
+            }
+        }
+
+        let entry_point: Option<Address> = match punch {
+            Some(PunchCommand(Some(address))) => {
+                event!(
+                    Level::INFO,
+                    "program entry point was specified as {address:o}"
+                );
+                Some(address)
+            }
+            Some(PunchCommand(None)) => {
+                event!(Level::INFO, "program entry point was not specified");
+                None
+            }
+            None => {
+                event!(
+                    Level::WARN,
+                    "No PUNCH directive was given, program has no start address"
+                );
+                None
             }
         };
-        blocks.insert(
-            block_id,
-            Block {
-                origin: mblock.origin.clone(),
-                location,
-                statements: mblock.statements.clone(),
-            },
+
+        // Because the PUNCH instruction causes the assembler
+        // output to be punched to tape, this effectively
+        // marks the end of the input.  On the real M4
+        // assembler it is likely possible for there to be
+        // more manuscript after the PUNCH metacommand, and
+        // for this to generate a fresh reader leader and so
+        // on.  But this is not supported here.  The reason we
+        // don't support it is that we'd need to know the
+        // answers to a lot of quesrtions we don't have
+        // answers for right now.  For example, should the
+        // existing program be cleared?  Should the symbol
+        // table be cleared?
+        let directive: Directive = Directive::new(
+            assign_block_positions(output_blocks, symtab)?,
+            equalities,
+            entry_point,
         );
-        if let Some(loc) = location {
-            // Some programs could use equates or explicit origin
-            // specifications to generate blocks that overlap.  From
-            // my understanding of the User Handbook, such programs
-            // are not rejected.  The tape loader will happily load
-            // such programs.  But we don't have clear tests for such
-            // cases.  We can add these if we come across programs
-            // that seem to do this.
-            let block_end: Address = loc.index_by(len);
-            block_default_location = max(block_default_location, block_end);
-        }
+        Ok(directive)
     }
-
-    match source_file.punch {
-        Some(PunchCommand(Some(address))) => {
-            event!(
-                Level::INFO,
-                "program entry point was specified as {address:o}"
-            );
-            entry_point = Some(address);
-        }
-        Some(PunchCommand(None)) => {
-            event!(Level::INFO, "program entry point was not specified");
-        }
-        None => {
-            event!(
-                Level::WARN,
-                "No PUNCH directive was given, program has no start address"
-            );
-        }
-    }
-    // Because the PUNCH instruction causes the assembler
-    // output to be punched to tape, this effectively
-    // marks the end of the input.  On the real M4
-    // assembler it is likely possible for there to be
-    // more manuscript after the PUNCH metacommand, and
-    // for this to generate a fresh reader leader and so
-    // on.  But this is not supported here.  The reason we
-    // don't support it is that we'd need to know the
-    // answers to a lot of quesrtions we don't have
-    // answers for right now.  For example, should the
-    // existing program be cleared?  Should the symbol
-    // table be cleared?
-
-    Ok((blocks, entry_point))
 }
 
 /// Pass 1 converts the program source into an abstract syntax representation.
@@ -200,7 +265,7 @@ pub(crate) fn assemble_nonempty_valid_input(input: &str) -> (Directive, SymbolTa
     match result {
         Ok((None, _)) => unreachable!("parser should generate output if there are no errors"),
         Ok((Some(source_file), _options)) => {
-            let p2output = assemble_pass2(&source_file, input)
+            let p2output = assemble_pass2(source_file, input)
                 .expect("test program should not extend beyong physical memory");
             if !p2output.errors.is_empty() {
                 panic!("input should be valid: {:?}", &p2output.errors);
@@ -285,7 +350,6 @@ impl Binary {
 
 struct Pass2Output<'a> {
     directive: Option<Directive>,
-    origins: BTreeMap<BlockIdentifier, Option<Origin>>,
     symbols: SymbolTable,
     errors: Vec<Rich<'a, lexer::Token>>,
 }
@@ -326,45 +390,39 @@ fn initial_symbol_table<'a>(
 /// representation.  The output is a symbol table and a "directive"
 /// which is a sequence of blocks of code of known size (but not, at
 /// this stage, necessarily of known position).
-fn assemble_pass2<'a>(
-    source_file: &SourceFile,
-    source_file_body: &'a str,
-) -> Result<Pass2Output<'a>, AssemblerFailure> {
+fn assemble_pass2(
+    source_file: SourceFile,
+    source_file_body: &str,
+) -> Result<Pass2Output<'_>, AssemblerFailure> {
     let span = span!(Level::ERROR, "assembly pass 2");
     let _enter = span.enter();
 
-    let mut symtab = match initial_symbol_table(source_file) {
+    let mut symtab = match initial_symbol_table(&source_file) {
         Ok(syms) => syms,
         Err(errors) => {
             return Err(fail_with_diagnostics(source_file_body, errors));
         }
     };
 
-    let (blocks, maybe_entry_point) = convert_source_file_to_blocks(source_file, &mut symtab)?;
-
-    match blocks.values().try_fold(Unsigned18Bit::ZERO, |acc, b| {
-        acc.checked_add(b.emitted_instruction_count())
-    }) {
-        None => {
-            return Err(AssemblerFailure::MachineLimitExceeded(
-                MachineLimitExceededFailure::ProgramTooBig,
-            ));
-        }
-        Some(count) => {
-            event!(
-                Level::INFO,
-                "assembly pass 2 generated {count} instructions"
-            );
-        }
+    let directive = source_file.into_directive(&mut symtab)?;
+    if let Some(instruction_count) = directive
+        .memory_map
+        .values()
+        .try_fold(Unsigned18Bit::ZERO, |acc, (_, b)| {
+            acc.checked_add(b.emitted_word_count())
+        })
+    {
+        event!(
+            Level::INFO,
+            "assembly pass 2 generated {instruction_count} instructions"
+        );
+    } else {
+        return Err(AssemblerFailure::MachineLimitExceeded(
+            MachineLimitExceededFailure::ProgramTooBig,
+        ));
     }
-
-    // Deduce the address of every block.
-    let (directive, origins): (Directive, BTreeMap<BlockIdentifier, Option<Origin>>) =
-        assign_block_positions(blocks, maybe_entry_point, &mut symtab)?;
-
     Ok(Pass2Output {
         directive: Some(directive),
-        origins,
         symbols: symtab,
         errors: Vec::new(),
     })
@@ -393,61 +451,9 @@ impl RcAllocator for NoRcBlock {
     }
 }
 
-fn assign_block_positions(
-    blocks: BTreeMap<BlockIdentifier, Block>,
-    maybe_entry_point: Option<Address>,
-    symtab: &mut SymbolTable,
-) -> Result<(Directive, BTreeMap<BlockIdentifier, Option<Origin>>), AssemblerFailure> {
-    let mut no_rc_block = NoRcBlock {};
-    let mut output_blocks: BTreeMap<BlockIdentifier, LocatedBlock> = BTreeMap::new();
-    let mut origins: BTreeMap<BlockIdentifier, Option<Origin>> = BTreeMap::new();
-
-    for (block_id, directive_block) in blocks.into_iter() {
-        let mut op = LookupOperation::default();
-        let address: Address =
-            match symtab.finalise_origin(block_id, &mut no_rc_block, Some(&mut op)) {
-                Ok(a) => a,
-                Err(_) => {
-                    return Err(AssemblerFailure::InternalError(format!(
-                        "starting address for {block_id} was not calculated"
-                    )));
-                }
-            };
-
-        origins.insert(block_id, directive_block.origin.clone());
-
-        if let Some(Origin::Symbolic(span, symbol_name)) = directive_block.origin.as_ref() {
-            if !symtab.is_defined(symbol_name) {
-                if let Err(e) = symtab.define(
-                    *span,
-                    symbol_name.clone(),
-                    SymbolDefinition::Origin(address),
-                ) {
-                    // Inconsistent definition.
-                    return Err(inconsistent_origin_definition(
-                        *span,
-                        symbol_name.clone(),
-                        e,
-                    ));
-                }
-            }
-        }
-        output_blocks.insert(
-            block_id,
-            LocatedBlock {
-                location: address,
-                statements: directive_block.statements,
-            },
-        );
-    }
-
-    Ok((Directive::new(output_blocks, maybe_entry_point), origins))
-}
-
 /// Pass 3 generates binary code.
 fn assemble_pass3(
     mut directive: Directive,
-    origins: BTreeMap<BlockIdentifier, Option<Origin>>,
     symtab: &mut SymbolTable,
     body: &str,
     listing: &mut Listing,
@@ -465,33 +471,37 @@ fn assemble_pass3(
     };
 
     let Directive {
-        blocks,
+        memory_map,
+        equalities,
         entry_point: _,
     } = directive;
 
     let mut final_symbols = FinalSymbolTable::default();
 
-    for (block_id, block) in blocks.iter() {
-        if let Some(Some(Origin::Symbolic(span, symbol_name))) = origins.get(block_id) {
+    // TODO: consider moving this into pass 2.
+    for (maybe_origin, block) in memory_map.values() {
+        if let Some(Origin::Symbolic(span, symbol_name)) = maybe_origin.as_ref() {
             assert!(symtab.is_defined(symbol_name));
 
             final_symbols.define_if_undefined(
                 symbol_name.clone(),
-                FinalSymbolDefinition::new(
-                    block.location.into(),
-                    FinalSymbolType::Tag, // actually origin
-                    extract_span(body, span).trim().to_string(),
-                ),
+                FinalSymbolType::Tag, // actually origin
+                extract_span(body, span).trim().to_string(),
+                FinalSymbolDefinition::PositionIndependent(block.location.into()),
             );
         }
     }
 
-    for (_, directive_block) in blocks.iter() {
-        directive_block.extract_final_equalities(symtab, &mut rcblock, &mut final_symbols, body)?;
-    }
+    extract_final_equalities(
+        equalities.as_slice(),
+        body,
+        symtab,
+        &mut rcblock,
+        &mut final_symbols,
+    )?;
 
     // Emit the binary code.
-    for (block_id, directive_block) in blocks.iter() {
+    for (block_id, (maybe_origin, directive_block)) in memory_map.into_iter() {
         event!(
             Level::DEBUG,
             "{block_id} in output has address {0:#o} and length {1:#o}",
@@ -499,12 +509,13 @@ fn assemble_pass3(
             directive_block.emitted_word_count(),
         );
 
-        if let Some(Some(origin)) = origins.get(block_id) {
-            // This is an origin (Users Handbook section 6-2.5)
-            // not a tag (6-2.2).
+        if let Some(origin) = maybe_origin {
+            // This is an origin (Users Handbook section 6-2.5) not a
+            // tag (6-2.2).
+            let span = *origin.span();
             listing.push_line(ListingLine {
-                origin: Some(origin.clone()),
-                span: Some(*origin.span()),
+                origin: Some(origin),
+                span: Some(span),
                 rc_source: None,
                 content: None,
             });
@@ -535,7 +546,7 @@ fn assemble_pass3(
     // a default definition for any symbols which were not already
     // inserted into final_symbols, so we make sure those are inserted
     // now.
-    final_symbols.import_all_defined(&*symtab);
+    final_symbols.import_default_assigned(&*symtab);
 
     // If the RC-word block is non-empty, emit it.
     if !rcblock.words.is_empty() {
@@ -625,10 +636,9 @@ pub(crate) fn assemble_source(
     // Now we do pass 2.
     let Pass2Output {
         directive,
-        origins,
         mut symbols,
         errors,
-    } = assemble_pass2(&source_file, source_file_body)?;
+    } = assemble_pass2(source_file, source_file_body)?;
     if !errors.is_empty() {
         return Err(fail_with_diagnostics(source_file_body, errors));
     }
@@ -644,13 +654,8 @@ pub(crate) fn assemble_source(
     // Now we do pass 3, which generates the binary output
     let binary = {
         let mut listing = Listing::default();
-        let (binary, final_symbols) = assemble_pass3(
-            directive,
-            origins,
-            &mut symbols,
-            source_file_body,
-            &mut listing,
-        )?;
+        let (binary, final_symbols) =
+            assemble_pass3(directive, &mut symbols, source_file_body, &mut listing)?;
 
         listing.set_final_symbols(final_symbols);
         if options.list {
@@ -712,6 +717,7 @@ fn test_assemble_pass1() {
             Some(SourceFile {
                 punch: Some(PunchCommand(expected_directive_entry_point)),
                 blocks: vec![expected_block],
+                equalities: Default::default(), // no equalities
                 macros: Vec::new(),
             }),
             OutputOptions { list: false }

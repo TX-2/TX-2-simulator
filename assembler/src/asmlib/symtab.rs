@@ -528,48 +528,45 @@ pub(crate) enum FinalSymbolType {
 }
 
 #[derive(Debug)]
-pub(crate) struct FinalSymbolDefinition {
-    value: Unsigned36Bit,
-    representation: String,
-    sym_type: FinalSymbolType,
-}
-
-impl FinalSymbolDefinition {
-    pub(crate) fn new(
-        value: Unsigned36Bit,
-        sym_type: FinalSymbolType,
-        representation: String,
-    ) -> Self {
-        FinalSymbolDefinition {
-            value,
-            sym_type,
-            representation,
-        }
-    }
+pub(crate) enum FinalSymbolDefinition {
+    PositionIndependent(Unsigned36Bit),
+    PositionDependent,
 }
 
 #[derive(Debug, Default)]
 pub(crate) struct FinalSymbolTable {
-    definitions: BTreeMap<SymbolName, FinalSymbolDefinition>,
+    definitions: BTreeMap<SymbolName, (FinalSymbolType, String, FinalSymbolDefinition)>,
 }
 
 impl FinalSymbolTable {
-    pub(crate) fn define(&mut self, name: SymbolName, def: FinalSymbolDefinition) {
-        self.definitions.insert(name, def);
+    pub(crate) fn define(
+        &mut self,
+        name: SymbolName,
+        sym_type: FinalSymbolType,
+        rep: String,
+        def: FinalSymbolDefinition,
+    ) {
+        self.definitions.insert(name, (sym_type, rep, def));
     }
 
-    pub(crate) fn define_if_undefined(&mut self, name: SymbolName, def: FinalSymbolDefinition) {
-        self.definitions.entry(name).or_insert(def);
+    pub(crate) fn define_if_undefined(
+        &mut self,
+        name: SymbolName,
+        sym_type: FinalSymbolType,
+        rep: String,
+        def: FinalSymbolDefinition,
+    ) {
+        self.definitions.entry(name).or_insert((sym_type, rep, def));
     }
 
-    pub(crate) fn import_all_defined(&mut self, symtab: &SymbolTable) {
-        fn make_final_def(name: &SymbolName, def: &SymbolDefinition) -> FinalSymbolDefinition {
+    pub(crate) fn import_default_assigned(&mut self, symtab: &SymbolTable) {
+        fn make_final_def(
+            name: &SymbolName,
+            def: &SymbolDefinition,
+        ) -> (FinalSymbolType, String, FinalSymbolDefinition) {
             match def {
-                SymbolDefinition::DefaultAssigned(value, _context) => FinalSymbolDefinition {
-                    value: *value,
-                    representation: value.to_string(),
-                    sym_type: FinalSymbolType::Default,
-                },
+                SymbolDefinition::DefaultAssigned(value, _context) =>
+                    (FinalSymbolType::Default, value.to_string(), FinalSymbolDefinition::PositionIndependent(*value)),
                 SymbolDefinition::Undefined(_symbol_context) => unreachable!(),
                 _ => unimplemented!(
                     "symbol table entry for {name} (with definition {def:?}) had not been copied into the final symbol table"
@@ -593,17 +590,18 @@ impl Display for FinalSymbolTable {
          -> std::fmt::Result {
             writeln!(f)?;
             writeln!(f, "** {title}")?;
-            for (
-                name,
-                FinalSymbolDefinition {
-                    value,
-                    sym_type,
-                    representation,
-                },
-            ) in self.definitions.iter()
+            for (name, (_final_symbol_type, representation, definition)) in self
+                .definitions
+                .iter()
+                .filter(|(_, (symtype, _, _))| symtype == &sym_type_wanted)
             {
-                if sym_type == &sym_type_wanted {
-                    writeln!(f, "{name:20} = {value:012} ** {representation:>20}")?;
+                match definition {
+                    FinalSymbolDefinition::PositionIndependent(word) => {
+                        writeln!(f, "{name:20} = {word:012} ** {representation:>20}")?;
+                    }
+                    FinalSymbolDefinition::PositionDependent => {
+                        writeln!(f, "{name:20} = {representation}")?;
+                    }
                 }
             }
             Ok(())

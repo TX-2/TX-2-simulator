@@ -8,10 +8,10 @@ use base::{
 };
 
 use super::ast::{
-    ArithmeticExpression, Atom, CommaDelimitedInstruction, Commas, ConfigValue, EqualityValue,
-    HoldBit, InstructionFragment, LiteralValue, LocatedBlock, Operator, RcAllocator, RcWordSource,
-    RegisterContaining, RegistersContaining, SignedAtom, Statement, SymbolOrLiteral, Tag,
-    TaggedProgramInstruction, UntaggedProgramInstruction,
+    ArithmeticExpression, Atom, CommaDelimitedInstruction, Commas, ConfigValue, Equality,
+    EqualityValue, HoldBit, InstructionFragment, LiteralValue, LocatedBlock, Operator, RcAllocator,
+    RcWordSource, RegisterContaining, RegistersContaining, SignedAtom, Statement, SymbolOrLiteral,
+    Tag, TaggedProgramInstruction, UntaggedProgramInstruction,
 };
 use super::listing::{Listing, ListingLine};
 use super::span::*;
@@ -1039,50 +1039,59 @@ fn translate_symbol_lookup_failure(
     }
 }
 
-impl LocatedBlock {
-    pub(super) fn extract_final_equalities<R: RcAllocator>(
-        &self,
-        symtab: &mut SymbolTable,
-        rc_allocator: &mut R,
-        final_symbols: &mut FinalSymbolTable,
-        body: &str,
-    ) -> Result<(), AssemblerFailure> {
-        let mut undefined_symbols: Vec<(Span, SymbolName)> = Vec::new();
-        for (offset, (_, statement)) in self.statements.iter().enumerate() {
-            let offset: Unsigned18Bit = Unsigned18Bit::try_from(offset)
-                .expect("assembled code block should fit within physical memory");
-            let address: Address = self.location.index_by(offset);
-            let here = HereValue::Address(address);
-            match statement {
-                Statement::Instruction(_) => (),
-                Statement::Assignment(span, symbol, definition) => {
-                    let mut op = Default::default();
-                    match definition.evaluate(*span, &here, symtab, rc_allocator, &mut op) {
-                        Ok(value) => {
-                            final_symbols.define(
-                                symbol.clone(),
-                                FinalSymbolDefinition::new(
-                                    value,
-                                    FinalSymbolType::Equality,
-                                    extract_span(body, span).trim().to_string(),
-                                ),
-                            );
-                        }
-                        Err(e) => {
-                            translate_symbol_lookup_failure(
-                                *span,
-                                &here,
-                                e,
-                                &mut undefined_symbols,
-                            )?;
-                        }
-                    }
-                }
+pub(super) fn extract_final_equalities<R: RcAllocator>(
+    equalities: &[Equality],
+    body: &str,
+    symtab: &mut SymbolTable,
+    rc_allocator: &mut R,
+    final_symbols: &mut FinalSymbolTable,
+) -> Result<(), AssemblerFailure> {
+    let mut undefined_symbols: Vec<(Span, SymbolName)> = Vec::new();
+    for eq in equalities {
+        let mut op = Default::default();
+        match eq.value.evaluate(
+            eq.span,
+            &HereValue::NotAllowed,
+            symtab,
+            rc_allocator,
+            &mut op,
+        ) {
+            Ok(value) => {
+                final_symbols.define(
+                    eq.name.clone(),
+                    FinalSymbolType::Equality,
+                    extract_span(body, &eq.span).trim().to_string(),
+                    FinalSymbolDefinition::PositionIndependent(value),
+                );
+            }
+            Err(SymbolLookupFailure {
+                target: _,
+                kind: SymbolLookupFailureKind::HereIsNotAllowedHere,
+            }) => {
+                // The value of this equality would depend on the
+                // address at which it is evaluated, so it has no
+                // single final value.  This is OK.
+                final_symbols.define(
+                    eq.name.clone(),
+                    FinalSymbolType::Equality,
+                    extract_span(body, &eq.span).trim().to_string(),
+                    FinalSymbolDefinition::PositionDependent,
+                );
+            }
+            Err(e) => {
+                translate_symbol_lookup_failure(
+                    eq.span,
+                    &HereValue::NotAllowed,
+                    e,
+                    &mut undefined_symbols,
+                )?;
             }
         }
-        Ok(())
     }
+    Ok(())
+}
 
+impl LocatedBlock {
     pub(super) fn build_binary_block<R: RcAllocator>(
         &self,
         location: Address,
@@ -1100,16 +1109,13 @@ impl LocatedBlock {
             let address: Address = location.index_by(offset);
             let here = HereValue::Address(address);
             match statement {
-                Statement::Assignment(_span, _symbol, _definition) => (),
                 Statement::Instruction(instruction) => {
                     if let Some(tag) = instruction.tag() {
                         final_symbols.define(
                             tag.name.clone(),
-                            FinalSymbolDefinition::new(
-                                address.into(),
-                                FinalSymbolType::Tag,
-                                extract_span(body, &tag.span).trim().to_string(),
-                            ),
+                            FinalSymbolType::Tag,
+                            extract_span(body, &tag.span).trim().to_string(),
+                            FinalSymbolDefinition::PositionIndependent(address.into()),
                         );
                     }
 

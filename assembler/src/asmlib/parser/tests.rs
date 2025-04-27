@@ -478,6 +478,7 @@ fn test_empty_manuscript() {
         parse_successfully_with("", source_file(), no_state_setup),
         SourceFile {
             blocks: Vec::new(),
+            equalities: Default::default(), // no equalities
             macros: vec![],
             punch: None,
         }
@@ -490,6 +491,7 @@ fn test_blank_lines_manuscript() {
         parse_successfully_with("\n\n", source_file(), no_state_setup),
         SourceFile {
             blocks: Default::default(),
+            equalities: Default::default(), // no equalities
             macros: Default::default(),
             punch: None,
         }
@@ -514,6 +516,7 @@ fn test_comments_only_manuscript() {
         ),
         SourceFile {
             blocks: Default::default(),
+            equalities: Default::default(), // no equalities
             macros: Default::default(),
             punch: None,
         }
@@ -563,6 +566,7 @@ fn test_manuscript_with_bare_literal() {
                     ))
                 )]
             }],
+            equalities: Default::default(), // no equalities
             macros: vec![],
         }
     );
@@ -642,6 +646,7 @@ fn test_manuscript_without_tag() {
                     ),
                 ]
             }],
+            equalities: Default::default(), // no equalities
             macros: vec![],
             punch: None,
         }
@@ -700,6 +705,7 @@ fn test_comment_in_rc_block() {
                     ))
                 )]
             }],
+            equalities: Default::default(), // no equalities
             macros: vec![],
             punch: None,
         }
@@ -762,6 +768,7 @@ fn test_manuscript_with_single_syllable_tag() {
                     ))
                 )]
             }],
+            equalities: Default::default(), // no equalities
             macros: vec![],
             punch: None
         }
@@ -796,6 +803,7 @@ fn test_manuscript_with_origin() {
                     ))
                 )]
             }],
+            equalities: Default::default(), // no equalities
             macros: vec![],
         }
     );
@@ -804,24 +812,19 @@ fn test_manuscript_with_origin() {
 #[cfg(test)]
 fn parse_tagged_instruction(input: &str) -> TaggedProgramInstruction {
     let stmt = parse_successfully_with(input, statement(), no_state_setup);
-    if let Statement::Instruction(instruction) = stmt {
-        instruction
-    } else {
-        panic!("expected {input} to be parsed as an instruction, but instead we got {stmt:?}");
+    match stmt {
+        Statement::Instruction(instruction) => instruction,
     }
 }
 
 #[cfg(test)]
 fn parse_comma_expression(input: &str) -> Vec<CommaDelimitedInstruction> {
     let stmt = parse_successfully_with(input, super::statement(), no_state_setup);
-    if let Statement::Instruction(TaggedProgramInstruction {
-        tag: _,
-        instructions,
-    }) = stmt
-    {
-        instructions
-    } else {
-        panic!("expected {input} to be parsed as comma-separated instructions, but instead we got {stmt:?}");
+    match stmt {
+        Statement::Instruction(TaggedProgramInstruction {
+            tag: _,
+            instructions,
+        }) => instructions,
     }
 }
 
@@ -952,6 +955,7 @@ fn test_manuscript_with_multi_syllable_tag() {
                     ))
                 )]
             }],
+            equalities: Default::default(), // no equalities
             macros: vec![],
         }
     );
@@ -1012,20 +1016,18 @@ fn test_manuscript_with_real_arrow_tag() {
                     ))
                 )]
             }],
+            equalities: Default::default(), // no equalities
             macros: Vec::new(),
         }
     );
 }
 
 #[cfg(test)]
-fn assignment_of_literal(name: &str, assignment_span: Span, literal: LiteralValue) -> Statement {
-    let symbol = SymbolName {
-        canonical: name.to_string(),
-    };
-    Statement::Assignment(
-        assignment_span,
-        symbol,
-        EqualityValue::from((
+fn assignment_of_literal(name: &str, assignment_span: Span, literal: LiteralValue) -> Equality {
+    Equality {
+        span: assignment_span,
+        name: SymbolName::from(name),
+        value: EqualityValue::from((
             *literal.span(),
             vec![CommaDelimitedInstruction {
                 leading_commas: None,
@@ -1037,7 +1039,7 @@ fn assignment_of_literal(name: &str, assignment_span: Span, literal: LiteralValu
                 trailing_commas: None,
             }],
         )),
-    )
+    }
 }
 
 #[test]
@@ -1047,11 +1049,12 @@ fn test_assignment_literal() {
         ("FOO =2", 5),
         ("F O O = 2", 8), // spaces are also allowed inside symexes.
     ];
+    let assignment = grammar().assignment;
     for (input, begin) in INPUTS {
         dbg!(&input);
         dbg!(&begin);
         assert_eq!(
-            parse_successfully_with(*input, statement(), no_state_setup),
+            parse_successfully_with(*input, assignment.clone(), no_state_setup),
             assignment_of_literal(
                 "FOO",
                 span(0..(*begin + 1)),
@@ -1072,14 +1075,13 @@ fn test_assignment_superscript() {
     for (input, val_begin, val_end) in INPUTS {
         dbg!(input);
         let val_span = span(*val_begin..*val_end);
+        let assignment = grammar().assignment;
         assert_eq!(
-            parse_successfully_with(*input, statement(), no_state_setup),
-            Statement::Assignment(
-                span(0..*val_end),
-                SymbolName {
-                    canonical: "FOO".to_string()
-                },
-                EqualityValue::from((
+            parse_successfully_with(*input, assignment, no_state_setup),
+            Equality {
+                span: span(0..*val_end),
+                name: SymbolName::from("FOO"),
+                value: EqualityValue::from((
                     val_span,
                     vec![CommaDelimitedInstruction {
                         leading_commas: None,
@@ -1098,7 +1100,7 @@ fn test_assignment_superscript() {
                         trailing_commas: None
                     }]
                 ))
-            )
+            }
         );
     }
 }
@@ -1111,6 +1113,7 @@ fn test_assignment_subscript() {
         ("FOO =\u{2083}", 5, 8),
         ("F O O = \u{2083}", 8, 11), // spaces are also allowed inside symexes.
     ];
+    let assignment = grammar().assignment;
     for (input, val_begin, val_end) in INPUTS {
         dbg!(&input);
         dbg!(&input.len());
@@ -1118,7 +1121,7 @@ fn test_assignment_subscript() {
         dbg!(&val_begin);
         dbg!(&val_end);
         assert_eq!(
-            parse_successfully_with(*input, statement(), no_state_setup),
+            parse_successfully_with(*input, assignment.clone(), no_state_setup),
             assignment_of_literal(
                 "FOO",
                 span(0..*val_end),
@@ -1151,40 +1154,34 @@ fn test_assignment_lines() {
             punch: None,
             blocks: vec![ManuscriptBlock {
                 origin: None,
-                statements: vec![
-                    (
-                        span(0..5),
-                        assignment_of_literal(
-                            "FOO",
-                            span(0..5),
-                            LiteralValue::from((span(4..5), Script::Normal, u36!(2))),
-                        )
-                    ),
-                    (
-                        span(10..17),
-                        assignment_of_literal(
-                            "BAR",
-                            span(10..17),
-                            LiteralValue::from((span(16..17), Script::Normal, u36!(1))),
-                        )
-                    ),
-                    (
-                        span(19..20),
-                        Statement::Instruction(TaggedProgramInstruction::single(
-                            None,
-                            UntaggedProgramInstruction {
-                                span: span(19..20),
-                                holdbit: HoldBit::Unspecified,
-                                inst: atom_to_fragment(Atom::from(LiteralValue::from((
-                                    span(19..20),
-                                    Script::Normal,
-                                    u36!(6)
-                                ))))
-                            }
-                        ))
-                    ),
-                ]
+                statements: vec![(
+                    span(19..20),
+                    Statement::Instruction(TaggedProgramInstruction::single(
+                        None,
+                        UntaggedProgramInstruction {
+                            span: span(19..20),
+                            holdbit: HoldBit::Unspecified,
+                            inst: atom_to_fragment(Atom::from(LiteralValue::from((
+                                span(19..20),
+                                Script::Normal,
+                                u36!(6)
+                            ))))
+                        }
+                    ))
+                ),]
             }],
+            equalities: vec![
+                assignment_of_literal(
+                    "FOO",
+                    span(0..5),
+                    LiteralValue::from((span(4..5), Script::Normal, u36!(2))),
+                ),
+                assignment_of_literal(
+                    "BAR",
+                    span(10..17),
+                    LiteralValue::from((span(16..17), Script::Normal, u36!(1))),
+                )
+            ],
             macros: Vec::new(),
         }
     );
@@ -1198,37 +1195,29 @@ fn test_assignment_origin() {
         tree,
         SourceFile {
             punch: None,
-            blocks: vec![
-                ManuscriptBlock {
-                    origin: None,
-                    statements: vec![(
-                        span(0..8),
-                        assignment_of_literal(
-                            "FOO",
-                            span(0..8),
-                            LiteralValue::from((span(4..8), Script::Normal, u36!(0o1000))),
-                        )
-                    ),]
-                },
-                ManuscriptBlock {
-                    origin: Some(Origin::Literal(span(9..13), Address::new(u18!(0o1000)))),
-                    statements: vec![(
-                        span(9..15),
-                        Statement::Instruction(TaggedProgramInstruction::single(
-                            None,
-                            UntaggedProgramInstruction {
-                                span: span(14..15),
-                                holdbit: HoldBit::Unspecified,
-                                inst: InstructionFragment::from((
-                                    span(14..15),
-                                    Script::Normal,
-                                    u36!(4),
-                                ))
-                            }
-                        ))
-                    )],
-                }
-            ],
+            blocks: vec![ManuscriptBlock {
+                origin: Some(Origin::Literal(span(9..13), Address::new(u18!(0o1000)))),
+                statements: vec![(
+                    span(9..15),
+                    Statement::Instruction(TaggedProgramInstruction::single(
+                        None,
+                        UntaggedProgramInstruction {
+                            span: span(14..15),
+                            holdbit: HoldBit::Unspecified,
+                            inst: InstructionFragment::from((
+                                span(14..15),
+                                Script::Normal,
+                                u36!(4),
+                            ))
+                        }
+                    ))
+                )],
+            }],
+            equalities: vec![assignment_of_literal(
+                "FOO",
+                span(0..8),
+                LiteralValue::from((span(4..8), Script::Normal, u36!(0o1000))),
+            )],
             macros: Vec::new(),
         }
     );
@@ -1766,7 +1755,8 @@ fn test_macro_definition_with_trivial_body() {
 fn test_macro_definition_as_entire_source_file() {
     let got = parse_successfully_with("☛☛DEF JUST|A\nA\n☛☛EMD\n", source_file(), no_state_setup);
     let expected = SourceFile {
-        blocks: Default::default(), // empty
+        blocks: Default::default(),     // empty
+        equalities: Default::default(), // no equalities
         macros: vec![MacroDefinition {
             name: SymbolName {
                 canonical: "JUST".to_string(),
@@ -2105,6 +2095,7 @@ fn test_comments_without_newline_manuscript() {
         parse_successfully_with("** NO NEWLINE AFTER COMMENT", source_file(), no_state_setup),
         SourceFile {
             blocks: Default::default(),
+            equalities: Default::default(), // no equalities
             macros: Default::default(),
             punch: None,
         }

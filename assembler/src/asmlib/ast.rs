@@ -957,15 +957,24 @@ impl TaggedProgramInstruction {
 pub(crate) struct SourceFile {
     pub(crate) punch: Option<PunchCommand>,
     pub(crate) blocks: Vec<ManuscriptBlock>,
+    pub(crate) equalities: Vec<Equality>,
     pub(crate) macros: Vec<MacroDefinition>,
 }
 
 impl SourceFile {
     fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> + '_ {
-        self.blocks
+        fn offset_to_block_id<T>((offset, item): (usize, T)) -> (BlockIdentifier, T) {
+            (BlockIdentifier::from(offset), item)
+        }
+
+        let uses_in_instructions = self
+            .blocks
             .iter()
             .enumerate()
-            .flat_map(|(block_id, block)| block.symbol_uses(BlockIdentifier::from(block_id)))
+            .map(offset_to_block_id)
+            .flat_map(|(block_id, block)| block.symbol_uses(block_id));
+        let uses_in_assignments = self.equalities.iter().flat_map(|eq| eq.symbol_uses());
+        uses_in_instructions.chain(uses_in_assignments)
     }
 
     pub(crate) fn global_symbol_references(
@@ -1018,9 +1027,36 @@ pub(crate) enum ManuscriptMetaCommand {
     Macro(MacroDefinition),
 }
 
+// The RHS of an assignment can be "any 36-bit value" (see TX-2
+// Users Handbook, section 6-2.2, page 156 = 6-6).  Hence if the
+// RHS of the assignment is symbolic the user needs to be able to
+// set the hold bit with "h".  However, since we don't allow tags
+// on the RHS, the value cannot be a TaggedProgramInstruction.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Equality {
+    pub(crate) span: Span,
+    pub(crate) name: SymbolName,
+    pub(crate) value: EqualityValue,
+}
+
+impl Equality {
+    fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
+        [(
+            self.name.clone(),
+            self.span,
+            SymbolUse::Definition(
+                // TODO: the expression.clone() on the next line is expensive.
+                SymbolDefinition::Equality(self.value.clone()),
+            ),
+        )]
+        .into_iter()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ManuscriptLine {
     Meta(ManuscriptMetaCommand),
+    Eq(Equality),
     OriginOnly(Origin),
     StatementOnly(Statement),
     OriginAndStatement(Origin, Statement),
@@ -1028,26 +1064,18 @@ pub(crate) enum ManuscriptLine {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Statement {
-    // The RHS of an assignment can be "any 36-bit value" (see TX-2
-    // Users Handbook, section 6-2.2, page 156 = 6-6).  Hence if the
-    // RHS of the assignment is symbolic the user needs to be able to
-    // set the hold bit with "h".  However, since we don't allow tags
-    // on the RHS, the value cannot be a TaggedProgramInstruction.
-    Assignment(Span, SymbolName, EqualityValue), // User Guide calls these "equalities".
     Instruction(TaggedProgramInstruction),
 }
 
 impl Statement {
     fn span(&self) -> Span {
         match self {
-            Statement::Assignment(span, _, _) => *span,
             Statement::Instruction(inst) => inst.span(),
         }
     }
 
     fn emitted_instruction_count(&self) -> Unsigned18Bit {
         match self {
-            Statement::Assignment(_, _, _) => Unsigned18Bit::ZERO,
             Statement::Instruction(_) => Unsigned18Bit::ONE,
         }
     }
@@ -1058,19 +1086,8 @@ impl Statement {
         offset: Unsigned18Bit,
     ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
         match self {
-            Statement::Assignment(span, symbol, expression) => {
-                vec![(
-                    symbol.clone(),
-                    *span,
-                    SymbolUse::Definition(
-                        // TODO: the expression.clone() on the next line is expensive.
-                        SymbolDefinition::Equality(expression.clone()),
-                    ),
-                )]
-            }
-            Statement::Instruction(inst) => inst.symbol_uses(block_id, offset).collect(),
+            Statement::Instruction(inst) => inst.symbol_uses(block_id, offset),
         }
-        .into_iter()
     }
 }
 
@@ -1169,25 +1186,28 @@ pub(crate) struct Directive {
     // are assigned in the order they appear in the code, and
     // similarly for undefined origins (e.g. "FOO| JMP ..." where FOO
     // has no definition).
-    pub(crate) blocks: BTreeMap<BlockIdentifier, LocatedBlock>,
+    pub(crate) memory_map: BTreeMap<BlockIdentifier, (Option<Origin>, LocatedBlock)>,
+    pub(crate) equalities: Vec<Equality>,
     pub(crate) entry_point: Option<Address>,
 }
 
 impl Directive {
     pub(crate) fn new(
-        blocks: BTreeMap<BlockIdentifier, LocatedBlock>,
+        memory_map: BTreeMap<BlockIdentifier, (Option<Origin>, LocatedBlock)>,
+        equalities: Vec<Equality>,
         entry_point: Option<Address>,
     ) -> Self {
         Self {
-            blocks,
+            memory_map,
+            equalities,
             entry_point,
         }
     }
 
     pub(crate) fn position_rc_block(&mut self) -> Address {
-        self.blocks
+        self.memory_map
             .values()
-            .map(LocatedBlock::following_addr)
+            .map(|(_origin, block)| block.following_addr())
             .max()
             .unwrap_or_else(Origin::default_address)
     }
@@ -1202,15 +1222,6 @@ pub(crate) struct Block {
     pub(crate) origin: Option<Origin>,
     pub(crate) location: Option<Address>,
     pub(crate) statements: Vec<(Span, Statement)>,
-}
-
-impl Block {
-    pub(crate) fn emitted_instruction_count(&self) -> Unsigned18Bit {
-        self.statements
-            .iter()
-            .map(|(_span, stmt)| stmt.emitted_instruction_count())
-            .sum()
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -747,6 +747,7 @@ struct Grammar<'a, 'b, I>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
+    assignment: Boxed<'a, 'b, I, Equality, Extra<'a>>,
     statement: Boxed<'a, 'b, I, Statement, Extra<'a>>,
     #[cfg(test)]
     normal_arithmetic_expression_allowing_spaces: Boxed<'a, 'b, I, ArithmeticExpression, Extra<'a>>,
@@ -989,24 +990,22 @@ where
                 .clone()
                 .map_with(|val, extra| EqualityValue::from((extra.span(), val))),
         ))
+    .map_with(|(name, value), extra| Equality {
+        span: extra.span(),
+        name,
+        value,
+    })
     .labelled("equality (assignment)");
 
-    let stmt = choice((
-        // We have to parse an assignment first here, in order to
-        // accept "FOO=2" as an assignment rather than the instruction
-        // fragment "FOO" followed by a syntax error.
-        assignment
-            .clone()
-            .map_with(|(sym, inst), extra| Statement::Assignment(extra.span(), sym, inst)),
-        tagged_program_instruction
-            .clone()
-            .map(Statement::Instruction),
-    ));
+    let stmt = tagged_program_instruction
+        .clone()
+        .map(Statement::Instruction);
 
     #[cfg(test)]
     const ALLOW_SPACES: bool = true;
 
     Grammar {
+        assignment: assignment.boxed(),
         statement: stmt.boxed(),
         #[cfg(test)]
         normal_arithmetic_expression_allowing_spaces: arith_expr.clone()(
@@ -1113,15 +1112,23 @@ where
                 .labelled("origin specification")
         }
 
+        let grammar = grammar();
+
         let optional_origin_with_statement = origin()
             .or_not()
-            .then(statement())
+            .then(grammar.statement)
             .map(build_code_line)
             .labelled("statement with origin");
 
         let origin_only = origin().map(ManuscriptLine::OriginOnly);
 
+        let equality = grammar.assignment.clone().map(ManuscriptLine::Eq);
+
         choice((
+            // We have to parse an assignment first here, in order to
+            // accept "FOO=2" as an assignment rather than the instruction
+            // fragment "FOO" followed by a syntax error.
+            equality,
             // Ignore whitespace after the metacommand but not before it.
             parse_and_execute_metacommand(),
             optional_origin_with_statement,
@@ -1176,9 +1183,11 @@ where
             |lines: Vec<Option<(Span, ManuscriptLine)>>| {
                 // Filter out empty lines.
                 let lines: Vec<(Span, ManuscriptLine)> = lines.into_iter().flatten().collect();
-                let (blocks, macros, punch) = helpers::manuscript_lines_to_blocks(lines);
+                let (blocks, equalities, macros, punch) =
+                    helpers::manuscript_lines_to_blocks(lines);
                 SourceFile {
                     blocks,
+                    equalities,
                     macros,
                     punch,
                 }

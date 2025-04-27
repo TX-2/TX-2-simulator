@@ -83,7 +83,8 @@ fn test_assemble_pass1() {
                     })
                 )]
             }],
-            macros: Vec::new(), // no macros
+            equalities: Default::default(), // no equalities
+            macros: Vec::new(),             // no macros
         })
     );
 }
@@ -100,8 +101,9 @@ fn test_metacommand_dec_changes_default_base() {
         location: _,
         statements,
     }] = directive
-        .blocks
+        .memory_map
         .values()
+        .map(|(_maybe_origin, block)| block)
         .cloned()
         .collect::<Vec<_>>()
         .as_slice()
