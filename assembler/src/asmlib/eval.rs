@@ -7,12 +7,7 @@ use base::{
     u36,
 };
 
-use super::ast::{
-    ArithmeticExpression, Atom, CommaDelimitedInstruction, Commas, ConfigValue, Equality,
-    EqualityValue, HoldBit, InstructionFragment, LiteralValue, LocatedBlock, Operator, RcAllocator,
-    RcWordSource, RegisterContaining, RegistersContaining, SignedAtom, Statement, SymbolOrLiteral,
-    Tag, TaggedProgramInstruction, UntaggedProgramInstruction,
-};
+use super::ast::*;
 use super::listing::{Listing, ListingLine};
 use super::span::*;
 use super::symbol::SymbolName;
@@ -397,9 +392,7 @@ impl Evaluate for InstructionFragment {
                 let p_value: Unsigned36Bit =
                     p.item
                         .evaluate(p.span, target_address, symtab, rc_allocator, op)?;
-                let source_and_val: (&RcWordSource, &RegisterContaining) =
-                    (&RcWordSource::PipeConstruct(*rc_word_span), rc_word_value);
-                let rc_word_addr: Unsigned36Bit = source_and_val.evaluate(
+                let rc_word_addr: Unsigned36Bit = rc_word_value.evaluate(
                     *rc_word_span,
                     target_address,
                     symtab,
@@ -469,9 +462,7 @@ impl Evaluate for Atom {
                 expr.evaluate(*span, target_address, symtab, rc_allocator, op)
             }
             Atom::RcRef(span, registers_containing) => {
-                let source_and_val: (&RcWordSource, &RegistersContaining) =
-                    (&RcWordSource::Braces(*span), registers_containing);
-                source_and_val.evaluate(*span, target_address, symtab, rc_allocator, op)
+                registers_containing.evaluate(*span, target_address, symtab, rc_allocator, op)
             }
         }
     }
@@ -1158,7 +1149,7 @@ impl LocatedBlock {
     }
 }
 
-impl Evaluate for (&RcWordSource, &RegistersContaining) {
+impl Evaluate for RegistersContaining {
     fn evaluate<R: RcAllocator>(
         &self,
         span: Span,
@@ -1167,23 +1158,16 @@ impl Evaluate for (&RcWordSource, &RegistersContaining) {
         rc_allocator: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-        let rc_source: &RcWordSource = self.0;
-        let registers_containing: &RegistersContaining = self.1;
         let mut first_addr: Option<Unsigned36Bit> = None;
-        for rc_word in registers_containing.words() {
+        for rc_word in self.words() {
             // Evaluation of the RegisterContaining value will compute
             // a correct here-value, we don't need to pass it in.  But
             // we can't pass None, and so instead we pass NotAllowed
             // so that if a bug is introduced we will see a failure
             // rather than an incorrect result.
             let must_recompute_here_address = HereValue::NotAllowed;
-            let addr: Unsigned36Bit = (rc_source, rc_word).evaluate(
-                span,
-                &must_recompute_here_address,
-                symtab,
-                rc_allocator,
-                op,
-            )?;
+            let addr: Unsigned36Bit =
+                rc_word.evaluate(span, &must_recompute_here_address, symtab, rc_allocator, op)?;
             if first_addr.is_none() {
                 first_addr = Some(addr);
             }
@@ -1197,7 +1181,7 @@ impl Evaluate for (&RcWordSource, &RegistersContaining) {
     }
 }
 
-impl Evaluate for (&RcWordSource, &RegisterContaining) {
+impl Evaluate for RegisterContaining {
     fn evaluate<R: RcAllocator>(
         &self,
         _span: Span,
@@ -1206,33 +1190,214 @@ impl Evaluate for (&RcWordSource, &RegisterContaining) {
         rc_allocator: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-        let rc_source: &RcWordSource = self.0;
-        let register_containing: &RegisterContaining = self.1;
+        match self {
+            RegisterContaining::Unallocated(_) => {
+                unreachable!(
+                    "evaluate() called on RegisterContaining instance {self:?} before it was allocated"
+                );
+            }
+            RegisterContaining::Allocated(rc_word_addr, inst) => {
+                // Within the RC-word, # ("here") resolves to the
+                // address of the RC-word itself.  So before we
+                // evaluate the value to be placed in the RC-word,
+                // we need to know the value that # will take
+                // during the evaluation process.
+                let here = HereValue::Address(*rc_word_addr);
 
-        let rc_word_addr: Address = rc_allocator.allocate(rc_source.clone(), Unsigned36Bit::ZERO);
-        dbg!(&(rc_source, rc_word_addr));
+                // If inst has a tag, we temporarily override any
+                // global value for that tag with the address of
+                // this instruction.
+                let tag_override: Option<(&Tag, Address)> =
+                    inst.tag.as_ref().map(|t| (t, *rc_word_addr));
+                let value: Unsigned36Bit = symtab.evaluate_with_temporary_tag_override(
+                    tag_override,
+                    inst.as_ref(),
+                    inst.span(),
+                    &here,
+                    rc_allocator,
+                    op,
+                )?;
+                rc_allocator.update(*rc_word_addr, value);
+                Ok(Unsigned36Bit::from(rc_word_addr))
+            }
+        }
+    }
+}
 
-        // Within the RC-word, # ("here") resolves to the
-        // address of the RC-word itself.  So before we
-        // evaluate the value to be placed in the RC-word,
-        // we need to know the value that # will take
-        // during the evaluation process.
-        let here = HereValue::Address(rc_word_addr);
+impl LocatedBlock {
+    pub(super) fn assign_rc_words<R: RcAllocator>(
+        &mut self,
+        symtab: &mut SymbolTable,
+        rc_allocator: &mut R,
+    ) -> Result<(), AssemblerFailure> {
+        for (_span, ref mut statement) in self.statements.iter_mut() {
+            statement.assign_rc_words(symtab, rc_allocator)?;
+        }
+        Ok(())
+    }
+}
 
-        // If inst has a tag, we temporarily override any
-        // global value for that tag with the address of
-        // this instruction.
-        let inst: &TaggedProgramInstruction = register_containing.instruction();
-        let tag_override: Option<(&Tag, Address)> = inst.tag.as_ref().map(|t| (t, rc_word_addr));
-        let value: Unsigned36Bit = symtab.evaluate_with_temporary_tag_override(
-            tag_override,
-            inst,
-            inst.span(),
-            &here,
-            rc_allocator,
-            op,
-        )?;
-        rc_allocator.update(rc_word_addr, value);
-        Ok(Unsigned36Bit::from(rc_word_addr))
+impl Statement {
+    pub(super) fn assign_rc_words<R: RcAllocator>(
+        &mut self,
+        symtab: &mut SymbolTable,
+        rc_allocator: &mut R,
+    ) -> Result<(), AssemblerFailure> {
+        match self {
+            Statement::Instruction(inst) => inst.assign_rc_words(symtab, rc_allocator),
+        }
+    }
+}
+
+impl TaggedProgramInstruction {
+    pub(super) fn assign_rc_words<R: RcAllocator>(
+        &mut self,
+        symtab: &mut SymbolTable,
+        rc_allocator: &mut R,
+    ) -> Result<(), AssemblerFailure> {
+        for inst in self.instructions.iter_mut() {
+            inst.assign_rc_words(symtab, rc_allocator)?;
+        }
+        Ok(())
+    }
+}
+
+impl CommaDelimitedInstruction {
+    pub(super) fn assign_rc_words<R: RcAllocator>(
+        &mut self,
+        symtab: &mut SymbolTable,
+        rc_allocator: &mut R,
+    ) -> Result<(), AssemblerFailure> {
+        self.instruction.assign_rc_words(symtab, rc_allocator)
+    }
+}
+
+impl UntaggedProgramInstruction {
+    pub(super) fn assign_rc_words<R: RcAllocator>(
+        &mut self,
+        symtab: &mut SymbolTable,
+        rc_allocator: &mut R,
+    ) -> Result<(), AssemblerFailure> {
+        self.inst.assign_rc_words(symtab, rc_allocator)
+    }
+}
+
+impl InstructionFragment {
+    pub(super) fn assign_rc_words<R: RcAllocator>(
+        &mut self,
+        symtab: &mut SymbolTable,
+        rc_allocator: &mut R,
+    ) -> Result<(), AssemblerFailure> {
+        use InstructionFragment::*;
+        match self {
+            Null | DeferredAddressing => Ok(()),
+            Arithmetic(expr) => expr.assign_rc_words(symtab, rc_allocator),
+            Config(cfg) => cfg.assign_rc_words(symtab, rc_allocator),
+            PipeConstruct {
+                index: _,
+                rc_word_span,
+                rc_word_value,
+            } => {
+                let span: Span = *rc_word_span;
+                let w = rc_word_value.clone();
+                *rc_word_value =
+                    w.assign_rc_word(RcWordSource::PipeConstruct(span), symtab, rc_allocator)?;
+                Ok(())
+            }
+        }
+    }
+}
+
+impl RegisterContaining {
+    pub(crate) fn assign_rc_word<R: RcAllocator>(
+        self,
+        source: RcWordSource,
+        symtab: &mut SymbolTable,
+        rc_allocator: &mut R,
+    ) -> Result<RegisterContaining, AssemblerFailure> {
+        match self {
+            RegisterContaining::Unallocated(mut tpibox) => {
+                let addr: Address = rc_allocator.allocate(source, Unsigned36Bit::ZERO);
+                tpibox.assign_rc_words(symtab, rc_allocator)?;
+                let tpi: Box<TaggedProgramInstruction> = tpibox;
+                Ok(RegisterContaining::Allocated(addr, tpi))
+            }
+            other => Ok(other),
+        }
+    }
+}
+
+impl RegistersContaining {
+    pub(crate) fn assign_rc_words<R: RcAllocator>(
+        &mut self,
+        span: Span,
+        symtab: &mut SymbolTable,
+        rc_allocator: &mut R,
+    ) -> Result<(), AssemblerFailure> {
+        let source = RcWordSource::Braces(span);
+        for rc in self.words_mut() {
+            *rc = rc
+                .clone()
+                .assign_rc_word(source.clone(), symtab, rc_allocator)?;
+        }
+        Ok(())
+    }
+}
+
+impl ArithmeticExpression {
+    pub(super) fn assign_rc_words<R: RcAllocator>(
+        &mut self,
+        symtab: &mut SymbolTable,
+        rc_allocator: &mut R,
+    ) -> Result<(), AssemblerFailure> {
+        self.first.assign_rc_words(symtab, rc_allocator)?;
+        for (_op, atom) in self.tail.iter_mut() {
+            atom.assign_rc_words(symtab, rc_allocator)?;
+        }
+        Ok(())
+    }
+}
+
+impl ConfigValue {
+    pub(super) fn assign_rc_words<R: RcAllocator>(
+        &mut self,
+        symtab: &mut SymbolTable,
+        rc_allocator: &mut R,
+    ) -> Result<(), AssemblerFailure> {
+        self.expr.assign_rc_words(symtab, rc_allocator)
+    }
+}
+
+impl SignedAtom {
+    pub(super) fn assign_rc_words<R: RcAllocator>(
+        &mut self,
+        symtab: &mut SymbolTable,
+        rc_allocator: &mut R,
+    ) -> Result<(), AssemblerFailure> {
+        self.magnitude.assign_rc_words(symtab, rc_allocator)
+    }
+}
+
+impl Atom {
+    pub(super) fn assign_rc_words<R: RcAllocator>(
+        &mut self,
+        symtab: &mut SymbolTable,
+        rc_allocator: &mut R,
+    ) -> Result<(), AssemblerFailure> {
+        match self {
+            Atom::SymbolOrLiteral(thing) => thing.assign_rc_words(symtab, rc_allocator),
+            Atom::Parens(_, _, expr) => expr.assign_rc_words(symtab, rc_allocator),
+            Atom::RcRef(span, rc) => rc.assign_rc_words(*span, symtab, rc_allocator),
+        }
+    }
+}
+
+impl SymbolOrLiteral {
+    pub(super) fn assign_rc_words<R: RcAllocator>(
+        &mut self,
+        _symtab: &mut SymbolTable,
+        _rc_allocator: &mut R,
+    ) -> Result<(), AssemblerFailure> {
+        Ok(())
     }
 }

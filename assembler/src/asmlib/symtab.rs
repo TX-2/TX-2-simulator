@@ -558,28 +558,6 @@ impl FinalSymbolTable {
     ) {
         self.definitions.entry(name).or_insert((sym_type, rep, def));
     }
-
-    pub(crate) fn import_default_assigned(&mut self, symtab: &SymbolTable) {
-        fn make_final_def(
-            name: &SymbolName,
-            def: &SymbolDefinition,
-        ) -> (FinalSymbolType, String, FinalSymbolDefinition) {
-            match def {
-                SymbolDefinition::DefaultAssigned(value, _context) =>
-                    (FinalSymbolType::Default, value.to_string(), FinalSymbolDefinition::PositionIndependent(*value)),
-                SymbolDefinition::Undefined(_symbol_context) => unreachable!(),
-                _ => unimplemented!(
-                    "symbol table entry for {name} (with definition {def:?}) had not been copied into the final symbol table"
-                ),
-            }
-        }
-
-        for (name, definition) in symtab.definitions.iter() {
-            self.definitions
-                .entry(name.clone())
-                .or_insert_with(|| make_final_def(name, &definition.def));
-        }
-    }
 }
 
 impl Display for FinalSymbolTable {
@@ -733,6 +711,36 @@ impl SymbolDefinition {
                     Err(BadSymbolDefinition::Incompatible(current.clone(), new))
                 }
             }
+        }
+    }
+}
+
+pub(super) fn assign_default_rc_word_tags<R: RcAllocator>(
+    symtab: &mut SymbolTable,
+    rcblock: &mut R,
+    final_symbols: &mut FinalSymbolTable,
+) {
+    for (name, def) in symtab.definitions.iter_mut() {
+        *def = match &def {
+            InternalSymbolDef {
+                span,
+                def: SymbolDefinition::Undefined(context),
+            } if context.requires_rc_word_allocation() => {
+                let value = Unsigned36Bit::ZERO;
+                let addr = rcblock.allocate(RcWordSource::DefaultAssignment(name.clone()), value);
+                final_symbols.define(
+                    name.clone(),
+                    FinalSymbolType::Equality,
+                    value.to_string(),
+                    FinalSymbolDefinition::PositionIndependent(value),
+                );
+
+                InternalSymbolDef {
+                    span: *span,
+                    def: SymbolDefinition::DefaultAssigned(addr.into(), context.clone()),
+                }
+            }
+            other => (*other).clone(),
         }
     }
 }

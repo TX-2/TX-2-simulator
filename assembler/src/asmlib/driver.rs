@@ -23,8 +23,8 @@ use super::span::*;
 use super::state::NumeralMode;
 use super::symbol::SymbolName;
 use super::symtab::{
-    BadSymbolDefinition, FinalSymbolDefinition, FinalSymbolTable, FinalSymbolType, LookupOperation,
-    SymbolDefinition, SymbolTable,
+    assign_default_rc_word_tags, BadSymbolDefinition, FinalSymbolDefinition, FinalSymbolTable,
+    FinalSymbolType, LookupOperation, SymbolDefinition, SymbolTable,
 };
 use super::types::*;
 use base::prelude::{Address, IndexBy, Unsigned18Bit, Unsigned36Bit};
@@ -471,7 +471,7 @@ fn assemble_pass3(
     };
 
     let Directive {
-        memory_map,
+        mut memory_map,
         equalities,
         entry_point: _,
     } = directive;
@@ -499,6 +499,12 @@ fn assemble_pass3(
         &mut rcblock,
         &mut final_symbols,
     )?;
+
+    for (_, directive_block) in memory_map.values_mut() {
+        directive_block.assign_rc_words(symtab, &mut rcblock)?;
+    }
+
+    assign_default_rc_word_tags(symtab, &mut rcblock, &mut final_symbols);
 
     // Emit the binary code.
     for (block_id, (maybe_origin, directive_block)) in memory_map.into_iter() {
@@ -541,12 +547,6 @@ fn assemble_pass3(
             });
         };
     }
-
-    // The evaluation process will have resulted in the computation of
-    // a default definition for any symbols which were not already
-    // inserted into final_symbols, so we make sure those are inserted
-    // now.
-    final_symbols.import_default_assigned(&*symtab);
 
     // If the RC-word block is non-empty, emit it.
     if !rcblock.words.is_empty() {

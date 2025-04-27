@@ -347,6 +347,10 @@ impl RegistersContaining {
         &self.0
     }
 
+    pub(crate) fn words_mut(&mut self) -> impl Iterator<Item = &mut RegisterContaining> {
+        self.0.iter_mut()
+    }
+
     fn symbol_uses(
         &self,
         block_id: BlockIdentifier,
@@ -359,17 +363,23 @@ impl RegistersContaining {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct RegisterContaining(Box<TaggedProgramInstruction>);
+pub(crate) enum RegisterContaining {
+    Unallocated(Box<TaggedProgramInstruction>),
+    Allocated(Address, Box<TaggedProgramInstruction>),
+}
 
 impl From<TaggedProgramInstruction> for RegisterContaining {
     fn from(inst: TaggedProgramInstruction) -> Self {
-        Self(Box::new(inst))
+        RegisterContaining::Unallocated(Box::new(inst))
     }
 }
 
 impl RegisterContaining {
     pub(crate) fn instruction(&self) -> &TaggedProgramInstruction {
-        &self.0
+        match self {
+            RegisterContaining::Unallocated(tpi) => tpi,
+            RegisterContaining::Allocated(_, tpi) => tpi,
+        }
     }
 
     fn symbol_uses(
@@ -383,7 +393,7 @@ impl RegisterContaining {
         // purpose of determining which contexts it has been
         // used in.
         let mut result = Vec::new();
-        for symbol_use in self.0.symbol_uses(block_id, block_offset) {
+        for symbol_use in self.instruction().symbol_uses(block_id, block_offset) {
             let (name, span, symbol_definition) = symbol_use;
             match symbol_definition {
                 def @ SymbolUse::Reference(_) => {

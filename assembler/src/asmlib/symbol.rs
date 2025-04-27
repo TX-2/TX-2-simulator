@@ -158,6 +158,10 @@ impl SymbolContext {
         *self = result;
         Ok(())
     }
+
+    pub(super) fn requires_rc_word_allocation(&self) -> bool {
+        self.address
+    }
 }
 
 impl From<(&Script, Span)> for SymbolContext {

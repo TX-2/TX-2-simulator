@@ -703,7 +703,7 @@ fn default_assigned_index_register_easy_case() {
     let program =
         assemble_source("100|STAⱼ 0\nSTAₖ 0\n", Default::default()).expect("program is valid");
     dbg!(&program);
-    assert_eq!(program.chunks.len(), 1);
+    assert_eq!(program.chunks.len(), 1, "wrong number of program chunks");
     assert_eq!(
         SymbolicInstruction::try_from(&Instruction::from(program.chunks[0].words[0]))
             .expect("instruction 09 shoudl be valid"),
