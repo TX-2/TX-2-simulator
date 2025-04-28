@@ -4,7 +4,9 @@
 //! subscripted letter A.
 use std::collections::HashMap;
 use std::error::Error;
-use std::fmt::{self, Display, Formatter, Write};
+use std::fmt::{self, Debug, Display, Formatter, Write};
+use std::hash::Hash;
+use std::sync::OnceLock;
 
 use base::charset::{subscript_char, superscript_char, Script};
 
@@ -124,18 +126,6 @@ impl<T> From<(Script, T)> for Elevated<T> {
 
 pub(crate) fn elevate<T>(script: Script, inner: T) -> Elevated<T> {
     Elevated { script, inner }
-}
-
-pub(crate) fn elevate_super<T>(inner: T) -> Elevated<T> {
-    elevate(Script::Super, inner)
-}
-
-pub(crate) fn elevate_sub<T>(inner: T) -> Elevated<T> {
-    elevate(Script::Sub, inner)
-}
-
-pub(crate) fn elevate_normal<T>(inner: T) -> Elevated<T> {
-    elevate(Script::Normal, inner)
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -330,26 +320,23 @@ pub(crate) fn glyph_of_char(original: char) -> Result<Elevated<&'static Glyph>, 
     // TODO: address the performance implications (of the
     // linear-time loop) here
     let ch: char = canonicalise_char(original);
-    for g in ALL_GLYPHS {
-        // Note that the space character has the same representation
-        // in normal script as other scripts, so the order in which we
-        // perform these comparisons is important.  In other words, we
-        // have a convention that space is always deemed to be in
-        // normal script.
-        //
-        // However, when we parse multi-syllable symexes
-        // (e.g. "YOGIFOO BAR") in superscript, we should not deem the
-        // space to signify a script change (that is, it doesn't end
-        // the symex after YOGIFOO).
-        if Some(ch) == g.normal {
-            return Ok(elevate_normal(g));
-        } else if Some(ch) == g.subscript {
-            return Ok(elevate_sub(g));
-        } else if Some(ch) == g.superscript {
-            return Ok(elevate_super(g));
+    let mapping = glyph_map();
+    match mapping.get(&ch) {
+        Some(elevated) => Ok(elevated),
+        None => Err(Unrecognised::InvalidChar(original)),
+    }
+}
+
+#[test]
+fn test_space_is_normal() {
+    match glyph_of_char(' ') {
+        Ok(elevated) => {
+            assert_eq!(elevated.script(), Script::Normal);
+        }
+        Err(e) => {
+            panic!("unexpected failure to look up space: {e:?}");
         }
     }
-    Err(Unrecognised::InvalidChar(original))
 }
 
 impl TryFrom<char> for Elevated<&'static Glyph> {
@@ -1235,15 +1222,24 @@ const ALL_GLYPHS: &[Glyph] = &[
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct GlyphMapByChar {
+pub(crate) struct GlyphMapByChar {
     mapping: HashMap<char, Elevated<&'static Glyph>>,
 }
+
+static GLYPH_MAP_BY_CHAR: OnceLock<GlyphMapByChar> = OnceLock::new();
 
 impl Default for GlyphMapByChar {
     fn default() -> Self {
         let mut mapping = HashMap::new();
         for g in ALL_GLYPHS {
             for script in [Script::Sub, Script::Super, Script::Normal] {
+                if g.normal == Some(' ') && script != Script::Normal {
+                    // Note that the space character has the same
+                    // representation in normal script, superscript
+                    // and subscript.  We have a convention that space
+                    // is always deemed to be in normal script.
+                    continue;
+                }
                 if let Some(key) = g.get_char(script) {
                     let value = elevate(script, g);
                     if let Some(prev) = mapping.insert(key, value) {
@@ -1254,6 +1250,16 @@ impl Default for GlyphMapByChar {
         }
         Self { mapping }
     }
+}
+
+impl GlyphMapByChar {
+    fn get(&self, ch: &char) -> Option<Elevated<&'static Glyph>> {
+        self.mapping.get(ch).copied()
+    }
+}
+
+pub(crate) fn glyph_map() -> &'static GlyphMapByChar {
+    GLYPH_MAP_BY_CHAR.get_or_init(GlyphMapByChar::default)
 }
 
 fn canonicalise_char(ch: char) -> char {
