@@ -2,7 +2,7 @@ use std::ops::{Range, Shl};
 
 use super::super::ast::{
     ArithmeticExpression, Atom, CommaDelimitedInstruction, HoldBit, InstructionFragment,
-    LiteralValue, LocatedBlock, ManuscriptBlock, PunchCommand, SourceFile, Statement,
+    LiteralValue, LocatedBlock, ManuscriptBlock, PunchCommand, SourceFile,
     TaggedProgramInstruction, UntaggedProgramInstruction,
 };
 use super::super::eval::{make_empty_rc_block_for_test, SymbolLookup, SymbolValue};
@@ -65,14 +65,14 @@ fn test_assemble_pass1() {
                 origin: None,
                 statements: vec![(
                     span(0..2),
-                    Statement::Instruction(TaggedProgramInstruction {
+                    TaggedProgramInstruction {
                         tag: None,
                         instructions: vec![CommaDelimitedInstruction {
                             leading_commas: None,
                             instruction: UntaggedProgramInstruction {
                                 span: Span::from(0..2),
                                 holdbit: HoldBit::Unspecified,
-                                inst: atom_to_fragment(Atom::from(LiteralValue::from((
+                                fragment: atom_to_fragment(Atom::from(LiteralValue::from((
                                     Span::from(0..2),
                                     Script::Normal,
                                     u36!(0o14)
@@ -80,7 +80,7 @@ fn test_assemble_pass1() {
                             },
                             trailing_commas: None,
                         }]
-                    })
+                    }
                 )]
             }],
             equalities: Default::default(), // no equalities
@@ -110,16 +110,16 @@ fn test_metacommand_dec_changes_default_base() {
     {
         if let [(
             _,
-            Statement::Instruction(TaggedProgramInstruction {
+            TaggedProgramInstruction {
                 tag: None,
                 instructions: first_instructions,
-            }),
+            },
         ), (
             _,
-            Statement::Instruction(TaggedProgramInstruction {
+            TaggedProgramInstruction {
                 tag: None,
                 instructions: second_instructions,
-            }),
+            },
         )] = statements.as_slice()
         {
             if let [first_instruction] = first_instructions.as_slice() {
@@ -130,7 +130,7 @@ fn test_metacommand_dec_changes_default_base() {
                     assert_eq!(second_instruction.trailing_commas, None);
 
                     assert_eq!(
-                        &first_instruction.instruction.inst,
+                        &first_instruction.instruction.fragment,
                         &InstructionFragment::from((
                             Span::from(0..2usize),
                             Script::Normal,
@@ -138,7 +138,7 @@ fn test_metacommand_dec_changes_default_base() {
                         )),
                     );
                     assert_eq!(
-                        &second_instruction.instruction.inst,
+                        &second_instruction.instruction.fragment,
                         &InstructionFragment::from((
                             span(17..19),
                             Script::Normal,

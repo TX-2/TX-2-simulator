@@ -390,7 +390,7 @@ fn make_pipe_construct(
                 instruction: UntaggedProgramInstruction {
                     span: q_span,
                     holdbit: HoldBit::Unspecified,
-                    inst: q,
+                    fragment: q,
                 },
                 trailing_commas: None,
             },
@@ -399,9 +399,9 @@ fn make_pipe_construct(
                 instruction: UntaggedProgramInstruction {
                     span: t.span,
                     holdbit: HoldBit::Unspecified,
-                    inst: InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::from(
-                        t.item,
-                    ))),
+                    fragment: InstructionFragment::Arithmetic(ArithmeticExpression::from(
+                        Atom::from(t.item),
+                    )),
                 },
                 trailing_commas: None,
             },
@@ -501,7 +501,7 @@ where
         .then(macro_arguments())
         .then_ignore(end_of_line())
         .then(
-            (statement().then_ignore(end_of_line()))
+            (tagged_instruction().then_ignore(end_of_line()))
                 .repeated()
                 .collect::<Vec<_>>()
                 .labelled("macro body"),
@@ -614,7 +614,7 @@ where
             UntaggedProgramInstruction {
                 span,
                 holdbit: HoldBit::Unspecified,
-                inst: InstructionFragment::Null,
+                fragment: InstructionFragment::Null,
             }
         }
 
@@ -748,7 +748,7 @@ where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
     assignment: Boxed<'a, 'b, I, Equality, Extra<'a>>,
-    statement: Boxed<'a, 'b, I, Statement, Extra<'a>>,
+    tagged_instruction: Boxed<'a, 'b, I, TaggedProgramInstruction, Extra<'a>>,
     #[cfg(test)]
     normal_arithmetic_expression_allowing_spaces: Boxed<'a, 'b, I, ArithmeticExpression, Extra<'a>>,
     #[cfg(test)]
@@ -963,7 +963,7 @@ where
                     UntaggedProgramInstruction {
                         span: extra.span(),
                         holdbit: maybe_hold.unwrap_or(HoldBit::Unspecified),
-                        inst,
+                        fragment: inst,
                     }
                 },
             );
@@ -997,16 +997,14 @@ where
     })
     .labelled("equality (assignment)");
 
-    let stmt = tagged_program_instruction
-        .clone()
-        .map(Statement::Instruction);
+    let stmt = tagged_program_instruction.clone();
 
     #[cfg(test)]
     const ALLOW_SPACES: bool = true;
 
     Grammar {
         assignment: assignment.boxed(),
-        statement: stmt.boxed(),
+        tagged_instruction: stmt.boxed(),
         #[cfg(test)]
         normal_arithmetic_expression_allowing_spaces: arith_expr.clone()(
             ALLOW_SPACES,
@@ -1030,11 +1028,11 @@ where
     }
 }
 
-fn statement<'a, I>() -> impl Parser<'a, I, Statement, Extra<'a>>
+fn tagged_instruction<'a, I>() -> impl Parser<'a, I, TaggedProgramInstruction, Extra<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
-    grammar().statement
+    grammar().tagged_instruction
 }
 
 fn manuscript_line<'a, I>() -> impl Parser<'a, I, ManuscriptLine, Extra<'a>>
@@ -1064,7 +1062,9 @@ where
             .labelled("metacommand")
     }
 
-    fn build_code_line((maybe_origin, statement): (Option<Origin>, Statement)) -> ManuscriptLine {
+    fn build_code_line(
+        (maybe_origin, statement): (Option<Origin>, TaggedProgramInstruction),
+    ) -> ManuscriptLine {
         match maybe_origin {
             None => ManuscriptLine::StatementOnly(statement),
             Some(origin) => ManuscriptLine::OriginAndStatement(origin, statement),
@@ -1116,7 +1116,7 @@ where
 
         let optional_origin_with_statement = origin()
             .or_not()
-            .then(grammar.statement)
+            .then(grammar.tagged_instruction)
             .map(build_code_line)
             .labelled("statement with origin");
 

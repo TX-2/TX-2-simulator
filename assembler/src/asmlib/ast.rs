@@ -856,7 +856,7 @@ impl From<(Span, Vec<CommaDelimitedInstruction>)> for EqualityValue {
 pub(crate) struct UntaggedProgramInstruction {
     pub(crate) span: Span,
     pub(crate) holdbit: HoldBit,
-    pub(crate) inst: InstructionFragment,
+    pub(crate) fragment: InstructionFragment,
 }
 
 impl UntaggedProgramInstruction {
@@ -865,7 +865,7 @@ impl UntaggedProgramInstruction {
         block_id: BlockIdentifier,
         block_offset: Unsigned18Bit,
     ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> + '_ {
-        self.inst.symbol_uses(block_id, block_offset)
+        self.fragment.symbol_uses(block_id, block_offset)
     }
 }
 
@@ -944,6 +944,7 @@ impl TaggedProgramInstruction {
         self.tag.as_ref()
     }
 
+    #[cfg(test)]
     pub(crate) fn single(
         tag: Option<Tag>,
         instruction: UntaggedProgramInstruction,
@@ -958,12 +959,17 @@ impl TaggedProgramInstruction {
         )
     }
 
+    #[cfg(test)]
     pub(crate) fn multiple(
         tag: Option<Tag>,
         instructions: Vec<CommaDelimitedInstruction>,
     ) -> TaggedProgramInstruction {
         assert!(!instructions.is_empty());
         TaggedProgramInstruction { tag, instructions }
+    }
+
+    fn emitted_instruction_count(&self) -> Unsigned18Bit {
+        Unsigned18Bit::ONE
     }
 }
 
@@ -1072,56 +1078,8 @@ pub(crate) enum ManuscriptLine {
     Meta(ManuscriptMetaCommand),
     Eq(Equality),
     OriginOnly(Origin),
-    StatementOnly(Statement),
-    OriginAndStatement(Origin, Statement),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Statement {
-    Instruction(TaggedProgramInstruction),
-}
-
-impl Statement {
-    fn span(&self) -> Span {
-        match self {
-            Statement::Instruction(inst) => inst.span(),
-        }
-    }
-
-    fn emitted_instruction_count(&self) -> Unsigned18Bit {
-        match self {
-            Statement::Instruction(_) => Unsigned18Bit::ONE,
-        }
-    }
-
-    fn symbol_uses(
-        &self,
-        block_id: BlockIdentifier,
-        offset: Unsigned18Bit,
-    ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
-        match self {
-            Statement::Instruction(inst) => inst.symbol_uses(block_id, offset),
-        }
-    }
-}
-
-impl From<(Span, Unsigned36Bit)> for Statement {
-    fn from((span, value): (Span, Unsigned36Bit)) -> Statement {
-        Statement::Instruction(TaggedProgramInstruction::single(
-            None,
-            UntaggedProgramInstruction {
-                span,
-                holdbit: HoldBit::Unspecified,
-                inst: InstructionFragment::from(ArithmeticExpression::from(Atom::from(
-                    LiteralValue {
-                        span,
-                        elevation: Script::Normal,
-                        value,
-                    },
-                ))),
-            },
-        ))
-    }
+    StatementOnly(TaggedProgramInstruction),
+    OriginAndStatement(Origin, TaggedProgramInstruction),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1149,14 +1107,14 @@ pub(crate) struct MacroDefinition {
     // body should probably be a sequence of ManuscriptLine in order
     // to allow an origin specification to exist within a macro body.
     // But that is not supported yet.
-    pub(crate) body: Vec<Statement>,
+    pub(crate) body: Vec<TaggedProgramInstruction>,
     pub(crate) span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ManuscriptBlock {
     pub(crate) origin: Option<Origin>,
-    pub(crate) statements: Vec<(Span, Statement)>,
+    pub(crate) statements: Vec<(Span, TaggedProgramInstruction)>,
 }
 
 impl ManuscriptBlock {
@@ -1235,13 +1193,13 @@ impl Directive {
 pub(crate) struct Block {
     pub(crate) origin: Option<Origin>,
     pub(crate) location: Option<Address>,
-    pub(crate) statements: Vec<(Span, Statement)>,
+    pub(crate) statements: Vec<(Span, TaggedProgramInstruction)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct LocatedBlock {
     pub(crate) location: Address,
-    pub(crate) statements: Vec<(Span, Statement)>,
+    pub(crate) statements: Vec<(Span, TaggedProgramInstruction)>,
 }
 
 impl LocatedBlock {

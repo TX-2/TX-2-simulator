@@ -984,7 +984,7 @@ impl Evaluate for UntaggedProgramInstruction {
         // the hold bit is supposed to be subject to the same
         // comma rules that other values are).
         const HELD_MASK: Unsigned36Bit = u36!(1 << 35);
-        self.inst
+        self.fragment
             .evaluate(self.span, target_address, symtab, rc_updater, op)
             .map(|word| match self.holdbit {
                 HoldBit::Hold => word | HELD_MASK,
@@ -1096,48 +1096,37 @@ impl LocatedBlock {
     ) -> Result<Vec<Unsigned36Bit>, AssemblerFailure> {
         let mut undefined_symbols: Vec<(Span, SymbolName)> = Vec::new();
         let mut words: Vec<Unsigned36Bit> = Vec::with_capacity(self.emitted_word_count().into());
-        for (offset, (line_span, statement)) in self.statements.iter().enumerate() {
+        for (offset, (line_span, instruction)) in self.statements.iter().enumerate() {
             let offset: Unsigned18Bit = Unsigned18Bit::try_from(offset)
                 .expect("assembled code block should fit within physical memory");
             let address: Address = location.index_by(offset);
             let here = HereValue::Address(address);
-            match statement {
-                Statement::Instruction(instruction) => {
-                    if let Some(tag) = instruction.tag() {
-                        final_symbols.define(
-                            tag.name.clone(),
-                            FinalSymbolType::Tag,
-                            extract_span(body, &tag.span).trim().to_string(),
-                            FinalSymbolDefinition::PositionIndependent(address.into()),
-                        );
-                    }
-
-                    let mut op = Default::default();
-                    match instruction.evaluate(
+            if let Some(tag) = instruction.tag() {
+                final_symbols.define(
+                    tag.name.clone(),
+                    FinalSymbolType::Tag,
+                    extract_span(body, &tag.span).trim().to_string(),
+                    FinalSymbolDefinition::PositionIndependent(address.into()),
+                );
+            }
+            let mut op = Default::default();
+            match instruction.evaluate(instruction.span(), &here, symtab, rc_updater, &mut op) {
+                Ok(word) => {
+                    listing.push_line(ListingLine {
+                        origin: None,
+                        span: Some(*line_span),
+                        rc_source: None,
+                        content: Some((address, word)),
+                    });
+                    words.push(word);
+                }
+                Err(e) => {
+                    translate_symbol_lookup_failure(
                         instruction.span(),
                         &here,
-                        symtab,
-                        rc_updater,
-                        &mut op,
-                    ) {
-                        Ok(word) => {
-                            listing.push_line(ListingLine {
-                                origin: None,
-                                span: Some(*line_span),
-                                rc_source: None,
-                                content: Some((address, word)),
-                            });
-                            words.push(word);
-                        }
-                        Err(e) => {
-                            translate_symbol_lookup_failure(
-                                instruction.span(),
-                                &here,
-                                e,
-                                &mut undefined_symbols,
-                            )?;
-                        }
-                    }
+                        e,
+                        &mut undefined_symbols,
+                    )?;
                 }
             }
         }
@@ -1239,18 +1228,6 @@ impl LocatedBlock {
     }
 }
 
-impl Statement {
-    pub(super) fn assign_rc_words<R: RcAllocator>(
-        &mut self,
-        symtab: &mut SymbolTable,
-        rc_allocator: &mut R,
-    ) -> Result<(), MachineLimitExceededFailure> {
-        match self {
-            Statement::Instruction(inst) => inst.assign_rc_words(symtab, rc_allocator),
-        }
-    }
-}
-
 impl TaggedProgramInstruction {
     pub(super) fn assign_rc_words<R: RcAllocator>(
         &mut self,
@@ -1280,7 +1257,7 @@ impl UntaggedProgramInstruction {
         symtab: &mut SymbolTable,
         rc_allocator: &mut R,
     ) -> Result<(), MachineLimitExceededFailure> {
-        self.inst.assign_rc_words(symtab, rc_allocator)
+        self.fragment.assign_rc_words(symtab, rc_allocator)
     }
 }
 

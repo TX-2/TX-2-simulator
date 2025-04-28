@@ -107,12 +107,12 @@ pub(super) fn manuscript_lines_to_blocks(
     let mut result: Vec<ManuscriptBlock> = Vec::new();
     let mut equalities: Vec<Equality> = Vec::new();
     let mut macros: Vec<MacroDefinition> = Vec::new();
-    let mut current_statements: Vec<(Span, Statement)> = Vec::new();
+    let mut current_statements: Vec<(Span, TaggedProgramInstruction)> = Vec::new();
     let mut maybe_punch: Option<PunchCommand> = None;
     let mut effective_origin: Option<Origin> = None;
 
     fn ship_block(
-        statements: &[(Span, Statement)],
+        statements: &[(Span, TaggedProgramInstruction)],
         maybe_origin: Option<Origin>,
         result: &mut Vec<ManuscriptBlock>,
     ) {
