@@ -69,9 +69,9 @@ fn test_assemble_pass1() {
                         tag: None,
                         instructions: vec![CommaDelimitedInstruction {
                             leading_commas: None,
+                            holdbit: HoldBit::Unspecified,
+                            span: span(0..2),
                             instruction: UntaggedProgramInstruction {
-                                span: Span::from(0..2),
-                                holdbit: HoldBit::Unspecified,
                                 fragment: atom_to_fragment(Atom::from(LiteralValue::from((
                                     Span::from(0..2),
                                     Script::Normal,

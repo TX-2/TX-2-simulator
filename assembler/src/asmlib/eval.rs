@@ -277,11 +277,8 @@ impl Evaluate for EqualityValue {
         // (b) in section 6-2.4, "NUMERICAL FORMAT - USE OF COMMAS" of
         // the Users Handbook.  The initial value is zero (as
         // specified in item (a) in the same place).
-        let to_eval: Vec<(&CommaDelimitedInstruction, Span)> = self
-            .items()
-            .iter()
-            .map(|cdi| (cdi, cdi.instruction.span))
-            .collect();
+        let to_eval: Vec<(&CommaDelimitedInstruction, Span)> =
+            self.items().iter().map(|cdi| (cdi, cdi.span())).collect();
         evaluate_and_combine_values(to_eval.as_slice(), target_address, symtab, rc_updater, op)
     }
 }
@@ -375,7 +372,7 @@ impl Evaluate for InstructionFragment {
             InstructionFragment::Arithmetic(expr) => {
                 expr.evaluate(span, target_address, symtab, rc_updater, op)
             }
-            InstructionFragment::DeferredAddressing => Ok(DEFER_BIT),
+            InstructionFragment::DeferredAddressing(_) => Ok(DEFER_BIT),
             InstructionFragment::Config(value) => {
                 value.evaluate(span, target_address, symtab, rc_updater, op)
             }
@@ -572,20 +569,28 @@ fn comma_transformation(
 impl Evaluate for CommaDelimitedInstruction {
     fn evaluate<R: RcUpdater>(
         &self,
-        _span: Span,
+        span: Span,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
         rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         self.instruction
-            .evaluate(
-                self.instruction.span,
-                target_address,
-                symtab,
-                rc_updater,
-                op,
-            )
+            .evaluate(span, target_address, symtab, rc_updater, op)
+            .map(|word| {
+                // TODO: issue a diagnostic if there are inconsistent
+                //  values for the hold bit.  We will need to decide
+                // whether something like ",h" sets the hold bit (i.e. whether
+                // the hold bit is supposed to be subject to the same
+                // comma rules that other values are).
+                const HELD_MASK: Unsigned36Bit = u36!(1 << 35);
+
+                match self.holdbit {
+                    HoldBit::Hold => word | HELD_MASK,
+                    HoldBit::NotHold => word & !HELD_MASK,
+                    HoldBit::Unspecified => word,
+                }
+            })
             .map(|value| comma_transformation(&self.leading_commas, value, &self.trailing_commas))
     }
 }
@@ -972,25 +977,14 @@ mod comma_tests {
 impl Evaluate for UntaggedProgramInstruction {
     fn evaluate<R: RcUpdater>(
         &self,
-        _span: Span,
+        span: Span,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
         rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-        // TODO: issue a diagnostic if a TaggedProgramInstruction
-        // contains inconsistent values for the hold bit.  We will need to decide
-        // whether something like ",h" sets the hold bit (i.e. whether
-        // the hold bit is supposed to be subject to the same
-        // comma rules that other values are).
-        const HELD_MASK: Unsigned36Bit = u36!(1 << 35);
         self.fragment
-            .evaluate(self.span, target_address, symtab, rc_updater, op)
-            .map(|word| match self.holdbit {
-                HoldBit::Hold => word | HELD_MASK,
-                HoldBit::NotHold => word & !HELD_MASK,
-                HoldBit::Unspecified => word,
-            })
+            .evaluate(span, target_address, symtab, rc_updater, op)
     }
 }
 
@@ -1269,7 +1263,7 @@ impl InstructionFragment {
     ) -> Result<(), MachineLimitExceededFailure> {
         use InstructionFragment::*;
         match self {
-            Null | DeferredAddressing => Ok(()),
+            Null | DeferredAddressing(_) => Ok(()),
             Arithmetic(expr) => expr.assign_rc_words(symtab, rc_allocator),
             Config(cfg) => cfg.assign_rc_words(symtab, rc_allocator),
             PipeConstruct {

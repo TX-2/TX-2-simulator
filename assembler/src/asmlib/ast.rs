@@ -175,6 +175,11 @@ impl From<Atom> for SignedAtom {
 }
 
 impl SignedAtom {
+    #[cfg(test)]
+    fn span(&self) -> &Span {
+        &self.span
+    }
+
     fn symbol_uses(
         &self,
         block_id: BlockIdentifier,
@@ -233,6 +238,17 @@ impl From<SymbolOrLiteral> for ArithmeticExpression {
 }
 
 impl ArithmeticExpression {
+    #[cfg(test)]
+    pub(crate) fn span(&self) -> Span {
+        let start = self.first.span().start;
+        let end = self
+            .tail
+            .last()
+            .map(|(_op, atom)| atom.span().end)
+            .unwrap_or(self.first.span().end);
+        span(start..end)
+    }
+
     pub(crate) fn with_tail(
         first: SignedAtom,
         tail: Vec<(Operator, SignedAtom)>,
@@ -330,6 +346,11 @@ pub(crate) struct ConfigValue {
 }
 
 impl ConfigValue {
+    #[cfg(test)]
+    fn span(&self) -> Span {
+        self.expr.span()
+    }
+
     fn symbol_uses(
         &self,
         block_id: BlockIdentifier,
@@ -598,7 +619,7 @@ pub(crate) enum InstructionFragment {
     /// Deferred addressing is normally specified as '*' but
     /// PipeConstruct is a different way to indicate deferred
     /// addressing.
-    DeferredAddressing,
+    DeferredAddressing(Span),
     /// A configuration syllable (specified either in superscript or with a ‖).
     Config(ConfigValue),
     /// Described in section 6-2.8 "SPECIAL SYMBOLS" of the Users Handbook.
@@ -611,6 +632,27 @@ pub(crate) enum InstructionFragment {
 }
 
 impl InstructionFragment {
+    #[cfg(test)]
+    fn span(&self) -> Option<Span> {
+        match self {
+            InstructionFragment::Arithmetic(arithmetic_expression) => {
+                Some(arithmetic_expression.span())
+            }
+            InstructionFragment::DeferredAddressing(span) => Some(*span),
+            InstructionFragment::Config(config_value) => Some(config_value.span()),
+            InstructionFragment::PipeConstruct {
+                index,
+                rc_word_span,
+                rc_word_value: _,
+            } => {
+                let start = index.span.start;
+                let end = rc_word_span.end;
+                Some(span(start..end))
+            }
+            InstructionFragment::Null => None,
+        }
+    }
+
     fn symbol_uses(
         &self,
         block_id: BlockIdentifier,
@@ -622,7 +664,7 @@ impl InstructionFragment {
             InstructionFragment::Arithmetic(expr) => {
                 result.extend(expr.symbol_uses(block_id, block_offset));
             }
-            InstructionFragment::DeferredAddressing => (),
+            InstructionFragment::DeferredAddressing(_) => (),
             InstructionFragment::Config(value) => {
                 result.extend(value.symbol_uses(block_id, block_offset));
             }
@@ -782,14 +824,24 @@ impl Commas {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct UntaggedProgramInstructionWithHold {
+    // this is temporary
+    pub(super) span: Span,
+    pub(super) holdbit: HoldBit,
+    pub(super) upi: UntaggedProgramInstruction, // should be fragment
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CommasOrInstruction {
-    I(UntaggedProgramInstruction),
+    I(UntaggedProgramInstructionWithHold),
     C(Option<Commas>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CommaDelimitedInstruction {
+    pub(crate) span: Span,
     pub(crate) leading_commas: Option<Commas>,
+    pub(crate) holdbit: HoldBit,
     pub(crate) instruction: UntaggedProgramInstruction,
     pub(crate) trailing_commas: Option<Commas>,
 }
@@ -797,12 +849,30 @@ pub(crate) struct CommaDelimitedInstruction {
 impl CommaDelimitedInstruction {
     pub(crate) fn new(
         leading_commas: Option<Commas>,
-        instruction: UntaggedProgramInstruction,
+        instruction: UntaggedProgramInstructionWithHold,
         trailing_commas: Option<Commas>,
     ) -> Self {
+        let span: Span = {
+            let spans: [Option<Span>; 3] = [
+                leading_commas.as_ref().map(|c| *c.span()),
+                Some(instruction.span),
+                trailing_commas.as_ref().map(|c| *c.span()),
+            ];
+            match spans {
+                [_, None, _] => {
+                    unreachable!("CommaDelimitedInstruction cannot be completely empty")
+                }
+                [None, Some(m), None] => m,
+                [None, Some(m), Some(r)] => span(m.start..r.end),
+                [Some(l), _, Some(r)] => span(l.start..r.end),
+                [Some(l), Some(m), None] => span(l.start..m.end),
+            }
+        };
         Self {
+            span,
             leading_commas,
-            instruction,
+            holdbit: instruction.holdbit,
+            instruction: instruction.upi,
             trailing_commas,
         }
     }
@@ -816,17 +886,7 @@ impl CommaDelimitedInstruction {
     }
 
     pub(crate) fn span(&self) -> Span {
-        let start = self
-            .leading_commas
-            .as_ref()
-            .map(|c| c.span().start)
-            .unwrap_or(self.instruction.span.start);
-        let end = self
-            .trailing_commas
-            .as_ref()
-            .map(|c| c.span().end)
-            .unwrap_or(self.instruction.span.end);
-        Span::from(start..end)
+        self.span
     }
 }
 
@@ -854,12 +914,21 @@ impl From<(Span, Vec<CommaDelimitedInstruction>)> for EqualityValue {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct UntaggedProgramInstruction {
-    pub(crate) span: Span,
-    pub(crate) holdbit: HoldBit,
     pub(crate) fragment: InstructionFragment,
 }
 
+impl From<UntaggedProgramInstructionWithHold> for UntaggedProgramInstruction {
+    fn from(value: UntaggedProgramInstructionWithHold) -> Self {
+        value.upi
+    }
+}
+
 impl UntaggedProgramInstruction {
+    #[cfg(test)]
+    pub(crate) fn span(&self) -> Option<Span> {
+        self.fragment.span()
+    }
+
     fn symbol_uses(
         &self,
         block_id: BlockIdentifier,
@@ -947,12 +1016,16 @@ impl TaggedProgramInstruction {
     #[cfg(test)]
     pub(crate) fn single(
         tag: Option<Tag>,
+        holdbit: HoldBit,
+        inst_span: Span,
         instruction: UntaggedProgramInstruction,
     ) -> TaggedProgramInstruction {
         TaggedProgramInstruction::multiple(
             tag,
             vec![CommaDelimitedInstruction {
+                span: inst_span,
                 leading_commas: None,
+                holdbit,
                 instruction,
                 trailing_commas: None,
             }],

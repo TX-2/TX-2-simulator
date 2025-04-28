@@ -364,7 +364,8 @@ fn asterisk_indirection_fragment<'srcbody, I>(
 where
     I: Input<'srcbody, Token = Tok, Span = Span> + ValueInput<'srcbody>,
 {
-    just(Tok::Asterisk(Script::Normal)).to(InstructionFragment::DeferredAddressing)
+    just(Tok::Asterisk(Script::Normal))
+        .map_with(|_, extra| InstructionFragment::DeferredAddressing(extra.span()))
 }
 
 /// The pipe construct is described in section 6-2.8 "SPECIAL SYMBOLS"
@@ -386,19 +387,17 @@ fn make_pipe_construct(
         tag: None,
         instructions: vec![
             CommaDelimitedInstruction {
+                span: q_span,
+                holdbit: HoldBit::Unspecified,
                 leading_commas: None,
-                instruction: UntaggedProgramInstruction {
-                    span: q_span,
-                    holdbit: HoldBit::Unspecified,
-                    fragment: q,
-                },
+                instruction: UntaggedProgramInstruction { fragment: q },
                 trailing_commas: None,
             },
             CommaDelimitedInstruction {
+                span: t.span,
                 leading_commas: None,
+                holdbit: HoldBit::Unspecified,
                 instruction: UntaggedProgramInstruction {
-                    span: t.span,
-                    holdbit: HoldBit::Unspecified,
                     fragment: InstructionFragment::Arithmetic(ArithmeticExpression::from(
                         Atom::from(t.item),
                     )),
@@ -460,24 +459,26 @@ where
     .labelled("macro terminator")
 }
 
+// Exposed for testing.
+fn macro_definition_dummy_parameter<'a, I>() -> impl Parser<'a, I, MacroParameter, Extra<'a>>
+where
+    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
+{
+    // The TX-2 Users Handbook section 6-4.4 ("DUMMY PARAMETERS")
+    // doesn't disallow spaces in macro argument names.
+    (macro_terminator().then(named_symbol(SymexSyllableRule::Multiple, Script::Normal))).map_with(
+        |(terminator, symbol), extra| MacroParameter {
+            name: symbol,
+            span: extra.span(),
+            preceding_terminator: terminator,
+        },
+    )
+}
+
 fn macro_definition_dummy_parameters<'a, I>() -> impl Parser<'a, I, MacroDummyParameters, Extra<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
-    fn macro_definition_dummy_parameter<'a, I>() -> impl Parser<'a, I, MacroParameter, Extra<'a>>
-    where
-        I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
-    {
-        // The TX-2 Users Handbook section 6-4.4 ("DUMMY PARAMETERS")
-        // doesn't disallow spaces in macro argument names.
-        (macro_terminator().then(named_symbol(SymexSyllableRule::Multiple, Script::Normal)))
-            .map_with(|(terminator, symbol), extra| MacroParameter {
-                name: symbol,
-                span: extra.span(),
-                preceding_terminator: terminator,
-            })
-    }
-
     choice((
         macro_definition_dummy_parameter()
             .repeated()
@@ -609,11 +610,13 @@ where
         mut acc: Vec<CommasOrInstruction>,
         item: CommasOrInstruction,
     ) -> Vec<CommasOrInstruction> {
-        fn null_instruction(span: Span) -> UntaggedProgramInstruction {
-            UntaggedProgramInstruction {
+        fn null_instruction(span: Span) -> UntaggedProgramInstructionWithHold {
+            UntaggedProgramInstructionWithHold {
                 span,
                 holdbit: HoldBit::Unspecified,
-                fragment: InstructionFragment::Null,
+                upi: UntaggedProgramInstruction {
+                    fragment: InstructionFragment::Null,
+                },
             }
         }
 
@@ -958,11 +961,11 @@ where
         let untagged_program_instruction = maybe_hold()
             .then(program_instruction_fragment.clone())
             .map_with(
-                |(maybe_hold, inst): (Option<HoldBit>, InstructionFragment), extra| {
-                    UntaggedProgramInstruction {
+                |(maybe_hold, fragment): (Option<HoldBit>, InstructionFragment), extra| {
+                    UntaggedProgramInstructionWithHold {
                         span: extra.span(),
                         holdbit: maybe_hold.unwrap_or(HoldBit::Unspecified),
-                        fragment: inst,
+                        upi: UntaggedProgramInstruction { fragment },
                     }
                 },
             );
