@@ -837,15 +837,15 @@ pub(crate) enum CommasOrInstruction {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct CommaDelimitedInstruction {
+pub(crate) struct CommaDelimitedFragment {
     pub(crate) span: Span,
     pub(crate) leading_commas: Option<Commas>,
     pub(crate) holdbit: HoldBit,
-    pub(crate) instruction: InstructionFragment,
+    pub(crate) fragment: InstructionFragment,
     pub(crate) trailing_commas: Option<Commas>,
 }
 
-impl CommaDelimitedInstruction {
+impl CommaDelimitedFragment {
     pub(crate) fn new(
         leading_commas: Option<Commas>,
         instruction: FragmentWithHold,
@@ -871,7 +871,7 @@ impl CommaDelimitedInstruction {
             span,
             leading_commas,
             holdbit: instruction.holdbit,
-            instruction: instruction.fragment,
+            fragment: instruction.fragment,
             trailing_commas,
         }
     }
@@ -881,7 +881,7 @@ impl CommaDelimitedInstruction {
         block_id: BlockIdentifier,
         block_offset: Unsigned18Bit,
     ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> + '_ {
-        self.instruction.symbol_uses(block_id, block_offset)
+        self.fragment.symbol_uses(block_id, block_offset)
     }
 
     pub(crate) fn span(&self) -> Span {
@@ -890,24 +890,53 @@ impl CommaDelimitedInstruction {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct UntaggedProgramInstruction {
+    pub(crate) fragments: Vec<CommaDelimitedFragment>,
+}
+
+impl From<Vec<CommaDelimitedFragment>> for UntaggedProgramInstruction {
+    fn from(fragments: Vec<CommaDelimitedFragment>) -> Self {
+        assert!(!fragments.is_empty(), "input fragments should not be empty");
+        Self { fragments }
+    }
+}
+
+impl UntaggedProgramInstruction {
+    pub(crate) fn span(&self) -> Span {
+        match (self.fragments.first(), self.fragments.last()) {
+            (Some(f), Some(b)) => span(f.span.start..b.span.end),
+            (None, _) | (_, None) => {
+                unreachable!("invariant broken: zero fragments in UntaggedProgramInstruction");
+            }
+        }
+    }
+
+    fn symbol_uses(
+        &self,
+        block_id: BlockIdentifier,
+        offset: Unsigned18Bit,
+    ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> + use<'_> {
+        self.fragments
+            .iter()
+            .flat_map(move |fragment| fragment.symbol_uses(block_id, offset))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct EqualityValue {
-    span: Span,
-    parts: Vec<CommaDelimitedInstruction>,
+    pub(super) span: Span,
+    pub(super) inner: UntaggedProgramInstruction,
 }
 
 impl EqualityValue {
-    pub(crate) fn items(&self) -> &[CommaDelimitedInstruction] {
-        &self.parts
-    }
-
     pub(crate) fn span(&self) -> Span {
         self.span
     }
 }
 
-impl From<(Span, Vec<CommaDelimitedInstruction>)> for EqualityValue {
-    fn from((span, parts): (Span, Vec<CommaDelimitedInstruction>)) -> Self {
-        Self { span, parts }
+impl From<(Span, UntaggedProgramInstruction)> for EqualityValue {
+    fn from((span, inner): (Span, UntaggedProgramInstruction)) -> Self {
+        Self { span, inner }
     }
 }
 
@@ -943,7 +972,7 @@ impl Tag {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TaggedProgramInstruction {
     pub(crate) tag: Option<Tag>,
-    pub(crate) instructions: Vec<CommaDelimitedInstruction>,
+    pub(crate) instruction: UntaggedProgramInstruction,
 }
 
 impl TaggedProgramInstruction {
@@ -956,29 +985,16 @@ impl TaggedProgramInstruction {
         if let Some(tag) = self.tag() {
             result.extend(tag.symbol_uses(block_id, offset));
         }
-        for inst in self.instructions.iter() {
-            result.extend(inst.symbol_uses(block_id, offset));
-        }
+        result.extend(self.instruction.symbol_uses(block_id, offset));
         result.into_iter()
     }
 
     pub(crate) fn span(&self) -> Span {
         let begin = match self.tag() {
             Some(t) => t.span.start,
-            None => {
-                self.instructions
-                    .first()
-                    .expect("TaggedProgramInstruction must contain at least one instruction")
-                    .span()
-                    .start
-            }
+            None => self.instruction.span().start,
         };
-        let end = self
-            .instructions
-            .last()
-            .expect("TaggedProgramInstruction must contain at least one instruction")
-            .span()
-            .end;
+        let end = self.instruction.span().end;
         Span::from(begin..end)
     }
 
@@ -991,15 +1007,15 @@ impl TaggedProgramInstruction {
         tag: Option<Tag>,
         holdbit: HoldBit,
         inst_span: Span,
-        instruction: InstructionFragment,
+        frag: InstructionFragment,
     ) -> TaggedProgramInstruction {
         TaggedProgramInstruction::multiple(
             tag,
-            vec![CommaDelimitedInstruction {
+            vec![CommaDelimitedFragment {
                 span: inst_span,
                 leading_commas: None,
                 holdbit,
-                instruction,
+                fragment: frag,
                 trailing_commas: None,
             }],
         )
@@ -1008,10 +1024,13 @@ impl TaggedProgramInstruction {
     #[cfg(test)]
     pub(crate) fn multiple(
         tag: Option<Tag>,
-        instructions: Vec<CommaDelimitedInstruction>,
+        fragments: Vec<CommaDelimitedFragment>,
     ) -> TaggedProgramInstruction {
-        assert!(!instructions.is_empty());
-        TaggedProgramInstruction { tag, instructions }
+        assert!(!fragments.is_empty());
+        TaggedProgramInstruction {
+            tag,
+            instruction: UntaggedProgramInstruction::from(fragments),
+        }
     }
 
     fn emitted_instruction_count(&self) -> Unsigned18Bit {

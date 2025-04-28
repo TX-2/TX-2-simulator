@@ -385,24 +385,24 @@ fn make_pipe_construct(
 
     let rc_word_value: RegisterContaining = RegisterContaining::from(TaggedProgramInstruction {
         tag: None,
-        instructions: vec![
-            CommaDelimitedInstruction {
+        instruction: UntaggedProgramInstruction::from(vec![
+            CommaDelimitedFragment {
                 span: q_span,
                 holdbit: HoldBit::Unspecified,
                 leading_commas: None,
-                instruction: q,
+                fragment: q,
                 trailing_commas: None,
             },
-            CommaDelimitedInstruction {
+            CommaDelimitedFragment {
                 span: t.span,
                 leading_commas: None,
                 holdbit: HoldBit::Unspecified,
-                instruction: InstructionFragment::Arithmetic(ArithmeticExpression::from(
-                    Atom::from(t.item),
-                )),
+                fragment: InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::from(
+                    t.item,
+                ))),
                 trailing_commas: None,
             },
-        ],
+        ]),
     });
     InstructionFragment::PipeConstruct {
         index: p,
@@ -591,7 +591,7 @@ where
     .labelled("metacommand")
 }
 
-pub(crate) fn instructions_with_comma_counts<I>(it: I) -> Vec<CommaDelimitedInstruction>
+pub(crate) fn instructions_with_comma_counts<I>(it: I) -> Vec<CommaDelimitedFragment>
 where
     I: Iterator<Item = CommasOrInstruction>,
 {
@@ -661,7 +661,7 @@ where
     })];
 
     let tmp = it.fold(initial_accumulator, fold_step);
-    let mut output: Vec<CommaDelimitedInstruction> = Vec::with_capacity(tmp.len() / 2 + 1);
+    let mut output: Vec<CommaDelimitedFragment> = Vec::with_capacity(tmp.len() / 2 + 1);
     let mut it = tmp.into_iter().peekable();
     loop {
         let maybe_before_count = it.next();
@@ -678,7 +678,7 @@ where
                         unreachable!("fold_step did not maintain its invariant")
                     }
                 };
-                output.push(CommaDelimitedInstruction::new(
+                output.push(CommaDelimitedFragment::new(
                     before_commas,
                     inst,
                     after_commas,
@@ -768,8 +768,11 @@ where
         .or_not()
         .then(comma_delimited_instructions.clone())
         .map(
-            |(tag, instructions): (Option<Tag>, Vec<CommaDelimitedInstruction>)| {
-                TaggedProgramInstruction { tag, instructions }
+            |(tag, fragments): (Option<Tag>, Vec<CommaDelimitedFragment>)| {
+                TaggedProgramInstruction {
+                    tag,
+                    instruction: UntaggedProgramInstruction::from(fragments),
+                }
             },
         )
         .labelled(
@@ -983,11 +986,9 @@ where
     // AUTOMATIC ASSIGNMENT".
     let assignment = (symex::parse_symex(SymexSyllableRule::Multiple, Script::Normal)
         .then_ignore(just(Tok::Equals(Script::Normal)))
-        .then(
-            comma_delimited_instructions
-                .clone()
-                .map_with(|val, extra| EqualityValue::from((extra.span(), val))),
-        ))
+        .then(comma_delimited_instructions.clone().map_with(|val, extra| {
+            EqualityValue::from((extra.span(), UntaggedProgramInstruction::from(val)))
+        })))
     .map_with(|(name, value), extra| Equality {
         span: extra.span(),
         name,

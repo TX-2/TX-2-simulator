@@ -703,17 +703,17 @@ fn test_assemble_pass1() {
             span(0..2),
             TaggedProgramInstruction {
                 tag: None,
-                instructions: vec![CommaDelimitedInstruction {
+                instruction: UntaggedProgramInstruction::from(vec![CommaDelimitedFragment {
                     leading_commas: None,
                     holdbit: HoldBit::Unspecified,
                     span: span(0..2),
-                    instruction: atom_to_fragment(Atom::from(LiteralValue::from((
+                    fragment: atom_to_fragment(Atom::from(LiteralValue::from((
                         span(0..2),
                         Script::Normal,
                         u36!(0o14),
                     )))),
                     trailing_commas: None,
-                }],
+                }]),
             },
         )],
     };

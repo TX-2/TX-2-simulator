@@ -273,12 +273,26 @@ impl Evaluate for EqualityValue {
         rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+        self.inner
+            .evaluate(self.span(), target_address, symtab, rc_updater, op)
+    }
+}
+
+impl Evaluate for UntaggedProgramInstruction {
+    fn evaluate<R: RcUpdater>(
+        &self,
+        _span: Span,
+        target_address: &HereValue,
+        symtab: &mut SymbolTable,
+        rc_updater: &mut R,
+        op: &mut LookupOperation,
+    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         // Comma delimited values are evaluated left-to-right, as stated in item
         // (b) in section 6-2.4, "NUMERICAL FORMAT - USE OF COMMAS" of
         // the Users Handbook.  The initial value is zero (as
         // specified in item (a) in the same place).
-        let to_eval: Vec<(&CommaDelimitedInstruction, Span)> =
-            self.items().iter().map(|cdi| (cdi, cdi.span())).collect();
+        let to_eval: Vec<(&CommaDelimitedFragment, Span)> =
+            self.fragments.iter().map(|cdi| (cdi, cdi.span())).collect();
         evaluate_and_combine_values(to_eval.as_slice(), target_address, symtab, rc_updater, op)
     }
 }
@@ -300,15 +314,8 @@ impl Evaluate for TaggedProgramInstruction {
         rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-        if self.instructions.is_empty() {
-            panic!("invariant broken: TaggedProgramInstruction contains zero instructions");
-        }
-        let to_eval: Vec<(&CommaDelimitedInstruction, Span)> = self
-            .instructions
-            .iter()
-            .map(|inst| (inst, inst.span()))
-            .collect();
-        evaluate_and_combine_values(&to_eval, target_address, symtab, rc_updater, op)
+        self.instruction
+            .evaluate(self.span(), target_address, symtab, rc_updater, op)
     }
 }
 
@@ -566,7 +573,7 @@ fn comma_transformation(
     }
 }
 
-impl Evaluate for CommaDelimitedInstruction {
+impl Evaluate for CommaDelimitedFragment {
     fn evaluate<R: RcUpdater>(
         &self,
         span: Span,
@@ -575,7 +582,7 @@ impl Evaluate for CommaDelimitedInstruction {
         rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-        self.instruction
+        self.fragment
             .evaluate(span, target_address, symtab, rc_updater, op)
             .map(|word| {
                 // TODO: issue a diagnostic if there are inconsistent
@@ -1214,20 +1221,30 @@ impl TaggedProgramInstruction {
         symtab: &mut SymbolTable,
         rc_allocator: &mut R,
     ) -> Result<(), MachineLimitExceededFailure> {
-        for inst in self.instructions.iter_mut() {
+        self.instruction.assign_rc_words(symtab, rc_allocator)
+    }
+}
+
+impl UntaggedProgramInstruction {
+    pub(super) fn assign_rc_words<R: RcAllocator>(
+        &mut self,
+        symtab: &mut SymbolTable,
+        rc_allocator: &mut R,
+    ) -> Result<(), MachineLimitExceededFailure> {
+        for inst in self.fragments.iter_mut() {
             inst.assign_rc_words(symtab, rc_allocator)?;
         }
         Ok(())
     }
 }
 
-impl CommaDelimitedInstruction {
+impl CommaDelimitedFragment {
     pub(super) fn assign_rc_words<R: RcAllocator>(
         &mut self,
         symtab: &mut SymbolTable,
         rc_allocator: &mut R,
     ) -> Result<(), MachineLimitExceededFailure> {
-        self.instruction.assign_rc_words(symtab, rc_allocator)
+        self.fragment.assign_rc_words(symtab, rc_allocator)
     }
 }
 

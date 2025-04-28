@@ -1,9 +1,9 @@
 use std::ops::{Range, Shl};
 
 use super::super::ast::{
-    ArithmeticExpression, Atom, CommaDelimitedInstruction, HoldBit, InstructionFragment,
-    LiteralValue, LocatedBlock, ManuscriptBlock, PunchCommand, SourceFile,
-    TaggedProgramInstruction,
+    ArithmeticExpression, Atom, CommaDelimitedFragment, HoldBit, InstructionFragment, LiteralValue,
+    LocatedBlock, ManuscriptBlock, PunchCommand, SourceFile, TaggedProgramInstruction,
+    UntaggedProgramInstruction,
 };
 use super::super::eval::{make_empty_rc_block_for_test, SymbolLookup, SymbolValue};
 use super::super::span::*;
@@ -67,17 +67,19 @@ fn test_assemble_pass1() {
                     span(0..2),
                     TaggedProgramInstruction {
                         tag: None,
-                        instructions: vec![CommaDelimitedInstruction {
-                            leading_commas: None,
-                            holdbit: HoldBit::Unspecified,
-                            span: span(0..2),
-                            instruction: atom_to_fragment(Atom::from(LiteralValue::from((
-                                Span::from(0..2),
-                                Script::Normal,
-                                u36!(0o14)
-                            )))),
-                            trailing_commas: None,
-                        }]
+                        instruction: UntaggedProgramInstruction {
+                            fragments: vec![CommaDelimitedFragment {
+                                leading_commas: None,
+                                holdbit: HoldBit::Unspecified,
+                                span: span(0..2),
+                                fragment: atom_to_fragment(Atom::from(LiteralValue::from((
+                                    Span::from(0..2),
+                                    Script::Normal,
+                                    u36!(0o14)
+                                )))),
+                                trailing_commas: None,
+                            }]
+                        }
                     }
                 )]
             }],
@@ -110,25 +112,25 @@ fn test_metacommand_dec_changes_default_base() {
             _,
             TaggedProgramInstruction {
                 tag: None,
-                instructions: first_instructions,
+                instruction: first_instruction,
             },
         ), (
             _,
             TaggedProgramInstruction {
                 tag: None,
-                instructions: second_instructions,
+                instruction: second_instruction,
             },
         )] = statements.as_slice()
         {
-            if let [first_instruction] = first_instructions.as_slice() {
-                if let [second_instruction] = second_instructions.as_slice() {
-                    assert_eq!(first_instruction.leading_commas, None);
-                    assert_eq!(first_instruction.trailing_commas, None);
-                    assert_eq!(second_instruction.leading_commas, None);
-                    assert_eq!(second_instruction.trailing_commas, None);
+            if let [first_fragment] = first_instruction.fragments.as_slice() {
+                if let [second_fragment] = second_instruction.fragments.as_slice() {
+                    assert_eq!(first_fragment.leading_commas, None);
+                    assert_eq!(first_fragment.trailing_commas, None);
+                    assert_eq!(second_fragment.leading_commas, None);
+                    assert_eq!(second_fragment.trailing_commas, None);
 
                     assert_eq!(
-                        &first_instruction.instruction,
+                        &first_fragment.fragment,
                         &InstructionFragment::from((
                             Span::from(0..2usize),
                             Script::Normal,
@@ -136,7 +138,7 @@ fn test_metacommand_dec_changes_default_base() {
                         )),
                     );
                     assert_eq!(
-                        &second_instruction.instruction,
+                        &second_fragment.fragment,
                         &InstructionFragment::from((
                             span(17..19),
                             Script::Normal,

@@ -258,15 +258,16 @@ fn parse_single_instruction_fragment(input: &str) -> InstructionFragment {
 
 #[cfg(test)]
 fn parse_multiple_instruction_fragments(input: &str) -> Vec<InstructionFragment> {
-    let parse_result = parse_comma_expression(input);
+    let parse_result = parse_untagged_program_instruction(input);
     parse_result
+        .fragments
         .into_iter()
         .map(|comma_delimited_insn| match comma_delimited_insn {
-            CommaDelimitedInstruction {
+            CommaDelimitedFragment {
                 span: _,
                 leading_commas: _,
                 holdbit: _,
-                instruction: inst,
+                fragment: inst,
                 trailing_commas: _,
             } => inst,
         })
@@ -656,21 +657,23 @@ fn test_comment_in_rc_block() {
                             RegistersContaining::from_words(vec![RegisterContaining::from(
                                 TaggedProgramInstruction {
                                     tag: None,
-                                    instructions: vec![CommaDelimitedInstruction {
-                                        leading_commas: None,
-                                        holdbit: HoldBit::Unspecified,
-                                        span: span(1..2),
-                                        instruction: InstructionFragment::Arithmetic(
-                                            ArithmeticExpression::from(Atom::from(
-                                                LiteralValue::from((
-                                                    span(1..2),
-                                                    Script::Normal,
-                                                    Unsigned36Bit::ONE
+                                    instruction: UntaggedProgramInstruction::from(vec![
+                                        CommaDelimitedFragment {
+                                            leading_commas: None,
+                                            holdbit: HoldBit::Unspecified,
+                                            span: span(1..2),
+                                            fragment: InstructionFragment::Arithmetic(
+                                                ArithmeticExpression::from(Atom::from(
+                                                    LiteralValue::from((
+                                                        span(1..2),
+                                                        Script::Normal,
+                                                        Unsigned36Bit::ONE
+                                                    ))
                                                 ))
-                                            ))
-                                        ),
-                                        trailing_commas: None,
-                                    }]
+                                            ),
+                                            trailing_commas: None,
+                                        }
+                                    ])
                                 }
                             )]),
                         )))
@@ -783,9 +786,9 @@ fn parse_tagged_instruction(input: &str) -> TaggedProgramInstruction {
 }
 
 #[cfg(test)]
-fn parse_comma_expression(input: &str) -> Vec<CommaDelimitedInstruction> {
+fn parse_untagged_program_instruction(input: &str) -> UntaggedProgramInstruction {
     let stmt = parse_successfully_with(input, tagged_instruction(), no_state_setup);
-    stmt.instructions
+    stmt.instruction
 }
 
 #[test]
@@ -799,19 +802,15 @@ fn test_arrow() {
                 },
                 span: span(0..3),
             }),
-            instructions: vec![CommaDelimitedInstruction {
+            instruction: UntaggedProgramInstruction::from(vec![CommaDelimitedFragment {
                 leading_commas: None,
                 holdbit: HoldBit::Unspecified,
                 span: span(5..6),
-                instruction: InstructionFragment::Arithmetic(ArithmeticExpression::from(
-                    Atom::from(LiteralValue::from((
-                        span(5..6),
-                        Script::Normal,
-                        Unsigned36Bit::ZERO
-                    )))
-                )),
+                fragment: InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::from(
+                    LiteralValue::from((span(5..6), Script::Normal, Unsigned36Bit::ZERO))
+                ))),
                 trailing_commas: None
-            }]
+            }])
         }
     );
     assert_eq!(
@@ -823,15 +822,15 @@ fn test_arrow() {
                 },
                 span: span(0..3),
             }),
-            instructions: vec![CommaDelimitedInstruction {
+            instruction: UntaggedProgramInstruction::from(vec![CommaDelimitedFragment {
                 leading_commas: None,
                 holdbit: HoldBit::Unspecified,
                 span: span(8..9),
-                instruction: InstructionFragment::Arithmetic(ArithmeticExpression::from(
-                    Atom::from(LiteralValue::from((span(8..9), Script::Normal, u36!(1),)))
-                )),
+                fragment: InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::from(
+                    LiteralValue::from((span(8..9), Script::Normal, u36!(1),))
+                ))),
                 trailing_commas: None
-            }]
+            }])
         }
     );
 }
@@ -981,13 +980,13 @@ fn assignment_of_literal(name: &str, assignment_span: Span, literal: LiteralValu
         name: SymbolName::from(name),
         value: EqualityValue::from((
             *literal.span(),
-            vec![CommaDelimitedInstruction {
+            UntaggedProgramInstruction::from(vec![CommaDelimitedFragment {
                 leading_commas: None,
                 holdbit: HoldBit::Unspecified,
                 span: *literal.span(),
-                instruction: atom_to_fragment(Atom::from(literal)),
+                fragment: atom_to_fragment(Atom::from(literal)),
                 trailing_commas: None,
-            }],
+            }]),
         )),
     }
 }
@@ -1033,11 +1032,11 @@ fn test_assignment_superscript() {
                 name: SymbolName::from("FOO"),
                 value: EqualityValue::from((
                     val_span,
-                    vec![CommaDelimitedInstruction {
+                    UntaggedProgramInstruction::from(vec![CommaDelimitedFragment {
                         leading_commas: None,
                         holdbit: HoldBit::Unspecified,
                         span: span(*val_begin..*val_end),
-                        instruction: InstructionFragment::Config(ConfigValue {
+                        fragment: InstructionFragment::Config(ConfigValue {
                             already_superscript: true,
                             expr: ArithmeticExpression::from(Atom::from((
                                 span(*val_begin..*val_end),
@@ -1046,7 +1045,7 @@ fn test_assignment_superscript() {
                             )))
                         }),
                         trailing_commas: None
-                    }]
+                    }])
                 ))
             }
         );
@@ -1783,12 +1782,12 @@ fn test_double_pipe_config_symbolic() {
     let got = parse_tagged_instruction(input_xy);
     let expected = TaggedProgramInstruction {
         tag: None,
-        instructions: vec![
-            CommaDelimitedInstruction {
+        instruction: UntaggedProgramInstruction::from(vec![
+            CommaDelimitedFragment {
                 leading_commas: None,
                 holdbit: HoldBit::Unspecified,
                 span: span(0..4),
-                instruction: InstructionFragment::Config(ConfigValue {
+                fragment: InstructionFragment::Config(ConfigValue {
                     already_superscript: false,
                     expr: ArithmeticExpression::from(Atom::from((
                         span(3..4),
@@ -1798,16 +1797,16 @@ fn test_double_pipe_config_symbolic() {
                 }),
                 trailing_commas: None,
             },
-            CommaDelimitedInstruction {
+            CommaDelimitedFragment {
                 leading_commas: None,
                 holdbit: HoldBit::Unspecified,
                 span: span(5..6),
-                instruction: InstructionFragment::Arithmetic(ArithmeticExpression::from(
-                    Atom::from((span(5..6), Script::Normal, SymbolName::from("Y"))),
-                )),
+                fragment: InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::from(
+                    (span(5..6), Script::Normal, SymbolName::from("Y")),
+                ))),
                 trailing_commas: None,
             },
-        ],
+        ]),
     };
     assert_eq!(got, expected);
 }
@@ -1827,12 +1826,12 @@ fn test_double_pipe_config_expression() {
     let got = parse_tagged_instruction(input_qy);
     let expected = TaggedProgramInstruction {
         tag: None,
-        instructions: vec![
-            CommaDelimitedInstruction {
+        instruction: UntaggedProgramInstruction::from(vec![
+            CommaDelimitedFragment {
                 leading_commas: None,
                 holdbit: HoldBit::Unspecified,
                 span: span(0..10),
-                instruction: InstructionFragment::Config(ConfigValue {
+                fragment: InstructionFragment::Config(ConfigValue {
                     already_superscript: false,
                     expr: ArithmeticExpression {
                         first: SignedAtom {
@@ -1871,16 +1870,16 @@ fn test_double_pipe_config_expression() {
                 }),
                 trailing_commas: None,
             },
-            CommaDelimitedInstruction {
+            CommaDelimitedFragment {
                 leading_commas: None,
                 holdbit: HoldBit::Unspecified,
                 span: span(11..12),
-                instruction: InstructionFragment::Arithmetic(ArithmeticExpression::from(
-                    Atom::from((span(11..12), Script::Normal, SymbolName::from("Y"))),
-                )),
+                fragment: InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::from(
+                    (span(11..12), Script::Normal, SymbolName::from("Y")),
+                ))),
                 trailing_commas: None,
             },
-        ],
+        ]),
     };
     assert_eq!(got, expected);
 }
@@ -1939,23 +1938,23 @@ fn test_superscript_configuration_literal() {
     )));
 
     assert_eq!(
-        parse_comma_expression(input),
-        vec![
-            CommaDelimitedInstruction {
+        parse_untagged_program_instruction(input),
+        UntaggedProgramInstruction::from(vec![
+            CommaDelimitedFragment {
                 leading_commas: None,
                 holdbit: HoldBit::Unspecified,
                 span: span(0..7),
-                instruction: config,
+                fragment: config,
                 trailing_commas: None,
             },
-            CommaDelimitedInstruction {
+            CommaDelimitedFragment {
                 leading_commas: None,
                 holdbit: HoldBit::Unspecified,
                 span: span(7..10),
-                instruction: aux,
+                fragment: aux,
                 trailing_commas: None,
             },
-        ]
+        ])
     );
 }
 
@@ -1987,12 +1986,12 @@ fn test_pipe_construct() {
         rc_word_span: span(21..38),
         rc_word_value: RegisterContaining::from(TaggedProgramInstruction {
             tag: None,
-            instructions: vec![
-                CommaDelimitedInstruction {
+            instruction: UntaggedProgramInstruction::from(vec![
+                CommaDelimitedFragment {
                     leading_commas: None,
                     holdbit: HoldBit::Unspecified,
                     span: span(31..38),
-                    instruction: InstructionFragment::Arithmetic(ArithmeticExpression {
+                    fragment: InstructionFragment::Arithmetic(ArithmeticExpression {
                         first: SignedAtom {
                             negated: false,
                             span: span(31..38),
@@ -2006,11 +2005,11 @@ fn test_pipe_construct() {
                     }),
                     trailing_commas: None,
                 },
-                CommaDelimitedInstruction {
+                CommaDelimitedFragment {
                     leading_commas: None,
                     holdbit: HoldBit::Unspecified,
                     span: span(21..31),
-                    instruction: InstructionFragment::Arithmetic(ArithmeticExpression {
+                    fragment: InstructionFragment::Arithmetic(ArithmeticExpression {
                         first: SignedAtom {
                             negated: false,
                             span: span(21..31),
@@ -2024,7 +2023,7 @@ fn test_pipe_construct() {
                     }),
                     trailing_commas: None,
                 },
-            ],
+            ]),
         }),
     };
     assert_eq!(got, expected, "incorrect parse of input {input}");
@@ -2050,44 +2049,44 @@ fn test_commas_instruction() {
     let expected = TaggedProgramInstruction::multiple(
         None,
         vec![
-            CommaDelimitedInstruction {
+            CommaDelimitedFragment {
                 leading_commas: None,
                 holdbit: HoldBit::Unspecified,
                 span: span(0..4),
-                instruction: InstructionFragment::from((
+                fragment: InstructionFragment::from((
                     span(0..3),
                     Script::Normal,
                     Unsigned36Bit::from(0o200u8),
                 )),
                 trailing_commas: Some(Commas::One(span(3..4))),
             },
-            CommaDelimitedInstruction {
+            CommaDelimitedFragment {
                 leading_commas: Some(Commas::One(span(3..4))),
                 holdbit: HoldBit::Unspecified,
                 span: span(3..9),
-                instruction: InstructionFragment::from((
+                fragment: InstructionFragment::from((
                     span(4..7),
                     Script::Normal,
                     Unsigned36Bit::from(0o200u8),
                 )),
                 trailing_commas: Some(Commas::Two(span(7..9))),
             },
-            CommaDelimitedInstruction {
+            CommaDelimitedFragment {
                 leading_commas: Some(Commas::Two(span(7..9))),
                 holdbit: HoldBit::Unspecified,
                 span: span(7..13),
-                instruction: InstructionFragment::from((
+                fragment: InstructionFragment::from((
                     span(9..12),
                     Script::Normal,
                     Unsigned36Bit::from(0o200u8),
                 )),
                 trailing_commas: Some(Commas::One(span(12..13))),
             },
-            CommaDelimitedInstruction {
+            CommaDelimitedFragment {
                 leading_commas: Some(Commas::One(span(12..13))),
                 holdbit: HoldBit::Unspecified,
                 span: span(12..16),
-                instruction: InstructionFragment::from((
+                fragment: InstructionFragment::from((
                     span(13..16),
                     Script::Normal,
                     Unsigned36Bit::from(0o200u8),
@@ -2102,7 +2101,7 @@ fn test_commas_instruction() {
 #[cfg(test)]
 mod comma_tests {
     use super::super::super::ast::{
-        CommaDelimitedInstruction, Commas, CommasOrInstruction, FragmentWithHold, HoldBit,
+        CommaDelimitedFragment, Commas, CommasOrInstruction, FragmentWithHold, HoldBit,
         InstructionFragment,
     };
     use super::super::super::span::*;
@@ -2110,7 +2109,7 @@ mod comma_tests {
     use std::fmt::Formatter;
 
     #[derive(Clone, Eq)]
-    struct Briefly(CommaDelimitedInstruction);
+    struct Briefly(CommaDelimitedFragment);
 
     impl From<(Option<Commas>, Span, InstructionFragment, Option<Commas>)> for Briefly {
         fn from(
@@ -2121,7 +2120,7 @@ mod comma_tests {
                 Option<Commas>,
             ),
         ) -> Self {
-            Self(CommaDelimitedInstruction::new(
+            Self(CommaDelimitedFragment::new(
                 leading_commas,
                 FragmentWithHold {
                     span,
@@ -2146,8 +2145,8 @@ mod comma_tests {
             .collect()
     }
 
-    impl PartialEq<CommaDelimitedInstruction> for Briefly {
-        fn eq(&self, other: &CommaDelimitedInstruction) -> bool {
+    impl PartialEq<CommaDelimitedFragment> for Briefly {
+        fn eq(&self, other: &CommaDelimitedFragment) -> bool {
             self == other
         }
     }
@@ -2166,7 +2165,7 @@ mod comma_tests {
 
     impl std::fmt::Debug for Briefly {
         fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-            let u = &self.0.instruction;
+            let u = &self.0.fragment;
             let span = u.span();
             write!(
                 f,
@@ -2515,30 +2514,30 @@ fn test_mnemonic_suz() {
                 },
                 span: span(0..5),
             }),
-            instructions: vec![
-                CommaDelimitedInstruction {
+            instruction: UntaggedProgramInstruction::from(vec![
+                CommaDelimitedFragment {
                     leading_commas: None,
                     holdbit: HoldBit::Unspecified,
                     span: span(9..12),
-                    instruction: InstructionFragment::from((
+                    fragment: InstructionFragment::from((
                         span(9..12),
                         Script::Normal,
                         u36!(0o121_700_000_000)
                     )),
                     trailing_commas: None,
                 },
-                CommaDelimitedInstruction {
+                CommaDelimitedFragment {
                     leading_commas: None,
                     holdbit: HoldBit::Unspecified,
                     span: span(13..19),
-                    instruction: InstructionFragment::from((
+                    fragment: InstructionFragment::from((
                         span(13..19),
                         Script::Normal,
                         u36!(0o000_000_200_013)
                     )),
                     trailing_commas: None,
                 },
-            ]
+            ])
         }
     );
 }
