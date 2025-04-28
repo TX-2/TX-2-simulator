@@ -1087,7 +1087,6 @@ where
             where
                 I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
             {
-                // We should eventually support symexes here.
                 literal(Script::Normal)
                     .try_map(|lit, span| match Address::try_from(lit.value()) {
                         Ok(addr) => Ok(Origin::Literal(span, addr)),
