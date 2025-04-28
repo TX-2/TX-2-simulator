@@ -460,32 +460,31 @@ where
     .labelled("macro terminator")
 }
 
-fn macro_argument<'a, I>() -> impl Parser<'a, I, MacroArgument, Extra<'a>>
+fn macro_definition_dummy_parameters<'a, I>() -> impl Parser<'a, I, MacroDummyParameters, Extra<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
-    // The TX-2 Users Handbook section 6-4.4 ("DUMMY PARAMETERS")
-    // doesn't disallow spaces in macro argument names.
-    (macro_terminator().then(named_symbol(SymexSyllableRule::Multiple, Script::Normal))).map_with(
-        |(terminator, symbol), extra| MacroArgument {
-            name: symbol,
-            span: extra.span(),
-            preceding_terminator: terminator,
-        },
-    )
-}
+    fn macro_definition_dummy_parameter<'a, I>() -> impl Parser<'a, I, MacroParameter, Extra<'a>>
+    where
+        I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
+    {
+        // The TX-2 Users Handbook section 6-4.4 ("DUMMY PARAMETERS")
+        // doesn't disallow spaces in macro argument names.
+        (macro_terminator().then(named_symbol(SymexSyllableRule::Multiple, Script::Normal)))
+            .map_with(|(terminator, symbol), extra| MacroParameter {
+                name: symbol,
+                span: extra.span(),
+                preceding_terminator: terminator,
+            })
+    }
 
-fn macro_arguments<'a, I>() -> impl Parser<'a, I, MacroArguments, Extra<'a>>
-where
-    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
-{
     choice((
-        macro_argument()
+        macro_definition_dummy_parameter()
             .repeated()
             .at_least(1)
             .collect::<Vec<_>>()
-            .map(MacroArguments::OneOrMore),
-        macro_terminator().map(MacroArguments::Zero),
+            .map(MacroDummyParameters::OneOrMore),
+        macro_terminator().map(MacroDummyParameters::Zero),
     ))
 }
 
@@ -498,7 +497,7 @@ where
         .ignore_then(
             named_symbol(SymexSyllableRule::Multiple, Script::Normal).labelled("macro name"), // the macro's name (# is not allowed)
         )
-        .then(macro_arguments())
+        .then(macro_definition_dummy_parameters())
         .then_ignore(end_of_line())
         .then(
             (tagged_instruction().then_ignore(end_of_line()))
@@ -511,7 +510,7 @@ where
         // to be followed by end-of-line.
         .map_with(|((name, args), body), extra| MacroDefinition {
             name,
-            args,
+            params: args,
             body,
             span: extra.span(),
         })

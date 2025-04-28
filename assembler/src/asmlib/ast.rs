@@ -1083,7 +1083,7 @@ pub(crate) enum ManuscriptLine {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct MacroArgument {
+pub(crate) struct MacroParameter {
     pub(crate) name: SymbolName,
     pub(crate) span: Span,
     pub(crate) preceding_terminator: char,
@@ -1095,15 +1095,15 @@ pub(crate) struct MacroArgument {
 /// arguments, MacroArguments::Zero(ch) represents that uses of the
 /// macro's name are followed by the indicated terminator character.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum MacroArguments {
+pub(crate) enum MacroDummyParameters {
     Zero(char),
-    OneOrMore(Vec<MacroArgument>),
+    OneOrMore(Vec<MacroParameter>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct MacroDefinition {
     pub(crate) name: SymbolName, // composite character macros are not yet supported
-    pub(crate) args: MacroArguments,
+    pub(crate) params: MacroDummyParameters,
     // body should probably be a sequence of ManuscriptLine in order
     // to allow an origin specification to exist within a macro body.
     // But that is not supported yet.

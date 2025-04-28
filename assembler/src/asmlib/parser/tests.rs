@@ -1503,8 +1503,12 @@ fn test_parenthesised_expression() {
 #[test]
 fn test_macro_arg() {
     assert_eq!(
-        parse_successfully_with("@hand@A01", macro_argument(), no_state_setup),
-        MacroArgument {
+        parse_successfully_with(
+            "@hand@A01",
+            macro_definition_dummy_parameter(),
+            no_state_setup
+        ),
+        MacroParameter {
             name: SymbolName::from("A01".to_string()),
             span: span(0..9),
             preceding_terminator: '☛',
@@ -1512,8 +1516,12 @@ fn test_macro_arg() {
     );
 
     assert_eq!(
-        parse_successfully_with("@comma@A02", macro_argument(), no_state_setup),
-        MacroArgument {
+        parse_successfully_with(
+            "@comma@A02",
+            macro_definition_dummy_parameter(),
+            no_state_setup
+        ),
+        MacroParameter {
             name: SymbolName::from("A02".to_string()),
             span: span(0..10),
             preceding_terminator: ',',
@@ -1521,8 +1529,8 @@ fn test_macro_arg() {
     );
 
     assert_eq!(
-        parse_successfully_with("=A03", macro_argument(), no_state_setup),
-        MacroArgument {
+        parse_successfully_with("=A03", macro_definition_dummy_parameter(), no_state_setup),
+        MacroParameter {
             name: SymbolName::from("A03".to_string()),
             span: span(0..4),
             preceding_terminator: '=',
@@ -1530,8 +1538,12 @@ fn test_macro_arg() {
     );
 
     assert_eq!(
-        parse_successfully_with("@arr@A04", macro_argument(), no_state_setup),
-        MacroArgument {
+        parse_successfully_with(
+            "@arr@A04",
+            macro_definition_dummy_parameter(),
+            no_state_setup
+        ),
+        MacroParameter {
             name: SymbolName::from("A04".to_string()),
             span: span(0..8),
             preceding_terminator: '→',
@@ -1541,8 +1553,8 @@ fn test_macro_arg() {
     assert_eq!(
         // Alternative form for convenience (and consistency with
         // what we allow for tags).
-        parse_successfully_with("->A04", macro_argument(), no_state_setup),
-        MacroArgument {
+        parse_successfully_with("->A04", macro_definition_dummy_parameter(), no_state_setup),
+        MacroParameter {
             name: SymbolName::from("A04".to_string()),
             span: span(0..5),
             preceding_terminator: '→',
@@ -1550,8 +1562,8 @@ fn test_macro_arg() {
     );
 
     assert_eq!(
-        parse_successfully_with("|A05", macro_argument(), no_state_setup),
-        MacroArgument {
+        parse_successfully_with("|A05", macro_definition_dummy_parameter(), no_state_setup),
+        MacroParameter {
             name: SymbolName::from("A05".to_string()),
             span: span(0..4),
             preceding_terminator: '|',
@@ -1559,8 +1571,8 @@ fn test_macro_arg() {
     );
 
     assert_eq!(
-        parse_successfully_with("⊃A06", macro_argument(), no_state_setup),
-        MacroArgument {
+        parse_successfully_with("⊃A06", macro_definition_dummy_parameter(), no_state_setup),
+        MacroParameter {
             name: SymbolName::from("A06".to_string()),
             span: span(0..6),
             preceding_terminator: '⊃',
@@ -1568,8 +1580,8 @@ fn test_macro_arg() {
     );
 
     assert_eq!(
-        parse_successfully_with("≡A07", macro_argument(), no_state_setup),
-        MacroArgument {
+        parse_successfully_with("≡A07", macro_definition_dummy_parameter(), no_state_setup),
+        MacroParameter {
             name: SymbolName::from("A07".to_string()),
             span: span(0..6),
             preceding_terminator: '≡',
@@ -1577,8 +1589,12 @@ fn test_macro_arg() {
     );
 
     assert_eq!(
-        parse_successfully_with("@hamb@A07", macro_argument(), no_state_setup),
-        MacroArgument {
+        parse_successfully_with(
+            "@hamb@A07",
+            macro_definition_dummy_parameter(),
+            no_state_setup
+        ),
+        MacroParameter {
             name: SymbolName::from("A07".to_string()),
             span: span(0..9),
             preceding_terminator: '≡',
@@ -1586,8 +1602,8 @@ fn test_macro_arg() {
     );
 
     assert_eq!(
-        parse_successfully_with("~A08", macro_argument(), no_state_setup),
-        MacroArgument {
+        parse_successfully_with("~A08", macro_definition_dummy_parameter(), no_state_setup),
+        MacroParameter {
             name: SymbolName::from("A08".to_string()),
             span: span(0..4),
             preceding_terminator: '~',
@@ -1595,8 +1611,8 @@ fn test_macro_arg() {
     );
 
     assert_eq!(
-        parse_successfully_with("<A09", macro_argument(), no_state_setup),
-        MacroArgument {
+        parse_successfully_with("<A09", macro_definition_dummy_parameter(), no_state_setup),
+        MacroParameter {
             name: SymbolName::from("A09".to_string()),
             span: span(0..4),
             preceding_terminator: '<',
@@ -1604,8 +1620,8 @@ fn test_macro_arg() {
     );
 
     assert_eq!(
-        parse_successfully_with(">A10", macro_argument(), no_state_setup),
-        MacroArgument {
+        parse_successfully_with(">A10", macro_definition_dummy_parameter(), no_state_setup),
+        MacroParameter {
             name: SymbolName::from("A10".to_string()),
             span: span(0..4),
             preceding_terminator: '>',
@@ -1613,8 +1629,8 @@ fn test_macro_arg() {
     );
 
     assert_eq!(
-        parse_successfully_with("∩A11", macro_argument(), no_state_setup),
-        MacroArgument {
+        parse_successfully_with("∩A11", macro_definition_dummy_parameter(), no_state_setup),
+        MacroParameter {
             name: SymbolName::from("A11".to_string()),
             span: span(0..6),
             preceding_terminator: '∩',
@@ -1622,8 +1638,8 @@ fn test_macro_arg() {
     );
 
     assert_eq!(
-        parse_successfully_with("∪A12", macro_argument(), no_state_setup),
-        MacroArgument {
+        parse_successfully_with("∪A12", macro_definition_dummy_parameter(), no_state_setup),
+        MacroParameter {
             name: SymbolName::from("A12".to_string()),
             span: span(0..6),
             preceding_terminator: '∪',
@@ -1631,8 +1647,8 @@ fn test_macro_arg() {
     );
 
     assert_eq!(
-        parse_successfully_with("/A13", macro_argument(), no_state_setup),
-        MacroArgument {
+        parse_successfully_with("/A13", macro_definition_dummy_parameter(), no_state_setup),
+        MacroParameter {
             name: SymbolName::from("A13".to_string()),
             span: span(0..4),
             preceding_terminator: '/',
@@ -1640,8 +1656,8 @@ fn test_macro_arg() {
     );
 
     assert_eq!(
-        parse_successfully_with("×A14", macro_argument(), no_state_setup),
-        MacroArgument {
+        parse_successfully_with("×A14", macro_definition_dummy_parameter(), no_state_setup),
+        MacroParameter {
             name: SymbolName::from("A14".to_string()),
             span: span(0..5),
             preceding_terminator: '×',
@@ -1649,8 +1665,8 @@ fn test_macro_arg() {
     );
 
     assert_eq!(
-        parse_successfully_with("∨A15", macro_argument(), no_state_setup),
-        MacroArgument {
+        parse_successfully_with("∨A15", macro_definition_dummy_parameter(), no_state_setup),
+        MacroParameter {
             name: SymbolName::from("A15".to_string()),
             span: span(0..6),
             preceding_terminator: '∨',
@@ -1658,8 +1674,8 @@ fn test_macro_arg() {
     );
 
     assert_eq!(
-        parse_successfully_with("∧A16", macro_argument(), no_state_setup),
-        MacroArgument {
+        parse_successfully_with("∧A16", macro_definition_dummy_parameter(), no_state_setup),
+        MacroParameter {
             name: SymbolName::from("A16".to_string()),
             span: span(0..6),
             preceding_terminator: '∧',
@@ -1670,19 +1686,23 @@ fn test_macro_arg() {
 #[test]
 fn test_macro_args() {
     assert_eq!(
-        parse_successfully_with("=X@hand@YZ@arr@P", macro_arguments(), no_state_setup),
-        MacroArguments::OneOrMore(vec![
-            MacroArgument {
+        parse_successfully_with(
+            "=X@hand@YZ@arr@P",
+            macro_definition_dummy_parameters(),
+            no_state_setup
+        ),
+        MacroDummyParameters::OneOrMore(vec![
+            MacroParameter {
                 name: SymbolName::from("X".to_string()),
                 span: span(0..2),
                 preceding_terminator: '=',
             },
-            MacroArgument {
+            MacroParameter {
                 name: SymbolName::from("YZ".to_string()),
                 span: span(2..10),
                 preceding_terminator: '☛',
             },
-            MacroArgument {
+            MacroParameter {
                 name: SymbolName::from("P".to_string()),
                 span: span(10..16),
                 preceding_terminator: '→',
@@ -1701,7 +1721,7 @@ fn test_macro_definition_with_empty_body() {
     );
     let expected = MacroDefinition {
         name: SymbolName::from("MYMACRO".to_string()),
-        args: MacroArguments::Zero('≡'),
+        params: MacroDummyParameters::Zero('≡'),
         body: Vec::new(), // no body
         span: span(0..30),
     };
@@ -1722,7 +1742,7 @@ fn test_macro_definition_with_trivial_body() {
     );
     let expected = MacroDefinition {
         name: SymbolName::from("JUST".to_string()),
-        args: MacroArguments::OneOrMore(vec![MacroArgument {
+        params: MacroDummyParameters::OneOrMore(vec![MacroParameter {
             name: SymbolName::from("A".to_string()),
             span: span(14..16),
             preceding_terminator: '|',
@@ -1756,7 +1776,7 @@ fn test_macro_definition_as_entire_source_file() {
             name: SymbolName {
                 canonical: "JUST".to_string(),
             },
-            args: MacroArguments::OneOrMore(vec![MacroArgument {
+            params: MacroDummyParameters::OneOrMore(vec![MacroParameter {
                 name: SymbolName {
                     canonical: "A".to_string(),
                 },
