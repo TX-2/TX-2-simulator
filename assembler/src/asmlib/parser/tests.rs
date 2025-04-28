@@ -9,7 +9,7 @@ use chumsky::Parser;
 use super::super::{
     ast::{
         Atom, HoldBit, InstructionFragment, LiteralValue, ManuscriptBlock, ManuscriptMetaCommand,
-        Origin, SourceFile, TaggedProgramInstruction, UntaggedProgramInstruction,
+        Origin, SourceFile, TaggedProgramInstruction,
     },
     eval::{make_empty_rc_block_for_test, Evaluate, HereValue},
     parser::symex::{parse_multi_syllable_symex, parse_symex},
@@ -266,7 +266,7 @@ fn parse_multiple_instruction_fragments(input: &str) -> Vec<InstructionFragment>
                 span: _,
                 leading_commas: _,
                 holdbit: _,
-                instruction: UntaggedProgramInstruction { fragment: inst },
+                instruction: inst,
                 trailing_commas: _,
             } => inst,
         })
@@ -528,13 +528,7 @@ fn test_manuscript_line_with_bare_literal() {
             None,
             HoldBit::Unspecified,
             span(0..1),
-            UntaggedProgramInstruction {
-                fragment: InstructionFragment::from((
-                    span(0..1),
-                    Script::Normal,
-                    Unsigned36Bit::from(1_u32),
-                ))
-            }
+            InstructionFragment::from((span(0..1), Script::Normal, Unsigned36Bit::from(1_u32),))
         ))
     );
 }
@@ -553,13 +547,11 @@ fn test_manuscript_with_bare_literal() {
                         None,
                         HoldBit::Unspecified,
                         span(0..1),
-                        UntaggedProgramInstruction {
-                            fragment: InstructionFragment::from((
-                                span(0..1),
-                                Script::Normal,
-                                Unsigned36Bit::from(1_u32),
-                            )),
-                        }
+                        InstructionFragment::from((
+                            span(0..1),
+                            Script::Normal,
+                            Unsigned36Bit::from(1_u32),
+                        )),
                     )
                 )]
             }],
@@ -575,13 +567,7 @@ fn test_terminated_manuscript_line_with_bare_literal() {
         None,
         HoldBit::Unspecified,
         span(0..1),
-        UntaggedProgramInstruction {
-            fragment: InstructionFragment::from((
-                span(0..1),
-                Script::Normal,
-                Unsigned36Bit::from(1_u32),
-            )),
-        },
+        InstructionFragment::from((span(0..1), Script::Normal, Unsigned36Bit::from(1_u32))),
     ));
 
     assert_eq!(
@@ -616,13 +602,11 @@ fn test_manuscript_without_tag() {
                             None,
                             HoldBit::Unspecified,
                             span(0..3),
-                            UntaggedProgramInstruction {
-                                fragment: InstructionFragment::from((
-                                    span(0..3),
-                                    Script::Normal,
-                                    Unsigned36Bit::from(0o673_u32),
-                                )),
-                            }
+                            InstructionFragment::from((
+                                span(0..3),
+                                Script::Normal,
+                                Unsigned36Bit::from(0o673_u32),
+                            )),
                         )
                     ),
                     (
@@ -631,13 +615,11 @@ fn test_manuscript_without_tag() {
                             None,
                             HoldBit::Unspecified,
                             span(25..27),
-                            UntaggedProgramInstruction {
-                                fragment: InstructionFragment::from((
-                                    span(25..27),
-                                    Script::Normal,
-                                    Unsigned36Bit::from(0o71_u32),
-                                )),
-                            }
+                            InstructionFragment::from((
+                                span(25..27),
+                                Script::Normal,
+                                Unsigned36Bit::from(0o71_u32),
+                            )),
                         )
                     ),
                 ]
@@ -668,36 +650,30 @@ fn test_comment_in_rc_block() {
                         None,
                         HoldBit::Unspecified,
                         span(0..10),
-                        UntaggedProgramInstruction {
-                            // The output is an RC-reference to a location containing the value 1.
-                            fragment: InstructionFragment::from(ArithmeticExpression::from(
-                                Atom::RcRef(
-                                    span(0..10),
-                                    RegistersContaining::from_words(vec![
-                                        RegisterContaining::from(TaggedProgramInstruction {
-                                            tag: None,
-                                            instructions: vec![CommaDelimitedInstruction {
-                                                leading_commas: None,
-                                                holdbit: HoldBit::Unspecified,
-                                                span: span(1..2),
-                                                instruction: UntaggedProgramInstruction {
-                                                    fragment: InstructionFragment::Arithmetic(
-                                                        ArithmeticExpression::from(Atom::from(
-                                                            LiteralValue::from((
-                                                                span(1..2),
-                                                                Script::Normal,
-                                                                Unsigned36Bit::ONE
-                                                            ))
-                                                        ))
-                                                    )
-                                                },
-                                                trailing_commas: None,
-                                            }]
-                                        })
-                                    ]),
-                                )
-                            ))
-                        }
+                        // The output is an RC-reference to a location containing the value 1.
+                        InstructionFragment::from(ArithmeticExpression::from(Atom::RcRef(
+                            span(0..10),
+                            RegistersContaining::from_words(vec![RegisterContaining::from(
+                                TaggedProgramInstruction {
+                                    tag: None,
+                                    instructions: vec![CommaDelimitedInstruction {
+                                        leading_commas: None,
+                                        holdbit: HoldBit::Unspecified,
+                                        span: span(1..2),
+                                        instruction: InstructionFragment::Arithmetic(
+                                            ArithmeticExpression::from(Atom::from(
+                                                LiteralValue::from((
+                                                    span(1..2),
+                                                    Script::Normal,
+                                                    Unsigned36Bit::ONE
+                                                ))
+                                            ))
+                                        ),
+                                        trailing_commas: None,
+                                    }]
+                                }
+                            )]),
+                        )))
                     )
                 )]
             }],
@@ -754,13 +730,11 @@ fn test_manuscript_with_single_syllable_tag() {
                         }),
                         HoldBit::Unspecified,
                         span(10..13),
-                        UntaggedProgramInstruction {
-                            fragment: InstructionFragment::from((
-                                span(10..13),
-                                Script::Normal,
-                                Unsigned36Bit::from(0o205_u32),
-                            )),
-                        }
+                        InstructionFragment::from((
+                            span(10..13),
+                            Script::Normal,
+                            Unsigned36Bit::from(0o205_u32),
+                        )),
                     )
                 )]
             }],
@@ -789,13 +763,11 @@ fn test_manuscript_with_origin() {
                         None,
                         HoldBit::Unspecified,
                         span(6..9),
-                        UntaggedProgramInstruction {
-                            fragment: InstructionFragment::from((
-                                span(6..9),
-                                Script::Normal,
-                                Unsigned36Bit::from(0o202_u32),
-                            ))
-                        }
+                        InstructionFragment::from((
+                            span(6..9),
+                            Script::Normal,
+                            Unsigned36Bit::from(0o202_u32),
+                        ))
                     )
                 )]
             }],
@@ -831,15 +803,13 @@ fn test_arrow() {
                 leading_commas: None,
                 holdbit: HoldBit::Unspecified,
                 span: span(5..6),
-                instruction: UntaggedProgramInstruction {
-                    fragment: InstructionFragment::Arithmetic(ArithmeticExpression::from(
-                        Atom::from(LiteralValue::from((
-                            span(5..6),
-                            Script::Normal,
-                            Unsigned36Bit::ZERO
-                        )))
-                    )),
-                },
+                instruction: InstructionFragment::Arithmetic(ArithmeticExpression::from(
+                    Atom::from(LiteralValue::from((
+                        span(5..6),
+                        Script::Normal,
+                        Unsigned36Bit::ZERO
+                    )))
+                )),
                 trailing_commas: None
             }]
         }
@@ -857,11 +827,9 @@ fn test_arrow() {
                 leading_commas: None,
                 holdbit: HoldBit::Unspecified,
                 span: span(8..9),
-                instruction: UntaggedProgramInstruction {
-                    fragment: InstructionFragment::Arithmetic(ArithmeticExpression::from(
-                        Atom::from(LiteralValue::from((span(8..9), Script::Normal, u36!(1),)))
-                    )),
-                },
+                instruction: InstructionFragment::Arithmetic(ArithmeticExpression::from(
+                    Atom::from(LiteralValue::from((span(8..9), Script::Normal, u36!(1),)))
+                )),
                 trailing_commas: None
             }]
         }
@@ -881,11 +849,9 @@ fn test_multi_syllable_tag() {
             }),
             HoldBit::Unspecified,
             span(11..14),
-            UntaggedProgramInstruction {
-                fragment: InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::from(
-                    LiteralValue::from((span(11..14), Script::Normal, u36!(0o205)))
-                )))
-            }
+            InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::from(
+                LiteralValue::from((span(11..14), Script::Normal, u36!(0o205)))
+            )))
         )
     );
 }
@@ -937,13 +903,11 @@ fn test_manuscript_with_multi_syllable_tag() {
                         }),
                         HoldBit::Unspecified,
                         span(11..14),
-                        UntaggedProgramInstruction {
-                            fragment: InstructionFragment::from((
-                                span(11..14),
-                                Script::Normal,
-                                Unsigned36Bit::from(0o205_u32),
-                            ))
-                        }
+                        InstructionFragment::from((
+                            span(11..14),
+                            Script::Normal,
+                            Unsigned36Bit::from(0o205_u32),
+                        ))
                     )
                 )]
             }],
@@ -971,9 +935,7 @@ fn test_manuscript_line_with_real_arrow_tag() {
             }),
             HoldBit::Unspecified,
             span(7..10),
-            UntaggedProgramInstruction {
-                fragment: atom_to_fragment(Atom::from((span(7..10), Script::Normal, u36!(0o207)))),
-            }
+            atom_to_fragment(Atom::from((span(7..10), Script::Normal, u36!(0o207)))),
         ))
     );
 }
@@ -998,13 +960,11 @@ fn test_manuscript_with_real_arrow_tag() {
                         }),
                         HoldBit::Unspecified,
                         span(7..10),
-                        UntaggedProgramInstruction {
-                            fragment: InstructionFragment::from((
-                                span(7..10),
-                                Script::Normal,
-                                Unsigned36Bit::from(0o207_u32),
-                            )),
-                        }
+                        InstructionFragment::from((
+                            span(7..10),
+                            Script::Normal,
+                            Unsigned36Bit::from(0o207_u32),
+                        )),
                     )
                 )]
             }],
@@ -1025,9 +985,7 @@ fn assignment_of_literal(name: &str, assignment_span: Span, literal: LiteralValu
                 leading_commas: None,
                 holdbit: HoldBit::Unspecified,
                 span: *literal.span(),
-                instruction: UntaggedProgramInstruction {
-                    fragment: atom_to_fragment(Atom::from(literal)),
-                },
+                instruction: atom_to_fragment(Atom::from(literal)),
                 trailing_commas: None,
             }],
         )),
@@ -1079,16 +1037,14 @@ fn test_assignment_superscript() {
                         leading_commas: None,
                         holdbit: HoldBit::Unspecified,
                         span: span(*val_begin..*val_end),
-                        instruction: UntaggedProgramInstruction {
-                            fragment: InstructionFragment::Config(ConfigValue {
-                                already_superscript: true,
-                                expr: ArithmeticExpression::from(Atom::from((
-                                    span(*val_begin..*val_end),
-                                    Script::Super,
-                                    u36!(0o2)
-                                )))
-                            }),
-                        },
+                        instruction: InstructionFragment::Config(ConfigValue {
+                            already_superscript: true,
+                            expr: ArithmeticExpression::from(Atom::from((
+                                span(*val_begin..*val_end),
+                                Script::Super,
+                                u36!(0o2)
+                            )))
+                        }),
                         trailing_commas: None
                     }]
                 ))
@@ -1152,13 +1108,11 @@ fn test_assignment_lines() {
                         None,
                         HoldBit::Unspecified,
                         span(19..20),
-                        UntaggedProgramInstruction {
-                            fragment: atom_to_fragment(Atom::from(LiteralValue::from((
-                                span(19..20),
-                                Script::Normal,
-                                u36!(6)
-                            ))))
-                        }
+                        atom_to_fragment(Atom::from(LiteralValue::from((
+                            span(19..20),
+                            Script::Normal,
+                            u36!(6)
+                        ))))
                     )
                 ),]
             }],
@@ -1195,13 +1149,7 @@ fn test_assignment_origin() {
                         None,
                         HoldBit::Unspecified,
                         span(14..15),
-                        UntaggedProgramInstruction {
-                            fragment: InstructionFragment::from((
-                                span(14..15),
-                                Script::Normal,
-                                u36!(4),
-                            ))
-                        }
+                        InstructionFragment::from((span(14..15), Script::Normal, u36!(4),))
                     )
                 )],
             }],
@@ -1748,15 +1696,9 @@ fn test_macro_definition_with_trivial_body() {
             None,
             HoldBit::Unspecified,
             span(17..18),
-            UntaggedProgramInstruction {
-                fragment: InstructionFragment::Arithmetic(ArithmeticExpression::from(
-                    Atom::SymbolOrLiteral(SymbolOrLiteral::Symbol(
-                        Script::Normal,
-                        SymbolName::from("A"),
-                        span(17..18),
-                    )),
-                )),
-            },
+            InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::SymbolOrLiteral(
+                SymbolOrLiteral::Symbol(Script::Normal, SymbolName::from("A"), span(17..18)),
+            ))),
         )],
         span: span(0..66),
     };
@@ -1784,11 +1726,11 @@ fn test_macro_definition_as_entire_source_file() {
                 None,
                 HoldBit::Unspecified,
                 span(17..18),
-                UntaggedProgramInstruction {
-                    fragment: InstructionFragment::Arithmetic(ArithmeticExpression::from(
-                        Atom::from((span(17..18), Script::Normal, SymbolName::from("A"))),
-                    )),
-                },
+                InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::from((
+                    span(17..18),
+                    Script::Normal,
+                    SymbolName::from("A"),
+                )))),
             )],
             span: span(0..28),
         }],
@@ -1846,27 +1788,23 @@ fn test_double_pipe_config_symbolic() {
                 leading_commas: None,
                 holdbit: HoldBit::Unspecified,
                 span: span(0..4),
-                instruction: UntaggedProgramInstruction {
-                    fragment: InstructionFragment::Config(ConfigValue {
-                        already_superscript: false,
-                        expr: ArithmeticExpression::from(Atom::from((
-                            span(3..4),
-                            Script::Normal,
-                            SymbolName::from("X"),
-                        ))),
-                    }),
-                },
+                instruction: InstructionFragment::Config(ConfigValue {
+                    already_superscript: false,
+                    expr: ArithmeticExpression::from(Atom::from((
+                        span(3..4),
+                        Script::Normal,
+                        SymbolName::from("X"),
+                    ))),
+                }),
                 trailing_commas: None,
             },
             CommaDelimitedInstruction {
                 leading_commas: None,
                 holdbit: HoldBit::Unspecified,
                 span: span(5..6),
-                instruction: UntaggedProgramInstruction {
-                    fragment: InstructionFragment::Arithmetic(ArithmeticExpression::from(
-                        Atom::from((span(5..6), Script::Normal, SymbolName::from("Y"))),
-                    )),
-                },
+                instruction: InstructionFragment::Arithmetic(ArithmeticExpression::from(
+                    Atom::from((span(5..6), Script::Normal, SymbolName::from("Y"))),
+                )),
                 trailing_commas: None,
             },
         ],
@@ -1894,56 +1832,52 @@ fn test_double_pipe_config_expression() {
                 leading_commas: None,
                 holdbit: HoldBit::Unspecified,
                 span: span(0..10),
-                instruction: UntaggedProgramInstruction {
-                    fragment: InstructionFragment::Config(ConfigValue {
-                        already_superscript: false,
-                        expr: ArithmeticExpression {
-                            first: SignedAtom {
-                                span: span(3..10),
-                                negated: true,
-                                magnitude: Atom::Parens(
-                                    span(4..10),
-                                    Script::Normal,
-                                    Box::new(ArithmeticExpression {
-                                        first: SignedAtom {
-                                            span: span(5..6),
+                instruction: InstructionFragment::Config(ConfigValue {
+                    already_superscript: false,
+                    expr: ArithmeticExpression {
+                        first: SignedAtom {
+                            span: span(3..10),
+                            negated: true,
+                            magnitude: Atom::Parens(
+                                span(4..10),
+                                Script::Normal,
+                                Box::new(ArithmeticExpression {
+                                    first: SignedAtom {
+                                        span: span(5..6),
+                                        negated: false,
+                                        magnitude: Atom::from((
+                                            span(5..6),
+                                            Script::Normal,
+                                            SymbolName::from("Q"),
+                                        )),
+                                    },
+                                    tail: vec![(
+                                        Operator::Multiply,
+                                        SignedAtom {
+                                            span: span(8..9),
                                             negated: false,
                                             magnitude: Atom::from((
-                                                span(5..6),
+                                                span(8..9),
                                                 Script::Normal,
-                                                SymbolName::from("Q"),
+                                                u36!(2),
                                             )),
                                         },
-                                        tail: vec![(
-                                            Operator::Multiply,
-                                            SignedAtom {
-                                                span: span(8..9),
-                                                negated: false,
-                                                magnitude: Atom::from((
-                                                    span(8..9),
-                                                    Script::Normal,
-                                                    u36!(2),
-                                                )),
-                                            },
-                                        )],
-                                    }),
-                                ),
-                            },
-                            tail: Vec::new(),
+                                    )],
+                                }),
+                            ),
                         },
-                    }),
-                },
+                        tail: Vec::new(),
+                    },
+                }),
                 trailing_commas: None,
             },
             CommaDelimitedInstruction {
                 leading_commas: None,
                 holdbit: HoldBit::Unspecified,
                 span: span(11..12),
-                instruction: UntaggedProgramInstruction {
-                    fragment: InstructionFragment::Arithmetic(ArithmeticExpression::from(
-                        Atom::from((span(11..12), Script::Normal, SymbolName::from("Y"))),
-                    )),
-                },
+                instruction: InstructionFragment::Arithmetic(ArithmeticExpression::from(
+                    Atom::from((span(11..12), Script::Normal, SymbolName::from("Y"))),
+                )),
                 trailing_commas: None,
             },
         ],
@@ -1980,12 +1914,10 @@ fn test_double_pipe_config_literal() {
         None,
         HoldBit::Unspecified,
         span(0..5),
-        UntaggedProgramInstruction {
-            fragment: InstructionFragment::Config(ConfigValue {
-                already_superscript: false,
-                expr: ArithmeticExpression::from(Atom::from((span(3..5), Script::Normal, u36!(8)))),
-            }),
-        },
+        InstructionFragment::Config(ConfigValue {
+            already_superscript: false,
+            expr: ArithmeticExpression::from(Atom::from((span(3..5), Script::Normal, u36!(8)))),
+        }),
     );
     assert_eq!(got, expected);
 }
@@ -2013,14 +1945,14 @@ fn test_superscript_configuration_literal() {
                 leading_commas: None,
                 holdbit: HoldBit::Unspecified,
                 span: span(0..7),
-                instruction: UntaggedProgramInstruction { fragment: config },
+                instruction: config,
                 trailing_commas: None,
             },
             CommaDelimitedInstruction {
                 leading_commas: None,
                 holdbit: HoldBit::Unspecified,
                 span: span(7..10),
-                instruction: UntaggedProgramInstruction { fragment: aux },
+                instruction: aux,
                 trailing_commas: None,
             },
         ]
@@ -2060,40 +1992,36 @@ fn test_pipe_construct() {
                     leading_commas: None,
                     holdbit: HoldBit::Unspecified,
                     span: span(31..38),
-                    instruction: UntaggedProgramInstruction {
-                        fragment: InstructionFragment::Arithmetic(ArithmeticExpression {
-                            first: SignedAtom {
-                                negated: false,
-                                span: span(31..38),
-                                magnitude: Atom::SymbolOrLiteral(SymbolOrLiteral::Symbol(
-                                    Script::Normal,
-                                    SymbolName::from("DISPTBL".to_string()),
-                                    span(31..38),
-                                )),
-                            },
-                            tail: Vec::new(),
-                        }),
-                    },
+                    instruction: InstructionFragment::Arithmetic(ArithmeticExpression {
+                        first: SignedAtom {
+                            negated: false,
+                            span: span(31..38),
+                            magnitude: Atom::SymbolOrLiteral(SymbolOrLiteral::Symbol(
+                                Script::Normal,
+                                SymbolName::from("DISPTBL".to_string()),
+                                span(31..38),
+                            )),
+                        },
+                        tail: Vec::new(),
+                    }),
                     trailing_commas: None,
                 },
                 CommaDelimitedInstruction {
                     leading_commas: None,
                     holdbit: HoldBit::Unspecified,
                     span: span(21..31),
-                    instruction: UntaggedProgramInstruction {
-                        fragment: InstructionFragment::Arithmetic(ArithmeticExpression {
-                            first: SignedAtom {
-                                negated: false,
-                                span: span(21..31),
-                                magnitude: Atom::SymbolOrLiteral(SymbolOrLiteral::Symbol(
-                                    Script::Sub,
-                                    SymbolName::from("β"),
-                                    span(21..31),
-                                )),
-                            },
-                            tail: Vec::new(),
-                        }),
-                    },
+                    instruction: InstructionFragment::Arithmetic(ArithmeticExpression {
+                        first: SignedAtom {
+                            negated: false,
+                            span: span(21..31),
+                            magnitude: Atom::SymbolOrLiteral(SymbolOrLiteral::Symbol(
+                                Script::Sub,
+                                SymbolName::from("β"),
+                                span(21..31),
+                            )),
+                        },
+                        tail: Vec::new(),
+                    }),
                     trailing_commas: None,
                 },
             ],
@@ -2126,52 +2054,44 @@ fn test_commas_instruction() {
                 leading_commas: None,
                 holdbit: HoldBit::Unspecified,
                 span: span(0..4),
-                instruction: UntaggedProgramInstruction {
-                    fragment: InstructionFragment::from((
-                        span(0..3),
-                        Script::Normal,
-                        Unsigned36Bit::from(0o200u8),
-                    )),
-                },
+                instruction: InstructionFragment::from((
+                    span(0..3),
+                    Script::Normal,
+                    Unsigned36Bit::from(0o200u8),
+                )),
                 trailing_commas: Some(Commas::One(span(3..4))),
             },
             CommaDelimitedInstruction {
                 leading_commas: Some(Commas::One(span(3..4))),
                 holdbit: HoldBit::Unspecified,
                 span: span(3..9),
-                instruction: UntaggedProgramInstruction {
-                    fragment: InstructionFragment::from((
-                        span(4..7),
-                        Script::Normal,
-                        Unsigned36Bit::from(0o200u8),
-                    )),
-                },
+                instruction: InstructionFragment::from((
+                    span(4..7),
+                    Script::Normal,
+                    Unsigned36Bit::from(0o200u8),
+                )),
                 trailing_commas: Some(Commas::Two(span(7..9))),
             },
             CommaDelimitedInstruction {
                 leading_commas: Some(Commas::Two(span(7..9))),
                 holdbit: HoldBit::Unspecified,
                 span: span(7..13),
-                instruction: UntaggedProgramInstruction {
-                    fragment: InstructionFragment::from((
-                        span(9..12),
-                        Script::Normal,
-                        Unsigned36Bit::from(0o200u8),
-                    )),
-                },
+                instruction: InstructionFragment::from((
+                    span(9..12),
+                    Script::Normal,
+                    Unsigned36Bit::from(0o200u8),
+                )),
                 trailing_commas: Some(Commas::One(span(12..13))),
             },
             CommaDelimitedInstruction {
                 leading_commas: Some(Commas::One(span(12..13))),
                 holdbit: HoldBit::Unspecified,
                 span: span(12..16),
-                instruction: UntaggedProgramInstruction {
-                    fragment: InstructionFragment::from((
-                        span(13..16),
-                        Script::Normal,
-                        Unsigned36Bit::from(0o200u8),
-                    )),
-                },
+                instruction: InstructionFragment::from((
+                    span(13..16),
+                    Script::Normal,
+                    Unsigned36Bit::from(0o200u8),
+                )),
                 trailing_commas: None,
             },
         ],
@@ -2182,8 +2102,8 @@ fn test_commas_instruction() {
 #[cfg(test)]
 mod comma_tests {
     use super::super::super::ast::{
-        CommaDelimitedInstruction, Commas, CommasOrInstruction, HoldBit, InstructionFragment,
-        UntaggedProgramInstruction, UntaggedProgramInstructionWithHold,
+        CommaDelimitedInstruction, Commas, CommasOrInstruction, FragmentWithHold, HoldBit,
+        InstructionFragment,
     };
     use super::super::super::span::*;
     use super::super::instructions_with_comma_counts as parent_instructions_with_comma_counts;
@@ -2192,43 +2112,37 @@ mod comma_tests {
     #[derive(Clone, Eq)]
     struct Briefly(CommaDelimitedInstruction);
 
-    impl
-        From<(
-            Option<Commas>,
-            Span,
-            UntaggedProgramInstruction,
-            Option<Commas>,
-        )> for Briefly
-    {
+    impl From<(Option<Commas>, Span, InstructionFragment, Option<Commas>)> for Briefly {
         fn from(
             (leading_commas, span, upi, trailing_commas): (
                 Option<Commas>,
                 Span,
-                UntaggedProgramInstruction,
+                InstructionFragment,
                 Option<Commas>,
             ),
         ) -> Self {
             Self(CommaDelimitedInstruction::new(
                 leading_commas,
-                UntaggedProgramInstructionWithHold {
+                FragmentWithHold {
                     span,
                     holdbit: HoldBit::Unspecified,
-                    upi,
+                    fragment: upi,
                 },
                 trailing_commas,
             ))
         }
     }
 
-    fn brieflyh(
-        v: Vec<(
-            Option<Commas>,
-            UntaggedProgramInstructionWithHold,
-            Option<Commas>,
-        )>,
-    ) -> Vec<Briefly> {
+    fn brieflyh(v: Vec<(Option<Commas>, FragmentWithHold, Option<Commas>)>) -> Vec<Briefly> {
         v.into_iter()
-            .map(|v| Briefly::from((v.0, v.1.span, v.1.into(), v.2)))
+            .map(|v| {
+                let FragmentWithHold {
+                    span,
+                    holdbit: _,
+                    fragment: frag,
+                } = v.1;
+                Briefly::from((v.0, span, frag, v.2))
+            })
             .collect()
     }
 
@@ -2252,41 +2166,32 @@ mod comma_tests {
 
     impl std::fmt::Debug for Briefly {
         fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-            use super::*;
-            let u: &UntaggedProgramInstruction = &self.0.instruction;
+            let u = &self.0.instruction;
             let span = u.span();
             write!(
                 f,
                 "({0:?},UntaggedProgramInstruction{{span:{1:?},holdbit:{2:?},inst:{3:?}}}{4:?})",
-                &self.0.leading_commas,
-                &span,
-                &self.0.holdbit,
-                &u.fragment,
-                &self.0.trailing_commas
+                &self.0.leading_commas, &span, &self.0.holdbit, &u, &self.0.trailing_commas
             )
         }
     }
 
-    fn null_insth(sp: Span) -> UntaggedProgramInstructionWithHold {
-        UntaggedProgramInstructionWithHold {
+    fn null_insth(sp: Span) -> FragmentWithHold {
+        FragmentWithHold {
             span: sp,
             holdbit: HoldBit::Unspecified,
-            upi: UntaggedProgramInstruction {
-                fragment: InstructionFragment::Null,
-            },
+            fragment: InstructionFragment::Null,
         }
     }
 
-    fn insth(sp: Span, n: u16) -> UntaggedProgramInstructionWithHold {
+    fn insth(sp: Span, n: u16) -> FragmentWithHold {
         use super::*;
-        UntaggedProgramInstructionWithHold {
+        FragmentWithHold {
             span: sp,
             holdbit: HoldBit::Unspecified,
-            upi: UntaggedProgramInstruction {
-                fragment: InstructionFragment::from(ArithmeticExpression::from(Atom::from(
-                    LiteralValue::from((sp, Script::Normal, n.into())),
-                ))),
-            },
+            fragment: InstructionFragment::from(ArithmeticExpression::from(Atom::from(
+                LiteralValue::from((sp, Script::Normal, n.into())),
+            ))),
         }
     }
 
@@ -2615,26 +2520,22 @@ fn test_mnemonic_suz() {
                     leading_commas: None,
                     holdbit: HoldBit::Unspecified,
                     span: span(9..12),
-                    instruction: UntaggedProgramInstruction {
-                        fragment: InstructionFragment::from((
-                            span(9..12),
-                            Script::Normal,
-                            u36!(0o121_700_000_000)
-                        ))
-                    },
+                    instruction: InstructionFragment::from((
+                        span(9..12),
+                        Script::Normal,
+                        u36!(0o121_700_000_000)
+                    )),
                     trailing_commas: None,
                 },
                 CommaDelimitedInstruction {
                     leading_commas: None,
                     holdbit: HoldBit::Unspecified,
                     span: span(13..19),
-                    instruction: UntaggedProgramInstruction {
-                        fragment: InstructionFragment::from((
-                            span(13..19),
-                            Script::Normal,
-                            u36!(0o000_000_200_013)
-                        ))
-                    },
+                    instruction: InstructionFragment::from((
+                        span(13..19),
+                        Script::Normal,
+                        u36!(0o000_000_200_013)
+                    )),
                     trailing_commas: None,
                 },
             ]

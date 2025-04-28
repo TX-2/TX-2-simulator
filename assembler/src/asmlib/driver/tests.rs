@@ -3,7 +3,7 @@ use std::ops::{Range, Shl};
 use super::super::ast::{
     ArithmeticExpression, Atom, CommaDelimitedInstruction, HoldBit, InstructionFragment,
     LiteralValue, LocatedBlock, ManuscriptBlock, PunchCommand, SourceFile,
-    TaggedProgramInstruction, UntaggedProgramInstruction,
+    TaggedProgramInstruction,
 };
 use super::super::eval::{make_empty_rc_block_for_test, SymbolLookup, SymbolValue};
 use super::super::span::*;
@@ -71,13 +71,11 @@ fn test_assemble_pass1() {
                             leading_commas: None,
                             holdbit: HoldBit::Unspecified,
                             span: span(0..2),
-                            instruction: UntaggedProgramInstruction {
-                                fragment: atom_to_fragment(Atom::from(LiteralValue::from((
-                                    Span::from(0..2),
-                                    Script::Normal,
-                                    u36!(0o14)
-                                )),)),
-                            },
+                            instruction: atom_to_fragment(Atom::from(LiteralValue::from((
+                                Span::from(0..2),
+                                Script::Normal,
+                                u36!(0o14)
+                            )))),
                             trailing_commas: None,
                         }]
                     }
@@ -130,7 +128,7 @@ fn test_metacommand_dec_changes_default_base() {
                     assert_eq!(second_instruction.trailing_commas, None);
 
                     assert_eq!(
-                        &first_instruction.instruction.fragment,
+                        &first_instruction.instruction,
                         &InstructionFragment::from((
                             Span::from(0..2usize),
                             Script::Normal,
@@ -138,7 +136,7 @@ fn test_metacommand_dec_changes_default_base() {
                         )),
                     );
                     assert_eq!(
-                        &second_instruction.instruction.fragment,
+                        &second_instruction.instruction,
                         &InstructionFragment::from((
                             span(17..19),
                             Script::Normal,

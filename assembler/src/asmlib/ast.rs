@@ -633,7 +633,7 @@ pub(crate) enum InstructionFragment {
 
 impl InstructionFragment {
     #[cfg(test)]
-    fn span(&self) -> Option<Span> {
+    pub(super) fn span(&self) -> Option<Span> {
         match self {
             InstructionFragment::Arithmetic(arithmetic_expression) => {
                 Some(arithmetic_expression.span())
@@ -824,16 +824,15 @@ impl Commas {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct UntaggedProgramInstructionWithHold {
-    // this is temporary
+pub(super) struct FragmentWithHold {
     pub(super) span: Span,
     pub(super) holdbit: HoldBit,
-    pub(super) upi: UntaggedProgramInstruction, // should be fragment
+    pub(super) fragment: InstructionFragment,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CommasOrInstruction {
-    I(UntaggedProgramInstructionWithHold),
+    I(FragmentWithHold),
     C(Option<Commas>),
 }
 
@@ -842,14 +841,14 @@ pub(crate) struct CommaDelimitedInstruction {
     pub(crate) span: Span,
     pub(crate) leading_commas: Option<Commas>,
     pub(crate) holdbit: HoldBit,
-    pub(crate) instruction: UntaggedProgramInstruction,
+    pub(crate) instruction: InstructionFragment,
     pub(crate) trailing_commas: Option<Commas>,
 }
 
 impl CommaDelimitedInstruction {
     pub(crate) fn new(
         leading_commas: Option<Commas>,
-        instruction: UntaggedProgramInstructionWithHold,
+        instruction: FragmentWithHold,
         trailing_commas: Option<Commas>,
     ) -> Self {
         let span: Span = {
@@ -872,7 +871,7 @@ impl CommaDelimitedInstruction {
             span,
             leading_commas,
             holdbit: instruction.holdbit,
-            instruction: instruction.upi,
+            instruction: instruction.fragment,
             trailing_commas,
         }
     }
@@ -909,32 +908,6 @@ impl EqualityValue {
 impl From<(Span, Vec<CommaDelimitedInstruction>)> for EqualityValue {
     fn from((span, parts): (Span, Vec<CommaDelimitedInstruction>)) -> Self {
         Self { span, parts }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct UntaggedProgramInstruction {
-    pub(crate) fragment: InstructionFragment,
-}
-
-impl From<UntaggedProgramInstructionWithHold> for UntaggedProgramInstruction {
-    fn from(value: UntaggedProgramInstructionWithHold) -> Self {
-        value.upi
-    }
-}
-
-impl UntaggedProgramInstruction {
-    #[cfg(test)]
-    pub(crate) fn span(&self) -> Option<Span> {
-        self.fragment.span()
-    }
-
-    fn symbol_uses(
-        &self,
-        block_id: BlockIdentifier,
-        block_offset: Unsigned18Bit,
-    ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> + '_ {
-        self.fragment.symbol_uses(block_id, block_offset)
     }
 }
 
@@ -1018,7 +991,7 @@ impl TaggedProgramInstruction {
         tag: Option<Tag>,
         holdbit: HoldBit,
         inst_span: Span,
-        instruction: UntaggedProgramInstruction,
+        instruction: InstructionFragment,
     ) -> TaggedProgramInstruction {
         TaggedProgramInstruction::multiple(
             tag,

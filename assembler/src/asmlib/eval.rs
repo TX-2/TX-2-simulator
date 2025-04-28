@@ -974,20 +974,6 @@ mod comma_tests {
     }
 }
 
-impl Evaluate for UntaggedProgramInstruction {
-    fn evaluate<R: RcUpdater>(
-        &self,
-        span: Span,
-        target_address: &HereValue,
-        symtab: &mut SymbolTable,
-        rc_updater: &mut R,
-        op: &mut LookupOperation,
-    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-        self.fragment
-            .evaluate(span, target_address, symtab, rc_updater, op)
-    }
-}
-
 impl Evaluate for HereValue {
     fn evaluate<R: RcUpdater>(
         &self,
@@ -1242,16 +1228,6 @@ impl CommaDelimitedInstruction {
         rc_allocator: &mut R,
     ) -> Result<(), MachineLimitExceededFailure> {
         self.instruction.assign_rc_words(symtab, rc_allocator)
-    }
-}
-
-impl UntaggedProgramInstruction {
-    pub(super) fn assign_rc_words<R: RcAllocator>(
-        &mut self,
-        symtab: &mut SymbolTable,
-        rc_allocator: &mut R,
-    ) -> Result<(), MachineLimitExceededFailure> {
-        self.fragment.assign_rc_words(symtab, rc_allocator)
     }
 }
 

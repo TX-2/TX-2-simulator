@@ -707,13 +707,11 @@ fn test_assemble_pass1() {
                     leading_commas: None,
                     holdbit: HoldBit::Unspecified,
                     span: span(0..2),
-                    instruction: UntaggedProgramInstruction {
-                        fragment: atom_to_fragment(Atom::from(LiteralValue::from((
-                            span(0..2),
-                            Script::Normal,
-                            u36!(0o14),
-                        )))),
-                    },
+                    instruction: atom_to_fragment(Atom::from(LiteralValue::from((
+                        span(0..2),
+                        Script::Normal,
+                        u36!(0o14),
+                    )))),
                     trailing_commas: None,
                 }],
             },

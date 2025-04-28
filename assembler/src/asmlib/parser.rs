@@ -390,18 +390,16 @@ fn make_pipe_construct(
                 span: q_span,
                 holdbit: HoldBit::Unspecified,
                 leading_commas: None,
-                instruction: UntaggedProgramInstruction { fragment: q },
+                instruction: q,
                 trailing_commas: None,
             },
             CommaDelimitedInstruction {
                 span: t.span,
                 leading_commas: None,
                 holdbit: HoldBit::Unspecified,
-                instruction: UntaggedProgramInstruction {
-                    fragment: InstructionFragment::Arithmetic(ArithmeticExpression::from(
-                        Atom::from(t.item),
-                    )),
-                },
+                instruction: InstructionFragment::Arithmetic(ArithmeticExpression::from(
+                    Atom::from(t.item),
+                )),
                 trailing_commas: None,
             },
         ],
@@ -610,13 +608,11 @@ where
         mut acc: Vec<CommasOrInstruction>,
         item: CommasOrInstruction,
     ) -> Vec<CommasOrInstruction> {
-        fn null_instruction(span: Span) -> UntaggedProgramInstructionWithHold {
-            UntaggedProgramInstructionWithHold {
+        fn null_instruction(span: Span) -> FragmentWithHold {
+            FragmentWithHold {
                 span,
                 holdbit: HoldBit::Unspecified,
-                upi: UntaggedProgramInstruction {
-                    fragment: InstructionFragment::Null,
-                },
+                fragment: InstructionFragment::Null,
             }
         }
 
@@ -962,10 +958,10 @@ where
             .then(program_instruction_fragment.clone())
             .map_with(
                 |(maybe_hold, fragment): (Option<HoldBit>, InstructionFragment), extra| {
-                    UntaggedProgramInstructionWithHold {
+                    FragmentWithHold {
                         span: extra.span(),
                         holdbit: maybe_hold.unwrap_or(HoldBit::Unspecified),
-                        upi: UntaggedProgramInstruction { fragment },
+                        fragment,
                     }
                 },
             );
