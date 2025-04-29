@@ -96,15 +96,10 @@ pub(super) fn punch_address(a: Option<LiteralValue>) -> Result<PunchCommand, Str
     }
 }
 
-pub(super) fn manuscript_lines_to_blocks(
+pub(super) fn manuscript_lines_to_source_file<'a>(
     lines: Vec<(Span, ManuscriptLine)>,
-) -> (
-    Vec<ManuscriptBlock>,
-    Vec<Equality>,
-    Vec<MacroDefinition>,
-    Option<PunchCommand>,
-) {
-    let mut result: Vec<ManuscriptBlock> = Vec::new();
+) -> Result<SourceFile, chumsky::error::Rich<'a, super::super::lexer::Token>> {
+    let mut blocks: Vec<ManuscriptBlock> = Vec::new();
     let mut equalities: Vec<Equality> = Vec::new();
     let mut macros: Vec<MacroDefinition> = Vec::new();
     let mut current_statements: Vec<(Span, TaggedProgramInstruction)> = Vec::new();
@@ -124,42 +119,89 @@ pub(super) fn manuscript_lines_to_blocks(
         }
     }
 
+    fn prepend_tags(v: &mut Vec<Tag>, initial: &mut Vec<Tag>) {
+        let alltags: Vec<Tag> = initial.drain(0..).chain(v.drain(0..)).collect();
+        v.extend(alltags);
+    }
+
+    let mut pending_tags: Vec<Tag> = Vec::new();
+
+    let bad_tag_pos = |tag: Tag| {
+        let tag_name = &tag.name;
+        chumsky::error::Rich::custom(
+            tag.span,
+            format!("tag {tag_name} must be followed by an instruction"),
+        )
+    };
+
     for (span, line) in lines {
         match line {
+            ManuscriptLine::TagsOnly(tags) => {
+                pending_tags.extend(tags);
+            }
             ManuscriptLine::Meta(ManuscriptMetaCommand::Punch(punch)) => {
+                if let Some(t) = pending_tags.pop() {
+                    return Err(bad_tag_pos(t));
+                }
                 maybe_punch = Some(punch);
             }
             ManuscriptLine::Meta(ManuscriptMetaCommand::BaseChange(_)) => {
+                if let Some(t) = pending_tags.pop() {
+                    return Err(bad_tag_pos(t));
+                }
                 // These already took effect on the statements which
                 // were parsed following them, so no need to keep them
                 // now.
             }
             ManuscriptLine::Meta(ManuscriptMetaCommand::Macro(macro_def)) => {
+                if let Some(t) = pending_tags.pop() {
+                    return Err(bad_tag_pos(t));
+                }
                 macros.push(macro_def);
             }
             ManuscriptLine::OriginOnly(origin) => {
-                ship_block(&current_statements, effective_origin, &mut result);
+                if let Some(t) = pending_tags.pop() {
+                    return Err(bad_tag_pos(t));
+                }
+                ship_block(&current_statements, effective_origin, &mut blocks);
                 current_statements.clear();
                 effective_origin = Some(origin.clone());
             }
-            ManuscriptLine::StatementOnly(statement) => {
-                current_statements.push((span, statement));
+            ManuscriptLine::StatementOnly(mut tagged_program_instruction) => {
+                prepend_tags(&mut tagged_program_instruction.tags, &mut pending_tags);
+                current_statements.push((span, tagged_program_instruction));
             }
             ManuscriptLine::OriginAndStatement(origin, statement) => {
-                ship_block(&current_statements, effective_origin, &mut result);
+                if let Some(t) = pending_tags.pop() {
+                    return Err(bad_tag_pos(t));
+                }
+                ship_block(&current_statements, effective_origin, &mut blocks);
                 current_statements.clear();
                 effective_origin = Some(origin.clone());
 
                 current_statements.push((span, statement));
             }
             ManuscriptLine::Eq(equality) => {
+                if let Some(t) = pending_tags.pop() {
+                    return Err(bad_tag_pos(t));
+                }
                 equalities.push(equality);
             }
         }
     }
-    ship_block(&current_statements, effective_origin, &mut result);
+    if let Some(t) = pending_tags.pop() {
+        return Err(bad_tag_pos(t));
+    }
+
+    ship_block(&current_statements, effective_origin, &mut blocks);
     current_statements.clear();
-    (result, equalities, macros, maybe_punch)
+
+    Ok(SourceFile {
+        punch: maybe_punch,
+        blocks,
+        equalities,
+        macros,
+    })
 }
 
 /// Some instructions are assembled with the hold bit automatically

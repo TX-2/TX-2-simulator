@@ -1117,8 +1117,13 @@ where
             .map(build_code_line)
             .labelled("statement with origin");
 
+        // TODO: also allowed: "T1->T2->ORIGIN|"
         let origin_only = origin().map(ManuscriptLine::OriginOnly);
-
+        let tags_only = tag_definition()
+            .repeated()
+            .at_least(1)
+            .collect()
+            .map(ManuscriptLine::TagsOnly);
         let equality = grammar.assignment.clone().map(ManuscriptLine::Eq);
 
         choice((
@@ -1133,6 +1138,8 @@ where
             // the origin_only alternative has to appear after the
             // alternative which parses a statement.
             origin_only,
+            // Similarly for lines containing only tag efinitions.
+            tags_only,
         ))
     }
 
@@ -1176,18 +1183,12 @@ where
     where
         I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
     {
-        terminated_manuscript_line().repeated().collect().map(
-            |lines: Vec<Option<(Span, ManuscriptLine)>>| {
+        terminated_manuscript_line().repeated().collect().try_map(
+            |lines: Vec<Option<(Span, ManuscriptLine)>>, _span| {
                 // Filter out empty lines.
                 let lines: Vec<(Span, ManuscriptLine)> = lines.into_iter().flatten().collect();
-                let (blocks, equalities, macros, punch) =
-                    helpers::manuscript_lines_to_blocks(lines);
-                SourceFile {
-                    blocks,
-                    equalities,
-                    macros,
-                    punch,
-                }
+                let source_file: SourceFile = helpers::manuscript_lines_to_source_file(lines)?;
+                Ok(source_file)
             },
         )
     }

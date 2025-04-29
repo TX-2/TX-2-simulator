@@ -1155,6 +1155,7 @@ pub(crate) enum ManuscriptLine {
     Meta(ManuscriptMetaCommand),
     Eq(Equality),
     OriginOnly(Origin),
+    TagsOnly(Vec<Tag>),
     StatementOnly(TaggedProgramInstruction),
     OriginAndStatement(Origin, TaggedProgramInstruction),
 }

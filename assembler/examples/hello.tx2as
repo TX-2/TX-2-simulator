@@ -42,7 +42,8 @@ OUTPUT->   REX₁ 777760  ** Set X₁ to -15 (decimal)
 ** Whether this is input or output depends on whether the relevant
 ** unit is an input or an output unit.  Unit 66 is the output half of
 ** the first of the system's two Lincoln Writers.
-LOOP->     ⁶TSD   W0    ** Print Q4 of the word at W0
+LOOP->
+           ⁶TSD   W0    ** Print Q4 of the word at W0
            ⁵TSD   W0    ** Print Q3 of the word at W0
            ⁴TSD   W0    ** Print Q2 of the word at W0
            ³TSD   W0    ** Print Q1 of the word at W0
