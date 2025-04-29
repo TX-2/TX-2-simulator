@@ -969,9 +969,23 @@ impl Tag {
     }
 }
 
+impl PartialOrd for Tag {
+    /// Ordering for tags ignores the span.
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Tag {
+    /// Ordering for tags ignores the span.
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.name.cmp(&other.name)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TaggedProgramInstruction {
-    pub(crate) tag: Option<Tag>,
+    pub(crate) tags: Vec<Tag>,
     pub(crate) instruction: UntaggedProgramInstruction,
 }
 
@@ -982,15 +996,17 @@ impl TaggedProgramInstruction {
         offset: Unsigned18Bit,
     ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
         let mut result = Vec::new();
-        if let Some(tag) = self.tag() {
-            result.extend(tag.symbol_uses(block_id, offset));
-        }
+        result.extend(
+            self.tags
+                .iter()
+                .flat_map(|tag| tag.symbol_uses(block_id, offset)),
+        );
         result.extend(self.instruction.symbol_uses(block_id, offset));
         result.into_iter()
     }
 
     pub(crate) fn span(&self) -> Span {
-        let begin = match self.tag() {
+        let begin = match self.tags.first() {
             Some(t) => t.span.start,
             None => self.instruction.span().start,
         };
@@ -998,19 +1014,15 @@ impl TaggedProgramInstruction {
         Span::from(begin..end)
     }
 
-    pub(crate) fn tag(&self) -> Option<&Tag> {
-        self.tag.as_ref()
-    }
-
     #[cfg(test)]
     pub(crate) fn single(
-        tag: Option<Tag>,
+        tags: Vec<Tag>,
         holdbit: HoldBit,
         inst_span: Span,
         frag: InstructionFragment,
     ) -> TaggedProgramInstruction {
         TaggedProgramInstruction::multiple(
-            tag,
+            tags,
             vec![CommaDelimitedFragment {
                 span: inst_span,
                 leading_commas: None,
@@ -1023,12 +1035,12 @@ impl TaggedProgramInstruction {
 
     #[cfg(test)]
     pub(crate) fn multiple(
-        tag: Option<Tag>,
+        tags: Vec<Tag>,
         fragments: Vec<CommaDelimitedFragment>,
     ) -> TaggedProgramInstruction {
         assert!(!fragments.is_empty());
         TaggedProgramInstruction {
-            tag,
+            tags,
             instruction: UntaggedProgramInstruction::from(fragments),
         }
     }

@@ -451,9 +451,9 @@ impl SymbolTable {
         }
     }
 
-    pub(crate) fn evaluate_with_temporary_tag_override<E, R>(
+    pub(crate) fn evaluate_with_temporary_tag_overrides<E, R>(
         &mut self,
-        tag_override: Option<(&Tag, Address)>,
+        tag_overrides: BTreeMap<&Tag, Address>,
         item: &E,
         item_span: Span,
         target_address: &HereValue,
@@ -464,26 +464,39 @@ impl SymbolTable {
         E: Evaluate,
         R: RcUpdater,
     {
-        match tag_override {
-            None => item.evaluate(item_span, target_address, self, rc_allocator, op),
-            Some((Tag { name, span }, addr)) => {
-                let to_restore: Option<InternalSymbolDef> = self.definitions.remove(name);
-                self.definitions.insert(
-                    name.clone(),
-                    InternalSymbolDef {
-                        span: *span,
-                        def: SymbolDefinition::TagOverride(addr),
-                    },
-                );
-                // Important not to use '?' here as we need to restore
-                // the original definition.
-                let result = item.evaluate(item_span, target_address, self, rc_allocator, op);
-                if let Some(prior_definition) = to_restore {
+        let temporarily_overridden = |symtab: &mut SymbolTable,
+                                      (Tag { name, span }, addr): (&Tag, Address)|
+         -> (SymbolName, Option<InternalSymbolDef>) {
+            let restore: Option<InternalSymbolDef> = symtab.definitions.insert(
+                name.clone(),
+                InternalSymbolDef {
+                    span: *span,
+                    def: SymbolDefinition::TagOverride(addr),
+                },
+            );
+            (name.clone(), restore)
+        };
+
+        let to_restore: Vec<(SymbolName, Option<InternalSymbolDef>)> = tag_overrides
+            .into_iter()
+            .map(|(tag, addr)| temporarily_overridden(self, (tag, addr)))
+            .collect();
+
+        // Important not to use '?' here as we need to restore
+        // the original definition.
+        let result = item.evaluate(item_span, target_address, self, rc_allocator, op);
+
+        for prior_definition in to_restore.into_iter() {
+            match prior_definition {
+                (name, None) => {
+                    self.definitions.remove(&name);
+                }
+                (name, Some(prior_definition)) => {
                     self.definitions.insert(name.clone(), prior_definition);
                 }
-                result
             }
         }
+        result
     }
 }
 

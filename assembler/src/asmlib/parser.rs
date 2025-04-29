@@ -384,7 +384,7 @@ fn make_pipe_construct(
     let tqspan = span(t.span.start..q_span.end);
 
     let rc_word_value: RegisterContaining = RegisterContaining::from(TaggedProgramInstruction {
-        tag: None,
+        tags: Vec::new(),
         instruction: UntaggedProgramInstruction::from(vec![
             CommaDelimitedFragment {
                 span: q_span,
@@ -765,14 +765,13 @@ where
 {
     let mut comma_delimited_instructions = Recursive::declare();
     let tagged_program_instruction = tag_definition()
-        .or_not()
+        .repeated()
+        .collect()
         .then(comma_delimited_instructions.clone())
         .map(
-            |(tag, fragments): (Option<Tag>, Vec<CommaDelimitedFragment>)| {
-                TaggedProgramInstruction {
-                    tag,
-                    instruction: UntaggedProgramInstruction::from(fragments),
-                }
+            |(tags, fragments): (Vec<Tag>, Vec<CommaDelimitedFragment>)| TaggedProgramInstruction {
+                tags,
+                instruction: UntaggedProgramInstruction::from(fragments),
             },
         )
         .labelled(

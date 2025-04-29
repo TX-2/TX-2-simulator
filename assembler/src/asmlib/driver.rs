@@ -702,7 +702,7 @@ fn test_assemble_pass1() {
         statements: vec![(
             span(0..2),
             TaggedProgramInstruction {
-                tag: None,
+                tags: Vec::new(),
                 instruction: UntaggedProgramInstruction::from(vec![CommaDelimitedFragment {
                     leading_commas: None,
                     holdbit: HoldBit::Unspecified,

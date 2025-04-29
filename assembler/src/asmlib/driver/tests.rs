@@ -66,7 +66,7 @@ fn test_assemble_pass1() {
                 statements: vec![(
                     span(0..2),
                     TaggedProgramInstruction {
-                        tag: None,
+                        tags: Vec::new(),
                         instruction: UntaggedProgramInstruction {
                             fragments: vec![CommaDelimitedFragment {
                                 leading_commas: None,
@@ -111,17 +111,19 @@ fn test_metacommand_dec_changes_default_base() {
         if let [(
             _,
             TaggedProgramInstruction {
-                tag: None,
+                tags: tags1,
                 instruction: first_instruction,
             },
         ), (
             _,
             TaggedProgramInstruction {
-                tag: None,
+                tags: tags2,
                 instruction: second_instruction,
             },
         )] = statements.as_slice()
         {
+            assert!(tags1.is_empty());
+            assert!(tags2.is_empty());
             if let [first_fragment] = first_instruction.fragments.as_slice() {
                 if let [second_fragment] = second_instruction.fragments.as_slice() {
                     assert_eq!(first_fragment.leading_commas, None);

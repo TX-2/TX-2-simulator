@@ -27,6 +27,11 @@ type StateInitFn = fn(s: &mut NumeralMode);
 type ParseErrors<'a> = Vec<Rich<'a, Tok>>;
 
 #[cfg(test)]
+fn notags() -> Vec<Tag> {
+    Vec::new()
+}
+
+#[cfg(test)]
 pub(crate) fn parse_with<'a, O, P>(
     input: &'a str,
     parser: P,
@@ -526,7 +531,7 @@ fn test_manuscript_line_with_bare_literal() {
     assert_eq!(
         parse_successfully_with("1", manuscript_line(), no_state_setup),
         ManuscriptLine::StatementOnly(TaggedProgramInstruction::single(
-            None,
+            notags(),
             HoldBit::Unspecified,
             span(0..1),
             InstructionFragment::from((span(0..1), Script::Normal, Unsigned36Bit::from(1_u32),))
@@ -545,7 +550,7 @@ fn test_manuscript_with_bare_literal() {
                 statements: vec![(
                     span(0..1),
                     TaggedProgramInstruction::single(
-                        None,
+                        notags(),
                         HoldBit::Unspecified,
                         span(0..1),
                         InstructionFragment::from((
@@ -565,7 +570,7 @@ fn test_manuscript_with_bare_literal() {
 #[test]
 fn test_terminated_manuscript_line_with_bare_literal() {
     let expected_line = ManuscriptLine::StatementOnly(TaggedProgramInstruction::single(
-        None,
+        notags(),
         HoldBit::Unspecified,
         span(0..1),
         InstructionFragment::from((span(0..1), Script::Normal, Unsigned36Bit::from(1_u32))),
@@ -600,7 +605,7 @@ fn test_manuscript_without_tag() {
                     (
                         span(0..3),
                         TaggedProgramInstruction::single(
-                            None,
+                            notags(),
                             HoldBit::Unspecified,
                             span(0..3),
                             InstructionFragment::from((
@@ -613,7 +618,7 @@ fn test_manuscript_without_tag() {
                     (
                         span(25..27),
                         TaggedProgramInstruction::single(
-                            None,
+                            notags(),
                             HoldBit::Unspecified,
                             span(25..27),
                             InstructionFragment::from((
@@ -648,7 +653,7 @@ fn test_comment_in_rc_block() {
                 statements: vec![(
                     span(0..10),
                     TaggedProgramInstruction::single(
-                        None,
+                        notags(),
                         HoldBit::Unspecified,
                         span(0..10),
                         // The output is an RC-reference to a location containing the value 1.
@@ -656,7 +661,7 @@ fn test_comment_in_rc_block() {
                             span(0..10),
                             RegistersContaining::from_words(vec![RegisterContaining::from(
                                 TaggedProgramInstruction {
-                                    tag: None,
+                                    tags: notags(),
                                     instruction: UntaggedProgramInstruction::from(vec![
                                         CommaDelimitedFragment {
                                             leading_commas: None,
@@ -725,16 +730,57 @@ fn test_manuscript_with_single_syllable_tag() {
                 statements: vec![(
                     span(0..13),
                     TaggedProgramInstruction::single(
-                        Some(Tag {
+                        vec![Tag {
                             name: SymbolName {
                                 canonical: "START4".to_string(),
                             },
                             span: span(0..6),
-                        }),
+                        }],
                         HoldBit::Unspecified,
                         span(10..13),
                         InstructionFragment::from((
                             span(10..13),
+                            Script::Normal,
+                            Unsigned36Bit::from(0o205_u32),
+                        )),
+                    )
+                )]
+            }],
+            equalities: Default::default(), // no equalities
+            macros: vec![],
+            punch: None
+        }
+    );
+}
+
+#[test]
+fn test_manuscript_with_multiple_tags() {
+    assert_eq!(
+        parse_successfully_with("START4 -> START5 -> 205\n", source_file(), no_state_setup),
+        SourceFile {
+            blocks: vec![ManuscriptBlock {
+                origin: None,
+                statements: vec![(
+                    span(0..23),
+                    TaggedProgramInstruction::single(
+                        vec![
+                            Tag {
+                                name: SymbolName {
+                                    canonical: "START4".to_string(),
+                                },
+                                span: span(0..6),
+                            },
+                            Tag {
+                                name: SymbolName {
+                                    canonical: "START5".to_string(),
+                                },
+                                span: span(10..16),
+                            },
+                        ],
+                        HoldBit::Unspecified,
+                        span(20..23),
+                        InstructionFragment::from((
+                            span(20..23),
                             Script::Normal,
                             Unsigned36Bit::from(0o205_u32),
                         )),
@@ -763,7 +809,7 @@ fn test_manuscript_with_origin() {
                 statements: vec![(
                     span(0..9),
                     TaggedProgramInstruction::single(
-                        None,
+                        notags(),
                         HoldBit::Unspecified,
                         span(6..9),
                         InstructionFragment::from((
@@ -796,12 +842,12 @@ fn test_arrow() {
     assert_eq!(
         parse_tagged_instruction("FOO->0"),
         TaggedProgramInstruction {
-            tag: Some(Tag {
+            tags: vec![Tag {
                 name: SymbolName {
                     canonical: "FOO".to_string()
                 },
                 span: span(0..3),
-            }),
+            }],
             instruction: UntaggedProgramInstruction::from(vec![CommaDelimitedFragment {
                 leading_commas: None,
                 holdbit: HoldBit::Unspecified,
@@ -816,12 +862,12 @@ fn test_arrow() {
     assert_eq!(
         parse_tagged_instruction("BAR  -> 1"),
         TaggedProgramInstruction {
-            tag: Some(Tag {
+            tags: vec![Tag {
                 name: SymbolName {
                     canonical: "BAR".to_string(),
                 },
                 span: span(0..3),
-            }),
+            }],
             instruction: UntaggedProgramInstruction::from(vec![CommaDelimitedFragment {
                 leading_commas: None,
                 holdbit: HoldBit::Unspecified,
@@ -840,12 +886,12 @@ fn test_multi_syllable_tag() {
     assert_eq!(
         parse_tagged_instruction("CODE HERE->205 "),
         TaggedProgramInstruction::single(
-            Some(Tag {
+            vec![Tag {
                 name: SymbolName {
                     canonical: "CODEHERE".to_string(),
                 },
                 span: span(0..9),
-            }),
+            }],
             HoldBit::Unspecified,
             span(11..14),
             InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::from(
@@ -894,12 +940,12 @@ fn test_manuscript_with_multi_syllable_tag() {
                 statements: vec![(
                     span(0..14),
                     TaggedProgramInstruction::single(
-                        Some(Tag {
+                        vec![Tag {
                             name: SymbolName {
                                 canonical: "CODEHERE".to_string(),
                             },
                             span: span(0..9),
-                        }),
+                        }],
                         HoldBit::Unspecified,
                         span(11..14),
                         InstructionFragment::from((
@@ -926,12 +972,12 @@ fn test_manuscript_line_with_real_arrow_tag() {
     assert_eq!(
         parse_successfully_with(INPUT, manuscript_line(), no_state_setup),
         ManuscriptLine::StatementOnly(TaggedProgramInstruction::single(
-            Some(Tag {
+            vec![Tag {
                 name: SymbolName {
                     canonical: "HERE".to_string(),
                 },
                 span: span(0..4),
-            }),
+            }],
             HoldBit::Unspecified,
             span(7..10),
             atom_to_fragment(Atom::from((span(7..10), Script::Normal, u36!(0o207)))),
@@ -951,12 +997,12 @@ fn test_manuscript_with_real_arrow_tag() {
                 statements: vec![(
                     span(0..10),
                     TaggedProgramInstruction::single(
-                        Some(Tag {
+                        vec![Tag {
                             name: SymbolName {
                                 canonical: "HERE".to_string(),
                             },
                             span: span(0..4),
-                        }),
+                        }],
                         HoldBit::Unspecified,
                         span(7..10),
                         InstructionFragment::from((
@@ -1104,7 +1150,7 @@ fn test_assignment_lines() {
                 statements: vec![(
                     span(19..20),
                     TaggedProgramInstruction::single(
-                        None,
+                        Vec::new(),
                         HoldBit::Unspecified,
                         span(19..20),
                         atom_to_fragment(Atom::from(LiteralValue::from((
@@ -1145,7 +1191,7 @@ fn test_assignment_origin() {
                 statements: vec![(
                     span(9..15),
                     TaggedProgramInstruction::single(
-                        None,
+                        Vec::new(),
                         HoldBit::Unspecified,
                         span(14..15),
                         InstructionFragment::from((span(14..15), Script::Normal, u36!(4),))
@@ -1692,7 +1738,7 @@ fn test_macro_definition_with_trivial_body() {
             preceding_terminator: '|',
         }]),
         body: vec![TaggedProgramInstruction::single(
-            None,
+            notags(),
             HoldBit::Unspecified,
             span(17..18),
             InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::SymbolOrLiteral(
@@ -1722,7 +1768,7 @@ fn test_macro_definition_as_entire_source_file() {
                 preceding_terminator: '|',
             }]),
             body: vec![TaggedProgramInstruction::single(
-                None,
+                notags(),
                 HoldBit::Unspecified,
                 span(17..18),
                 InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::from((
@@ -1781,7 +1827,7 @@ fn test_double_pipe_config_symbolic() {
     let input_xy = "‖X Y";
     let got = parse_tagged_instruction(input_xy);
     let expected = TaggedProgramInstruction {
-        tag: None,
+        tags: notags(),
         instruction: UntaggedProgramInstruction::from(vec![
             CommaDelimitedFragment {
                 leading_commas: None,
@@ -1825,7 +1871,7 @@ fn test_double_pipe_config_expression() {
     assert_eq!(input_qy.len(), 12);
     let got = parse_tagged_instruction(input_qy);
     let expected = TaggedProgramInstruction {
-        tag: None,
+        tags: notags(),
         instruction: UntaggedProgramInstruction::from(vec![
             CommaDelimitedFragment {
                 leading_commas: None,
@@ -1910,7 +1956,7 @@ fn test_double_pipe_config_literal() {
     let input = "‖10"; // 10 octal = 8 decimal.
     let got = parse_tagged_instruction(input);
     let expected = TaggedProgramInstruction::single(
-        None,
+        notags(),
         HoldBit::Unspecified,
         span(0..5),
         InstructionFragment::Config(ConfigValue {
@@ -1985,7 +2031,7 @@ fn test_pipe_construct() {
         },
         rc_word_span: span(21..38),
         rc_word_value: RegisterContaining::from(TaggedProgramInstruction {
-            tag: None,
+            tags: notags(),
             instruction: UntaggedProgramInstruction::from(vec![
                 CommaDelimitedFragment {
                     leading_commas: None,
@@ -2047,7 +2093,7 @@ fn test_commas_instruction() {
     let input = "200,200,,200,200";
     let got = parse_tagged_instruction(input);
     let expected = TaggedProgramInstruction::multiple(
-        None,
+        notags(),
         vec![
             CommaDelimitedFragment {
                 leading_commas: None,
@@ -2508,12 +2554,12 @@ fn test_mnemonic_suz() {
     assert_eq!(
         insn,
         TaggedProgramInstruction {
-            tag: Some(Tag {
+            tags: vec![Tag {
                 name: SymbolName {
                     canonical: "START".to_string()
                 },
                 span: span(0..5),
-            }),
+            }],
             instruction: UntaggedProgramInstruction::from(vec![
                 CommaDelimitedFragment {
                     leading_commas: None,

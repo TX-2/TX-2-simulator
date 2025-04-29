@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fmt::{self, Debug, Display, Formatter, Write};
 use std::ops::{Shl, Shr};
 
@@ -1088,7 +1089,7 @@ impl LocatedBlock {
                 .expect("assembled code block should fit within physical memory");
             let address: Address = location.index_by(offset);
             let here = HereValue::Address(address);
-            if let Some(tag) = instruction.tag() {
+            for tag in instruction.tags.iter() {
                 final_symbols.define(
                     tag.name.clone(),
                     FinalSymbolType::Tag,
@@ -1185,10 +1186,10 @@ impl Evaluate for RegisterContaining {
                 // If inst has a tag, we temporarily override any
                 // global value for that tag with the address of
                 // this instruction.
-                let tag_override: Option<(&Tag, Address)> =
-                    inst.tag.as_ref().map(|t| (t, *rc_word_addr));
-                let value: Unsigned36Bit = symtab.evaluate_with_temporary_tag_override(
-                    tag_override,
+                let tag_overrides: BTreeMap<&Tag, Address> =
+                    inst.tags.iter().map(|t| (t, *rc_word_addr)).collect();
+                let value: Unsigned36Bit = symtab.evaluate_with_temporary_tag_overrides(
+                    tag_overrides,
                     inst.as_ref(),
                     inst.span(),
                     &here,
