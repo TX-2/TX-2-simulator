@@ -1177,22 +1177,14 @@ pub(crate) fn source_file<'a, I>() -> impl Parser<'a, I, SourceFile, Extra<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
-    // Parse a manuscript (which is a sequence of metacommands, macros
-    // and assembly-language instructions).
-    fn source_file_as_blocks<'a, I>() -> impl Parser<'a, I, SourceFile, Extra<'a>>
-    where
-        I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
-    {
-        terminated_manuscript_line().repeated().collect().try_map(
-            |lines: Vec<Option<(Span, ManuscriptLine)>>, _span| {
-                // Filter out empty lines.
-                let lines: Vec<(Span, ManuscriptLine)> = lines.into_iter().flatten().collect();
-                let source_file: SourceFile = helpers::manuscript_lines_to_source_file(lines)?;
-                Ok(source_file)
-            },
-        )
-    }
-    source_file_as_blocks()
+    terminated_manuscript_line().repeated().collect().try_map(
+        |lines: Vec<Option<(Span, ManuscriptLine)>>, _span| {
+            // Filter out empty lines.
+            let lines: Vec<(Span, ManuscriptLine)> = lines.into_iter().flatten().collect();
+            let source_file: SourceFile = helpers::manuscript_lines_to_source_file(lines)?;
+            Ok(source_file)
+        },
+    )
 }
 
 type Mig<I, O> = chumsky::input::MappedInput<
