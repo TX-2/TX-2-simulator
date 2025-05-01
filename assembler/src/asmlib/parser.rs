@@ -400,7 +400,7 @@ fn make_pipe_construct(
 }
 
 /// Macro terminators are described in section 6-4.5 of the TX-2 User Handbook.
-fn macro_terminator<'a, I>() -> impl Parser<'a, I, char, Extra<'a>>
+fn macro_terminator<'a, I>() -> impl Parser<'a, I, Tok, Extra<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
@@ -425,22 +425,22 @@ where
     // above the line and looks rounder.  So I conclude that the
     // separator character is a comma.
     choice((
-        just(Tok::Hand(Script::Normal)).to('☛'),
-        just(Tok::Comma(Script::Normal)).to(','),
-        just(Tok::Equals(Script::Normal)).to('='),
-        just(Tok::Arrow(Script::Normal)).to('→'),
-        just(Tok::Pipe(Script::Normal)).to('|'),
-        just(Tok::ProperSuperset(Script::Normal)).to('⊃'),
-        just(Tok::IdenticalTo(Script::Normal)).to('≡'),
-        just(Tok::Tilde(Script::Normal)).to('~'),
-        just(Tok::LessThan(Script::Normal)).to('<'),
-        just(Tok::GreaterThan(Script::Normal)).to('>'),
-        just(Tok::Intersection(Script::Normal)).to('∩'),
-        just(Tok::Union(Script::Normal)).to('∪'),
-        just(Tok::Solidus(Script::Normal)).to('/'),
-        just(Tok::Times(Script::Normal)).to('×'),
-        just(Tok::LogicalOr(Script::Normal)).to('∨'),
-        just(Tok::LogicalAnd(Script::Normal)).to('∧'),
+        just(Tok::Hand(Script::Normal)),
+        just(Tok::Comma(Script::Normal)),
+        just(Tok::Equals(Script::Normal)),
+        just(Tok::Arrow(Script::Normal)),
+        just(Tok::Pipe(Script::Normal)),
+        just(Tok::ProperSuperset(Script::Normal)),
+        just(Tok::IdenticalTo(Script::Normal)),
+        just(Tok::Tilde(Script::Normal)),
+        just(Tok::LessThan(Script::Normal)),
+        just(Tok::GreaterThan(Script::Normal)),
+        just(Tok::Intersection(Script::Normal)),
+        just(Tok::Union(Script::Normal)),
+        just(Tok::Solidus(Script::Normal)),
+        just(Tok::Times(Script::Normal)),
+        just(Tok::LogicalOr(Script::Normal)),
+        just(Tok::LogicalAnd(Script::Normal)),
     ))
     .labelled("macro terminator")
 }

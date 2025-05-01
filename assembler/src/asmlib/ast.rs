@@ -9,6 +9,7 @@ use base::charset::{subscript_char, superscript_char, Script};
 use base::prelude::*;
 
 use super::glyph;
+use super::lexer::Token;
 use super::span::*;
 use super::state::NumeralMode;
 use super::symbol::{SymbolContext, SymbolName};
@@ -1164,17 +1165,18 @@ pub(crate) enum ManuscriptLine {
 pub(crate) struct MacroParameter {
     pub(crate) name: SymbolName,
     pub(crate) span: Span,
-    pub(crate) preceding_terminator: char,
+    pub(crate) preceding_terminator: Token,
 }
 
 /// As defined with ☛☛DEF, a macro's name is followed by a terminator,
 /// or by a terminator and some arguments.  We model each argument as
 /// being introduced by its preceding terminator.  If there are no
-/// arguments, MacroArguments::Zero(ch) represents that uses of the
-/// macro's name are followed by the indicated terminator character.
+/// arguments, MacroArguments::Zero(token) represents that uses of the
+/// macro's name are followed by the indicated token (which terminates
+/// the macro name, not a dummy parameter).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum MacroDummyParameters {
-    Zero(char),
+    Zero(Token),
     OneOrMore(Vec<MacroParameter>),
 }
 

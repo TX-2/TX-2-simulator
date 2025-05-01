@@ -12,6 +12,7 @@ use super::super::{
         Origin, SourceFile, TaggedProgramInstruction,
     },
     eval::{make_empty_rc_block_for_test, Evaluate, HereValue},
+    lexer::Token,
     parser::symex::{parse_multi_syllable_symex, parse_symex},
     state::NumeralMode,
     symbol::SymbolName,
@@ -1501,7 +1502,7 @@ fn test_macro_arg() {
         MacroParameter {
             name: SymbolName::from("A01".to_string()),
             span: span(0..9),
-            preceding_terminator: '☛',
+            preceding_terminator: Token::Hand(Script::Normal),
         }
     );
 
@@ -1514,7 +1515,7 @@ fn test_macro_arg() {
         MacroParameter {
             name: SymbolName::from("A02".to_string()),
             span: span(0..10),
-            preceding_terminator: ',',
+            preceding_terminator: Token::Comma(Script::Normal),
         }
     );
 
@@ -1523,7 +1524,7 @@ fn test_macro_arg() {
         MacroParameter {
             name: SymbolName::from("A03".to_string()),
             span: span(0..4),
-            preceding_terminator: '=',
+            preceding_terminator: Token::Equals(Script::Normal),
         }
     );
 
@@ -1536,7 +1537,7 @@ fn test_macro_arg() {
         MacroParameter {
             name: SymbolName::from("A04".to_string()),
             span: span(0..8),
-            preceding_terminator: '→',
+            preceding_terminator: Token::Arrow(Script::Normal),
         }
     );
 
@@ -1547,7 +1548,7 @@ fn test_macro_arg() {
         MacroParameter {
             name: SymbolName::from("A04".to_string()),
             span: span(0..5),
-            preceding_terminator: '→',
+            preceding_terminator: Token::Arrow(Script::Normal),
         }
     );
 
@@ -1556,7 +1557,7 @@ fn test_macro_arg() {
         MacroParameter {
             name: SymbolName::from("A05".to_string()),
             span: span(0..4),
-            preceding_terminator: '|',
+            preceding_terminator: Token::Pipe(Script::Normal),
         }
     );
 
@@ -1565,7 +1566,7 @@ fn test_macro_arg() {
         MacroParameter {
             name: SymbolName::from("A06".to_string()),
             span: span(0..6),
-            preceding_terminator: '⊃',
+            preceding_terminator: Token::ProperSuperset(Script::Normal),
         }
     );
 
@@ -1574,7 +1575,7 @@ fn test_macro_arg() {
         MacroParameter {
             name: SymbolName::from("A07".to_string()),
             span: span(0..6),
-            preceding_terminator: '≡',
+            preceding_terminator: Token::IdenticalTo(Script::Normal),
         }
     );
 
@@ -1587,7 +1588,7 @@ fn test_macro_arg() {
         MacroParameter {
             name: SymbolName::from("A07".to_string()),
             span: span(0..9),
-            preceding_terminator: '≡',
+            preceding_terminator: Token::IdenticalTo(Script::Normal),
         }
     );
 
@@ -1596,7 +1597,7 @@ fn test_macro_arg() {
         MacroParameter {
             name: SymbolName::from("A08".to_string()),
             span: span(0..4),
-            preceding_terminator: '~',
+            preceding_terminator: Token::Tilde(Script::Normal),
         }
     );
 
@@ -1605,7 +1606,7 @@ fn test_macro_arg() {
         MacroParameter {
             name: SymbolName::from("A09".to_string()),
             span: span(0..4),
-            preceding_terminator: '<',
+            preceding_terminator: Token::LessThan(Script::Normal),
         }
     );
 
@@ -1614,7 +1615,7 @@ fn test_macro_arg() {
         MacroParameter {
             name: SymbolName::from("A10".to_string()),
             span: span(0..4),
-            preceding_terminator: '>',
+            preceding_terminator: Token::GreaterThan(Script::Normal),
         }
     );
 
@@ -1623,7 +1624,7 @@ fn test_macro_arg() {
         MacroParameter {
             name: SymbolName::from("A11".to_string()),
             span: span(0..6),
-            preceding_terminator: '∩',
+            preceding_terminator: Token::Intersection(Script::Normal),
         }
     );
 
@@ -1632,7 +1633,7 @@ fn test_macro_arg() {
         MacroParameter {
             name: SymbolName::from("A12".to_string()),
             span: span(0..6),
-            preceding_terminator: '∪',
+            preceding_terminator: Token::Union(Script::Normal),
         }
     );
 
@@ -1641,7 +1642,7 @@ fn test_macro_arg() {
         MacroParameter {
             name: SymbolName::from("A13".to_string()),
             span: span(0..4),
-            preceding_terminator: '/',
+            preceding_terminator: Token::Solidus(Script::Normal),
         }
     );
 
@@ -1650,7 +1651,7 @@ fn test_macro_arg() {
         MacroParameter {
             name: SymbolName::from("A14".to_string()),
             span: span(0..5),
-            preceding_terminator: '×',
+            preceding_terminator: Token::Times(Script::Normal),
         }
     );
 
@@ -1659,7 +1660,7 @@ fn test_macro_arg() {
         MacroParameter {
             name: SymbolName::from("A15".to_string()),
             span: span(0..6),
-            preceding_terminator: '∨',
+            preceding_terminator: Token::LogicalOr(Script::Normal),
         }
     );
 
@@ -1668,7 +1669,7 @@ fn test_macro_arg() {
         MacroParameter {
             name: SymbolName::from("A16".to_string()),
             span: span(0..6),
-            preceding_terminator: '∧',
+            preceding_terminator: Token::LogicalAnd(Script::Normal),
         }
     );
 }
@@ -1685,17 +1686,17 @@ fn test_macro_args() {
             MacroParameter {
                 name: SymbolName::from("X".to_string()),
                 span: span(0..2),
-                preceding_terminator: '=',
+                preceding_terminator: Token::Equals(Script::Normal),
             },
             MacroParameter {
                 name: SymbolName::from("YZ".to_string()),
                 span: span(2..10),
-                preceding_terminator: '☛',
+                preceding_terminator: Token::Hand(Script::Normal),
             },
             MacroParameter {
                 name: SymbolName::from("P".to_string()),
                 span: span(10..16),
-                preceding_terminator: '→',
+                preceding_terminator: Token::Arrow(Script::Normal),
             },
         ])
     );
@@ -1711,7 +1712,7 @@ fn test_macro_definition_with_empty_body() {
     );
     let expected = MacroDefinition {
         name: SymbolName::from("MYMACRO".to_string()),
-        params: MacroDummyParameters::Zero('≡'),
+        params: MacroDummyParameters::Zero(Token::IdenticalTo(Script::Normal)),
         body: Vec::new(), // no body
         span: span(0..30),
     };
@@ -1735,7 +1736,7 @@ fn test_macro_definition_with_trivial_body() {
         params: MacroDummyParameters::OneOrMore(vec![MacroParameter {
             name: SymbolName::from("A".to_string()),
             span: span(14..16),
-            preceding_terminator: '|',
+            preceding_terminator: Token::Pipe(Script::Normal),
         }]),
         body: vec![TaggedProgramInstruction::single(
             notags(),
@@ -1767,7 +1768,7 @@ fn test_macro_definition_as_entire_source_file() {
                         canonical: "A".to_string(),
                     },
                     span: span(14..16),
-                    preceding_terminator: '|',
+                    preceding_terminator: Token::Pipe(Script::Normal),
                 }]),
                 body: vec![TaggedProgramInstruction::single(
                     notags(),
