@@ -1,9 +1,12 @@
+use std::collections::BTreeMap;
 use std::fmt::{Display, Write};
 use std::num::IntErrorKind;
 
+use tracing::{event, Level};
+
 use base::prelude::*;
 
-use super::super::{ast::*, span::Span, state::NumeralMode};
+use super::super::{ast::*, span::Span, state::NumeralMode, symbol::SymbolName};
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub(crate) enum Sign {
@@ -101,7 +104,7 @@ pub(super) fn manuscript_lines_to_source_file<'a>(
 ) -> Result<SourceFile, chumsky::error::Rich<'a, super::super::lexer::Token>> {
     let mut blocks: Vec<ManuscriptBlock> = Vec::new();
     let mut equalities: Vec<Equality> = Vec::new();
-    let mut macros: Vec<MacroDefinition> = Vec::new();
+    let mut macros: BTreeMap<SymbolName, MacroDefinition> = Default::default();
     let mut current_statements: Vec<(Span, TaggedProgramInstruction)> = Vec::new();
     let mut maybe_punch: Option<PunchCommand> = None;
     let mut effective_origin: Option<Origin> = None;
@@ -157,7 +160,9 @@ pub(super) fn manuscript_lines_to_source_file<'a>(
                 if let Some(t) = pending_tags.pop() {
                     return Err(bad_tag_pos(t));
                 }
-                macros.push(macro_def);
+                if let Some(previous) = macros.insert(macro_def.name.clone(), macro_def) {
+                    event!(Level::INFO, "Redefinition of macro {}", &previous.name);
+                }
             }
             ManuscriptLine::OriginOnly(origin) => {
                 if let Some(t) = pending_tags.pop() {

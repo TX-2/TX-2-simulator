@@ -84,7 +84,7 @@ fn test_assemble_pass1() {
                 )]
             }],
             equalities: Default::default(), // no equalities
-            macros: Vec::new(),             // no macros
+            macros: Default::default(),     // no macros
         })
     );
 }

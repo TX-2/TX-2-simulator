@@ -1,6 +1,8 @@
 use std::{
+    collections::BTreeMap,
+    collections::BTreeSet,
     fmt::Debug,
-    ops::{BitOr, Deref, Range, Shl},
+    ops::{BitOr, Range, Shl},
 };
 
 pub(crate) mod helpers;
@@ -11,7 +13,6 @@ mod tests;
 use chumsky::error::Rich;
 use chumsky::extra::{Full, ParserExtra};
 use chumsky::input::{Emitter, MapExtra, Stream, ValueInput};
-use chumsky::inspector::SimpleState;
 use chumsky::prelude::{choice, just, one_of, recursive, Input, IterParser, Recursive, SimpleSpan};
 use chumsky::select;
 use chumsky::Boxed;
@@ -21,26 +22,14 @@ use super::ast::*;
 use super::glyph::Unrecognised;
 use super::lexer::{self};
 use super::span::*;
-use super::state::NumeralMode;
+use super::state::{NumeralMode, State};
 use super::symbol::SymbolName;
 use base::charset::Script;
 use base::prelude::*;
 use helpers::Sign;
 use symex::SymexSyllableRule;
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub(crate) struct State<'src> {
-    numeral_mode: NumeralMode,
-    body: &'src str,
-}
-
-impl<'src> State<'src> {
-    pub(crate) fn new(body: &'src str, numeral_mode: NumeralMode) -> State<'src> {
-        State { numeral_mode, body }
-    }
-}
-
-pub(crate) type Extra<'a> = Full<Rich<'a, lexer::Token>, SimpleState<State<'a>>, ()>;
+pub(crate) type Extra<'a> = Full<Rich<'a, lexer::Token>, State<'a>, ()>;
 use lexer::Token as Tok;
 
 fn maybe_sign<'a, I>(
@@ -95,11 +84,10 @@ fn make_bit_designator_literal(
 // I'm not really defining my own type here, this is just for
 // abbreviation purposes.
 type MyEmitter<'a, I> = Emitter<
-    <chumsky::extra::Full<
-        chumsky::error::Rich<'a, lexer::Token>,
-        SimpleState<State<'a>>,
-        (),
-    > as ParserExtra<'a, I>>::Error,
+    <chumsky::extra::Full<chumsky::error::Rich<'a, lexer::Token>, State<'a>, ()> as ParserExtra<
+        'a,
+        I,
+    >>::Error,
 >;
 
 fn warn_bad_bitpos<'src, I>(
@@ -169,8 +157,8 @@ where
         };
 
         digits.try_map_with(move |digits_token_payload, extra| {
-            let state: &SimpleState<State> = extra.state();
-            let mode: &NumeralMode = &state.deref().numeral_mode;
+            let state: &State = extra.state();
+            let mode: &NumeralMode = &state.numeral_mode;
             match digits_token_payload.make_num(None, mode) {
                 Ok(value) => Ok(LiteralValue::from((extra.span(), script_required, value))),
                 Err(e) => Err(Rich::custom(extra.span(), e.to_string())),
@@ -507,11 +495,15 @@ where
         .then_ignore(named_metacommand(Metacommand::EndMacroDefinition))
         // We don't parse end-of-line here because all metacommands are supposed
         // to be followed by end-of-line.
-        .map_with(|((name, args), body), extra| MacroDefinition {
-            name,
-            params: args,
-            body,
-            span: extra.span(),
+        .map_with(|((name, args), body), extra| {
+            let definition = MacroDefinition {
+                name,
+                params: args,
+                body,
+                span: extra.span(),
+            };
+            extra.state().define_macro(definition.clone());
+            definition
         })
 }
 
@@ -1177,14 +1169,69 @@ pub(crate) fn source_file<'a, I>() -> impl Parser<'a, I, SourceFile, Extra<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
-    terminated_manuscript_line().repeated().collect().try_map(
-        |lines: Vec<Option<(Span, ManuscriptLine)>>, _span| {
+    terminated_manuscript_line()
+        .repeated()
+        .collect()
+        .try_map_with(|lines: Vec<Option<(Span, ManuscriptLine)>>, extra| {
             // Filter out empty lines.
             let lines: Vec<(Span, ManuscriptLine)> = lines.into_iter().flatten().collect();
             let source_file: SourceFile = helpers::manuscript_lines_to_source_file(lines)?;
+            let state_macros: BTreeMap<SymbolName, MacroDefinition> =
+                extra.state().macros().clone();
+            fn inconsistency_error<'src>(
+                span: Span,
+                name: &SymbolName,
+                what: &str,
+            ) -> chumsky::error::Rich<'src, lexer::Token> {
+                Rich::custom(
+                    span,
+                    format!("internal error: inconsistent parser state for macro {name}: {what}"),
+                )
+            }
+            fn check_consistent<'a>(
+                sf: Option<&MacroDefinition>,
+                st: Option<&MacroDefinition>,
+            ) -> Result<(), chumsky::error::Rich<'a, lexer::Token>> {
+                match (sf, st) {
+                    (None, None) => {
+                        panic!("all_name is incorrect");
+                    }
+                    (None, Some(st_def)) => Err(inconsistency_error(
+                        st_def.span,
+                        &st_def.name,
+                        "missing from SourceFile output",
+                    )),
+                    (Some(sf_def), None) => Err(inconsistency_error(
+                        sf_def.span,
+                        &sf_def.name,
+                        "missing from State",
+                    )),
+                    (Some(sf_def), Some(st_def)) => {
+                        if sf_def != st_def {
+                            Err(inconsistency_error(
+                                sf_def.span,
+                                &sf_def.name,
+                                "inconsistently defined",
+                            ))
+                        } else {
+                            Ok(())
+                        }
+                    }
+                }
+            }
+            let all_names: BTreeSet<&SymbolName> = source_file
+                .macros
+                .keys()
+                .chain(state_macros.keys())
+                .collect();
+            for name in all_names.into_iter() {
+                check_consistent(
+                    source_file.macros.get(name),
+                    extra.state().macros().get(name),
+                )?;
+            }
             Ok(source_file)
-        },
-    )
+        })
 }
 
 type Mig<I, O> = chumsky::input::MappedInput<
@@ -1203,7 +1250,7 @@ pub(crate) fn tokenize_and_parse_with<'a, P, T>(
 where
     P: Parser<'a, Mi, T, Extra<'a>>,
 {
-    let mut state = SimpleState::from(State::new(input, NumeralMode::default()));
+    let mut state = State::new(input, NumeralMode::default());
     setup(&mut state.numeral_mode);
 
     // These conversions are adapted from the Logos example in the

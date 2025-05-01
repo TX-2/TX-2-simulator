@@ -482,7 +482,7 @@ fn test_empty_manuscript() {
         SourceFile {
             blocks: Vec::new(),
             equalities: Default::default(), // no equalities
-            macros: vec![],
+            macros: Default::default(),
             punch: None,
         }
     )
@@ -562,7 +562,7 @@ fn test_manuscript_with_bare_literal() {
                 )]
             }],
             equalities: Default::default(), // no equalities
-            macros: vec![],
+            macros: Default::default(),
         }
     );
 }
@@ -631,7 +631,7 @@ fn test_manuscript_without_tag() {
                 ]
             }],
             equalities: Default::default(), // no equalities
-            macros: vec![],
+            macros: Default::default(),
             punch: None,
         }
     );
@@ -686,7 +686,7 @@ fn test_comment_in_rc_block() {
                 )]
             }],
             equalities: Default::default(), // no equalities
-            macros: vec![],
+            macros: Default::default(),
             punch: None,
         }
     );
@@ -747,7 +747,7 @@ fn test_manuscript_with_single_syllable_tag() {
                 )]
             }],
             equalities: Default::default(), // no equalities
-            macros: vec![],
+            macros: Default::default(),
             punch: None
         }
     );
@@ -788,7 +788,7 @@ fn test_manuscript_with_multiple_tags() {
                 )]
             }],
             equalities: Default::default(), // no equalities
-            macros: vec![],
+            macros: Default::default(),
             punch: None
         }
     );
@@ -821,7 +821,7 @@ fn test_manuscript_with_origin() {
                 )]
             }],
             equalities: Default::default(), // no equalities
-            macros: vec![],
+            macros: Default::default(),
         }
     );
 }
@@ -957,7 +957,7 @@ fn test_manuscript_with_multi_syllable_tag() {
                 )]
             }],
             equalities: Default::default(), // no equalities
-            macros: vec![],
+            macros: Default::default(),
         }
     );
 }
@@ -1014,7 +1014,7 @@ fn test_manuscript_with_real_arrow_tag() {
                 )]
             }],
             equalities: Default::default(), // no equalities
-            macros: Vec::new(),
+            macros: Default::default(),
         }
     );
 }
@@ -1173,7 +1173,7 @@ fn test_assignment_lines() {
                     LiteralValue::from((span(16..17), Script::Normal, u36!(1))),
                 )
             ],
-            macros: Vec::new(),
+            macros: Default::default(),
         }
     );
 }
@@ -1203,7 +1203,7 @@ fn test_assignment_origin() {
                 span(0..8),
                 LiteralValue::from((span(4..8), Script::Normal, u36!(0o1000))),
             )],
-            macros: Vec::new(),
+            macros: Default::default(),
         }
     );
 }
@@ -1756,29 +1756,33 @@ fn test_macro_definition_as_entire_source_file() {
     let expected = SourceFile {
         blocks: Default::default(),     // empty
         equalities: Default::default(), // no equalities
-        macros: vec![MacroDefinition {
-            name: SymbolName {
-                canonical: "JUST".to_string(),
-            },
-            params: MacroDummyParameters::OneOrMore(vec![MacroParameter {
+        macros: [(
+            SymbolName::from("JUST".to_string()),
+            MacroDefinition {
                 name: SymbolName {
-                    canonical: "A".to_string(),
+                    canonical: "JUST".to_string(),
                 },
-                span: span(14..16),
-                preceding_terminator: '|',
-            }]),
-            body: vec![TaggedProgramInstruction::single(
-                notags(),
-                HoldBit::Unspecified,
-                span(17..18),
-                InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::from((
+                params: MacroDummyParameters::OneOrMore(vec![MacroParameter {
+                    name: SymbolName {
+                        canonical: "A".to_string(),
+                    },
+                    span: span(14..16),
+                    preceding_terminator: '|',
+                }]),
+                body: vec![TaggedProgramInstruction::single(
+                    notags(),
+                    HoldBit::Unspecified,
                     span(17..18),
-                    Script::Normal,
-                    SymbolName::from("A"),
-                )))),
-            )],
-            span: span(0..28),
-        }],
+                    InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::from((
+                        span(17..18),
+                        Script::Normal,
+                        SymbolName::from("A"),
+                    )))),
+                )],
+                span: span(0..28),
+            },
+        )]
+        .into(),
         punch: None,
     };
     assert_eq!(got, expected);

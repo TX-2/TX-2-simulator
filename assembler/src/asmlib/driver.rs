@@ -726,7 +726,7 @@ fn test_assemble_pass1() {
                 punch: Some(PunchCommand(expected_directive_entry_point)),
                 blocks: vec![expected_block],
                 equalities: Default::default(), // no equalities
-                macros: Vec::new(),
+                macros: Default::default(),
             }),
             OutputOptions { list: false }
         )

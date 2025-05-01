@@ -1055,7 +1055,7 @@ pub(crate) struct SourceFile {
     pub(crate) punch: Option<PunchCommand>,
     pub(crate) blocks: Vec<ManuscriptBlock>,
     pub(crate) equalities: Vec<Equality>,
-    pub(crate) macros: Vec<MacroDefinition>,
+    pub(crate) macros: BTreeMap<SymbolName, MacroDefinition>,
 }
 
 impl SourceFile {
