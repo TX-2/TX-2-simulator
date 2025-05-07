@@ -77,9 +77,17 @@ pub(crate) enum SymbolValue {
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum SymbolLookupFailureKind {
-    Inconsistent(String),
-    Missing { uses: SymbolContext },
-    Loop { deps_in_order: Vec<SymbolName> },
+    InconsistentOrigins {
+        name: SymbolName,
+        span: Span,
+        msg: String,
+    },
+    Missing {
+        uses: SymbolContext,
+    },
+    Loop {
+        deps_in_order: Vec<SymbolName>,
+    },
     MachineLimitExceeded(MachineLimitExceededFailure),
     HereIsNotAllowedHere,
 }
@@ -95,7 +103,9 @@ impl Display for SymbolLookupFailure {
         let desc = self.target.to_string();
         match self.kind() {
             SymbolLookupFailureKind::Missing { .. } => f.write_str("no definition found"),
-            SymbolLookupFailureKind::Inconsistent(msg) => f.write_str(msg.as_str()),
+            SymbolLookupFailureKind::InconsistentOrigins { name, span: _, msg } => {
+                write!(f, "inconsistent definitions for origin {name}: {msg}")
+            }
             SymbolLookupFailureKind::Loop { deps_in_order } => {
                 let names: Vec<String> = deps_in_order.iter().map(|dep| dep.to_string()).collect();
                 write!(
@@ -996,7 +1006,6 @@ impl Evaluate for HereValue {
 }
 
 fn translate_symbol_lookup_failure(
-    span: Span,
     here: &HereValue,
     e: SymbolLookupFailure,
     undefined_symbols: &mut Vec<(Span, SymbolName)>,
@@ -1015,10 +1024,13 @@ fn translate_symbol_lookup_failure(
         HereIsNotAllowedHere => {
             unreachable!("should be able to use # where target_address={here:?}");
         }
-        Inconsistent(error) => Err(AssemblerFailure::InvalidProgram {
-            span,
-            msg: error.to_string(),
-        }),
+        InconsistentOrigins { name, span, msg } => {
+            Err(AssemblerFailure::InconsistentOriginDefinitions {
+                origin_name: name,
+                span,
+                msg,
+            })
+        }
         MachineLimitExceeded(e) => Err(AssemblerFailure::MachineLimitExceeded(e)),
     }
 }
@@ -1060,12 +1072,7 @@ pub(super) fn extract_final_equalities<R: RcUpdater>(
                 );
             }
             Err(e) => {
-                translate_symbol_lookup_failure(
-                    eq.span,
-                    &HereValue::NotAllowed,
-                    e,
-                    &mut undefined_symbols,
-                )?;
+                translate_symbol_lookup_failure(&HereValue::NotAllowed, e, &mut undefined_symbols)?;
             }
         }
     }
@@ -1109,19 +1116,14 @@ impl LocatedBlock {
                     words.push(word);
                 }
                 Err(e) => {
-                    translate_symbol_lookup_failure(
-                        instruction.span(),
-                        &here,
-                        e,
-                        &mut undefined_symbols,
-                    )?;
+                    translate_symbol_lookup_failure(&here, e, &mut undefined_symbols)?;
                 }
             }
         }
         if let Some((span, name)) = undefined_symbols.first() {
-            return Err(AssemblerFailure::InvalidProgram {
+            return Err(AssemblerFailure::UnexpectedlyUndefinedSymbol {
+                name: name.clone(),
                 span: *span,
-                msg: format!("undefined symbol: {name}"),
             });
         }
         Ok(words)

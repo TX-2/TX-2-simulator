@@ -798,12 +798,15 @@ fn test_symbol_definition_loop_detection() {
     use super::super::types::AssemblerFailure;
     let input = concat!("A = B\n", "B = A\n", "A\n",);
     match assemble_source(input, Default::default()) {
-        Err(AssemblerFailure::InvalidProgram { .. }) => (),
+        Err(AssemblerFailure::UnexpectedlyUndefinedSymbol {
+            name: SymbolName { canonical },
+            span: _,
+        }) if canonical.as_str() == "A" || canonical.as_str() == "B" => (),
         Err(e) => {
-            panic!("excpected an error from the assembler, but not this one: {e:?}");
+            panic!("expected an error from the assembler, but not this one: {e:?}");
         }
         Ok(program) => {
-            panic!("excpected an error from the assembler, not an assembled program: {program:?}");
+            panic!("expected an error from the assembler, not an assembled program: {program:?}");
         }
     }
 }

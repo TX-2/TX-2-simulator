@@ -420,9 +420,11 @@ impl SymbolTable {
                 // origin and either config or index
                 Err(SymbolLookupFailure {
                     target: get_target(),
-                    kind: SymbolLookupFailureKind::Inconsistent(format!(
-                        "symbol {name} was used in both origin and other contexts"
-                    )),
+                    kind: SymbolLookupFailureKind::InconsistentOrigins {
+                        name: name.clone(),
+                        span: *span,
+                        msg: format!("symbol {name} was used in both origin and other contexts"),
+                    },
                 })
             }
             [false, false, false, false] => unreachable!(), // apparently no usage at all

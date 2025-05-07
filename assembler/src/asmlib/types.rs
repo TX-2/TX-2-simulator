@@ -159,11 +159,15 @@ pub enum AssemblerFailure {
         filename: PathBuf,
         error: IoError,
     },
-    InvalidProgram {
+    InconsistentOriginDefinitions {
+        origin_name: SymbolName,
         span: Span,
         msg: String,
     },
-    // TODO: InvalidProgram perhaps should be an enum which includes SyntaxError.
+    UnexpectedlyUndefinedSymbol {
+        name: SymbolName,
+        span: Span,
+    },
     SyntaxError {
         location: LineAndColumn,
         msg: String,
@@ -203,15 +207,27 @@ impl PartialEq<AssemblerFailure> for AssemblerFailure {
                 },
             ) => e1.to_string() == e2.to_string() && f1 == f2,
             (
-                InvalidProgram {
+                InconsistentOriginDefinitions {
+                    origin_name: origin1,
                     span: span1,
                     msg: msg1,
                 },
-                InvalidProgram {
+                InconsistentOriginDefinitions {
+                    origin_name: origin2,
                     span: span2,
                     msg: msg2,
                 },
-            ) => span1 == span2 && msg1 == msg2,
+            ) => origin1 == origin2 && span1 == span2 && msg1 == msg2,
+            (
+                UnexpectedlyUndefinedSymbol {
+                    name: name1,
+                    span: span1,
+                },
+                UnexpectedlyUndefinedSymbol {
+                    name: name2,
+                    span: span2,
+                },
+            ) => name1 == name2 && span1 == span2,
             (
                 SyntaxError {
                     location: loc1,
@@ -248,6 +264,19 @@ fn write_os_string(f: &mut Formatter<'_>, s: &OsStr) -> Result<(), fmt::Error> {
 impl Display for AssemblerFailure {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         match self {
+            AssemblerFailure::InconsistentOriginDefinitions {
+                origin_name,
+                span: _,
+                msg,
+            } => {
+                write!(
+                    f,
+                    "inconsistent definitions for origin {origin_name}: {msg}"
+                )
+            }
+            AssemblerFailure::UnexpectedlyUndefinedSymbol { name, span: _ } => {
+                write!(f, "unexpected undefined symbol: {name}")
+            }
             AssemblerFailure::InternalError(msg) => {
                 write!(f, "internal error: {msg}")
             }
@@ -271,17 +300,6 @@ impl Display for AssemblerFailure {
             }
             AssemblerFailure::SyntaxError { location, msg } => {
                 write!(f, "{}: {}", location, msg)
-            }
-            AssemblerFailure::InvalidProgram { span: _, msg } => {
-                // TODO: converting a span into line and column
-                // numbers requires access to the text of the input.
-                // While we could include a str reference here for
-                // this, we'd be inconsistent with the way that
-                // SyntaxError is handled (which is that the line
-                // numbers are already resolved).
-                //
-                // Perhaps we can do better by integrating Ariadne.
-                write!(f, "error: {msg}")
             }
             AssemblerFailure::MachineLimitExceeded(fail) => {
                 write!(f, "machine limit exceeded: {fail}")

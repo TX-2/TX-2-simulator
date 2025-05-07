@@ -430,12 +430,13 @@ fn assemble_pass2(
 
 fn inconsistent_origin_definition(
     span: Span,
-    name: SymbolName,
+    origin_name: SymbolName,
     e: BadSymbolDefinition,
 ) -> AssemblerFailure {
-    AssemblerFailure::InvalidProgram {
+    AssemblerFailure::InconsistentOriginDefinitions {
+        origin_name,
         span,
-        msg: format!("inconsistent definitions of origin {name}: {e}"),
+        msg: e.to_string(),
     }
 }
 
