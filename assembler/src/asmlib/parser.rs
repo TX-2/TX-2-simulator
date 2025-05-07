@@ -536,20 +536,64 @@ where
 }
 
 #[cfg(test)] // not yet used outside tests.
-#[derive(Debug, Copy, Clone)]
-struct MacroInvocationParser {}
+fn defined_macro_name<'src, I>() -> impl Parser<'src, I, MacroDefinition, ExtraWithoutContext<'src>>
+where
+    I: Input<'src, Token = Tok, Span = Span> + ValueInput<'src>,
+{
+    fn mapping<'a>(
+        name: &SymbolName,
+        state: &State,
+        span: Span,
+    ) -> Result<MacroDefinition, chumsky::error::Rich<'a, lexer::Token>> {
+        match state.get_macro_definition(&name) {
+            None => Err(Rich::custom(span, format!("unknown macro {name}"))),
+            Some(macro_def) => Ok(macro_def.clone()),
+        }
+    }
+
+    symex::parse_symex(SymexSyllableRule::OneOnly, Script::Normal).try_map_with(|name, extra| {
+        let span: Span = extra.span();
+        let state: &State = &extra.state();
+        mapping(&name, state, span)
+    })
+}
+
+#[cfg(test)] // not yet used outside tests.
+#[derive(Clone)]
+struct MacroInvocationParser<'src, I>
+where
+    I: Input<'src, Token = Tok, Span = Span> + ValueInput<'src>,
+{
+    expr_parser: Boxed<'src, 'src, I, Option<ArithmeticExpression>, ExtraWithoutContext<'src>>,
+    defined_macro_name_parser: Boxed<'src, 'src, I, MacroDefinition, ExtraWithoutContext<'src>>,
+}
+
+#[cfg(test)] // not yet used outside tests.
+impl<'src, I> Default for MacroInvocationParser<'src, I>
+where
+    I: Input<'src, Token = Tok, Span = Span> + ValueInput<'src>,
+{
+    fn default() -> Self {
+        Self {
+            expr_parser: arithmetic_expression_in_any_script_allowing_spaces()
+                .or_not()
+                .boxed(),
+            defined_macro_name_parser: defined_macro_name().boxed(),
+        }
+    }
+}
 
 #[cfg(test)] // not yet used outside tests.
 fn macro_invocation<'src, I>() -> impl Parser<'src, I, MacroInvocation, ExtraWithoutContext<'src>>
 where
     I: Input<'src, Token = Tok, Span = Span> + ValueInput<'src>,
 {
-    Ext(MacroInvocationParser {})
+    Ext(MacroInvocationParser::default())
 }
 
 #[cfg(test)] // not yet used outside tests.
 impl<'src, 'b, I> ExtParser<'src, I, MacroInvocation, ExtraWithoutContext<'src>>
-    for MacroInvocationParser
+    for MacroInvocationParser<'src, I>
 where
     I: Input<'src, Token = Tok, Span = Span> + ValueInput<'src>,
 {
@@ -560,36 +604,8 @@ where
         MacroInvocation,
         <Full<Rich<'src, Tok>, State<'src>, ()> as ParserExtra<'src, I>>::Error,
     > {
-        fn macro_invocation_head<'src, I>(
-        ) -> impl Parser<'src, I, MacroDefinition, ExtraWithoutContext<'src>>
-        where
-            I: Input<'src, Token = Tok, Span = Span> + ValueInput<'src>,
-        {
-            fn mapping<'a>(
-                name: &SymbolName,
-                state: &State,
-                span: Span,
-            ) -> Result<MacroDefinition, chumsky::error::Rich<'a, lexer::Token>> {
-                match state.get_macro_definition(&name) {
-                    None => Err(Rich::custom(span, format!("unknown macro {name}"))),
-                    Some(macro_def) => Ok(macro_def.clone()),
-                }
-            }
-
-            symex::parse_symex(SymexSyllableRule::OneOnly, Script::Normal).try_map_with(
-                |name, extra| {
-                    let span: Span = extra.span();
-                    let state: &State = &extra.state();
-                    mapping(&name, state, span)
-                },
-            )
-        }
-
-        let expr_parser = arithmetic_expression_in_any_script_allowing_spaces().or_not();
-        let head_parser = macro_invocation_head();
-
         let before = inp.cursor();
-        let macro_def: MacroDefinition = inp.parse(&head_parser)?;
+        let macro_def: MacroDefinition = inp.parse(&self.defined_macro_name_parser)?;
         let param_defs: Vec<MacroParameter> = match macro_def.params {
             MacroDummyParameters::Zero(ref expected) => {
                 if let Some(got) = inp.next_maybe().as_deref() {
@@ -623,7 +639,7 @@ where
             if let Some(got) = inp.next_maybe().as_deref() {
                 let span = inp.span_since(&before);
                 if got == &param_def.preceding_terminator {
-                    let expr = inp.parse(&expr_parser)?;
+                    let expr = inp.parse(&self.expr_parser)?;
                     param_values.insert(param_def.name, expr);
                 } else {
                     return Err(Rich::custom(span, format!("in invocation of macro {}, expected macro terminator {} before parameter {} but got {}",
