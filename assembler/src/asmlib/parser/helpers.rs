@@ -59,18 +59,11 @@ fn test_make_u36() {
 }
 
 pub(crate) fn make_num(
-    sign: Option<Sign>,
     digits: &str,
     hasdot: bool,
     state: &NumeralMode,
 ) -> Result<Unsigned36Bit, StringConversionFailed> {
-    make_u36(digits, state.radix(hasdot)).map(|n| {
-        if let Some(Sign::Minus) = sign {
-            Unsigned36Bit::ZERO.wrapping_sub(n)
-        } else {
-            n
-        }
-    })
+    make_u36(digits, state.radix(hasdot))
 }
 
 pub(super) fn punch_address(a: Option<LiteralValue>) -> Result<PunchCommand, String> {

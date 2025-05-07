@@ -15,7 +15,7 @@ use super::{
         elevate, glyph_from_name, glyph_of_char, is_allowed_in_symex, Elevated, Glyph, GlyphShape,
         Unrecognised,
     },
-    parser::helpers::{self, Sign},
+    parser::helpers,
     state::NumeralMode,
 };
 
@@ -51,15 +51,9 @@ impl Display for NumericLiteral {
 impl NumericLiteral {
     pub(crate) fn make_num(
         &self,
-        maybe_sign: Option<Sign>, // TODO: figure out if we still need to use this parameter.
         mode: &NumeralMode,
     ) -> Result<Unsigned36Bit, StringConversionFailed> {
-        helpers::make_num(
-            maybe_sign,
-            self.digits.as_str(),
-            self.has_trailing_dot,
-            mode,
-        )
+        helpers::make_num(self.digits.as_str(), self.has_trailing_dot, mode)
     }
 
     pub(crate) fn append_digits_of_literal(&mut self, other: NumericLiteral) {
