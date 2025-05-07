@@ -1124,7 +1124,6 @@ pub(crate) struct PunchCommand(pub(crate) Option<Address>);
 pub(crate) enum ManuscriptMetaCommand {
     // TODO: implement the T= metacommand.
     // TODO: implement the RC metacommand.
-    // TODO: implement the XXX metacommand.
     BaseChange(NumeralMode),
     Punch(PunchCommand),
     Macro(MacroDefinition),
