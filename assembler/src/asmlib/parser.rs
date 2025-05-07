@@ -384,6 +384,7 @@ fn make_pipe_construct(
     let tqspan = span(t.span.start..q_span.end);
 
     let rc_word_value: RegisterContaining = RegisterContaining::from(TaggedProgramInstruction {
+        span: tqspan,
         tags: Vec::new(),
         instruction: UntaggedProgramInstruction::from(vec![
             CommaDelimitedFragment {
@@ -913,19 +914,28 @@ where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
     let mut comma_delimited_instructions = Recursive::declare();
-    let tagged_program_instruction = tag_definition()
+    let tagged_program_instruction = (tag_definition()
         .repeated()
         .collect()
-        .then(comma_delimited_instructions.clone())
-        .map(
-            |(tags, fragments): (Vec<Tag>, Vec<CommaDelimitedFragment>)| TaggedProgramInstruction {
+        .then(comma_delimited_instructions.clone()))
+    .map_with(
+        |(tags, fragments): (Vec<Tag>, Vec<CommaDelimitedFragment>), extra| {
+            let span: Span = extra.span();
+            if let Some(t) = tags.first() {
+                dbg!(&span);
+                dbg!(&t.span);
+                assert_eq!(t.span.start, span.start);
+            }
+            TaggedProgramInstruction {
+                span: extra.span(),
                 tags,
                 instruction: UntaggedProgramInstruction::from(fragments),
-            },
-        )
-        .labelled(
-            "optional tag definition followed by a (possibly comma-delimited) program instructions",
-        );
+            }
+        },
+    )
+    .labelled(
+        "optional tag definition followed by a (possibly comma-delimited) program instructions",
+    );
 
     // Parse {E} where E is some expression.  Since tags are
     // allowed inside RC-blocks, we should parse E as a

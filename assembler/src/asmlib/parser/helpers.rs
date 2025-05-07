@@ -117,7 +117,7 @@ pub(super) fn manuscript_lines_to_source_file<'a>(
         if !statements.is_empty() {
             result.push(ManuscriptBlock {
                 origin: maybe_origin,
-                statements: statements.to_vec(),
+                statements: statements.iter().map(|(_, t)| t.clone()).collect(),
             });
         }
     }

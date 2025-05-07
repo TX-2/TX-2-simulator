@@ -63,25 +63,23 @@ fn test_assemble_pass1() {
             punch: Some(PunchCommand(Some(Address::from(u18!(0o26))))),
             blocks: vec![ManuscriptBlock {
                 origin: None,
-                statements: vec![(
-                    span(0..2),
-                    TaggedProgramInstruction {
-                        tags: Vec::new(),
-                        instruction: UntaggedProgramInstruction {
-                            fragments: vec![CommaDelimitedFragment {
-                                leading_commas: None,
-                                holdbit: HoldBit::Unspecified,
-                                span: span(0..2),
-                                fragment: atom_to_fragment(Atom::from(LiteralValue::from((
-                                    Span::from(0..2),
-                                    Script::Normal,
-                                    u36!(0o14)
-                                )))),
-                                trailing_commas: None,
-                            }]
-                        }
+                statements: vec![TaggedProgramInstruction {
+                    span: span(0..2),
+                    tags: Vec::new(),
+                    instruction: UntaggedProgramInstruction {
+                        fragments: vec![CommaDelimitedFragment {
+                            leading_commas: None,
+                            holdbit: HoldBit::Unspecified,
+                            span: span(0..2),
+                            fragment: atom_to_fragment(Atom::from(LiteralValue::from((
+                                Span::from(0..2),
+                                Script::Normal,
+                                u36!(0o14)
+                            )))),
+                            trailing_commas: None,
+                        }]
                     }
-                )]
+                }]
             }],
             equalities: Default::default(), // no equalities
             macros: Default::default(),     // no macros
@@ -111,12 +109,14 @@ fn test_metacommand_dec_changes_default_base() {
         if let [(
             _,
             TaggedProgramInstruction {
+                span: _,
                 tags: tags1,
                 instruction: first_instruction,
             },
         ), (
             _,
             TaggedProgramInstruction {
+                span: _,
                 tags: tags2,
                 instruction: second_instruction,
             },

@@ -986,6 +986,7 @@ impl Ord for Tag {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TaggedProgramInstruction {
+    pub(crate) span: Span,
     pub(crate) tags: Vec<Tag>,
     pub(crate) instruction: UntaggedProgramInstruction,
 }
@@ -1020,12 +1021,14 @@ impl TaggedProgramInstruction {
         tags: Vec<Tag>,
         holdbit: HoldBit,
         inst_span: Span,
+        frag_span: Span,
         frag: InstructionFragment,
     ) -> TaggedProgramInstruction {
         TaggedProgramInstruction::multiple(
             tags,
+            inst_span,
             vec![CommaDelimitedFragment {
-                span: inst_span,
+                span: frag_span,
                 leading_commas: None,
                 holdbit,
                 fragment: frag,
@@ -1037,11 +1040,13 @@ impl TaggedProgramInstruction {
     #[cfg(test)]
     pub(crate) fn multiple(
         tags: Vec<Tag>,
+        span: Span,
         fragments: Vec<CommaDelimitedFragment>,
     ) -> TaggedProgramInstruction {
         assert!(!fragments.is_empty());
         TaggedProgramInstruction {
             tags,
+            span,
             instruction: UntaggedProgramInstruction::from(fragments),
         }
     }
@@ -1200,7 +1205,7 @@ pub(crate) struct MacroInvocation {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ManuscriptBlock {
     pub(crate) origin: Option<Origin>,
-    pub(crate) statements: Vec<(Span, TaggedProgramInstruction)>,
+    pub(crate) statements: Vec<TaggedProgramInstruction>,
 }
 
 impl ManuscriptBlock {
@@ -1212,7 +1217,7 @@ impl ManuscriptBlock {
         if let Some(origin) = self.origin.as_ref() {
             result.extend(origin.symbol_uses(block_id));
         }
-        for (offset, (_, statement)) in self.statements.iter().enumerate() {
+        for (offset, statement) in self.statements.iter().enumerate() {
             let off: Unsigned18Bit = Unsigned18Bit::try_from(offset)
                 .expect("block should not be larger than the TX-2's memory");
             result.extend(statement.symbol_uses(block_id, off));
@@ -1223,14 +1228,14 @@ impl ManuscriptBlock {
     pub(crate) fn instruction_count(&self) -> Unsigned18Bit {
         self.statements
             .iter()
-            .map(|(_, st)| st.emitted_instruction_count())
+            .map(|st| st.emitted_instruction_count())
             .sum()
     }
 
     pub(crate) fn origin_span(&self) -> Span {
         if let Some(origin) = self.origin.as_ref() {
             *origin.span()
-        } else if let Some((_line_span, first)) = self.statements.first() {
+        } else if let Some(first) = self.statements.first() {
             first.span()
         } else {
             Span::from(0..0)
