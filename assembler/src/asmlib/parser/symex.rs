@@ -7,7 +7,7 @@ use super::super::lexer::{DOT_CHAR, DOT_STR};
 use super::super::span::*;
 use super::super::symbol::SymbolName;
 use super::helpers::{self};
-use super::{opcode_code, Extra, Tok};
+use super::{opcode_code, ExtraWithoutContext, Tok};
 
 fn canonical_symbol_name(s: &str) -> SymbolName {
     // TODO: avoid copy where possible.
@@ -31,7 +31,7 @@ fn concat_strings(mut s: String, next: String) -> String {
 // Compound chars are not supported at the moment, see docs/assembler/index.md.
 pub(super) fn digits_as_symex<'a, I>(
     script_required: Script,
-) -> impl Parser<'a, I, (String, Option<char>), Extra<'a>> + Clone
+) -> impl Parser<'a, I, (String, Option<char>), ExtraWithoutContext<'a>> + Clone
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
@@ -51,7 +51,7 @@ where
 // Compound chars are not supported at the moment, see docs/assembler/index.md.
 pub(super) fn symex_syllable<'a, I>(
     script_required: Script,
-) -> impl Parser<'a, I, String, Extra<'a>> + Clone
+) -> impl Parser<'a, I, String, ExtraWithoutContext<'a>> + Clone
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
@@ -88,7 +88,7 @@ where
 
 fn parse_symex_non_reserved_syllable<'a, I>(
     script_required: Script,
-) -> impl Parser<'a, I, String, Extra<'a>> + Clone
+) -> impl Parser<'a, I, String, ExtraWithoutContext<'a>> + Clone
 where
     I: Input<'a, Token = Tok, Span = SimpleSpan> + ValueInput<'a>,
 {
@@ -113,7 +113,7 @@ pub(super) enum SymexSyllableRule {
 pub(super) fn parse_multi_syllable_symex<'a: 'b, 'b, I>(
     rule: SymexSyllableRule,
     script_required: Script,
-) -> Boxed<'a, 'b, I, String, Extra<'a>>
+) -> Boxed<'a, 'b, I, String, ExtraWithoutContext<'a>>
 where
     I: Input<'a, Token = Tok, Span = SimpleSpan> + ValueInput<'a>,
 {
@@ -131,7 +131,7 @@ where
 pub(super) fn parse_symex<'a, I>(
     rule: SymexSyllableRule,
     script_required: Script,
-) -> impl Parser<'a, I, SymbolName, Extra<'a>> + Clone
+) -> impl Parser<'a, I, SymbolName, ExtraWithoutContext<'a>> + Clone
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
@@ -145,7 +145,7 @@ where
 
 pub(super) fn parse_symex_reserved_syllable<'a, I>(
     script_required: Script,
-) -> impl Parser<'a, I, String, Extra<'a>> + Clone
+) -> impl Parser<'a, I, String, ExtraWithoutContext<'a>> + Clone
 where
     I: Input<'a, Token = Tok, Span = SimpleSpan> + ValueInput<'a>,
 {

@@ -11,8 +11,15 @@ mod symex;
 mod tests;
 
 use chumsky::error::Rich;
+#[cfg(test)] // not yet used outside tests.
+use chumsky::extension::v1::Ext;
+#[cfg(test)] // not yet used outside tests.
+use chumsky::extension::v1::ExtParser;
 use chumsky::extra::{Full, ParserExtra};
+#[cfg(test)] // not yet used outside tests.
+use chumsky::input::InputRef;
 use chumsky::input::{Emitter, MapExtra, Stream, ValueInput};
+
 use chumsky::prelude::{choice, just, one_of, recursive, Input, IterParser, Recursive, SimpleSpan};
 use chumsky::select;
 use chumsky::Boxed;
@@ -29,12 +36,13 @@ use base::prelude::*;
 use helpers::Sign;
 use symex::SymexSyllableRule;
 
-pub(crate) type Extra<'a> = Full<Rich<'a, lexer::Token>, State<'a>, ()>;
+pub(crate) type ExtraWithoutContext<'a> = Full<Rich<'a, lexer::Token>, State<'a>, ()>;
+
 use lexer::Token as Tok;
 
 fn maybe_sign<'a, I>(
     script_required: Script,
-) -> impl Parser<'a, I, Option<(Sign, Span)>, Extra<'a>> + Clone
+) -> impl Parser<'a, I, Option<(Sign, Span)>, ExtraWithoutContext<'a>> + Clone
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
@@ -92,7 +100,7 @@ type MyEmitter<'a, I> = Emitter<
 
 fn warn_bad_bitpos<'src, I>(
     validated: BitDesignatorValidation,
-    extra: &mut MapExtra<'src, '_, I, Extra<'src>>,
+    extra: &mut MapExtra<'src, '_, I, ExtraWithoutContext<'src>>,
     emitter: &mut MyEmitter<'src, I>,
 ) -> LiteralValue
 where
@@ -115,7 +123,7 @@ where
 
 fn bit_selector<'a, I>(
     script_required: Script,
-) -> impl Parser<'a, I, LiteralValue, Extra<'a>> + Clone
+) -> impl Parser<'a, I, LiteralValue, ExtraWithoutContext<'a>> + Clone
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
@@ -147,7 +155,9 @@ where
     .validate(warn_bad_bitpos)
 }
 
-fn literal<'a, I>(script_required: Script) -> impl Parser<'a, I, LiteralValue, Extra<'a>> + Clone
+fn literal<'a, I>(
+    script_required: Script,
+) -> impl Parser<'a, I, LiteralValue, ExtraWithoutContext<'a>> + Clone
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
@@ -168,7 +178,9 @@ where
     choice((bit_selector(script_required), plain_literal)).labelled("numeric literal")
 }
 
-fn here<'a, I>(script_required: Script) -> impl Parser<'a, I, SymbolOrLiteral, Extra<'a>> + Clone
+fn here<'a, I>(
+    script_required: Script,
+) -> impl Parser<'a, I, SymbolOrLiteral, ExtraWithoutContext<'a>> + Clone
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
@@ -276,7 +288,7 @@ fn opcode_code(s: &str) -> Option<(Unsigned5Bit, Unsigned6Bit)> {
 
 pub(super) fn symbol_or_literal<'a, I>(
     script_required: Script,
-) -> impl Parser<'a, I, SymbolOrLiteral, Extra<'a>> + Clone
+) -> impl Parser<'a, I, SymbolOrLiteral, ExtraWithoutContext<'a>> + Clone
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
@@ -301,7 +313,7 @@ fn opcode_to_literal(code: Unsigned6Bit, cfgbits: Unsigned5Bit, span: Span) -> L
     LiteralValue::from((span, Script::Normal, bits))
 }
 
-pub(super) fn opcode<'a, I>() -> impl Parser<'a, I, LiteralValue, Extra<'a>> + Clone
+pub(super) fn opcode<'a, I>() -> impl Parser<'a, I, LiteralValue, ExtraWithoutContext<'a>> + Clone
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
@@ -320,7 +332,7 @@ where
 fn named_symbol<'a, I>(
     rule: SymexSyllableRule,
     script_required: Script,
-) -> impl Parser<'a, I, SymbolName, Extra<'a>> + Clone
+) -> impl Parser<'a, I, SymbolName, ExtraWithoutContext<'a>> + Clone
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
@@ -329,7 +341,7 @@ where
 
 pub(super) fn operator<'a, I>(
     script_required: Script,
-) -> impl Parser<'a, I, Operator, Extra<'a>> + Clone
+) -> impl Parser<'a, I, Operator, ExtraWithoutContext<'a>> + Clone
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
@@ -348,7 +360,7 @@ where
 }
 
 fn asterisk_indirection_fragment<'srcbody, I>(
-) -> impl Parser<'srcbody, I, InstructionFragment, Extra<'srcbody>> + Clone
+) -> impl Parser<'srcbody, I, InstructionFragment, ExtraWithoutContext<'srcbody>> + Clone
 where
     I: Input<'srcbody, Token = Tok, Span = Span> + ValueInput<'srcbody>,
 {
@@ -400,7 +412,7 @@ fn make_pipe_construct(
 }
 
 /// Macro terminators are described in section 6-4.5 of the TX-2 User Handbook.
-fn macro_terminator<'a, I>() -> impl Parser<'a, I, Tok, Extra<'a>>
+fn macro_terminator<'a, I>() -> impl Parser<'a, I, Tok, ExtraWithoutContext<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
@@ -446,7 +458,8 @@ where
 }
 
 // Exposed for testing.
-fn macro_definition_dummy_parameter<'a, I>() -> impl Parser<'a, I, MacroParameter, Extra<'a>>
+fn macro_definition_dummy_parameter<'a, I>(
+) -> impl Parser<'a, I, MacroParameter, ExtraWithoutContext<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
@@ -461,7 +474,8 @@ where
     )
 }
 
-fn macro_definition_dummy_parameters<'a, I>() -> impl Parser<'a, I, MacroDummyParameters, Extra<'a>>
+fn macro_definition_dummy_parameters<'a, I>(
+) -> impl Parser<'a, I, MacroDummyParameters, ExtraWithoutContext<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
@@ -476,7 +490,7 @@ where
 }
 
 /// Macros are described in section 6-4 of the TX-2 User Handbook.
-fn macro_definition<'a, I>() -> impl Parser<'a, I, MacroDefinition, Extra<'a>>
+fn macro_definition<'a, I>() -> impl Parser<'a, I, MacroDefinition, ExtraWithoutContext<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
@@ -507,6 +521,132 @@ where
         })
 }
 
+#[cfg(test)] // not yet used outside tests.
+fn arithmetic_expression_in_any_script_allowing_spaces<'a, I>(
+) -> impl Parser<'a, I, ArithmeticExpression, ExtraWithoutContext<'a>>
+where
+    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
+{
+    let g = grammar();
+    choice((
+        g.normal_arithmetic_expression_allowing_spaces,
+        g.subscript_arithmetic_expression_allowing_spaces,
+        g.superscript_arithmetic_expression_allowing_spaces,
+    ))
+}
+
+#[cfg(test)] // not yet used outside tests.
+#[derive(Debug, Copy, Clone)]
+struct MacroInvocationParser {}
+
+#[cfg(test)] // not yet used outside tests.
+fn macro_invocation<'src, I>() -> impl Parser<'src, I, MacroInvocation, ExtraWithoutContext<'src>>
+where
+    I: Input<'src, Token = Tok, Span = Span> + ValueInput<'src>,
+{
+    Ext(MacroInvocationParser {})
+}
+
+#[cfg(test)] // not yet used outside tests.
+impl<'src, 'b, I> ExtParser<'src, I, MacroInvocation, ExtraWithoutContext<'src>>
+    for MacroInvocationParser
+where
+    I: Input<'src, Token = Tok, Span = Span> + ValueInput<'src>,
+{
+    fn parse(
+        &self,
+        inp: &mut InputRef<'src, '_, I, ExtraWithoutContext<'src>>,
+    ) -> Result<
+        MacroInvocation,
+        <Full<Rich<'src, Tok>, State<'src>, ()> as ParserExtra<'src, I>>::Error,
+    > {
+        fn macro_invocation_head<'src, I>(
+        ) -> impl Parser<'src, I, MacroDefinition, ExtraWithoutContext<'src>>
+        where
+            I: Input<'src, Token = Tok, Span = Span> + ValueInput<'src>,
+        {
+            fn mapping<'a>(
+                name: &SymbolName,
+                state: &State,
+                span: Span,
+            ) -> Result<MacroDefinition, chumsky::error::Rich<'a, lexer::Token>> {
+                match state.get_macro_definition(&name) {
+                    None => Err(Rich::custom(span, format!("unknown macro {name}"))),
+                    Some(macro_def) => Ok(macro_def.clone()),
+                }
+            }
+
+            symex::parse_symex(SymexSyllableRule::OneOnly, Script::Normal).try_map_with(
+                |name, extra| {
+                    let span: Span = extra.span();
+                    let state: &State = &extra.state();
+                    mapping(&name, state, span)
+                },
+            )
+        }
+
+        let expr_parser = arithmetic_expression_in_any_script_allowing_spaces().or_not();
+        let head_parser = macro_invocation_head();
+
+        let before = inp.cursor();
+        let macro_def: MacroDefinition = inp.parse(&head_parser)?;
+        let param_defs: Vec<MacroParameter> = match macro_def.params {
+            MacroDummyParameters::Zero(ref expected) => {
+                if let Some(got) = inp.next_maybe().as_deref() {
+                    if got == expected {
+                        Vec::new()
+                    } else {
+                        return Err(Rich::custom(
+                            inp.span_since(&before),
+                            format!(
+                                "expected macro name {} to be followed a terminator {} but got {}",
+                                &macro_def.name, expected, got
+                            ),
+                        ));
+                    }
+                } else {
+                    return Err(Rich::custom(
+                        inp.span_since(&before),
+                        format!(
+                            "expected macro name {} to be followed a terminator {}",
+                            &macro_def.name, expected
+                        ),
+                    ));
+                }
+            }
+            MacroDummyParameters::OneOrMore(ref params) => params.clone(),
+        };
+        let mut param_values: BTreeMap<SymbolName, Option<ArithmeticExpression>> =
+            Default::default();
+        for param_def in param_defs.into_iter() {
+            let before = inp.cursor();
+            if let Some(got) = inp.next_maybe().as_deref() {
+                let span = inp.span_since(&before);
+                if got == &param_def.preceding_terminator {
+                    let expr = inp.parse(&expr_parser)?;
+                    param_values.insert(param_def.name, expr);
+                } else {
+                    return Err(Rich::custom(span, format!("in invocation of macro {}, expected macro terminator {} before parameter {} but got {}",
+                                                          &macro_def.name,
+                                                          &param_def.preceding_terminator,
+                                                          &param_def.name,
+                                                          &got)));
+                }
+            } else {
+                let span = inp.span_since(&before);
+                return Err(Rich::custom(span, format!("in invocation of macro {}, expected macro terminator {} before parameter {}",
+                                                      &macro_def.name,
+                                                      &param_def.preceding_terminator,
+                                                      &param_def.name)));
+            }
+        }
+        Ok(MacroInvocation {
+            macro_def,
+            param_values,
+        })
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 enum Metacommand {
     Decimal,
@@ -516,7 +656,7 @@ enum Metacommand {
     EndMacroDefinition,
 }
 
-fn named_metacommand<'a, I>(which: Metacommand) -> impl Parser<'a, I, (), Extra<'a>>
+fn named_metacommand<'a, I>(which: Metacommand) -> impl Parser<'a, I, (), ExtraWithoutContext<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
@@ -541,11 +681,11 @@ where
         .then_ignore(matching_metacommand_name)
 }
 
-fn metacommand<'a, I>() -> impl Parser<'a, I, ManuscriptMetaCommand, Extra<'a>>
+fn metacommand<'a, I>() -> impl Parser<'a, I, ManuscriptMetaCommand, ExtraWithoutContext<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
-    fn punch<'a, I>() -> impl Parser<'a, I, ManuscriptMetaCommand, Extra<'a>>
+    fn punch<'a, I>() -> impl Parser<'a, I, ManuscriptMetaCommand, ExtraWithoutContext<'a>>
     where
         I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
     {
@@ -562,7 +702,7 @@ where
             .labelled("PUNCH command")
     }
 
-    fn base_change<'a, I>() -> impl Parser<'a, I, ManuscriptMetaCommand, Extra<'a>>
+    fn base_change<'a, I>() -> impl Parser<'a, I, ManuscriptMetaCommand, ExtraWithoutContext<'a>>
     where
         I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
     {
@@ -688,7 +828,7 @@ where
     output
 }
 
-fn tag_definition<'a, I>() -> impl Parser<'a, I, Tag, Extra<'a>> + Clone
+fn tag_definition<'a, I>() -> impl Parser<'a, I, Tag, ExtraWithoutContext<'a>> + Clone
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
@@ -701,7 +841,7 @@ where
         .labelled("tag definition")
 }
 
-fn commas<'a, I>() -> impl Parser<'a, I, Commas, Extra<'a>> + Clone
+fn commas<'a, I>() -> impl Parser<'a, I, Commas, ExtraWithoutContext<'a>> + Clone
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
@@ -721,7 +861,7 @@ where
         })
 }
 
-fn maybe_hold<'a, I>() -> impl Parser<'a, I, Option<HoldBit>, Extra<'a>> + Clone
+fn maybe_hold<'a, I>() -> impl Parser<'a, I, Option<HoldBit>, ExtraWithoutContext<'a>> + Clone
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
@@ -737,18 +877,19 @@ struct Grammar<'a, 'b, I>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
-    assignment: Boxed<'a, 'b, I, Equality, Extra<'a>>,
-    tagged_instruction: Boxed<'a, 'b, I, TaggedProgramInstruction, Extra<'a>>,
+    assignment: Boxed<'a, 'b, I, Equality, ExtraWithoutContext<'a>>,
+    tagged_instruction: Boxed<'a, 'b, I, TaggedProgramInstruction, ExtraWithoutContext<'a>>,
     #[cfg(test)]
-    normal_arithmetic_expression_allowing_spaces: Boxed<'a, 'b, I, ArithmeticExpression, Extra<'a>>,
+    normal_arithmetic_expression_allowing_spaces:
+        Boxed<'a, 'b, I, ArithmeticExpression, ExtraWithoutContext<'a>>,
     #[cfg(test)]
     subscript_arithmetic_expression_allowing_spaces:
-        Boxed<'a, 'b, I, ArithmeticExpression, Extra<'a>>,
+        Boxed<'a, 'b, I, ArithmeticExpression, ExtraWithoutContext<'a>>,
     #[cfg(test)]
     superscript_arithmetic_expression_allowing_spaces:
-        Boxed<'a, 'b, I, ArithmeticExpression, Extra<'a>>,
+        Boxed<'a, 'b, I, ArithmeticExpression, ExtraWithoutContext<'a>>,
     #[cfg(test)]
-    instruction_fragment: Boxed<'a, 'b, I, InstructionFragment, Extra<'a>>,
+    instruction_fragment: Boxed<'a, 'b, I, InstructionFragment, ExtraWithoutContext<'a>>,
 }
 
 fn grammar<'a: 'b, 'b, I>() -> Grammar<'a, 'b, I>
@@ -1018,14 +1159,15 @@ where
     }
 }
 
-fn tagged_instruction<'a, I>() -> impl Parser<'a, I, TaggedProgramInstruction, Extra<'a>>
+fn tagged_instruction<'a, I>(
+) -> impl Parser<'a, I, TaggedProgramInstruction, ExtraWithoutContext<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
     grammar().tagged_instruction
 }
 
-fn manuscript_line<'a, I>() -> impl Parser<'a, I, ManuscriptLine, Extra<'a>>
+fn manuscript_line<'a, I>() -> impl Parser<'a, I, ManuscriptLine, ExtraWithoutContext<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
@@ -1040,7 +1182,8 @@ where
         }
     }
 
-    fn parse_and_execute_metacommand<'a, I>() -> impl Parser<'a, I, ManuscriptLine, Extra<'a>>
+    fn parse_and_execute_metacommand<'a, I>(
+    ) -> impl Parser<'a, I, ManuscriptLine, ExtraWithoutContext<'a>>
     where
         I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
     {
@@ -1061,11 +1204,11 @@ where
         }
     }
 
-    fn line<'a, I>() -> impl Parser<'a, I, ManuscriptLine, Extra<'a>>
+    fn line<'a, I>() -> impl Parser<'a, I, ManuscriptLine, ExtraWithoutContext<'a>>
     where
         I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
     {
-        fn origin<'a, I>() -> impl Parser<'a, I, Origin, Extra<'a>>
+        fn origin<'a, I>() -> impl Parser<'a, I, Origin, ExtraWithoutContext<'a>>
         where
             I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
         {
@@ -1073,7 +1216,8 @@ where
             /// think it's not required that an arithmetic expression
             /// (e.g. "5+BAR") be accepted in an origin notation (such as
             /// "<something>|").
-            fn literal_address_expression<'a, I>() -> impl Parser<'a, I, Origin, Extra<'a>>
+            fn literal_address_expression<'a, I>(
+            ) -> impl Parser<'a, I, Origin, ExtraWithoutContext<'a>>
             where
                 I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
             {
@@ -1085,7 +1229,8 @@ where
                     .labelled("literal address expression")
             }
 
-            fn symbolic_address_expression<'a, I>() -> impl Parser<'a, I, Origin, Extra<'a>>
+            fn symbolic_address_expression<'a, I>(
+            ) -> impl Parser<'a, I, Origin, ExtraWithoutContext<'a>>
             where
                 I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
             {
@@ -1138,7 +1283,7 @@ where
     line()
 }
 
-fn end_of_line<'a, I>() -> impl Parser<'a, I, (), Extra<'a>>
+fn end_of_line<'a, I>() -> impl Parser<'a, I, (), ExtraWithoutContext<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span>,
 {
@@ -1152,7 +1297,7 @@ where
 }
 
 fn terminated_manuscript_line<'a, I>(
-) -> impl Parser<'a, I, Option<(Span, ManuscriptLine)>, Extra<'a>>
+) -> impl Parser<'a, I, Option<(Span, ManuscriptLine)>, ExtraWithoutContext<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
@@ -1165,7 +1310,7 @@ where
         .then_ignore(end_of_line())
 }
 
-pub(crate) fn source_file<'a, I>() -> impl Parser<'a, I, SourceFile, Extra<'a>>
+pub(crate) fn source_file<'a, I>() -> impl Parser<'a, I, SourceFile, ExtraWithoutContext<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
@@ -1242,16 +1387,17 @@ type Mig<I, O> = chumsky::input::MappedInput<
 >;
 pub(crate) type Mi = Mig<(Tok, SimpleSpan), (Tok, SimpleSpan)>;
 
-pub(crate) fn tokenize_and_parse_with<'a, P, T>(
+pub(crate) fn tokenize_and_parse_with<'a, P, T, F>(
     input: &'a str,
-    setup: fn(&mut NumeralMode),
+    mut setup: F,
     parser: P,
 ) -> (Option<T>, Vec<Rich<'a, Tok>>)
 where
-    P: Parser<'a, Mi, T, Extra<'a>>,
+    F: FnMut(&mut State),
+    P: Parser<'a, Mi, T, ExtraWithoutContext<'a>>,
 {
     let mut state = State::new(input, NumeralMode::default());
-    setup(&mut state.numeral_mode);
+    setup(&mut state);
 
     // These conversions are adapted from the Logos example in the
     // Chumsky documentation.
@@ -1319,7 +1465,7 @@ where
 
 pub(crate) fn parse_source_file(
     source_file_body: &str,
-    setup: fn(&mut NumeralMode),
+    setup: fn(&mut State),
 ) -> (Option<SourceFile>, Vec<Rich<'_, Tok>>) {
     let parser = source_file();
     tokenize_and_parse_with(source_file_body, setup, parser)

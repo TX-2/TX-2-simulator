@@ -1179,7 +1179,6 @@ pub(crate) enum MacroDummyParameters {
     Zero(Token),
     OneOrMore(Vec<MacroParameter>),
 }
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct MacroDefinition {
     pub(crate) name: SymbolName, // composite character macros are not yet supported
@@ -1189,6 +1188,13 @@ pub(crate) struct MacroDefinition {
     // But that is not supported yet.
     pub(crate) body: Vec<TaggedProgramInstruction>,
     pub(crate) span: Span,
+}
+
+#[cfg(test)] // not yet used outside tests.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct MacroInvocation {
+    pub(crate) macro_def: MacroDefinition,
+    pub(crate) param_values: BTreeMap<SymbolName, Option<ArithmeticExpression>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -23,8 +23,6 @@ use super::*;
 #[cfg(test)]
 use super::Span;
 
-type StateInitFn = fn(s: &mut NumeralMode);
-
 type ParseErrors<'a> = Vec<Rich<'a, Tok>>;
 
 #[cfg(test)]
@@ -33,14 +31,15 @@ fn notags() -> Vec<Tag> {
 }
 
 #[cfg(test)]
-pub(crate) fn parse_with<'a, O, P>(
+pub(crate) fn parse_with<'a, O, P, F>(
     input: &'a str,
     parser: P,
-    state_setup: StateInitFn,
+    state_setup: F,
 ) -> Result<O, ParseErrors<'a>>
 where
-    P: Parser<'a, super::Mi, O, Extra<'a>>,
+    P: Parser<'a, super::Mi, O, ExtraWithoutContext<'a>>,
     O: Debug,
+    F: FnMut(&mut State),
 {
     let (output, errors) = tokenize_and_parse_with(input, state_setup, parser);
     if errors.is_empty() {
@@ -51,14 +50,11 @@ where
 }
 
 #[cfg(test)]
-pub(crate) fn parse_successfully_with<'a, O, P>(
-    input: &'a str,
-    parser: P,
-    state_setup: StateInitFn,
-) -> O
+pub(crate) fn parse_successfully_with<'a, O, P, F>(input: &'a str, parser: P, state_setup: F) -> O
 where
-    P: Parser<'a, super::Mi, O, Extra<'a>>,
+    P: Parser<'a, super::Mi, O, ExtraWithoutContext<'a>>,
     O: Debug,
+    F: FnMut(&mut State),
 {
     dbg!(&input);
 
@@ -75,11 +71,11 @@ where
 }
 
 #[cfg(test)]
-fn no_state_setup(_: &mut NumeralMode) {}
+fn no_state_setup(_: &mut State) {}
 
 #[cfg(test)]
-fn set_decimal_mode(state: &mut NumeralMode) {
-    state.set_numeral_mode(NumeralMode::Decimal);
+fn set_decimal_mode(state: &mut State) {
+    state.numeral_mode.set_numeral_mode(NumeralMode::Decimal);
 }
 
 #[cfg(test)]
@@ -1703,93 +1699,6 @@ fn test_macro_args() {
 }
 
 #[test]
-fn test_macro_definition_with_empty_body() {
-    // TBD: where in a macro definition are comments allowed?
-    let got = parse_successfully_with(
-        concat!("☛☛DEF MYMACRO≡\n", "☛☛EMD"), // deliberately no terminating newline, see comment in macro_definition().
-        macro_definition(),
-        no_state_setup,
-    );
-    let expected = MacroDefinition {
-        name: SymbolName::from("MYMACRO".to_string()),
-        params: MacroDummyParameters::Zero(Token::IdenticalTo(Script::Normal)),
-        body: Vec::new(), // no body
-        span: span(0..30),
-    };
-    assert_eq!(got, expected);
-}
-
-#[test]
-fn test_macro_definition_with_trivial_body() {
-    let got = parse_successfully_with(
-        concat!(
-            "☛☛DEF JUST|A\n",
-            // This macro definition has a one-line body.
-            "A ** This is the only line in the body.\n",
-            "☛☛EMD" // deliberately no terminating newline, see comment in macro_definition().
-        ),
-        macro_definition(),
-        no_state_setup,
-    );
-    let expected = MacroDefinition {
-        name: SymbolName::from("JUST".to_string()),
-        params: MacroDummyParameters::OneOrMore(vec![MacroParameter {
-            name: SymbolName::from("A".to_string()),
-            span: span(14..16),
-            preceding_terminator: Token::Pipe(Script::Normal),
-        }]),
-        body: vec![TaggedProgramInstruction::single(
-            notags(),
-            HoldBit::Unspecified,
-            span(17..18),
-            InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::SymbolOrLiteral(
-                SymbolOrLiteral::Symbol(Script::Normal, SymbolName::from("A"), span(17..18)),
-            ))),
-        )],
-        span: span(0..66),
-    };
-    assert_eq!(got, expected);
-}
-
-#[test]
-fn test_macro_definition_as_entire_source_file() {
-    let got = parse_successfully_with("☛☛DEF JUST|A\nA\n☛☛EMD\n", source_file(), no_state_setup);
-    let expected = SourceFile {
-        blocks: Default::default(),     // empty
-        equalities: Default::default(), // no equalities
-        macros: [(
-            SymbolName::from("JUST".to_string()),
-            MacroDefinition {
-                name: SymbolName {
-                    canonical: "JUST".to_string(),
-                },
-                params: MacroDummyParameters::OneOrMore(vec![MacroParameter {
-                    name: SymbolName {
-                        canonical: "A".to_string(),
-                    },
-                    span: span(14..16),
-                    preceding_terminator: Token::Pipe(Script::Normal),
-                }]),
-                body: vec![TaggedProgramInstruction::single(
-                    notags(),
-                    HoldBit::Unspecified,
-                    span(17..18),
-                    InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::from((
-                        span(17..18),
-                        Script::Normal,
-                        SymbolName::from("A"),
-                    )))),
-                )],
-                span: span(0..28),
-            },
-        )]
-        .into(),
-        punch: None,
-    };
-    assert_eq!(got, expected);
-}
-
-#[test]
 fn test_asterisk_for_deferred_addressing() {
     // This instruction is taken from the code for Leonard
     // Kleinrock's network simulation, at address 200762.
@@ -2658,5 +2567,152 @@ fn test_make_bit_designator_literal() {
             }
         }
         assert_eq!(seen.len(), 4 * 9 + 1);
+    }
+}
+
+mod macro_tests {
+    use super::super::super::{
+        ast::{Atom, HoldBit, InstructionFragment, SourceFile, TaggedProgramInstruction},
+        lexer::Token,
+        symbol::SymbolName,
+    };
+    use super::super::*;
+    use super::{no_state_setup, notags, parse_successfully_with, span};
+
+    #[test]
+    fn test_macro_definition_with_empty_body() {
+        // TBD: where in a macro definition are comments allowed?
+        let got = parse_successfully_with(
+            concat!("☛☛DEF MYMACRO≡\n", "☛☛EMD"), // deliberately no terminating newline, see comment in macro_definition().
+            macro_definition(),
+            no_state_setup,
+        );
+        let expected = MacroDefinition {
+            name: SymbolName::from("MYMACRO".to_string()),
+            params: MacroDummyParameters::Zero(Token::IdenticalTo(Script::Normal)),
+            body: Vec::new(), // no body
+            span: span(0..30),
+        };
+        assert_eq!(got, expected);
+    }
+
+    #[test]
+    fn test_macro_definition_with_trivial_body() {
+        let got = parse_successfully_with(
+            concat!(
+                "☛☛DEF JUST|A\n",
+                // This macro definition has a one-line body.
+                "A ** This is the only line in the body.\n",
+                "☛☛EMD" // deliberately no terminating newline, see comment in macro_definition().
+            ),
+            macro_definition(),
+            no_state_setup,
+        );
+        let expected = MacroDefinition {
+            name: SymbolName::from("JUST".to_string()),
+            params: MacroDummyParameters::OneOrMore(vec![MacroParameter {
+                name: SymbolName::from("A".to_string()),
+                span: span(14..16),
+                preceding_terminator: Token::Pipe(Script::Normal),
+            }]),
+            body: vec![TaggedProgramInstruction::single(
+                notags(),
+                HoldBit::Unspecified,
+                span(17..18),
+                InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::SymbolOrLiteral(
+                    SymbolOrLiteral::Symbol(Script::Normal, SymbolName::from("A"), span(17..18)),
+                ))),
+            )],
+            span: span(0..66),
+        };
+        assert_eq!(got, expected);
+    }
+
+    #[test]
+    fn test_macro_definition_as_entire_source_file() {
+        let got =
+            parse_successfully_with("☛☛DEF JUST|A\nA\n☛☛EMD\n", source_file(), no_state_setup);
+        let expected =
+            SourceFile {
+                blocks: Default::default(),     // empty
+                equalities: Default::default(), // no equalities
+                macros: [(
+                    SymbolName::from("JUST".to_string()),
+                    MacroDefinition {
+                        name: SymbolName {
+                            canonical: "JUST".to_string(),
+                        },
+                        params: MacroDummyParameters::OneOrMore(vec![MacroParameter {
+                            name: SymbolName {
+                                canonical: "A".to_string(),
+                            },
+                            span: span(14..16),
+                            preceding_terminator: Token::Pipe(Script::Normal),
+                        }]),
+                        body: vec![TaggedProgramInstruction::single(
+                            notags(),
+                            HoldBit::Unspecified,
+                            span(17..18),
+                            InstructionFragment::Arithmetic(ArithmeticExpression::from(
+                                Atom::from((span(17..18), Script::Normal, SymbolName::from("A"))),
+                            )),
+                        )],
+                        span: span(0..28),
+                    },
+                )]
+                .into(),
+                punch: None,
+            };
+        assert_eq!(got, expected);
+    }
+
+    #[test]
+    fn test_macro_invocation() {
+        let macro_definition_foo = MacroDefinition {
+            name: SymbolName::from("FOO"),
+            params: MacroDummyParameters::OneOrMore(vec![MacroParameter {
+                name: SymbolName::from("A1"),
+                span: span(10..12),
+                preceding_terminator: Token::Tilde(Script::Normal),
+            }]),
+            body: vec![TaggedProgramInstruction {
+                tags: notags(),
+                instruction: UntaggedProgramInstruction::from(vec![CommaDelimitedFragment {
+                    leading_commas: None,
+                    holdbit: HoldBit::Unspecified,
+                    span: span(16..20),
+                    fragment: InstructionFragment::Config(ConfigValue {
+                        already_superscript: false,
+                        expr: ArithmeticExpression::from(Atom::from((
+                            span(4..5),
+                            Script::Normal,
+                            SymbolName::from("X"),
+                        ))),
+                    }),
+                    trailing_commas: None,
+                }]),
+            }],
+            span: span(20..40),
+        };
+        let set_up_macro_definition = |state: &mut State| {
+            state.define_macro(macro_definition_foo.clone());
+        };
+        let got = parse_successfully_with("FOO~X", macro_invocation(), set_up_macro_definition);
+        assert_eq!(
+            got,
+            MacroInvocation {
+                macro_def: macro_definition_foo,
+                param_values: vec![(
+                    SymbolName::from("A1"),
+                    Some(ArithmeticExpression::from(Atom::from((
+                        span(4..5),
+                        Script::Normal,
+                        SymbolName::from("X"),
+                    ))))
+                )]
+                .into_iter()
+                .collect()
+            }
+        );
     }
 }

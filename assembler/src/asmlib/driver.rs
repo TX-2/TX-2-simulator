@@ -20,7 +20,7 @@ use super::lexer;
 use super::listing::*;
 use super::parser::parse_source_file;
 use super::span::*;
-use super::state::NumeralMode;
+use super::state::{NumeralMode, State};
 use super::symbol::SymbolName;
 use super::symtab::{
     assign_default_rc_word_tags, BadSymbolDefinition, FinalSymbolDefinition, FinalSymbolTable,
@@ -237,12 +237,12 @@ fn assemble_pass1<'a>(
     let _enter = span.enter();
     let options = OutputOptions { list: false };
 
-    fn setup(state: &mut NumeralMode) {
+    fn setup(state: &mut State) {
         // Octal is actually the default numeral mode, we just call
         // set_numeral_mode here to keep Clippy happy until we
         // implement ☛☛DECIMAL and ☛☛OCTAL.
-        state.set_numeral_mode(NumeralMode::Decimal); // appease Clippy
-        state.set_numeral_mode(NumeralMode::Octal);
+        state.numeral_mode.set_numeral_mode(NumeralMode::Decimal); // appease Clippy
+        state.numeral_mode.set_numeral_mode(NumeralMode::Octal);
     }
 
     let (sf, mut new_errors) = parse_source_file(source_file_body, setup);

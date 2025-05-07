@@ -59,6 +59,11 @@ where
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn get(&self, k: &K) -> Option<&V> {
+        self.items.get(k)
+    }
+
     pub(crate) fn len(&self) -> usize {
         self.in_insertion_order.len()
     }
@@ -93,6 +98,11 @@ impl<'src> State<'src> {
     pub(crate) fn define_macro(&mut self, definition: MacroDefinition) {
         // TODO: provide a diagnostic when a macro is redefined.
         self.macros.insert(definition.name.clone(), definition)
+    }
+
+    #[cfg(test)] // not yet used outside tests.
+    pub(crate) fn get_macro_definition(&self, name: &SymbolName) -> Option<&MacroDefinition> {
+        self.macros.get(name)
     }
 
     pub(crate) fn macros(&self) -> &BTreeMap<SymbolName, MacroDefinition> {

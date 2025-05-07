@@ -13,8 +13,8 @@ regex = "1"
 # https://github.com/clap-rs/clap/blob/master/LICENSE-APACHE
 clap = { version = "4", features = ["derive"] }
 
-chumsky = { version="=1.0.0-alpha.8"}
-# features=["label"]
+chumsky = { version="=1.0.0-alpha.8", features = ["extension"] }
+
 
 logos = { version = "0.15" }
 
