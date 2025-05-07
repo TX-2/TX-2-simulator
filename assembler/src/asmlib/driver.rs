@@ -105,7 +105,7 @@ impl SourceFile {
                         directive_block.origin.clone(),
                         LocatedBlock {
                             location: address,
-                            statements: directive_block.statements,
+                            statements: directive_block.statements.clone(),
                         },
                     ),
                 );
@@ -170,11 +170,7 @@ impl SourceFile {
                 Block {
                     origin: mblock.origin.clone(),
                     location,
-                    statements: mblock
-                        .statements
-                        .iter()
-                        .map(|t| (t.span, t.clone()))
-                        .collect(),
+                    statements: mblock.statements.clone(),
                 },
             );
             if let Some(loc) = location {

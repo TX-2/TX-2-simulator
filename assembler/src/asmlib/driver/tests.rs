@@ -106,21 +106,15 @@ fn test_metacommand_dec_changes_default_base() {
         .collect::<Vec<_>>()
         .as_slice()
     {
-        if let [(
-            _,
-            TaggedProgramInstruction {
-                span: _,
-                tags: tags1,
-                instruction: first_instruction,
-            },
-        ), (
-            _,
-            TaggedProgramInstruction {
-                span: _,
-                tags: tags2,
-                instruction: second_instruction,
-            },
-        )] = statements.as_slice()
+        if let [TaggedProgramInstruction {
+            span: _,
+            tags: tags1,
+            instruction: first_instruction,
+        }, TaggedProgramInstruction {
+            span: _,
+            tags: tags2,
+            instruction: second_instruction,
+        }] = statements.as_slice()
         {
             assert!(tags1.is_empty());
             assert!(tags2.is_empty());

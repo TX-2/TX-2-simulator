@@ -1284,20 +1284,20 @@ impl Directive {
 pub(crate) struct Block {
     pub(crate) origin: Option<Origin>,
     pub(crate) location: Option<Address>,
-    pub(crate) statements: Vec<(Span, TaggedProgramInstruction)>,
+    pub(crate) statements: Vec<TaggedProgramInstruction>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct LocatedBlock {
     pub(crate) location: Address,
-    pub(crate) statements: Vec<(Span, TaggedProgramInstruction)>,
+    pub(crate) statements: Vec<TaggedProgramInstruction>,
 }
 
 impl LocatedBlock {
     pub(crate) fn emitted_word_count(&self) -> Unsigned18Bit {
         self.statements
             .iter()
-            .map(|(_span, stmt)| stmt.emitted_instruction_count())
+            .map(|stmt| stmt.emitted_instruction_count())
             .sum()
     }
 

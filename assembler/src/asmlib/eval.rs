@@ -1084,7 +1084,7 @@ impl LocatedBlock {
     ) -> Result<Vec<Unsigned36Bit>, AssemblerFailure> {
         let mut undefined_symbols: Vec<(Span, SymbolName)> = Vec::new();
         let mut words: Vec<Unsigned36Bit> = Vec::with_capacity(self.emitted_word_count().into());
-        for (offset, (line_span, instruction)) in self.statements.iter().enumerate() {
+        for (offset, instruction) in self.statements.iter().enumerate() {
             let offset: Unsigned18Bit = Unsigned18Bit::try_from(offset)
                 .expect("assembled code block should fit within physical memory");
             let address: Address = location.index_by(offset);
@@ -1102,7 +1102,7 @@ impl LocatedBlock {
                 Ok(word) => {
                     listing.push_line(ListingLine {
                         origin: None,
-                        span: Some(*line_span),
+                        span: Some(instruction.span),
                         rc_source: None,
                         content: Some((address, word)),
                     });
@@ -1209,7 +1209,7 @@ impl LocatedBlock {
         symtab: &mut SymbolTable,
         rc_allocator: &mut R,
     ) -> Result<(), MachineLimitExceededFailure> {
-        for (_span, ref mut statement) in self.statements.iter_mut() {
+        for ref mut statement in self.statements.iter_mut() {
             statement.assign_rc_words(symtab, rc_allocator)?;
         }
         Ok(())
