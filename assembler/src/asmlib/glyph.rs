@@ -317,8 +317,6 @@ impl Display for NotInCharacterSet {
 impl Error for NotInCharacterSet {}
 
 pub(crate) fn glyph_of_char(original: char) -> Result<Elevated<&'static Glyph>, Unrecognised> {
-    // TODO: address the performance implications (of the
-    // linear-time loop) here
     let ch: char = canonicalise_char(original);
     let mapping = glyph_map();
     match mapping.get(&ch) {
