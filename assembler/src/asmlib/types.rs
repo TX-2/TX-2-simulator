@@ -1,5 +1,5 @@
 use std::error::Error;
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsStr;
 use std::fmt::{self, Display, Formatter};
 use std::io::Error as IoError;
 use std::path::PathBuf;
@@ -145,20 +145,7 @@ impl Display for MachineLimitExceededFailure {
 }
 
 #[derive(Debug)]
-pub enum AssemblerFailure {
-    InternalError(String),
-    BadTapeBlock(String),
-    IoErrorOnStdout {
-        error: IoError,
-    },
-    IoErrorOnInput {
-        filename: OsString,
-        error: IoError,
-    },
-    IoErrorOnOutput {
-        filename: PathBuf,
-        error: IoError,
-    },
+pub enum ProgramError {
     InconsistentOriginDefinitions {
         origin_name: SymbolName,
         span: Span,
@@ -171,6 +158,171 @@ pub enum AssemblerFailure {
     SyntaxError {
         location: LineAndColumn,
         msg: String,
+        span: Span,
+    },
+}
+
+impl PartialEq<ProgramError> for ProgramError {
+    fn eq(&self, other: &ProgramError) -> bool {
+        use ProgramError::*;
+        match (self, other) {
+            (
+                InconsistentOriginDefinitions {
+                    origin_name: o1,
+                    span: p1,
+                    msg: m1,
+                },
+                InconsistentOriginDefinitions {
+                    origin_name: o2,
+                    span: p2,
+                    msg: m2,
+                },
+            ) if o1 == o2 && p1 == p2 && m1 == m2 => true,
+            (
+                UnexpectedlyUndefinedSymbol { name: n1, span: p1 },
+                UnexpectedlyUndefinedSymbol { name: n2, span: p2 },
+            ) if n1 == n2 && p1 == p2 => true,
+            (
+                SyntaxError {
+                    location: l1,
+                    msg: m1,
+                    span: p1,
+                },
+                SyntaxError {
+                    location: l2,
+                    msg: m2,
+                    span: p2,
+                },
+            ) if l1 == l2 && m1 == m2 && p1 == p2 => true,
+            _ => false,
+        }
+    }
+}
+
+impl Display for ProgramError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        use ProgramError::*;
+        match self {
+            InconsistentOriginDefinitions {
+                origin_name,
+                span: _,
+                msg,
+            } => {
+                write!(
+                    f,
+                    "inconsistent definitions for origin {origin_name}: {msg}"
+                )
+            }
+            UnexpectedlyUndefinedSymbol { name, span: _ } => {
+                write!(f, "unexpected undefined symbol: {name}")
+            }
+            SyntaxError {
+                location,
+                span: _,
+                msg,
+            } => {
+                write!(f, "{}: {}", location, msg)
+            }
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum IoAction {
+    Read,
+    Write,
+}
+
+impl Display for IoAction {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        f.write_str(match self {
+            IoAction::Read => "read",
+            IoAction::Write => "write",
+        })
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum IoTarget {
+    File(PathBuf),
+}
+
+impl Display for IoTarget {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        match self {
+            IoTarget::File(file_name) => {
+                f.write_str("file ")?;
+                write_os_string(f, file_name.as_os_str())
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct IoFailed {
+    pub action: IoAction,
+    pub target: IoTarget,
+    pub error: IoError,
+}
+
+impl Display for IoFailed {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        let IoFailed {
+            action,
+            target,
+            error,
+        } = self;
+        write!(f, "I/O error: {action} failed on {target}: {error}")
+    }
+}
+
+impl PartialEq<IoFailed> for IoFailed {
+    fn eq(&self, other: &IoFailed) -> bool {
+        self.action == other.action
+            && self.target == other.target
+            && self.error.to_string() == other.error.to_string()
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum RcWordSource {
+    PipeConstruct(Span),
+    Braces(Span),
+    DefaultAssignment(SymbolName),
+}
+
+impl RcWordSource {
+    pub fn span(&self) -> Option<&Span> {
+        match self {
+            RcWordSource::PipeConstruct(span) | RcWordSource::Braces(span) => Some(span),
+            RcWordSource::DefaultAssignment(_) => None,
+        }
+    }
+}
+
+impl Display for RcWordSource {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            RcWordSource::PipeConstruct(_) => write!(f, "pipe construct"),
+            RcWordSource::Braces(_) => write!(f, "RC-word"),
+            RcWordSource::DefaultAssignment(name) => write!(f, "default-assignment of {name}"),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum AssemblerFailure {
+    InternalError(String),
+    BadTapeBlock {
+        address: Address,
+        length: usize,
+        msg: String,
+    },
+    Io(IoFailed),
+    BadProgram(ProgramError),
+    RcBlockTooLong {
+        rc_word_source: RcWordSource,
+        rc_word_location: Option<LineAndColumn>,
     },
     MachineLimitExceeded(MachineLimitExceededFailure),
 }
@@ -179,65 +331,21 @@ impl PartialEq<AssemblerFailure> for AssemblerFailure {
     fn eq(&self, other: &AssemblerFailure) -> bool {
         use AssemblerFailure::*;
         match (self, other) {
+            (BadProgram(e1), BadProgram(e2)) if e1 == e2 => true,
             (InternalError(s1), InternalError(s2)) if s1 == s2 => true,
-            (BadTapeBlock(s1), BadTapeBlock(s2)) if s1 == s2 => true,
-            (IoErrorOnStdout { error: e1 }, IoErrorOnStdout { error: e2 })
-                if e1.to_string() == e2.to_string() =>
-            {
-                true
-            }
             (
-                IoErrorOnInput {
-                    error: e1,
-                    filename: f1,
+                BadTapeBlock {
+                    address: a1,
+                    length: l1,
+                    msg: s1,
                 },
-                IoErrorOnInput {
-                    error: e2,
-                    filename: f2,
+                BadTapeBlock {
+                    address: a2,
+                    length: l2,
+                    msg: s2,
                 },
-            ) => e1.to_string() == e2.to_string() && f1 == f2,
-            (
-                IoErrorOnOutput {
-                    error: e1,
-                    filename: f1,
-                },
-                IoErrorOnOutput {
-                    error: e2,
-                    filename: f2,
-                },
-            ) => e1.to_string() == e2.to_string() && f1 == f2,
-            (
-                InconsistentOriginDefinitions {
-                    origin_name: origin1,
-                    span: span1,
-                    msg: msg1,
-                },
-                InconsistentOriginDefinitions {
-                    origin_name: origin2,
-                    span: span2,
-                    msg: msg2,
-                },
-            ) => origin1 == origin2 && span1 == span2 && msg1 == msg2,
-            (
-                UnexpectedlyUndefinedSymbol {
-                    name: name1,
-                    span: span1,
-                },
-                UnexpectedlyUndefinedSymbol {
-                    name: name2,
-                    span: span2,
-                },
-            ) => name1 == name2 && span1 == span2,
-            (
-                SyntaxError {
-                    location: loc1,
-                    msg: msg1,
-                },
-                SyntaxError {
-                    location: loc2,
-                    msg: msg2,
-                },
-            ) => loc1 == loc2 && msg1 == msg2,
+            ) if a1 == a2 && l1 == l2 && s1 == s2 => true,
+            (Io(e1), Io(e2)) if e1 == e2 => true,
             (MachineLimitExceeded(e1), MachineLimitExceeded(e2)) if e1 == e2 => true,
             _ => false,
         }
@@ -264,43 +372,37 @@ fn write_os_string(f: &mut Formatter<'_>, s: &OsStr) -> Result<(), fmt::Error> {
 impl Display for AssemblerFailure {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         match self {
-            AssemblerFailure::InconsistentOriginDefinitions {
-                origin_name,
-                span: _,
-                msg,
+            AssemblerFailure::BadProgram(e) => write!(f, "error in user program: {e}"),
+            AssemblerFailure::RcBlockTooLong {
+                rc_word_source,
+                rc_word_location,
             } => {
-                write!(
-                    f,
-                    "inconsistent definitions for origin {origin_name}: {msg}"
-                )
-            }
-            AssemblerFailure::UnexpectedlyUndefinedSymbol { name, span: _ } => {
-                write!(f, "unexpected undefined symbol: {name}")
+                if let Some(location) = rc_word_location {
+                    write!(
+                        f,
+                        "{location}: RC-word block grew too long to allocate {rc_word_source}"
+                    )
+                } else {
+                    write!(
+                        f,
+                        "RC-word block grew too long to allocate {rc_word_source}"
+                    )
+                }
             }
             AssemblerFailure::InternalError(msg) => {
                 write!(f, "internal error: {msg}")
             }
-            AssemblerFailure::BadTapeBlock(explanation) => {
-                write!(f, "bad tape block: {}", explanation)
-            }
-            AssemblerFailure::IoErrorOnStdout { error } => {
-                write!(f, "error writing on stdout: {}", error)
-            }
-            AssemblerFailure::IoErrorOnInput { filename, error } => {
-                f.write_str("I/O error reading input file ")?;
-                write_os_string(f, filename)?;
-                write!(f, ": {}", error)
-            }
-            AssemblerFailure::IoErrorOnOutput { filename, error } => {
+            AssemblerFailure::BadTapeBlock {
+                address,
+                length,
+                msg,
+            } => {
                 write!(
                     f,
-                    "I/O error writing output file {}: {error}",
-                    filename.display(),
+                    "bad tape block of length {length} words at address {address}: {msg}"
                 )
             }
-            AssemblerFailure::SyntaxError { location, msg } => {
-                write!(f, "{}: {}", location, msg)
-            }
+            AssemblerFailure::Io(e) => write!(f, "{e}"),
             AssemblerFailure::MachineLimitExceeded(fail) => {
                 write!(f, "machine limit exceeded: {fail}")
             }

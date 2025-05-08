@@ -7,14 +7,16 @@ use tracing::{event, Level};
 use base::prelude::*;
 use base::subword;
 
-use super::ast::{EqualityValue, Origin, RcAllocator, RcUpdater, RcWordSource, Tag};
+use super::ast::{EqualityValue, Origin, RcAllocator, RcUpdater, RcWordAllocationFailure, Tag};
 use super::eval::{
     Evaluate, HereValue, LookupTarget, SymbolLookup, SymbolLookupFailure, SymbolLookupFailureKind,
     SymbolValue,
 };
 use super::span::*;
 use super::symbol::{SymbolContext, SymbolName};
-use super::types::{offset_from_origin, BlockIdentifier, MachineLimitExceededFailure};
+use super::types::{
+    offset_from_origin, BlockIdentifier, MachineLimitExceededFailure, RcWordSource,
+};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub(crate) enum DefaultValueAssignmentError {
@@ -731,7 +733,7 @@ pub(super) fn assign_default_rc_word_tags<R: RcAllocator>(
     symtab: &mut SymbolTable,
     rcblock: &mut R,
     final_symbols: &mut FinalSymbolTable,
-) -> Result<(), MachineLimitExceededFailure> {
+) -> Result<(), RcWordAllocationFailure> {
     for (name, def) in symtab.definitions.iter_mut() {
         *def = match &def {
             InternalSymbolDef {

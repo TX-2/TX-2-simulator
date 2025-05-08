@@ -12,7 +12,9 @@ use super::ast::*;
 use super::listing::{Listing, ListingLine};
 use super::span::*;
 use super::symbol::SymbolName;
-use super::types::{AssemblerFailure, BlockIdentifier, MachineLimitExceededFailure};
+use super::types::{
+    AssemblerFailure, BlockIdentifier, MachineLimitExceededFailure, ProgramError, RcWordSource,
+};
 use crate::symbol::SymbolContext;
 use crate::symtab::{
     FinalSymbolDefinition, FinalSymbolTable, FinalSymbolType, LookupOperation, SymbolTable,
@@ -198,10 +200,11 @@ pub(crate) struct RcBlock {
 }
 
 impl RcBlock {
-    fn end(&self) -> Result<Address, MachineLimitExceededFailure> {
-        Unsigned18Bit::try_from(self.words.len())
-            .map(|offset| self.address.index_by(offset))
-            .map_err(|_| MachineLimitExceededFailure::RcBlockTooLarge)
+    fn end(&self) -> Option<Address> {
+        match Unsigned18Bit::try_from(self.words.len()) {
+            Ok(offset) => Some(self.address.index_by(offset)),
+            Err(_) => None,
+        }
     }
 }
 
@@ -210,10 +213,16 @@ impl RcAllocator for RcBlock {
         &mut self,
         source: RcWordSource,
         value: Unsigned36Bit,
-    ) -> Result<Address, MachineLimitExceededFailure> {
-        let addr = self.end()?;
-        self.words.push((source, value));
-        Ok(addr)
+    ) -> Result<Address, RcWordAllocationFailure> {
+        if let Some(addr) = self.end() {
+            self.words.push((source, value));
+            Ok(addr)
+        } else {
+            Err(RcWordAllocationFailure {
+                source,
+                rc_block_len: self.words.len(),
+            })
+        }
     }
 }
 
@@ -1024,13 +1033,13 @@ fn translate_symbol_lookup_failure(
         HereIsNotAllowedHere => {
             unreachable!("should be able to use # where target_address={here:?}");
         }
-        InconsistentOrigins { name, span, msg } => {
-            Err(AssemblerFailure::InconsistentOriginDefinitions {
+        InconsistentOrigins { name, span, msg } => Err(AssemblerFailure::BadProgram(
+            ProgramError::InconsistentOriginDefinitions {
                 origin_name: name,
                 span,
                 msg,
-            })
-        }
+            },
+        )),
         MachineLimitExceeded(e) => Err(AssemblerFailure::MachineLimitExceeded(e)),
     }
 }
@@ -1121,10 +1130,12 @@ impl LocatedBlock {
             }
         }
         if let Some((span, name)) = undefined_symbols.first() {
-            return Err(AssemblerFailure::UnexpectedlyUndefinedSymbol {
-                name: name.clone(),
-                span: *span,
-            });
+            return Err(AssemblerFailure::BadProgram(
+                ProgramError::UnexpectedlyUndefinedSymbol {
+                    name: name.clone(),
+                    span: *span,
+                },
+            ));
         }
         Ok(words)
     }
@@ -1210,7 +1221,7 @@ impl LocatedBlock {
         &mut self,
         symtab: &mut SymbolTable,
         rc_allocator: &mut R,
-    ) -> Result<(), MachineLimitExceededFailure> {
+    ) -> Result<(), RcWordAllocationFailure> {
         for ref mut statement in self.statements.iter_mut() {
             statement.assign_rc_words(symtab, rc_allocator)?;
         }
@@ -1223,7 +1234,7 @@ impl TaggedProgramInstruction {
         &mut self,
         symtab: &mut SymbolTable,
         rc_allocator: &mut R,
-    ) -> Result<(), MachineLimitExceededFailure> {
+    ) -> Result<(), RcWordAllocationFailure> {
         self.instruction.assign_rc_words(symtab, rc_allocator)
     }
 }
@@ -1233,7 +1244,7 @@ impl UntaggedProgramInstruction {
         &mut self,
         symtab: &mut SymbolTable,
         rc_allocator: &mut R,
-    ) -> Result<(), MachineLimitExceededFailure> {
+    ) -> Result<(), RcWordAllocationFailure> {
         for inst in self.fragments.iter_mut() {
             inst.assign_rc_words(symtab, rc_allocator)?;
         }
@@ -1246,7 +1257,7 @@ impl CommaDelimitedFragment {
         &mut self,
         symtab: &mut SymbolTable,
         rc_allocator: &mut R,
-    ) -> Result<(), MachineLimitExceededFailure> {
+    ) -> Result<(), RcWordAllocationFailure> {
         self.fragment.assign_rc_words(symtab, rc_allocator)
     }
 }
@@ -1256,7 +1267,7 @@ impl InstructionFragment {
         &mut self,
         symtab: &mut SymbolTable,
         rc_allocator: &mut R,
-    ) -> Result<(), MachineLimitExceededFailure> {
+    ) -> Result<(), RcWordAllocationFailure> {
         use InstructionFragment::*;
         match self {
             Null | DeferredAddressing(_) => Ok(()),
@@ -1283,7 +1294,7 @@ impl RegisterContaining {
         source: RcWordSource,
         symtab: &mut SymbolTable,
         rc_allocator: &mut R,
-    ) -> Result<RegisterContaining, MachineLimitExceededFailure> {
+    ) -> Result<RegisterContaining, RcWordAllocationFailure> {
         match self {
             RegisterContaining::Unallocated(mut tpibox) => {
                 let addr: Address = rc_allocator.allocate(source, Unsigned36Bit::ZERO)?;
@@ -1302,7 +1313,7 @@ impl RegistersContaining {
         span: Span,
         symtab: &mut SymbolTable,
         rc_allocator: &mut R,
-    ) -> Result<(), MachineLimitExceededFailure> {
+    ) -> Result<(), RcWordAllocationFailure> {
         let source = RcWordSource::Braces(span);
         for rc in self.words_mut() {
             *rc = rc
@@ -1318,7 +1329,7 @@ impl ArithmeticExpression {
         &mut self,
         symtab: &mut SymbolTable,
         rc_allocator: &mut R,
-    ) -> Result<(), MachineLimitExceededFailure> {
+    ) -> Result<(), RcWordAllocationFailure> {
         self.first.assign_rc_words(symtab, rc_allocator)?;
         for (_op, atom) in self.tail.iter_mut() {
             atom.assign_rc_words(symtab, rc_allocator)?;
@@ -1332,7 +1343,7 @@ impl ConfigValue {
         &mut self,
         symtab: &mut SymbolTable,
         rc_allocator: &mut R,
-    ) -> Result<(), MachineLimitExceededFailure> {
+    ) -> Result<(), RcWordAllocationFailure> {
         self.expr.assign_rc_words(symtab, rc_allocator)
     }
 }
@@ -1342,7 +1353,7 @@ impl SignedAtom {
         &mut self,
         symtab: &mut SymbolTable,
         rc_allocator: &mut R,
-    ) -> Result<(), MachineLimitExceededFailure> {
+    ) -> Result<(), RcWordAllocationFailure> {
         self.magnitude.assign_rc_words(symtab, rc_allocator)
     }
 }
@@ -1352,7 +1363,7 @@ impl Atom {
         &mut self,
         symtab: &mut SymbolTable,
         rc_allocator: &mut R,
-    ) -> Result<(), MachineLimitExceededFailure> {
+    ) -> Result<(), RcWordAllocationFailure> {
         match self {
             Atom::SymbolOrLiteral(thing) => thing.assign_rc_words(symtab, rc_allocator),
             Atom::Parens(_, _, expr) => expr.assign_rc_words(symtab, rc_allocator),
@@ -1366,7 +1377,7 @@ impl SymbolOrLiteral {
         &mut self,
         _symtab: &mut SymbolTable,
         _rc_allocator: &mut R,
-    ) -> Result<(), MachineLimitExceededFailure> {
+    ) -> Result<(), RcWordAllocationFailure> {
         Ok(())
     }
 }

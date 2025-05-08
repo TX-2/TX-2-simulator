@@ -1,9 +1,10 @@
 use std::fmt::Display;
 
-use super::ast::{Origin, RcWordSource};
+use super::ast::Origin;
 use super::span::Span;
 use super::span::{extract_prefix, extract_span};
 use super::symtab::FinalSymbolTable;
+use super::types::RcWordSource;
 use base::prelude::*;
 
 #[derive(Debug, Default)]

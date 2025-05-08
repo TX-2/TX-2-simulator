@@ -2,6 +2,7 @@
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
+use std::error::Error;
 use std::fmt::{self, Display, Formatter, Octal, Write};
 use std::hash::Hash;
 
@@ -25,18 +26,35 @@ enum SymbolUse {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub(crate) enum RcWordSource {
-    PipeConstruct(Span),
-    Braces(Span),
-    DefaultAssignment(SymbolName),
+pub(crate) struct RcWordAllocationFailure {
+    pub(crate) source: RcWordSource,
+    pub(crate) rc_block_len: usize,
 }
+
+impl RcWordAllocationFailure {
+    pub(crate) fn span(&self) -> Option<&Span> {
+        self.source.span()
+    }
+}
+
+impl Display for RcWordAllocationFailure {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "failed to allocate RC word for {}; RC block is already {} words long",
+            self.source, self.rc_block_len
+        )
+    }
+}
+
+impl Error for RcWordAllocationFailure {}
 
 pub(crate) trait RcAllocator {
     fn allocate(
         &mut self,
         source: RcWordSource,
         value: Unsigned36Bit,
-    ) -> Result<Address, MachineLimitExceededFailure>;
+    ) -> Result<Address, RcWordAllocationFailure>;
 }
 
 pub(crate) trait RcUpdater {

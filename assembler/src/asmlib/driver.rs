@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 use std::ffi::OsStr;
 use std::fs::OpenOptions;
 use std::io::{BufReader, BufWriter, Read};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use chumsky::error::Rich;
 use tracing::{event, span, Level};
@@ -400,7 +400,10 @@ fn assemble_pass2(
     let mut symtab = match initial_symbol_table(&source_file) {
         Ok(syms) => syms,
         Err(errors) => {
-            return Err(fail_with_diagnostics(source_file_body, errors));
+            return Err(AssemblerFailure::BadProgram(fail_with_diagnostics(
+                source_file_body,
+                errors,
+            )));
         }
     };
 
@@ -433,11 +436,11 @@ fn inconsistent_origin_definition(
     origin_name: SymbolName,
     e: BadSymbolDefinition,
 ) -> AssemblerFailure {
-    AssemblerFailure::InconsistentOriginDefinitions {
+    AssemblerFailure::BadProgram(ProgramError::InconsistentOriginDefinitions {
         origin_name,
         span,
         msg: e.to_string(),
-    }
+    })
 }
 
 struct NoRcBlock {}
@@ -447,7 +450,7 @@ impl RcAllocator for NoRcBlock {
         &mut self,
         _source: RcWordSource,
         _value: Unsigned36Bit,
-    ) -> Result<Address, MachineLimitExceededFailure> {
+    ) -> Result<Address, RcWordAllocationFailure> {
         panic!("Cannot allocate an RC-word before we know the address of the RC block");
     }
 }
@@ -507,14 +510,22 @@ fn assemble_pass3(
         &mut final_symbols,
     )?;
 
+    let convert_rc_failure = |e: RcWordAllocationFailure| -> AssemblerFailure {
+        let location: Option<LineAndColumn> = e.span().map(|sp| LineAndColumn::from((body, sp)));
+        AssemblerFailure::RcBlockTooLong {
+            rc_word_source: e.source,
+            rc_word_location: location,
+        }
+    };
+
     for (_, directive_block) in memory_map.values_mut() {
         if let Err(e) = directive_block.assign_rc_words(symtab, &mut rcblock) {
-            return Err(AssemblerFailure::MachineLimitExceeded(e));
+            return Err(convert_rc_failure(e));
         }
     }
 
     if let Err(e) = assign_default_rc_word_tags(symtab, &mut rcblock, &mut final_symbols) {
-        return Err(AssemblerFailure::MachineLimitExceeded(e));
+        return Err(convert_rc_failure(e));
     }
 
     // Emit the binary code.
@@ -610,17 +621,14 @@ fn cleanup_control_chars(input: String) -> String {
     output
 }
 
-fn fail_with_diagnostics(
-    source_file_body: &str,
-    errors: Vec<Rich<lexer::Token>>,
-) -> AssemblerFailure {
+fn fail_with_diagnostics(source_file_body: &str, errors: Vec<Rich<lexer::Token>>) -> ProgramError {
     match errors.as_slice() {
         [first, ..] => {
-            //for e in errors.iter() {
-            //    eprintln!("error: {e:?}");
-            //}
-            AssemblerFailure::SyntaxError {
-                location: LineAndColumn::from((source_file_body, first.span())),
+            let span = *first.span();
+            let location = LineAndColumn::from((source_file_body, &span));
+            ProgramError::SyntaxError {
+                location,
+                span,
                 msg: cleanup_control_chars(first.to_string()),
             }
         }
@@ -637,7 +645,10 @@ pub(crate) fn assemble_source(
     let mut errors: Vec<Rich<'_, lexer::Token>> = Vec::new();
     let (source_file, source_options) = assemble_pass1(source_file_body, &mut errors)?;
     if !errors.is_empty() {
-        return Err(fail_with_diagnostics(source_file_body, errors));
+        return Err(AssemblerFailure::BadProgram(fail_with_diagnostics(
+            source_file_body,
+            errors,
+        )));
     }
     options = options.merge(source_options);
 
@@ -651,7 +662,10 @@ pub(crate) fn assemble_source(
         errors,
     } = assemble_pass2(source_file, source_file_body)?;
     if !errors.is_empty() {
-        return Err(fail_with_diagnostics(source_file_body, errors));
+        return Err(AssemblerFailure::BadProgram(fail_with_diagnostics(
+            source_file_body,
+            errors,
+        )));
     }
     let directive = match directive {
         None => {
@@ -741,19 +755,23 @@ pub fn assemble_file(
     let input_file = OpenOptions::new()
         .read(true)
         .open(input_file_name)
-        .map_err(|e| AssemblerFailure::IoErrorOnInput {
-            filename: input_file_name.to_owned(),
-            error: e,
+        .map_err(|e| {
+            AssemblerFailure::Io(IoFailed {
+                action: IoAction::Read,
+                target: IoTarget::File(PathBuf::from(input_file_name)),
+                error: e,
+            })
         })?;
 
     let source_file_body: String = {
         let mut body = String::new();
         match BufReader::new(input_file).read_to_string(&mut body) {
             Err(e) => {
-                return Err(AssemblerFailure::IoErrorOnInput {
-                    filename: input_file_name.to_owned(),
+                return Err(AssemblerFailure::Io(IoFailed {
+                    action: IoAction::Read,
+                    target: IoTarget::File(PathBuf::from(input_file_name)),
                     error: e,
-                })
+                }));
             }
             Ok(_) => body,
         }
@@ -768,9 +786,12 @@ pub fn assemble_file(
         .write(true)
         .truncate(true)
         .open(output_file_name)
-        .map_err(|e| AssemblerFailure::IoErrorOnOutput {
-            filename: output_file_name.to_owned(),
-            error: e,
+        .map_err(|e| {
+            AssemblerFailure::Io(IoFailed {
+                action: IoAction::Write,
+                target: IoTarget::File(PathBuf::from(output_file_name)),
+                error: e,
+            })
         })?;
     let mut writer = BufWriter::new(output_file);
     write_user_program(&user_program, &mut writer, output_file_name)

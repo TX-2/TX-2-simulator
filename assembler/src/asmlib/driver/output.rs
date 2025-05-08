@@ -9,7 +9,7 @@ use base::prelude::{
 };
 
 use super::super::readerleader::reader_leader;
-use super::super::types::AssemblerFailure;
+use super::super::types::{AssemblerFailure, IoAction, IoFailed, IoTarget};
 use super::Binary;
 
 fn write_data<W: Write>(
@@ -29,9 +29,12 @@ fn write_data<W: Write>(
         }
         Ok(())
     };
-    inner().map_err(|e| AssemblerFailure::IoErrorOnOutput {
-        filename: output_file_name.to_path_buf(),
-        error: e,
+    inner().map_err(|e| {
+        AssemblerFailure::Io(IoFailed {
+            action: IoAction::Write,
+            target: IoTarget::File(output_file_name.to_path_buf()),
+            error: e,
+        })
     })
 }
 
@@ -62,16 +65,21 @@ fn create_tape_block(
     code: &[Unsigned36Bit],
     last: bool,
 ) -> Result<Vec<Unsigned36Bit>, AssemblerFailure> {
+    let length = code.len();
     if code.is_empty() {
-        return Err(AssemblerFailure::BadTapeBlock(
-            format!("tape block at {address:o} is empty but tape blocks are not allowed to be empty (the format does not support it)")
-        ));
+        return Err(AssemblerFailure::BadTapeBlock {
+            address,
+            length,
+            msg: "tape block is empty but tape blocks are not allowed to be empty (the format does not support it)".to_string()
+        });
     }
     let len: Unsigned18Bit = match Unsigned18Bit::try_from(code.len()) {
         Err(_) => {
-            return Err(AssemblerFailure::BadTapeBlock(
-                "block is too long for output format".to_string(),
-            ));
+            return Err(AssemblerFailure::BadTapeBlock {
+                address,
+                length,
+                msg: "block is too long for output format".to_string(),
+            });
         }
         Ok(len) => len,
     };
@@ -80,9 +88,11 @@ fn create_tape_block(
         .and_then(|n| n.checked_sub(Unsigned18Bit::ONE))
     {
         None => {
-            return Err(AssemblerFailure::BadTapeBlock(
-                "end of block does not fit into physical memory".to_string(),
-            ));
+            return Err(AssemblerFailure::BadTapeBlock {
+                address,
+                length,
+                msg: "end of block does not fit into physical memory".to_string(),
+            });
         }
         Some(end) => end,
     };
@@ -195,10 +205,11 @@ pub fn write_user_program<W: Write>(
         &create_begin_block(binary.entry_point(), binary.is_empty())?,
     )?;
 
-    writer
-        .flush()
-        .map_err(|e| AssemblerFailure::IoErrorOnOutput {
-            filename: output_file_name.to_owned(),
+    writer.flush().map_err(|e| {
+        AssemblerFailure::Io(IoFailed {
+            action: IoAction::Write,
+            target: IoTarget::File(output_file_name.to_owned()),
             error: e,
         })
+    })
 }
