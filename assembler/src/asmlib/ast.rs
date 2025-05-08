@@ -1111,6 +1111,43 @@ impl Spanned for TaggedProgramInstruction {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(crate) struct InstructionSequence(Vec<TaggedProgramInstruction>);
+
+impl From<Vec<TaggedProgramInstruction>> for InstructionSequence {
+    fn from(v: Vec<TaggedProgramInstruction>) -> Self {
+        InstructionSequence(v)
+    }
+}
+
+impl FromIterator<TaggedProgramInstruction> for InstructionSequence {
+    fn from_iter<T>(iter: T) -> Self
+    where
+        T: IntoIterator<Item = TaggedProgramInstruction>,
+    {
+        Self(iter.into_iter().collect())
+    }
+}
+
+impl InstructionSequence {
+    pub(crate) fn iter(&self) -> impl Iterator<Item = &TaggedProgramInstruction> {
+        self.0.iter()
+    }
+
+    pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = &mut TaggedProgramInstruction> {
+        self.0.iter_mut()
+    }
+
+    pub(crate) fn first(&self) -> Option<&TaggedProgramInstruction> {
+        self.0.first()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn as_slice(&self) -> &[TaggedProgramInstruction] {
+        self.0.as_slice()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SourceFile {
     pub(crate) punch: Option<PunchCommand>,
@@ -1245,7 +1282,7 @@ pub(crate) struct MacroDefinition {
     // body should probably be a sequence of ManuscriptLine in order
     // to allow an origin specification to exist within a macro body.
     // But that is not supported yet.
-    pub(crate) body: Vec<TaggedProgramInstruction>,
+    pub(crate) body: InstructionSequence,
     pub(crate) span: Span,
 }
 
@@ -1259,7 +1296,7 @@ pub(crate) struct MacroInvocation {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ManuscriptBlock {
     pub(crate) origin: Option<Origin>,
-    pub(crate) statements: Vec<TaggedProgramInstruction>,
+    pub(crate) statements: InstructionSequence,
 }
 
 impl ManuscriptBlock {
@@ -1338,13 +1375,13 @@ impl Directive {
 pub(crate) struct Block {
     pub(crate) origin: Option<Origin>,
     pub(crate) location: Option<Address>,
-    pub(crate) statements: Vec<TaggedProgramInstruction>,
+    pub(crate) statements: InstructionSequence,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct LocatedBlock {
     pub(crate) location: Address,
-    pub(crate) statements: Vec<TaggedProgramInstruction>,
+    pub(crate) statements: InstructionSequence,
 }
 
 impl LocatedBlock {

@@ -747,7 +747,8 @@ fn test_assemble_pass1() {
                 )))),
                 trailing_commas: None,
             }]),
-        }],
+        }]
+        .into(),
     };
 
     let mut errors = Vec::new();

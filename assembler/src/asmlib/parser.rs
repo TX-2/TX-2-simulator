@@ -510,11 +510,11 @@ where
         .then_ignore(named_metacommand(Metacommand::EndMacroDefinition))
         // We don't parse end-of-line here because all metacommands are supposed
         // to be followed by end-of-line.
-        .map_with(|((name, args), body), extra| {
+        .map_with(|((name, args), instructions), extra| {
             let definition = MacroDefinition {
                 name,
                 params: args,
-                body,
+                body: instructions.into(),
                 span: extra.span(),
             };
             extra.state().define_macro(definition.clone());

@@ -556,6 +556,7 @@ fn test_manuscript_with_bare_literal() {
                         Unsigned36Bit::from(1_u32),
                     )),
                 )]
+                .into()
             }],
             equalities: Default::default(), // no equalities
             macros: Default::default(),
@@ -622,6 +623,7 @@ fn test_manuscript_without_tag() {
                         )),
                     ),
                 ]
+                .into()
             }],
             equalities: Default::default(), // no equalities
             macros: Default::default(),
@@ -676,6 +678,7 @@ fn test_comment_in_rc_block() {
                         )]),
                     )))
                 )]
+                .into()
             }],
             equalities: Default::default(), // no equalities
             macros: Default::default(),
@@ -735,6 +738,7 @@ fn test_manuscript_with_single_syllable_tag() {
                         Unsigned36Bit::from(0o205_u32),
                     )),
                 )]
+                .into()
             }],
             equalities: Default::default(), // no equalities
             macros: Default::default(),
@@ -774,6 +778,7 @@ fn test_manuscript_with_multiple_tags() {
                         Unsigned36Bit::from(0o205_u32),
                     )),
                 )]
+                .into()
             }],
             equalities: Default::default(), // no equalities
             macros: Default::default(),
@@ -805,6 +810,7 @@ fn test_manuscript_with_origin() {
                         Unsigned36Bit::from(0o202_u32),
                     ))
                 )]
+                .into()
             }],
             equalities: Default::default(), // no equalities
             macros: Default::default(),
@@ -942,6 +948,7 @@ fn test_manuscript_with_multi_syllable_tag() {
                         Unsigned36Bit::from(0o205_u32),
                     ))
                 )]
+                .into()
             }],
             equalities: Default::default(), // no equalities
             macros: Default::default(),
@@ -998,6 +1005,7 @@ fn test_manuscript_with_real_arrow_tag() {
                         Unsigned36Bit::from(0o207_u32),
                     )),
                 )]
+                .into()
             }],
             equalities: Default::default(), // no equalities
             macros: Default::default(),
@@ -1144,6 +1152,7 @@ fn test_assignment_lines() {
                         u36!(6)
                     ))))
                 )]
+                .into()
             }],
             equalities: vec![
                 assignment_of_literal(
@@ -1178,7 +1187,8 @@ fn test_assignment_origin() {
                     span(14..15),
                     span(14..15),
                     InstructionFragment::from((span(14..15), Script::Normal, u36!(4),))
-                )],
+                )]
+                .into(),
             }],
             equalities: vec![assignment_of_literal(
                 "FOO",
@@ -2580,7 +2590,7 @@ mod macro_tests {
         let expected = MacroDefinition {
             name: SymbolName::from("MYMACRO".to_string()),
             params: MacroDummyParameters::Zero(Token::IdenticalTo(Script::Normal)),
-            body: Vec::new(), // no body
+            body: Default::default(), // no body
             span: span(0..30),
         };
         assert_eq!(got, expected);
@@ -2613,7 +2623,8 @@ mod macro_tests {
                 InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::SymbolOrLiteral(
                     SymbolOrLiteral::Symbol(Script::Normal, SymbolName::from("A"), span(17..18)),
                 ))),
-            )],
+            )]
+            .into(),
             span: span(0..66),
         };
         assert_eq!(got, expected);
@@ -2648,7 +2659,8 @@ mod macro_tests {
                             InstructionFragment::Arithmetic(ArithmeticExpression::from(
                                 Atom::from((span(17..18), Script::Normal, SymbolName::from("A"))),
                             )),
-                        )],
+                        )]
+                        .into(),
                         span: span(0..28),
                     },
                 )]
@@ -2684,7 +2696,8 @@ mod macro_tests {
                     }),
                     trailing_commas: None,
                 }]),
-            }],
+            }]
+            .into(),
             span: span(20..40),
         };
         let set_up_macro_definition = |state: &mut State| {
