@@ -648,14 +648,11 @@ fn fail_with_diagnostics(
     errors
         .into_iter()
         .map(|e| {
-            let span = e.span();
-            let location = LineAndColumn::from((source_file_body, span));
-            let e = ProgramError::SyntaxError {
-                location,
-                span: *span,
+            let syntax_error = ProgramError::SyntaxError {
+                span: *e.span(),
                 msg: cleanup_control_chars(e.to_string()),
             };
-            (source_file_body, e).into()
+            (source_file_body, syntax_error).into()
         })
         .collect()
 }

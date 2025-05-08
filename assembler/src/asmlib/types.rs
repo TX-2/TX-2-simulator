@@ -208,7 +208,6 @@ pub enum ProgramError {
         span: Span,
     },
     SyntaxError {
-        location: LineAndColumn,
         msg: String,
         span: Span,
     },
@@ -245,18 +244,11 @@ impl PartialEq<ProgramError> for ProgramError {
                 UnexpectedlyUndefinedSymbol { name: n1, span: p1 },
                 UnexpectedlyUndefinedSymbol { name: n2, span: p2 },
             ) if n1 == n2 && p1 == p2 => true,
-            (
-                SyntaxError {
-                    location: l1,
-                    msg: m1,
-                    span: p1,
-                },
-                SyntaxError {
-                    location: l2,
-                    msg: m2,
-                    span: p2,
-                },
-            ) if l1 == l2 && m1 == m2 && p1 == p2 => true,
+            (SyntaxError { msg: m1, span: p1 }, SyntaxError { msg: m2, span: p2 })
+                if m1 == m2 && p1 == p2 =>
+            {
+                true
+            }
             _ => false,
         }
     }
@@ -279,12 +271,8 @@ impl Display for ProgramError {
             UnexpectedlyUndefinedSymbol { name, span: _ } => {
                 write!(f, "unexpected undefined symbol: {name}")
             }
-            SyntaxError {
-                location,
-                span: _,
-                msg,
-            } => {
-                write!(f, "{}: {}", location, msg)
+            SyntaxError { span: _, msg } => {
+                write!(f, "{}", msg)
             }
         }
     }
