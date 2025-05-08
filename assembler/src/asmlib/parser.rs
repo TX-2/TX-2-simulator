@@ -895,7 +895,7 @@ where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
     assignment: Boxed<'a, 'b, I, Equality, ExtraWithoutContext<'a>>,
-    tagged_instruction: Boxed<'a, 'b, I, TaggedProgramInstruction, ExtraWithoutContext<'a>>,
+    tagged_program_instruction: Boxed<'a, 'b, I, TaggedProgramInstruction, ExtraWithoutContext<'a>>,
     #[cfg(test)]
     normal_arithmetic_expression_allowing_spaces:
         Boxed<'a, 'b, I, ArithmeticExpression, ExtraWithoutContext<'a>>,
@@ -1154,14 +1154,14 @@ where
     })
     .labelled("equality (assignment)");
 
-    let stmt = tagged_program_instruction.clone();
+    let tagged_program_instruction = tagged_program_instruction.clone();
 
     #[cfg(test)]
     const ALLOW_SPACES: bool = true;
 
     Grammar {
         assignment: assignment.boxed(),
-        tagged_instruction: stmt.boxed(),
+        tagged_program_instruction: tagged_program_instruction.boxed(),
         #[cfg(test)]
         normal_arithmetic_expression_allowing_spaces: arith_expr.clone()(
             ALLOW_SPACES,
@@ -1190,7 +1190,7 @@ fn tagged_instruction<'a, I>(
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
-    grammar().tagged_instruction
+    grammar().tagged_program_instruction
 }
 
 fn manuscript_line<'a, I>() -> impl Parser<'a, I, ManuscriptLine, ExtraWithoutContext<'a>>
@@ -1276,7 +1276,7 @@ where
 
         let optional_origin_with_statement = origin()
             .or_not()
-            .then(grammar.tagged_instruction)
+            .then(grammar.tagged_program_instruction)
             .map(build_code_line)
             .labelled("statement with origin");
 
