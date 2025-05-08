@@ -185,7 +185,6 @@ pub(super) trait Evaluate: Spanned {
     // that evaluation cannot allocate more RC words.
     fn evaluate<R: RcUpdater>(
         &self,
-        span: Span,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
         rc_updater: &mut R,
@@ -266,7 +265,7 @@ pub(crate) fn make_empty_rc_block_for_test(location: Address) -> RcBlock {
 }
 
 pub(crate) fn evaluate_and_combine_values<R, E>(
-    items: &[(&E, Span)],
+    items: &[E],
     target_address: &HereValue,
     symtab: &mut SymbolTable,
     rc_updater: &mut R,
@@ -276,32 +275,27 @@ where
     R: RcUpdater,
     E: Evaluate,
 {
-    items
-        .iter()
-        .try_fold(Unsigned36Bit::ZERO, |acc, (item, span)| {
-            item.evaluate(*span, target_address, symtab, rc_updater, op)
-                .map(|value| combine_fragment_values(acc, value))
-        })
+    items.iter().try_fold(Unsigned36Bit::ZERO, |acc, item| {
+        item.evaluate(target_address, symtab, rc_updater, op)
+            .map(|value| combine_fragment_values(acc, value))
+    })
 }
 
 impl Evaluate for EqualityValue {
     fn evaluate<R: RcUpdater>(
         &self,
-        _span: Span,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
         rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-        self.inner
-            .evaluate(self.span(), target_address, symtab, rc_updater, op)
+        self.inner.evaluate(target_address, symtab, rc_updater, op)
     }
 }
 
 impl Evaluate for UntaggedProgramInstruction {
     fn evaluate<R: RcUpdater>(
         &self,
-        _span: Span,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
         rc_updater: &mut R,
@@ -311,9 +305,13 @@ impl Evaluate for UntaggedProgramInstruction {
         // (b) in section 6-2.4, "NUMERICAL FORMAT - USE OF COMMAS" of
         // the Users Handbook.  The initial value is zero (as
         // specified in item (a) in the same place).
-        let to_eval: Vec<(&CommaDelimitedFragment, Span)> =
-            self.fragments.iter().map(|cdi| (cdi, cdi.span())).collect();
-        evaluate_and_combine_values(to_eval.as_slice(), target_address, symtab, rc_updater, op)
+        evaluate_and_combine_values(
+            self.fragments.as_slice(),
+            target_address,
+            symtab,
+            rc_updater,
+            op,
+        )
     }
 }
 
@@ -328,21 +326,19 @@ pub(crate) fn combine_fragment_values(left: Unsigned36Bit, right: Unsigned36Bit)
 impl Evaluate for TaggedProgramInstruction {
     fn evaluate<R: RcUpdater>(
         &self,
-        _span: Span,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
         rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         self.instruction
-            .evaluate(self.span(), target_address, symtab, rc_updater, op)
+            .evaluate(target_address, symtab, rc_updater, op)
     }
 }
 
 impl Evaluate for LiteralValue {
     fn evaluate<R: RcUpdater>(
         &self,
-        _span: Span,
         _target_address: &HereValue,
         _symtab: &mut SymbolTable,
         _rc_updater: &mut R,
@@ -360,23 +356,21 @@ fn fold_step<R: RcUpdater>(
     rc_updater: &mut R,
     op: &mut LookupOperation,
 ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-    let right: Unsigned36Bit =
-        right.evaluate(right.span, target_address, symtab, rc_updater, op)?;
+    let right: Unsigned36Bit = right.evaluate(target_address, symtab, rc_updater, op)?;
     Ok(ArithmeticExpression::eval_binop(acc, binop, right))
 }
 
 impl Evaluate for ArithmeticExpression {
     fn evaluate<R: RcUpdater>(
         &self,
-        span: Span,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
         rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-        let first: Unsigned36Bit =
-            self.first
-                .evaluate(span, target_address, symtab, rc_updater, op)?;
+        let first: Unsigned36Bit = self
+            .first
+            .evaluate(target_address, symtab, rc_updater, op)?;
         let result: Result<Unsigned36Bit, SymbolLookupFailure> =
             self.tail.iter().try_fold(first, |acc, curr| {
                 fold_step(acc, curr, target_address, symtab, rc_updater, op)
@@ -388,7 +382,6 @@ impl Evaluate for ArithmeticExpression {
 impl Evaluate for InstructionFragment {
     fn evaluate<R: RcUpdater>(
         &self,
-        span: Span,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
         rc_updater: &mut R,
@@ -397,15 +390,15 @@ impl Evaluate for InstructionFragment {
         match self {
             InstructionFragment::Null => Ok(Unsigned36Bit::ZERO),
             InstructionFragment::Arithmetic(expr) => {
-                expr.evaluate(span, target_address, symtab, rc_updater, op)
+                expr.evaluate(target_address, symtab, rc_updater, op)
             }
             InstructionFragment::DeferredAddressing(_) => Ok(DEFER_BIT),
             InstructionFragment::Config(value) => {
-                value.evaluate(span, target_address, symtab, rc_updater, op)
+                value.evaluate(target_address, symtab, rc_updater, op)
             }
             InstructionFragment::PipeConstruct {
                 index: p,
-                rc_word_span,
+                rc_word_span: _,
                 rc_word_value,
             } => {
                 // The pipe construct is described in section 6-2.8
@@ -419,15 +412,9 @@ impl Evaluate for InstructionFragment {
                 // rc_word_value tuple.  We evaluate Qₜ as
                 // rc_word_val.
                 let p_value: Unsigned36Bit =
-                    p.item
-                        .evaluate(p.span, target_address, symtab, rc_updater, op)?;
-                let rc_word_addr: Unsigned36Bit = rc_word_value.evaluate(
-                    *rc_word_span,
-                    target_address,
-                    symtab,
-                    rc_updater,
-                    op,
-                )?;
+                    p.item.evaluate(target_address, symtab, rc_updater, op)?;
+                let rc_word_addr: Unsigned36Bit =
+                    rc_word_value.evaluate(target_address, symtab, rc_updater, op)?;
                 Ok(combine_fragment_values(
                     combine_fragment_values(p_value, rc_word_addr),
                     DEFER_BIT,
@@ -440,7 +427,6 @@ impl Evaluate for InstructionFragment {
 impl Evaluate for ConfigValue {
     fn evaluate<R: RcUpdater>(
         &self,
-        span: Span,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
         rc_updater: &mut R,
@@ -452,7 +438,7 @@ impl Evaluate for ConfigValue {
         // script (in which case we need to shift it ourselves).
         let shift = if self.already_superscript { 0 } else { 30u32 };
         self.expr
-            .evaluate(span, target_address, symtab, rc_updater, op)
+            .evaluate(target_address, symtab, rc_updater, op)
             .map(|value| value.shl(shift))
     }
 }
@@ -476,22 +462,18 @@ fn symbol_name_lookup<R: RcUpdater>(
 impl Evaluate for Atom {
     fn evaluate<R: RcUpdater>(
         &self,
-        _span: Span,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
         rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         match self {
-            Atom::SymbolOrLiteral(value) => {
-                let span: Span = value.span();
-                value.evaluate(span, target_address, symtab, rc_updater, op)
+            Atom::SymbolOrLiteral(value) => value.evaluate(target_address, symtab, rc_updater, op),
+            Atom::Parens(_span, _script, expr) => {
+                expr.evaluate(target_address, symtab, rc_updater, op)
             }
-            Atom::Parens(span, _script, expr) => {
-                expr.evaluate(*span, target_address, symtab, rc_updater, op)
-            }
-            Atom::RcRef(span, registers_containing) => {
-                registers_containing.evaluate(*span, target_address, symtab, rc_updater, op)
+            Atom::RcRef(_span, registers_containing) => {
+                registers_containing.evaluate(target_address, symtab, rc_updater, op)
             }
         }
     }
@@ -500,14 +482,13 @@ impl Evaluate for Atom {
 impl Evaluate for SignedAtom {
     fn evaluate<R: RcUpdater>(
         &self,
-        span: Span,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
         rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         self.magnitude
-            .evaluate(span, target_address, symtab, rc_updater, op)
+            .evaluate(target_address, symtab, rc_updater, op)
             .map(|magnitude| {
                 if self.negated {
                     let s36 = magnitude.reinterpret_as_signed();
@@ -523,7 +504,6 @@ impl Evaluate for SignedAtom {
 impl Evaluate for SymbolOrLiteral {
     fn evaluate<R: RcUpdater>(
         &self,
-        span: Span,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
         rc_updater: &mut R,
@@ -540,7 +520,7 @@ impl Evaluate for SymbolOrLiteral {
                 op,
             ),
             SymbolOrLiteral::Literal(literal_value) => {
-                literal_value.evaluate(span, target_address, symtab, rc_updater, op)
+                literal_value.evaluate(target_address, symtab, rc_updater, op)
             }
             SymbolOrLiteral::Here(script, span) => target_address
                 .get_address(span)
@@ -597,14 +577,13 @@ fn comma_transformation(
 impl Evaluate for CommaDelimitedFragment {
     fn evaluate<R: RcUpdater>(
         &self,
-        span: Span,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
         rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         self.fragment
-            .evaluate(span, target_address, symtab, rc_updater, op)
+            .evaluate(target_address, symtab, rc_updater, op)
             .map(|word| {
                 // TODO: issue a diagnostic if there are inconsistent
                 //  values for the hold bit.  We will need to decide
@@ -1047,7 +1026,7 @@ pub(super) fn extract_final_equalities<R: RcUpdater>(
         let mut op = Default::default();
         match eq
             .value
-            .evaluate(eq.span, &HereValue::NotAllowed, symtab, rc_updater, &mut op)
+            .evaluate(&HereValue::NotAllowed, symtab, rc_updater, &mut op)
         {
             Ok(value) => {
                 final_symbols.define(
@@ -1110,7 +1089,7 @@ impl LocatedBlock {
                 );
             }
             let mut op = Default::default();
-            match instruction.evaluate(instruction.span(), &here, symtab, rc_updater, &mut op) {
+            match instruction.evaluate(&here, symtab, rc_updater, &mut op) {
                 Ok(word) => {
                     listing.push_line(ListingLine {
                         origin: None,
@@ -1143,7 +1122,6 @@ impl LocatedBlock {
 impl Evaluate for RegistersContaining {
     fn evaluate<R: RcUpdater>(
         &self,
-        span: Span,
         _target_address: &HereValue,
         symtab: &mut SymbolTable,
         rc_updater: &mut R,
@@ -1158,7 +1136,7 @@ impl Evaluate for RegistersContaining {
             // rather than an incorrect result.
             let must_recompute_here_address = HereValue::NotAllowed;
             let addr: Unsigned36Bit =
-                rc_word.evaluate(span, &must_recompute_here_address, symtab, rc_updater, op)?;
+                rc_word.evaluate(&must_recompute_here_address, symtab, rc_updater, op)?;
             if first_addr.is_none() {
                 first_addr = Some(addr);
             }
@@ -1175,7 +1153,6 @@ impl Evaluate for RegistersContaining {
 impl Evaluate for RegisterContaining {
     fn evaluate<R: RcUpdater>(
         &self,
-        _span: Span,
         _target_address: &HereValue,
         symtab: &mut SymbolTable,
         rc_updater: &mut R,
@@ -1203,7 +1180,6 @@ impl Evaluate for RegisterContaining {
                 let value: Unsigned36Bit = symtab.evaluate_with_temporary_tag_overrides(
                     tag_overrides,
                     inst.as_ref(),
-                    inst.span(),
                     &here,
                     rc_updater,
                     op,

@@ -1305,7 +1305,6 @@ fn program_instruction_with_opcode() {
     let input = "²¹IOS₅₂ 30106";
     assert_eq!(
         parse_tagged_instruction(input).evaluate(
-            span(0..input.len()),
             &HereValue::Address(Address::ZERO),
             &mut nosyms,
             &mut rc_block,

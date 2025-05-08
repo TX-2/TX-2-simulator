@@ -87,7 +87,6 @@ impl Spanned for (&Span, &SymbolName, &SymbolDefinition) {
 impl Evaluate for (&Span, &SymbolName, &SymbolDefinition) {
     fn evaluate<R: RcUpdater>(
         &self,
-        _: Span,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
         rc_updater: &mut R,
@@ -116,7 +115,7 @@ impl Evaluate for (&Span, &SymbolName, &SymbolDefinition) {
                 // since assignments are not allowed to use
                 // '#' on the right-hand-side of the
                 // assignment.
-                expression.evaluate(expression.span(), target_address, symtab, rc_updater, op)
+                expression.evaluate(target_address, symtab, rc_updater, op)
             }
             SymbolDefinition::Undefined(context_union) => Err(SymbolLookupFailure {
                 target: LookupTarget::Symbol(name.to_owned(), *span),
@@ -139,7 +138,7 @@ fn final_lookup_helper_body<R: RcUpdater>(
     if let Some(def) = symtab.get_clone(name) {
         let what = (&span, name, &def);
         match what
-            .evaluate(span, target_address, symtab, rc_updater, op)
+            .evaluate(target_address, symtab, rc_updater, op)
             .map(SymbolValue::Final)
         {
             Ok(value) => Ok(value),
@@ -298,7 +297,7 @@ impl SymbolTable {
                     Some(SymbolDefinition::Equality(rhs)) => {
                         let mut new_op = LookupOperation::default();
                         let op: &mut LookupOperation = maybe_op.unwrap_or(&mut new_op);
-                        match rhs.evaluate(rhs.span(), &HereValue::NotAllowed, self, rc_updater, op) {
+                        match rhs.evaluate(&HereValue::NotAllowed, self, rc_updater, op) {
                             Ok(value) => Ok(Address::from(subword::right_half(value))),
                             Err(e) => {
                                 panic!("no code to handle symbol lookup failure in finalise_origin: {e}"); // TODO
@@ -465,7 +464,6 @@ impl SymbolTable {
         &mut self,
         tag_overrides: BTreeMap<&Tag, Address>,
         item: &E,
-        item_span: Span,
         target_address: &HereValue,
         rc_allocator: &mut R,
         op: &mut LookupOperation,
@@ -494,7 +492,7 @@ impl SymbolTable {
 
         // Important not to use '?' here as we need to restore
         // the original definition.
-        let result = item.evaluate(item_span, target_address, self, rc_allocator, op);
+        let result = item.evaluate(target_address, self, rc_allocator, op);
 
         for prior_definition in to_restore.into_iter() {
             match prior_definition {
