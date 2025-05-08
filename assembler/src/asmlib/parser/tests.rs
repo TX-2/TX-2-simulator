@@ -2128,7 +2128,7 @@ mod comma_tests {
         FragmentWithHold {
             span: sp,
             holdbit: HoldBit::Unspecified,
-            fragment: InstructionFragment::Null,
+            fragment: InstructionFragment::Null(sp),
         }
     }
 

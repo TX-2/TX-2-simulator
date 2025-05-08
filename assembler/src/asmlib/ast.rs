@@ -677,7 +677,7 @@ pub(crate) enum InstructionFragment {
         rc_word_span: Span,
         rc_word_value: RegisterContaining,
     },
-    Null,
+    Null(Span),
 }
 
 impl Spanned for InstructionFragment {
@@ -695,9 +695,7 @@ impl Spanned for InstructionFragment {
                 let end = rc_word_span.end;
                 span(start..end)
             }
-            InstructionFragment::Null => {
-                todo!("InstructionFragment::Null has no span")
-            }
+            InstructionFragment::Null(span) => *span,
         }
     }
 }
@@ -710,7 +708,7 @@ impl InstructionFragment {
     ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
         let mut result: Vec<_> = Vec::new();
         match self {
-            InstructionFragment::Null => (),
+            InstructionFragment::Null(_) => (),
             InstructionFragment::Arithmetic(expr) => {
                 result.extend(expr.symbol_uses(block_id, block_offset));
             }

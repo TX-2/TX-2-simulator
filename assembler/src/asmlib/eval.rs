@@ -388,7 +388,7 @@ impl Evaluate for InstructionFragment {
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         match self {
-            InstructionFragment::Null => Ok(Unsigned36Bit::ZERO),
+            InstructionFragment::Null(_) => Ok(Unsigned36Bit::ZERO),
             InstructionFragment::Arithmetic(expr) => {
                 expr.evaluate(target_address, symtab, rc_updater, op)
             }
@@ -1245,7 +1245,7 @@ impl InstructionFragment {
     ) -> Result<(), RcWordAllocationFailure> {
         use InstructionFragment::*;
         match self {
-            Null | DeferredAddressing(_) => Ok(()),
+            Null(_) | DeferredAddressing(_) => Ok(()),
             Arithmetic(expr) => expr.assign_rc_words(symtab, rc_allocator),
             Config(cfg) => cfg.assign_rc_words(symtab, rc_allocator),
             PipeConstruct {

@@ -761,7 +761,7 @@ where
             FragmentWithHold {
                 span,
                 holdbit: HoldBit::Unspecified,
-                fragment: InstructionFragment::Null,
+                fragment: InstructionFragment::Null(span),
             }
         }
 
