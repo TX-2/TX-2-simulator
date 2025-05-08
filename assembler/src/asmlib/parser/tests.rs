@@ -1011,11 +1011,11 @@ fn assignment_of_literal(name: &str, assignment_span: Span, literal: LiteralValu
         span: assignment_span,
         name: SymbolName::from(name),
         value: EqualityValue::from((
-            *literal.span(),
+            literal.span(),
             UntaggedProgramInstruction::from(vec![CommaDelimitedFragment {
                 leading_commas: None,
                 holdbit: HoldBit::Unspecified,
-                span: *literal.span(),
+                span: literal.span(),
                 fragment: atom_to_fragment(Atom::from(literal)),
                 trailing_commas: None,
             }]),
@@ -2549,7 +2549,7 @@ fn test_make_bit_designator_literal() {
                                 makename(prevq, prevb)
                             );
                         }
-                        assert_eq!(literal.span(), &span);
+                        assert_eq!(literal.span(), span);
                     }
                     do_not_like => {
                         panic!("unexpectedly suspect bit designator {what}: {do_not_like:?}");

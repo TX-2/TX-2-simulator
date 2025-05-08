@@ -15,7 +15,7 @@ use super::eval::{
 use super::span::*;
 use super::symbol::{SymbolContext, SymbolName};
 use super::types::{
-    offset_from_origin, BlockIdentifier, MachineLimitExceededFailure, RcWordSource,
+    offset_from_origin, BlockIdentifier, MachineLimitExceededFailure, RcWordSource, Spanned,
 };
 
 #[derive(Debug, PartialEq, Eq, Clone)]

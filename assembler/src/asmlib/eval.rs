@@ -14,6 +14,7 @@ use super::span::*;
 use super::symbol::SymbolName;
 use super::types::{
     AssemblerFailure, BlockIdentifier, MachineLimitExceededFailure, ProgramError, RcWordSource,
+    Spanned,
 };
 use crate::symbol::SymbolContext;
 use crate::symtab::{
@@ -484,7 +485,7 @@ impl Evaluate for Atom {
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         match self {
             Atom::SymbolOrLiteral(value) => {
-                let span: Span = *value.span();
+                let span: Span = value.span();
                 value.evaluate(span, target_address, symtab, rc_updater, op)
             }
             Atom::Parens(span, _script, expr) => {

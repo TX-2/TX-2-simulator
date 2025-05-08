@@ -560,7 +560,7 @@ fn assemble_pass3(
         if let Some(origin) = maybe_origin {
             // This is an origin (Users Handbook section 6-2.5) not a
             // tag (6-2.2).
-            let span = *origin.span();
+            let span = origin.span();
             listing.push_line(ListingLine {
                 origin: Some(origin),
                 span: Some(span),

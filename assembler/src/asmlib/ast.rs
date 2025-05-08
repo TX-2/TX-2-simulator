@@ -78,10 +78,11 @@ impl LiteralValue {
     pub(crate) fn unshifted_value(&self) -> Unsigned36Bit {
         self.value
     }
+}
 
-    #[cfg(test)]
-    pub(crate) fn span(&self) -> &Span {
-        &self.span
+impl Spanned for LiteralValue {
+    fn span(&self) -> Span {
+        self.span
     }
 }
 
@@ -187,24 +188,25 @@ impl From<Atom> for SignedAtom {
     fn from(magnitude: Atom) -> Self {
         Self {
             negated: false,
-            span: *magnitude.span(),
+            span: magnitude.span(),
             magnitude,
         }
     }
 }
 
 impl SignedAtom {
-    #[cfg(test)]
-    fn span(&self) -> &Span {
-        &self.span
-    }
-
     fn symbol_uses(
         &self,
         block_id: BlockIdentifier,
         block_offset: Unsigned18Bit,
     ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
         self.magnitude.symbol_uses(block_id, block_offset)
+    }
+}
+
+impl Spanned for SignedAtom {
+    fn span(&self) -> Span {
+        self.span
     }
 }
 
@@ -256,9 +258,8 @@ impl From<SymbolOrLiteral> for ArithmeticExpression {
     }
 }
 
-impl ArithmeticExpression {
-    #[cfg(test)]
-    pub(crate) fn span(&self) -> Span {
+impl Spanned for ArithmeticExpression {
+    fn span(&self) -> Span {
         let start = self.first.span().start;
         let end = self
             .tail
@@ -267,7 +268,9 @@ impl ArithmeticExpression {
             .unwrap_or(self.first.span().end);
         span(start..end)
     }
+}
 
+impl ArithmeticExpression {
     pub(crate) fn with_tail(
         first: SignedAtom,
         tail: Vec<(Operator, SignedAtom)>,
@@ -365,11 +368,6 @@ pub(crate) struct ConfigValue {
 }
 
 impl ConfigValue {
-    #[cfg(test)]
-    fn span(&self) -> Span {
-        self.expr.span()
-    }
-
     fn symbol_uses(
         &self,
         block_id: BlockIdentifier,
@@ -379,6 +377,12 @@ impl ConfigValue {
         self.expr
             .symbol_uses(block_id, block_offset)
             .map(move |(name, span, _ignore_symbol_use)| (name, span, used_as_config.clone()))
+    }
+}
+
+impl Spanned for ConfigValue {
+    fn span(&self) -> Span {
+        self.expr.span()
     }
 }
 
@@ -501,14 +505,6 @@ impl From<SymbolOrLiteral> for Atom {
 }
 
 impl Atom {
-    fn span(&self) -> &Span {
-        match self {
-            Atom::SymbolOrLiteral(value) => value.span(),
-            Atom::Parens(span, _script, _bae) => span,
-            Atom::RcRef(span, _) => span,
-        }
-    }
-
     fn symbol_uses(
         &self,
         block_id: BlockIdentifier,
@@ -532,6 +528,16 @@ impl Atom {
             }
         }
         result.into_iter()
+    }
+}
+
+impl Spanned for Atom {
+    fn span(&self) -> Span {
+        match self {
+            Atom::SymbolOrLiteral(value) => value.span(),
+            Atom::Parens(span, _script, _bae) => *span,
+            Atom::RcRef(span, _) => *span,
+        }
     }
 }
 
@@ -585,14 +591,6 @@ pub(crate) enum SymbolOrLiteral {
 }
 
 impl SymbolOrLiteral {
-    pub(crate) fn span(&self) -> &Span {
-        match self {
-            SymbolOrLiteral::Symbol(_, _, span) => span,
-            SymbolOrLiteral::Literal(literal_value) => &literal_value.span,
-            SymbolOrLiteral::Here(_, span) => span,
-        }
-    }
-
     fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
         let mut result: Vec<(SymbolName, Span, SymbolUse)> = Vec::with_capacity(1);
         match self {
@@ -604,6 +602,16 @@ impl SymbolOrLiteral {
             }
         }
         result.into_iter()
+    }
+}
+
+impl Spanned for SymbolOrLiteral {
+    fn span(&self) -> Span {
+        match self {
+            SymbolOrLiteral::Symbol(_, _, span) => *span,
+            SymbolOrLiteral::Literal(literal_value) => literal_value.span,
+            SymbolOrLiteral::Here(_, span) => *span,
+        }
     }
 }
 
@@ -785,10 +793,12 @@ impl Origin {
         // octal.
         Address::new(u18!(0o200_000))
     }
+}
 
-    pub(crate) fn span(&self) -> &Span {
+impl Spanned for Origin {
+    fn span(&self) -> Span {
         match self {
-            Origin::Literal(span, _) | Origin::Symbolic(span, _) => span,
+            Origin::Literal(span, _) | Origin::Symbolic(span, _) => *span,
         }
     }
 }
@@ -834,10 +844,10 @@ pub(crate) enum Commas {
     Three(Span),
 }
 
-impl Commas {
-    pub(crate) fn span(&self) -> &Span {
+impl Spanned for Commas {
+    fn span(&self) -> Span {
         match &self {
-            Commas::One(span) | Commas::Two(span) | Commas::Three(span) => span,
+            Commas::One(span) | Commas::Two(span) | Commas::Three(span) => *span,
         }
     }
 }
@@ -872,9 +882,9 @@ impl CommaDelimitedFragment {
     ) -> Self {
         let span: Span = {
             let spans: [Option<Span>; 3] = [
-                leading_commas.as_ref().map(|c| *c.span()),
+                leading_commas.as_ref().map(|c| c.span()),
                 Some(instruction.span),
-                trailing_commas.as_ref().map(|c| *c.span()),
+                trailing_commas.as_ref().map(|c| c.span()),
             ];
             match spans {
                 [_, None, _] => {
@@ -902,8 +912,10 @@ impl CommaDelimitedFragment {
     ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> + '_ {
         self.fragment.symbol_uses(block_id, block_offset)
     }
+}
 
-    pub(crate) fn span(&self) -> Span {
+impl Spanned for CommaDelimitedFragment {
+    fn span(&self) -> Span {
         self.span
     }
 }
@@ -921,15 +933,6 @@ impl From<Vec<CommaDelimitedFragment>> for UntaggedProgramInstruction {
 }
 
 impl UntaggedProgramInstruction {
-    pub(crate) fn span(&self) -> Span {
-        match (self.fragments.first(), self.fragments.last()) {
-            (Some(f), Some(b)) => span(f.span.start..b.span.end),
-            (None, _) | (_, None) => {
-                unreachable!("invariant broken: zero fragments in UntaggedProgramInstruction");
-            }
-        }
-    }
-
     fn symbol_uses(
         &self,
         block_id: BlockIdentifier,
@@ -941,14 +944,25 @@ impl UntaggedProgramInstruction {
     }
 }
 
+impl Spanned for UntaggedProgramInstruction {
+    fn span(&self) -> Span {
+        match (self.fragments.first(), self.fragments.last()) {
+            (Some(f), Some(b)) => span(f.span.start..b.span.end),
+            (None, _) | (_, None) => {
+                unreachable!("invariant broken: zero fragments in UntaggedProgramInstruction");
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct EqualityValue {
     pub(super) span: Span,
     pub(super) inner: UntaggedProgramInstruction,
 }
 
-impl EqualityValue {
-    pub(crate) fn span(&self) -> Span {
+impl Spanned for EqualityValue {
+    fn span(&self) -> Span {
         self.span
     }
 }
@@ -1025,15 +1039,6 @@ impl TaggedProgramInstruction {
         result.into_iter()
     }
 
-    pub(crate) fn span(&self) -> Span {
-        let begin = match self.tags.first() {
-            Some(t) => t.span.start,
-            None => self.instruction.span().start,
-        };
-        let end = self.instruction.span().end;
-        Span::from(begin..end)
-    }
-
     #[cfg(test)]
     pub(crate) fn single(
         tags: Vec<Tag>,
@@ -1071,6 +1076,17 @@ impl TaggedProgramInstruction {
 
     fn emitted_instruction_count(&self) -> Unsigned18Bit {
         Unsigned18Bit::ONE
+    }
+}
+
+impl Spanned for TaggedProgramInstruction {
+    fn span(&self) -> Span {
+        let begin = match self.tags.first() {
+            Some(t) => t.span.start,
+            None => self.instruction.span().start,
+        };
+        let end = self.instruction.span().end;
+        Span::from(begin..end)
     }
 }
 
@@ -1251,7 +1267,7 @@ impl ManuscriptBlock {
 
     pub(crate) fn origin_span(&self) -> Span {
         if let Some(origin) = self.origin.as_ref() {
-            *origin.span()
+            origin.span()
         } else if let Some(first) = self.statements.first() {
             first.span()
         } else {
