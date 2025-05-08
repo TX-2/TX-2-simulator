@@ -1015,6 +1015,7 @@ impl Evaluate for HereValue {
 }
 
 fn translate_symbol_lookup_failure(
+    source_file_body: &str,
     here: &HereValue,
     e: SymbolLookupFailure,
     undefined_symbols: &mut Vec<(Span, SymbolName)>,
@@ -1033,13 +1034,15 @@ fn translate_symbol_lookup_failure(
         HereIsNotAllowedHere => {
             unreachable!("should be able to use # where target_address={here:?}");
         }
-        InconsistentOrigins { name, span, msg } => Err(AssemblerFailure::BadProgram(
+        InconsistentOrigins { name, span, msg } => Err(AssemblerFailure::BadProgram(vec![(
+            source_file_body,
             ProgramError::InconsistentOriginDefinitions {
                 origin_name: name,
                 span,
                 msg,
             },
-        )),
+        )
+            .into()])),
         MachineLimitExceeded(e) => Err(AssemblerFailure::MachineLimitExceeded(e)),
     }
 }
@@ -1081,7 +1084,12 @@ pub(super) fn extract_final_equalities<R: RcUpdater>(
                 );
             }
             Err(e) => {
-                translate_symbol_lookup_failure(&HereValue::NotAllowed, e, &mut undefined_symbols)?;
+                translate_symbol_lookup_failure(
+                    body,
+                    &HereValue::NotAllowed,
+                    e,
+                    &mut undefined_symbols,
+                )?;
             }
         }
     }
@@ -1125,16 +1133,19 @@ impl LocatedBlock {
                     words.push(word);
                 }
                 Err(e) => {
-                    translate_symbol_lookup_failure(&here, e, &mut undefined_symbols)?;
+                    translate_symbol_lookup_failure(body, &here, e, &mut undefined_symbols)?;
                 }
             }
         }
-        if let Some((span, name)) = undefined_symbols.first() {
+        if !undefined_symbols.is_empty() {
             return Err(AssemblerFailure::BadProgram(
-                ProgramError::UnexpectedlyUndefinedSymbol {
-                    name: name.clone(),
-                    span: *span,
-                },
+                undefined_symbols
+                    .into_iter()
+                    .map(|(span, name)| {
+                        let e = ProgramError::UnexpectedlyUndefinedSymbol { name, span };
+                        (body, e).into()
+                    })
+                    .collect(),
             ));
         }
         Ok(words)

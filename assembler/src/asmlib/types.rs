@@ -8,9 +8,13 @@ use super::span::Span;
 use super::symbol::SymbolName;
 use base::prelude::{Address, Unsigned18Bit};
 
+pub(crate) trait Spanned {
+    fn span(&self) -> Span;
+}
+
 /// LineNumber values are usually derived from
 /// LocatedSpan::line_location() which returns a u32.
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct LineAndColumn {
     line: u32,
     column: u32,
@@ -50,6 +54,54 @@ impl From<(&str, &Span)> for LineAndColumn {
             line,
             column,
         }
+    }
+}
+
+pub trait Located {
+    fn location(&self) -> LineAndColumn;
+}
+
+#[derive(Debug, PartialEq, Eq, Hash)]
+pub struct WithLocation<T> {
+    pub(crate) inner: T,
+    pub(crate) location: LineAndColumn,
+}
+
+impl<T> Located for WithLocation<T> {
+    fn location(&self) -> LineAndColumn {
+        self.location.clone()
+    }
+}
+
+impl<T: Spanned> From<(&str, T)> for WithLocation<T> {
+    fn from((body, item): (&str, T)) -> WithLocation<T> {
+        let span: Span = item.span();
+        let location = LineAndColumn::from((body, &span));
+        WithLocation {
+            inner: item,
+            location,
+        }
+    }
+}
+
+impl<T: Located> From<T> for WithLocation<T> {
+    fn from(inner: T) -> WithLocation<T> {
+        WithLocation {
+            location: inner.location().clone(),
+            inner,
+        }
+    }
+}
+
+impl<T> WithLocation<T> {
+    pub fn location(&self) -> &LineAndColumn {
+        &self.location
+    }
+}
+
+impl<T: Display> Display for WithLocation<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", &self.location, &self.inner)
     }
 }
 
@@ -160,6 +212,17 @@ pub enum ProgramError {
         msg: String,
         span: Span,
     },
+}
+
+impl Spanned for ProgramError {
+    fn span(&self) -> Span {
+        use ProgramError::*;
+        match self {
+            InconsistentOriginDefinitions { span, .. }
+            | UnexpectedlyUndefinedSymbol { span, .. }
+            | SyntaxError { span, .. } => *span,
+        }
+    }
 }
 
 impl PartialEq<ProgramError> for ProgramError {
@@ -319,7 +382,7 @@ pub enum AssemblerFailure {
         msg: String,
     },
     Io(IoFailed),
-    BadProgram(ProgramError),
+    BadProgram(Vec<WithLocation<ProgramError>>),
     RcBlockTooLong {
         rc_word_source: RcWordSource,
         rc_word_location: Option<LineAndColumn>,
@@ -372,7 +435,12 @@ fn write_os_string(f: &mut Formatter<'_>, s: &OsStr) -> Result<(), fmt::Error> {
 impl Display for AssemblerFailure {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         match self {
-            AssemblerFailure::BadProgram(e) => write!(f, "error in user program: {e}"),
+            AssemblerFailure::BadProgram(errors) => {
+                for e in errors.iter() {
+                    write!(f, "error in user program: {e}")?;
+                }
+                Ok(())
+            }
             AssemblerFailure::RcBlockTooLong {
                 rc_word_source,
                 rc_word_location,

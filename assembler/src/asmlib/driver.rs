@@ -59,10 +59,15 @@ impl OutputOptions {
 }
 
 impl SourceFile {
-    fn into_directive(self, symtab: &mut SymbolTable) -> Result<Directive, AssemblerFailure> {
+    fn into_directive(
+        self,
+        source_file_body: &str,
+        symtab: &mut SymbolTable,
+    ) -> Result<Directive, AssemblerFailure> {
         type MemoryMap = BTreeMap<BlockIdentifier, (Option<Origin>, LocatedBlock)>;
 
         fn assign_block_positions(
+            source_file_body: &str,
             blocks: BTreeMap<BlockIdentifier, Block>,
             symtab: &mut SymbolTable,
         ) -> Result<MemoryMap, AssemblerFailure> {
@@ -90,11 +95,14 @@ impl SourceFile {
                             SymbolDefinition::Origin(address),
                         ) {
                             // Inconsistent definition.
-                            return Err(inconsistent_origin_definition(
-                                *span,
-                                symbol_name.clone(),
-                                e,
-                            ));
+                            return Err(AssemblerFailure::BadProgram(vec![
+                                inconsistent_origin_definition(
+                                    source_file_body,
+                                    *span,
+                                    symbol_name.clone(),
+                                    e,
+                                ),
+                            ]));
                         }
                     }
                 }
@@ -157,7 +165,14 @@ impl SourceFile {
                             name.clone(),
                             SymbolDefinition::Origin(block_default_location),
                         ) {
-                            return Err(inconsistent_origin_definition(*span, name.clone(), e));
+                            return Err(AssemblerFailure::BadProgram(vec![
+                                inconsistent_origin_definition(
+                                    source_file_body,
+                                    *span,
+                                    name.clone(),
+                                    e,
+                                ),
+                            ]));
                         }
                         Some(block_default_location)
                     } else {
@@ -220,7 +235,7 @@ impl SourceFile {
         // existing program be cleared?  Should the symbol
         // table be cleared?
         let directive: Directive = Directive::new(
-            assign_block_positions(output_blocks, symtab)?,
+            assign_block_positions(source_file_body, output_blocks, symtab)?,
             equalities,
             entry_point,
         );
@@ -407,7 +422,7 @@ fn assemble_pass2(
         }
     };
 
-    let directive = source_file.into_directive(&mut symtab)?;
+    let directive = source_file.into_directive(source_file_body, &mut symtab)?;
     if let Some(instruction_count) = directive
         .memory_map
         .values()
@@ -432,15 +447,20 @@ fn assemble_pass2(
 }
 
 fn inconsistent_origin_definition(
+    source_file_body: &str,
     span: Span,
     origin_name: SymbolName,
     e: BadSymbolDefinition,
-) -> AssemblerFailure {
-    AssemblerFailure::BadProgram(ProgramError::InconsistentOriginDefinitions {
-        origin_name,
-        span,
-        msg: e.to_string(),
-    })
+) -> WithLocation<ProgramError> {
+    (
+        source_file_body,
+        ProgramError::InconsistentOriginDefinitions {
+            origin_name,
+            span,
+            msg: e.to_string(),
+        },
+    )
+        .into()
 }
 
 struct NoRcBlock {}
@@ -621,21 +641,23 @@ fn cleanup_control_chars(input: String) -> String {
     output
 }
 
-fn fail_with_diagnostics(source_file_body: &str, errors: Vec<Rich<lexer::Token>>) -> ProgramError {
-    match errors.as_slice() {
-        [first, ..] => {
-            let span = *first.span();
-            let location = LineAndColumn::from((source_file_body, &span));
-            ProgramError::SyntaxError {
+fn fail_with_diagnostics(
+    source_file_body: &str,
+    errors: Vec<Rich<lexer::Token>>,
+) -> Vec<WithLocation<ProgramError>> {
+    errors
+        .into_iter()
+        .map(|e| {
+            let span = e.span();
+            let location = LineAndColumn::from((source_file_body, span));
+            let e = ProgramError::SyntaxError {
                 location,
-                span,
-                msg: cleanup_control_chars(first.to_string()),
-            }
-        }
-        [] => {
-            unreachable!("should not be called if errors is empty")
-        }
-    }
+                span: *span,
+                msg: cleanup_control_chars(e.to_string()),
+            };
+            (source_file_body, e).into()
+        })
+        .collect()
 }
 
 pub(crate) fn assemble_source(

@@ -796,13 +796,22 @@ fn test_undefined_symbol_in_calculation() {
 #[test]
 fn test_symbol_definition_loop_detection() {
     use super::super::types::AssemblerFailure;
-    use super::super::types::ProgramError;
+    use super::super::types::{ProgramError, WithLocation};
     let input = concat!("A = B\n", "B = A\n", "A\n",);
     match assemble_source(input, Default::default()) {
-        Err(AssemblerFailure::BadProgram(ProgramError::UnexpectedlyUndefinedSymbol {
-            name: SymbolName { canonical },
-            span: _,
-        })) if canonical.as_str() == "A" || canonical.as_str() == "B" => (),
+        Err(AssemblerFailure::BadProgram(errors)) => match errors.as_slice() {
+            [WithLocation {
+                location: _,
+                inner:
+                    ProgramError::UnexpectedlyUndefinedSymbol {
+                        name: SymbolName { canonical },
+                        span: _,
+                    },
+            }] if canonical.as_str() == "A" || canonical.as_str() == "B" => (),
+            otherwise => {
+                panic!("expected an error from the assembler, but not : {otherwise:?}");
+            }
+        },
         Err(e) => {
             panic!("expected an error from the assembler, but not this one: {e:?}");
         }
