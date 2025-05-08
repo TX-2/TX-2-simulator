@@ -504,17 +504,17 @@ where
         .then(
             (tagged_instruction().then_ignore(end_of_line()))
                 .repeated()
-                .collect::<Vec<_>>()
+                .collect()
                 .labelled("macro body"),
         )
         .then_ignore(named_metacommand(Metacommand::EndMacroDefinition))
         // We don't parse end-of-line here because all metacommands are supposed
         // to be followed by end-of-line.
-        .map_with(|((name, args), instructions), extra| {
+        .map_with(|((name, args), body), extra| {
             let definition = MacroDefinition {
                 name,
                 params: args,
-                body: instructions.into(),
+                body,
                 span: extra.span(),
             };
             extra.state().define_macro(definition.clone());

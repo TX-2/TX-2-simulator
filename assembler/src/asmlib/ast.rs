@@ -1115,6 +1115,16 @@ impl Spanned for TaggedProgramInstruction {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct InstructionSequence(Vec<TaggedProgramInstruction>);
 
+impl chumsky::container::Container<TaggedProgramInstruction> for InstructionSequence {
+    fn push(&mut self, item: TaggedProgramInstruction) {
+        self.0.push(item)
+    }
+
+    fn with_capacity(n: usize) -> Self {
+        InstructionSequence(Vec::with_capacity(n))
+    }
+}
+
 impl From<Vec<TaggedProgramInstruction>> for InstructionSequence {
     fn from(v: Vec<TaggedProgramInstruction>) -> Self {
         InstructionSequence(v)
