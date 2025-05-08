@@ -1073,9 +1073,30 @@ impl LocatedBlock {
         body: &str,
         listing: &mut Listing,
     ) -> Result<Vec<Unsigned36Bit>, AssemblerFailure> {
+        self.statements.build_binary_block(
+            location,
+            symtab,
+            rc_updater,
+            final_symbols,
+            body,
+            listing,
+        )
+    }
+}
+
+impl InstructionSequence {
+    pub(super) fn build_binary_block<R: RcUpdater>(
+        &self,
+        location: Address,
+        symtab: &mut SymbolTable,
+        rc_updater: &mut R,
+        final_symbols: &mut FinalSymbolTable,
+        body: &str,
+        listing: &mut Listing,
+    ) -> Result<Vec<Unsigned36Bit>, AssemblerFailure> {
         let mut undefined_symbols: Vec<(Span, SymbolName)> = Vec::new();
         let mut words: Vec<Unsigned36Bit> = Vec::with_capacity(self.emitted_word_count().into());
-        for (offset, instruction) in self.statements.iter().enumerate() {
+        for (offset, instruction) in self.iter().enumerate() {
             let offset: Unsigned18Bit = Unsigned18Bit::try_from(offset)
                 .expect("assembled code block should fit within physical memory");
             let address: Address = location.index_by(offset);
@@ -1197,10 +1218,7 @@ impl LocatedBlock {
         symtab: &mut SymbolTable,
         rc_allocator: &mut R,
     ) -> Result<(), RcWordAllocationFailure> {
-        for ref mut statement in self.statements.iter_mut() {
-            statement.assign_rc_words(symtab, rc_allocator)?;
-        }
-        Ok(())
+        self.statements.assign_rc_words(symtab, rc_allocator)
     }
 }
 

@@ -14,7 +14,7 @@ use super::lexer::Token;
 use super::span::*;
 use super::state::NumeralMode;
 use super::symbol::{SymbolContext, SymbolName};
-use super::symtab::SymbolDefinition;
+use super::symtab::{SymbolDefinition, SymbolTable};
 use super::types::*;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -1095,7 +1095,8 @@ impl TaggedProgramInstruction {
         }
     }
 
-    fn emitted_instruction_count(&self) -> Unsigned18Bit {
+    #[inline(always)]
+    fn emitted_word_count(&self) -> Unsigned18Bit {
         Unsigned18Bit::ONE
     }
 }
@@ -1130,12 +1131,8 @@ impl FromIterator<TaggedProgramInstruction> for InstructionSequence {
 }
 
 impl InstructionSequence {
-    pub(crate) fn iter(&self) -> impl Iterator<Item = &TaggedProgramInstruction> {
+    pub(super) fn iter(&self) -> impl Iterator<Item = &TaggedProgramInstruction> {
         self.0.iter()
-    }
-
-    pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = &mut TaggedProgramInstruction> {
-        self.0.iter_mut()
     }
 
     pub(crate) fn first(&self) -> Option<&TaggedProgramInstruction> {
@@ -1145,6 +1142,34 @@ impl InstructionSequence {
     #[cfg(test)]
     pub(crate) fn as_slice(&self) -> &[TaggedProgramInstruction] {
         self.0.as_slice()
+    }
+
+    pub(super) fn assign_rc_words<R: RcAllocator>(
+        &mut self,
+        symtab: &mut SymbolTable,
+        rc_allocator: &mut R,
+    ) -> Result<(), RcWordAllocationFailure> {
+        for ref mut statement in self.0.iter_mut() {
+            statement.assign_rc_words(symtab, rc_allocator)?;
+        }
+        Ok(())
+    }
+
+    fn symbol_uses(
+        &self,
+        block_id: BlockIdentifier,
+    ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
+        let mut result: Vec<(SymbolName, Span, SymbolUse)> = Vec::new();
+        for (offset, statement) in self.0.iter().enumerate() {
+            let off: Unsigned18Bit = Unsigned18Bit::try_from(offset)
+                .expect("block should not be larger than the TX-2's memory");
+            result.extend(statement.symbol_uses(block_id, off));
+        }
+        result.into_iter()
+    }
+
+    pub(crate) fn emitted_word_count(&self) -> Unsigned18Bit {
+        self.0.iter().map(|st| st.emitted_word_count()).sum()
     }
 }
 
@@ -1308,19 +1333,12 @@ impl ManuscriptBlock {
         if let Some(origin) = self.origin.as_ref() {
             result.extend(origin.symbol_uses(block_id));
         }
-        for (offset, statement) in self.statements.iter().enumerate() {
-            let off: Unsigned18Bit = Unsigned18Bit::try_from(offset)
-                .expect("block should not be larger than the TX-2's memory");
-            result.extend(statement.symbol_uses(block_id, off));
-        }
+        result.extend(self.statements.symbol_uses(block_id));
         result.into_iter()
     }
 
     pub(crate) fn instruction_count(&self) -> Unsigned18Bit {
-        self.statements
-            .iter()
-            .map(|st| st.emitted_instruction_count())
-            .sum()
+        self.statements.emitted_word_count()
     }
 
     pub(crate) fn origin_span(&self) -> Span {
@@ -1386,10 +1404,7 @@ pub(crate) struct LocatedBlock {
 
 impl LocatedBlock {
     pub(crate) fn emitted_word_count(&self) -> Unsigned18Bit {
-        self.statements
-            .iter()
-            .map(|stmt| stmt.emitted_instruction_count())
-            .sum()
+        self.statements.emitted_word_count()
     }
 
     pub(crate) fn following_addr(&self) -> Address {
