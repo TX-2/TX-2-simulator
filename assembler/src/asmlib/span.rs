@@ -3,6 +3,10 @@ use std::ops::Range;
 
 pub(crate) type Span = SimpleSpan;
 
+pub(crate) trait Spanned {
+    fn span(&self) -> Span;
+}
+
 pub(crate) fn span(range: Range<usize>) -> Span {
     Span::from(range)
 }

@@ -15,7 +15,7 @@ use super::eval::{
 use super::span::*;
 use super::symbol::{SymbolContext, SymbolName};
 use super::types::{
-    offset_from_origin, BlockIdentifier, MachineLimitExceededFailure, RcWordSource, Spanned,
+    offset_from_origin, BlockIdentifier, MachineLimitExceededFailure, RcWordSource,
 };
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -78,16 +78,22 @@ pub(crate) struct LookupOperation {
     deps_in_order: Vec<SymbolName>,
 }
 
-impl Evaluate for (&SymbolName, &SymbolDefinition) {
+impl Spanned for (&Span, &SymbolName, &SymbolDefinition) {
+    fn span(&self) -> Span {
+        *self.0
+    }
+}
+
+impl Evaluate for (&Span, &SymbolName, &SymbolDefinition) {
     fn evaluate<R: RcUpdater>(
         &self,
-        span: Span,
+        _: Span,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
         rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-        let (name, def): (&SymbolName, &SymbolDefinition) = *self;
+        let (span, name, def): (&Span, &SymbolName, &SymbolDefinition) = *self;
         match def {
             SymbolDefinition::DefaultAssigned(value, _) => Ok(*value),
             SymbolDefinition::Origin(addr) => Ok((*addr).into()),
@@ -113,7 +119,7 @@ impl Evaluate for (&SymbolName, &SymbolDefinition) {
                 expression.evaluate(expression.span(), target_address, symtab, rc_updater, op)
             }
             SymbolDefinition::Undefined(context_union) => Err(SymbolLookupFailure {
-                target: LookupTarget::Symbol(name.to_owned(), span),
+                target: LookupTarget::Symbol(name.to_owned(), *span),
                 kind: SymbolLookupFailureKind::Missing {
                     uses: context_union.clone(),
                 },
@@ -131,7 +137,7 @@ fn final_lookup_helper_body<R: RcUpdater>(
     op: &mut LookupOperation,
 ) -> Result<SymbolValue, SymbolLookupFailure> {
     if let Some(def) = symtab.get_clone(name) {
-        let what = (name, &def);
+        let what = (&span, name, &def);
         match what
             .evaluate(span, target_address, symtab, rc_updater, op)
             .map(SymbolValue::Final)

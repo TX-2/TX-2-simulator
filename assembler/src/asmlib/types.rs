@@ -4,13 +4,9 @@ use std::fmt::{self, Display, Formatter};
 use std::io::Error as IoError;
 use std::path::PathBuf;
 
-use super::span::Span;
+use super::span::{Span, Spanned};
 use super::symbol::SymbolName;
 use base::prelude::{Address, Unsigned18Bit};
-
-pub(crate) trait Spanned {
-    fn span(&self) -> Span;
-}
 
 /// LineNumber values are usually derived from
 /// LocatedSpan::line_location() which returns a u32.

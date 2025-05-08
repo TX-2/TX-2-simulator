@@ -2054,7 +2054,7 @@ mod comma_tests {
         CommaDelimitedFragment, Commas, CommasOrInstruction, FragmentWithHold, HoldBit,
         InstructionFragment,
     };
-    use super::super::super::span::*;
+    use super::super::super::span::{span, Span, Spanned};
     use super::super::instructions_with_comma_counts as parent_instructions_with_comma_counts;
     use std::fmt::Formatter;
 

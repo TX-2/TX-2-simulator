@@ -391,6 +391,7 @@ pub(crate) struct RegistersContaining(Vec<RegisterContaining>);
 
 impl RegistersContaining {
     pub(crate) fn from_words(words: Vec<RegisterContaining>) -> RegistersContaining {
+        assert!(!words.is_empty());
         Self(words)
     }
 
@@ -413,6 +414,19 @@ impl RegistersContaining {
     }
 }
 
+impl Spanned for RegistersContaining {
+    fn span(&self) -> Span {
+        use chumsky::span::Span;
+        let mut it = self.0.iter();
+        match it.next() {
+            Some(rc) => it.fold(rc.span(), |acc, rc| acc.union(rc.span())),
+            None => {
+                unreachable!("invariant broken: RegistersContaining contains no RegisterContaining instances")
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum RegisterContaining {
     Unallocated(Box<TaggedProgramInstruction>),
@@ -422,6 +436,14 @@ pub(crate) enum RegisterContaining {
 impl From<TaggedProgramInstruction> for RegisterContaining {
     fn from(inst: TaggedProgramInstruction) -> Self {
         RegisterContaining::Unallocated(Box::new(inst))
+    }
+}
+
+impl Spanned for RegisterContaining {
+    fn span(&self) -> Span {
+        match self {
+            RegisterContaining::Unallocated(b) | RegisterContaining::Allocated(_, b) => b.span(),
+        }
     }
 }
 
@@ -658,15 +680,12 @@ pub(crate) enum InstructionFragment {
     Null,
 }
 
-impl InstructionFragment {
-    #[cfg(test)]
-    pub(super) fn span(&self) -> Option<Span> {
+impl Spanned for InstructionFragment {
+    fn span(&self) -> Span {
         match self {
-            InstructionFragment::Arithmetic(arithmetic_expression) => {
-                Some(arithmetic_expression.span())
-            }
-            InstructionFragment::DeferredAddressing(span) => Some(*span),
-            InstructionFragment::Config(config_value) => Some(config_value.span()),
+            InstructionFragment::Arithmetic(arithmetic_expression) => arithmetic_expression.span(),
+            InstructionFragment::DeferredAddressing(span) => *span,
+            InstructionFragment::Config(config_value) => config_value.span(),
             InstructionFragment::PipeConstruct {
                 index,
                 rc_word_span,
@@ -674,12 +693,16 @@ impl InstructionFragment {
             } => {
                 let start = index.span.start;
                 let end = rc_word_span.end;
-                Some(span(start..end))
+                span(start..end)
             }
-            InstructionFragment::Null => None,
+            InstructionFragment::Null => {
+                todo!("InstructionFragment::Null has no span")
+            }
         }
     }
+}
 
+impl InstructionFragment {
     fn symbol_uses(
         &self,
         block_id: BlockIdentifier,

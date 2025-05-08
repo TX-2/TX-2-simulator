@@ -14,7 +14,6 @@ use super::span::*;
 use super::symbol::SymbolName;
 use super::types::{
     AssemblerFailure, BlockIdentifier, MachineLimitExceededFailure, ProgramError, RcWordSource,
-    Spanned,
 };
 use crate::symbol::SymbolContext;
 use crate::symtab::{
@@ -181,7 +180,7 @@ impl HereValue {
     }
 }
 
-pub(super) trait Evaluate {
+pub(super) trait Evaluate: Spanned {
     // By separating the RcUpdater and RcAllocator traits we ensure
     // that evaluation cannot allocate more RC words.
     fn evaluate<R: RcUpdater>(
@@ -544,8 +543,9 @@ impl Evaluate for SymbolOrLiteral {
                 literal_value.evaluate(span, target_address, symtab, rc_updater, op)
             }
             SymbolOrLiteral::Here(script, span) => target_address
-                .evaluate(*span, target_address, symtab, rc_updater, op)
-                .map(|value| value.shl(script.shift())),
+                .get_address(span)
+                .map(|addr: Address| Unsigned36Bit::from(addr))
+                .map(|addr_value: Unsigned36Bit| addr_value.shl(script.shift())),
         }
     }
 }
@@ -999,19 +999,6 @@ mod comma_tests {
             ),
             u36!(0o000_000_444_333)
         );
-    }
-}
-
-impl Evaluate for HereValue {
-    fn evaluate<R: RcUpdater>(
-        &self,
-        span: Span,
-        _: &HereValue,
-        _symtab: &mut SymbolTable,
-        _rc_updater: &mut R,
-        _op: &mut LookupOperation,
-    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-        self.get_address(&span).map(|addr| addr.into())
     }
 }
 

@@ -31,7 +31,6 @@ use super::lexer::{self};
 use super::span::*;
 use super::state::{NumeralMode, State};
 use super::symbol::SymbolName;
-use super::types::Spanned;
 use base::charset::Script;
 use base::prelude::*;
 use helpers::Sign;
