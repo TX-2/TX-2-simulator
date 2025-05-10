@@ -14,36 +14,42 @@ use super::lexer::Token;
 use super::span::*;
 use super::state::NumeralMode;
 use super::symbol::{SymbolContext, SymbolName};
-use super::symtab::{SymbolDefinition, SymbolTable};
+use super::symtab::{BadSymbolDefinition, SymbolDefinition, SymbolTable};
 use super::types::*;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 enum SymbolUse {
     Reference(SymbolContext),
     Definition(SymbolDefinition),
-    LocalDefinition(SymbolDefinition),
     Origin(SymbolName, BlockIdentifier),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub(crate) struct RcWordAllocationFailure {
-    pub(crate) source: RcWordSource,
-    pub(crate) rc_block_len: usize,
-}
-
-impl RcWordAllocationFailure {
-    pub(crate) fn span(&self) -> Option<&Span> {
-        self.source.span()
-    }
+pub(crate) enum RcWordAllocationFailure {
+    RcBlockTooBig {
+        source: RcWordSource,
+        rc_block_len: usize,
+    },
+    InconsistentTag(BadSymbolDefinition),
 }
 
 impl Display for RcWordAllocationFailure {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "failed to allocate RC word for {}; RC block is already {} words long",
-            self.source, self.rc_block_len
-        )
+        match self {
+            RcWordAllocationFailure::RcBlockTooBig {
+                source,
+                rc_block_len,
+            } => {
+                write!(f, "failed to allocate RC word for {source}; RC block is already {rc_block_len} words long")
+            }
+            RcWordAllocationFailure::InconsistentTag(e) => {
+                let name = e.symbol();
+                write!(
+                    f,
+                    "failed to define tag {name} because it already had a previous definition: {e}"
+                )
+            }
+        }
     }
 }
 
@@ -460,11 +466,6 @@ impl RegisterContaining {
         block_id: BlockIdentifier,
         block_offset: Unsigned18Bit,
     ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> + use<'_> {
-        // Tags defined inside the RC-word are not counted as
-        // defined outside it.  But if we refer to a symbol
-        // inside the RC-word it counts as a reference for the
-        // purpose of determining which contexts it has been
-        // used in.
         let mut result = Vec::new();
         for symbol_use in self.instruction().symbol_uses(block_id, block_offset) {
             let (name, span, symbol_definition) = symbol_use;
@@ -472,11 +473,16 @@ impl RegisterContaining {
                 def @ SymbolUse::Reference(_) => {
                     result.push((name, span, def));
                 }
-                SymbolUse::Definition(tagdef @ SymbolDefinition::Tag { .. }) => {
-                    result.push((name, span, SymbolUse::LocalDefinition(tagdef)));
-                }
-                SymbolUse::LocalDefinition(_) => {
-                    panic!("found local definition inside RC-word, don't know how to handle this.");
+                SymbolUse::Definition(SymbolDefinition::Tag { .. }) => {
+                    // Here we have a tag definition inside an
+                    // RC-word.  Therefore the passed-in value of
+                    // `block_id` is wrong (it refers to the block
+                    // containing the RC-word, not to the RC-block)
+                    // and the offset is similarly wrong.
+                    //
+                    // Therefore we will process these uses of symbols
+                    // at the time we allocate addresses for RC-block
+                    // words.
                 }
                 SymbolUse::Origin(_name, _block) => {
                     unreachable!("Found origin {name} inside an RC-word; the parser should have rejected this.");
@@ -977,7 +983,7 @@ impl Spanned for UntaggedProgramInstruction {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct EqualityValue {
+pub(super) struct EqualityValue {
     pub(super) span: Span,
     pub(super) inner: UntaggedProgramInstruction,
 }
@@ -1213,7 +1219,7 @@ impl SourceFile {
         self.symbol_uses()
             .filter_map(|(name, span, sym_use)| match sym_use {
                 SymbolUse::Reference(context) => Some((name, span, context)),
-                SymbolUse::Definition(_) | SymbolUse::LocalDefinition(_) => None,
+                SymbolUse::Definition(_) => None,
                 // An origin specification is either a reference or a definition, depending on how it is used.
                 SymbolUse::Origin(name, block) => {
                     Some((name, span, SymbolContext::origin(block, span)))
@@ -1227,11 +1233,6 @@ impl SourceFile {
         self.symbol_uses()
             .filter_map(|(name, span, sym_use)| match sym_use {
                 SymbolUse::Reference(_context) => None,
-                SymbolUse::LocalDefinition(_) => {
-                    // This is a local definition, but we're only
-                    // looking for global definitions.
-                    None
-                }
                 SymbolUse::Definition(def) => Some((name, span, def)),
                 // An origin specification is either a reference or a definition, depending on how it is used.
                 SymbolUse::Origin(name, block) => Some((

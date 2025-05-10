@@ -531,10 +531,28 @@ fn assemble_pass3(
     )?;
 
     let convert_rc_failure = |e: RcWordAllocationFailure| -> AssemblerFailure {
-        let location: Option<LineAndColumn> = e.span().map(|sp| LineAndColumn::from((body, sp)));
-        AssemblerFailure::RcBlockTooLong {
-            rc_word_source: e.source,
-            rc_word_location: location,
+        match e {
+            RcWordAllocationFailure::RcBlockTooBig { source, .. } => {
+                let location: Option<LineAndColumn> =
+                    source.span().map(|sp| LineAndColumn::from((body, sp)));
+                AssemblerFailure::RcBlockTooLong {
+                    rc_word_source: source,
+                    rc_word_location: location,
+                }
+            }
+            RcWordAllocationFailure::InconsistentTag(
+                ref e @ BadSymbolDefinition::Incompatible(ref name, span, _, _),
+            ) => {
+                let location: LineAndColumn = LineAndColumn::from((body, &span));
+                AssemblerFailure::BadProgram(vec![WithLocation {
+                    location,
+                    inner: ProgramError::InconsistentTag {
+                        name: name.clone(),
+                        span,
+                        msg: e.to_string(),
+                    },
+                }])
+            }
         }
     };
 

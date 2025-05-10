@@ -570,11 +570,52 @@ fn test_here_in_nested_rc_word_careful() {
 
 #[test]
 fn tag_definition_in_rc_word() {
+    // Tag values in RC-words are not "local" to the RC-word.
+    //
+    // Tags defined in RC-words may not be used for M4's editing
+    // instuctions, but nevertheless they are not locally-scoped.
+    // This is demonstrated by the example in section 6-4.7 of the
+    // User's Handbook, which looks like this:
+    //
+    // ```
+    // ☛☛DEF TBS|α
+    //  α
+    //  α
+    //  α
+    //  α
+    //  α
+    // ☛☛EMD
+    // 100|
+    // USE->     LDA {TS->TBS|0}  ** 5 BLANK RC WORDS
+    //           LDA TOMM
+    //           STA TS+3
+    // ```
+    //
+    // You will see above that the definition of the tag `TS` is
+    // inside an RC-word, but _not_ inside a macro body.
+    //
+    // The example explains that the above code snippet expands to:
+    //
+    // ```
+    // 100|
+    // USE ->    LDA {TS-> TBS| 0}              |002400 000103|000100
+    //           LDA TOMM                       |002400 000110|   101
+    //           STA TS+3                       |003400 000106|   102
+    // TS ->     TBS 0
+    //           0                              |000000 000000|   103
+    //           0                              |000000 000000|   104
+    //           0                              |000000 000000|   105
+    //           0                              |000000 000000|   106
+    //           0                              |000000 000000|   107
+    // TOMM ->   0                              |000000 000000|000110
+    // ```
+    //
+    // We cannot yet use the above example as our test case as macro
+    // expansion is not yet supported.
     let input = concat!(
-        "100| T->6\n",  // address 100=6: T takes the value 100
-        "{T->T+200}\n", // address 101=104 (address of first RC-word)
-        "T\n",          // address 102=100 (global value of T)
-        "{T+400}\n"     // address 103=105 (address of second RC-word)
+        "100| {T->200}\n", // address 100=103 (address of the first RC-word)
+        "     T\n",        // address 101=103 (global value of T)
+        "     {T}\n"       // address 102=104 (address of second RC-word)
     );
 
     let program = assemble_source(input, Default::default()).expect("program is valid");
@@ -587,25 +628,17 @@ fn tag_definition_in_rc_word() {
                 BinaryChunk {
                     address: Address::from(u18!(0o100)),
                     words: vec![
-                        u36!(0o6),   // from "T->6".
-                        u36!(0o104), // address of first RC-word
-                        u36!(0o100), // from "T"
-                        u36!(0o105)  // address of second RC-word
+                        u36!(0o103), // From address of RC-word containing "T->200".
+                        u36!(0o103), // The value of T is global
+                        u36!(0o104), // from "{T}"
                     ]
                 },
                 BinaryChunk {
                     // This is the RC-block.
-                    address: Address::from(u18!(0o104)),
+                    address: Address::from(u18!(0o103)),
                     words: vec![
-                        // The first RC-word (at address 104) is
-                        // evaluated from T->T+200.  Here T takes the
-                        // value 104, and so its content is T+200=304.
-                        u36!(0o304),
-                        // The second RC word is at 105, and is
-                        // evaluated from T+400.  Here though there is
-                        // no tag definition for T, so we use the
-                        // global value of 100.  Hence T+400 is 500.
-                        u36!(0o500),
+                        u36!(0o200), // First RC-word (which also defines T)
+                        u36!(0o103), // Second RC-word contains the value of T.
                     ]
                 }
             ]

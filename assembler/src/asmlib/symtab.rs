@@ -7,7 +7,7 @@ use tracing::{event, Level};
 use base::prelude::*;
 use base::subword;
 
-use super::ast::{EqualityValue, Origin, RcAllocator, RcUpdater, RcWordAllocationFailure, Tag};
+use super::ast::{EqualityValue, Origin, RcAllocator, RcUpdater, RcWordAllocationFailure};
 use super::eval::{
     Evaluate, HereValue, LookupTarget, SymbolLookup, SymbolLookupFailure, SymbolLookupFailureKind,
     SymbolValue,
@@ -96,6 +96,7 @@ impl Evaluate for (&Span, &SymbolName, &SymbolDefinition) {
         match def {
             SymbolDefinition::DefaultAssigned(value, _) => Ok(*value),
             SymbolDefinition::Origin(addr) => Ok((*addr).into()),
+            SymbolDefinition::ResolvedTag(_span, address) => Ok(address.into()),
             SymbolDefinition::Tag {
                 block_id,
                 block_offset,
@@ -109,7 +110,6 @@ impl Evaluate for (&Span, &SymbolName, &SymbolDefinition) {
                     panic!("failed to finalise origin of {block_id}: {e}");
                 }
             },
-            SymbolDefinition::TagOverride(address) => Ok(address.into()),
             SymbolDefinition::Equality(expression) => {
                 // The target address does not matter below
                 // since assignments are not allowed to use
@@ -222,7 +222,7 @@ impl SymbolTable {
                 event!(Level::DEBUG, "skipping redefinition of symbol {name} with undefined value because it already has a definition, {}", existing.def);
                 Ok(())
             } else {
-                existing.def.override_with(new_definition)
+                existing.def.override_with(name, span, new_definition)
             }
         } else {
             self.definitions.insert(
@@ -305,9 +305,7 @@ impl SymbolTable {
                         }
                     }
                     Some(SymbolDefinition::Origin(addr)) => Ok(addr),
-                    Some(SymbolDefinition::TagOverride(_)) => {
-                        unreachable!("{symbol_name} was used as an origin for {block_id}, but its definition is a temporary tag override, which is not supposed to be in effect at the time we're computing the origins for blocks")
-                    }
+                    Some(SymbolDefinition::ResolvedTag(_span, addr)) => Ok(addr),
                     Some(SymbolDefinition::Tag { .. }) => {
                         // e.g.
                         //     FOO|FOO-> 1
@@ -460,52 +458,56 @@ impl SymbolTable {
         }
     }
 
-    pub(crate) fn evaluate_with_temporary_tag_overrides<E, R>(
-        &mut self,
-        tag_overrides: BTreeMap<&Tag, Address>,
-        item: &E,
-        target_address: &HereValue,
-        rc_allocator: &mut R,
-        op: &mut LookupOperation,
-    ) -> Result<Unsigned36Bit, SymbolLookupFailure>
-    where
-        E: Evaluate,
-        R: RcUpdater,
-    {
-        let temporarily_overridden = |symtab: &mut SymbolTable,
-                                      (Tag { name, span }, addr): (&Tag, Address)|
-         -> (SymbolName, Option<InternalSymbolDef>) {
-            let restore: Option<InternalSymbolDef> = symtab.definitions.insert(
-                name.clone(),
-                InternalSymbolDef {
-                    span: *span,
-                    def: SymbolDefinition::TagOverride(addr),
-                },
-            );
-            (name.clone(), restore)
-        };
-
-        let to_restore: Vec<(SymbolName, Option<InternalSymbolDef>)> = tag_overrides
-            .into_iter()
-            .map(|(tag, addr)| temporarily_overridden(self, (tag, addr)))
-            .collect();
-
-        // Important not to use '?' here as we need to restore
-        // the original definition.
-        let result = item.evaluate(target_address, self, rc_allocator, op);
-
-        for prior_definition in to_restore.into_iter() {
-            match prior_definition {
-                (name, None) => {
-                    self.definitions.remove(&name);
-                }
-                (name, Some(prior_definition)) => {
-                    self.definitions.insert(name.clone(), prior_definition);
-                }
-            }
-        }
-        result
-    }
+    // evaluate_with_temporary_tag_overrides is commented out because
+    // it is not required for RC-words, but it (or something similar)
+    // will be required for macro bodies.
+    //
+    //pub(crate) fn evaluate_with_temporary_tag_overrides<E, R>(
+    //    &mut self,
+    //    tag_overrides: BTreeMap<&Tag, Address>,
+    //    item: &E,
+    //    target_address: &HereValue,
+    //    rc_allocator: &mut R,
+    //    op: &mut LookupOperation,
+    //) -> Result<Unsigned36Bit, SymbolLookupFailure>
+    //where
+    //    E: Evaluate,
+    //    R: RcUpdater,
+    //{
+    //    let temporarily_overridden = |symtab: &mut SymbolTable,
+    //                                  (Tag { name, span }, addr): (&Tag, Address)|
+    //     -> (SymbolName, Option<InternalSymbolDef>) {
+    //        let restore: Option<InternalSymbolDef> = symtab.definitions.insert(
+    //            name.clone(),
+    //            InternalSymbolDef {
+    //                span: *span,
+    //                def: SymbolDefinition::TagOverride(addr),
+    //            },
+    //        );
+    //        (name.clone(), restore)
+    //    };
+    //
+    //    let to_restore: Vec<(SymbolName, Option<InternalSymbolDef>)> = tag_overrides
+    //        .into_iter()
+    //        .map(|(tag, addr)| temporarily_overridden(self, (tag, addr)))
+    //        .collect();
+    //
+    //    // Important not to use '?' here as we need to restore
+    //    // the original definition.
+    //    let result = item.evaluate(target_address, self, rc_allocator, op);
+    //
+    //    for prior_definition in to_restore.into_iter() {
+    //        match prior_definition {
+    //            (name, None) => {
+    //                self.definitions.remove(&name);
+    //            }
+    //            (name, Some(prior_definition)) => {
+    //                self.definitions.insert(name.clone(), prior_definition);
+    //            }
+    //        }
+    //    }
+    //    result
+    //}
 }
 
 impl SymbolLookup for SymbolTable {
@@ -617,7 +619,7 @@ pub(crate) enum SymbolDefinition {
         block_offset: Unsigned18Bit,
         span: Span,
     },
-    TagOverride(Address),
+    ResolvedTag(Span, Address),
     Origin(Address),
     Equality(EqualityValue),
     Undefined(SymbolContext),
@@ -628,7 +630,9 @@ impl Debug for SymbolDefinition {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             SymbolDefinition::Origin(address) => write!(f, "Origin({address:o})"),
-            SymbolDefinition::TagOverride(address) => write!(f, "TagOverride({address:o})"),
+            SymbolDefinition::ResolvedTag(span, addr) => {
+                write!(f, "ResolvedTag({span:?},{addr:?})")
+            }
             SymbolDefinition::Tag {
                 block_id,
                 block_offset,
@@ -656,7 +660,7 @@ impl Display for SymbolDefinition {
             SymbolDefinition::DefaultAssigned(value, _) => {
                 write!(f, "default-assigned as {value}")
             }
-            SymbolDefinition::Origin(addr) | SymbolDefinition::TagOverride(addr) => {
+            SymbolDefinition::Origin(addr) | SymbolDefinition::ResolvedTag(_, addr) => {
                 write!(f, "{addr:06o}")
             }
             SymbolDefinition::Tag {
@@ -680,14 +684,30 @@ impl Display for SymbolDefinition {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub(crate) enum BadSymbolDefinition {
-    Incompatible(SymbolDefinition, SymbolDefinition),
+    Incompatible(SymbolName, Span, SymbolDefinition, SymbolDefinition),
+}
+
+impl BadSymbolDefinition {
+    pub(crate) fn symbol(&self) -> &SymbolName {
+        match self {
+            BadSymbolDefinition::Incompatible(name, _, _, _) => name,
+        }
+    }
+}
+
+impl Spanned for BadSymbolDefinition {
+    fn span(&self) -> Span {
+        match self {
+            BadSymbolDefinition::Incompatible(_, span, _, _) => *span,
+        }
+    }
 }
 
 impl Display for BadSymbolDefinition {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            BadSymbolDefinition::Incompatible(previous, new) => {
-                write!(f, "it is not allowed to override symbol definition {previous} with a new definition {new}")
+            BadSymbolDefinition::Incompatible(name, _, previous, new) => {
+                write!(f, "it is not allowed to override symbol definition of {name} as {previous} with a new definition {new}")
             }
         }
     }
@@ -709,6 +729,8 @@ impl SymbolDefinition {
 
     pub(crate) fn override_with(
         &mut self,
+        name: SymbolName,
+        span: Span,
         update: SymbolDefinition,
     ) -> Result<(), BadSymbolDefinition> {
         match (self, update) {
@@ -726,7 +748,12 @@ impl SymbolDefinition {
                 if current == &new {
                     Ok(()) // nothing to do.
                 } else {
-                    Err(BadSymbolDefinition::Incompatible(current.clone(), new))
+                    Err(BadSymbolDefinition::Incompatible(
+                        name,
+                        span,
+                        current.clone(),
+                        new,
+                    ))
                 }
             }
         }

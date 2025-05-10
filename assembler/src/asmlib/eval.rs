@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::fmt::{self, Debug, Display, Formatter, Write};
 use std::ops::{Shl, Shr};
 
@@ -17,7 +16,8 @@ use super::types::{
 };
 use crate::symbol::SymbolContext;
 use crate::symtab::{
-    FinalSymbolDefinition, FinalSymbolTable, FinalSymbolType, LookupOperation, SymbolTable,
+    FinalSymbolDefinition, FinalSymbolTable, FinalSymbolType, LookupOperation, SymbolDefinition,
+    SymbolTable,
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -217,7 +217,7 @@ impl RcAllocator for RcBlock {
             self.words.push((source, value));
             Ok(addr)
         } else {
-            Err(RcWordAllocationFailure {
+            Err(RcWordAllocationFailure::RcBlockTooBig {
                 source,
                 rc_block_len: self.words.len(),
             })
@@ -1174,6 +1174,9 @@ impl Evaluate for RegistersContaining {
 impl Evaluate for RegisterContaining {
     fn evaluate<R: RcUpdater>(
         &self,
+        // We must not use the passed-in target address since inside
+        // an RC-word, `#` refers to the adddress of the RC-word, not
+        // the address of the instruction which refers to it.
         _target_address: &HereValue,
         symtab: &mut SymbolTable,
         rc_updater: &mut R,
@@ -1193,18 +1196,46 @@ impl Evaluate for RegisterContaining {
                 // during the evaluation process.
                 let here = HereValue::Address(*rc_word_addr);
 
-                // If inst has a tag, we temporarily override any
-                // global value for that tag with the address of
-                // this instruction.
-                let tag_overrides: BTreeMap<&Tag, Address> =
-                    inst.tags.iter().map(|t| (t, *rc_word_addr)).collect();
-                let value: Unsigned36Bit = symtab.evaluate_with_temporary_tag_overrides(
-                    tag_overrides,
-                    inst.as_ref(),
-                    &here,
-                    rc_updater,
-                    op,
-                )?;
+                // Tags defined in RC-words may not be used for M4's
+                // editing instuctions, but nevertheless they are not
+                // locally-scoped.  This is demonstrated by the
+                // example in section 6-4.7 of the User's Handbook,
+                // which looks like this:
+                //
+                // ```
+                // ☛☛DEF TBS|α
+                //  α
+                //  α
+                //  α
+                //  α
+                //  α
+                // ☛☛EMD
+                // 100|
+                // USE->     LDA {TS->TBS|0}  ** 5 BLANK RC WORDS
+                //           LDA TOMM
+                //           STA TS+3
+                // ```
+                //
+                // You will see above that the definition of the tag
+                // `TS` is inside an RC-word, but _not_ inside a macro
+                // body.
+                //
+                // The example explains that the above code snippet expands to:
+                //
+                // ```
+                // 100|
+                // USE ->    LDA {TS-> TBS| 0}              |002400 000103|000100
+                //           LDA TOMM                       |002400 000110|   101
+                //           STA TS+3                       |003400 000106|   102
+                // TS ->     TBS 0
+                //           0                              |000000 000000|   103
+                //           0                              |000000 000000|   104
+                //           0                              |000000 000000|   105
+                //           0                              |000000 000000|   106
+                //           0                              |000000 000000|   107
+                // TOMM ->   0                              |000000 000000|000110
+                // ```
+                let value: Unsigned36Bit = inst.evaluate(&here, symtab, rc_updater, op)?;
                 rc_updater.update(*rc_word_addr, value);
                 Ok(Unsigned36Bit::from(rc_word_addr))
             }
@@ -1291,6 +1322,15 @@ impl RegisterContaining {
         match self {
             RegisterContaining::Unallocated(mut tpibox) => {
                 let addr: Address = rc_allocator.allocate(source, Unsigned36Bit::ZERO)?;
+                for tag in tpibox.tags.iter() {
+                    if let Err(e) = symtab.define(
+                        tag.span,
+                        tag.name.clone(),
+                        SymbolDefinition::ResolvedTag(tag.span, addr),
+                    ) {
+                        return Err(RcWordAllocationFailure::InconsistentTag(e));
+                    }
+                }
                 tpibox.assign_rc_words(symtab, rc_allocator)?;
                 let tpi: Box<TaggedProgramInstruction> = tpibox;
                 Ok(RegisterContaining::Allocated(addr, tpi))

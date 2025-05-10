@@ -199,6 +199,11 @@ pub enum ProgramError {
         span: Span,
         msg: String,
     },
+    InconsistentTag {
+        name: SymbolName,
+        span: Span,
+        msg: String,
+    },
     UnexpectedlyUndefinedSymbol {
         name: SymbolName,
         span: Span,
@@ -213,7 +218,8 @@ impl Spanned for ProgramError {
     fn span(&self) -> Span {
         use ProgramError::*;
         match self {
-            InconsistentOriginDefinitions { span, .. }
+            InconsistentTag { span, .. }
+            | InconsistentOriginDefinitions { span, .. }
             | UnexpectedlyUndefinedSymbol { span, .. }
             | SyntaxError { span, .. } => *span,
         }
@@ -254,6 +260,9 @@ impl Display for ProgramError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         use ProgramError::*;
         match self {
+            InconsistentTag { name, span: _, msg } => {
+                write!(f, "inconsistent definitions for tag {name}: {msg}")
+            }
             InconsistentOriginDefinitions {
                 origin_name,
                 span: _,
