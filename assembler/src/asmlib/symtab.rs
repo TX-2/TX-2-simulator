@@ -96,12 +96,14 @@ impl Evaluate for (&Span, &SymbolName, &SymbolDefinition) {
         match def {
             SymbolDefinition::DefaultAssigned(value, _) => Ok(*value),
             SymbolDefinition::Origin(addr) => Ok((*addr).into()),
-            SymbolDefinition::ResolvedTag(_span, address) => Ok(address.into()),
-            SymbolDefinition::Tag {
+            SymbolDefinition::Tag(TagDefinition::Resolved { span: _, address }) => {
+                Ok(address.into())
+            }
+            SymbolDefinition::Tag(TagDefinition::Unresolved {
                 block_id,
                 block_offset,
                 span: _,
-            } => match symtab.finalise_origin(*block_id, rc_updater, Some(op)) {
+            }) => match symtab.finalise_origin(*block_id, rc_updater, Some(op)) {
                 Ok(address) => {
                     let computed_address: Address = address.index_by(*block_offset);
                     Ok(computed_address.into())
@@ -305,8 +307,8 @@ impl SymbolTable {
                         }
                     }
                     Some(SymbolDefinition::Origin(addr)) => Ok(addr),
-                    Some(SymbolDefinition::ResolvedTag(_span, addr)) => Ok(addr),
-                    Some(SymbolDefinition::Tag { .. }) => {
+                    Some(SymbolDefinition::Tag(TagDefinition::Resolved{span: _, address})) => Ok(address),
+                    Some(SymbolDefinition::Tag(TagDefinition::Unresolved { .. })) => {
                         // e.g.
                         //     FOO|FOO-> 1
                         // or
@@ -612,14 +614,22 @@ impl Display for FinalSymbolTable {
     }
 }
 
-#[derive(PartialEq, Eq, Clone)]
-pub(crate) enum SymbolDefinition {
-    Tag {
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub(crate) enum TagDefinition {
+    Unresolved {
         block_id: BlockIdentifier,
         block_offset: Unsigned18Bit,
         span: Span,
     },
-    ResolvedTag(Span, Address),
+    Resolved {
+        address: Address,
+        span: Span,
+    },
+}
+
+#[derive(PartialEq, Eq, Clone)]
+pub(crate) enum SymbolDefinition {
+    Tag(TagDefinition),
     Origin(Address),
     Equality(EqualityValue),
     Undefined(SymbolContext),
@@ -630,18 +640,8 @@ impl Debug for SymbolDefinition {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             SymbolDefinition::Origin(address) => write!(f, "Origin({address:o})"),
-            SymbolDefinition::ResolvedTag(span, addr) => {
-                write!(f, "ResolvedTag({span:?},{addr:?})")
-            }
-            SymbolDefinition::Tag {
-                block_id,
-                block_offset,
-                span: _,
-            } => {
-                write!(
-                    f,
-                    "Tag {{block_id:{block_id:?}, block_offset:{block_offset}}}"
-                )
+            SymbolDefinition::Tag(tagdef) => {
+                write!(f, "Tag({tagdef:?})")
             }
             SymbolDefinition::Equality(expr) => f.debug_tuple("Equality").field(expr).finish(),
             SymbolDefinition::DefaultAssigned(value, _) => {
@@ -660,14 +660,15 @@ impl Display for SymbolDefinition {
             SymbolDefinition::DefaultAssigned(value, _) => {
                 write!(f, "default-assigned as {value}")
             }
-            SymbolDefinition::Origin(addr) | SymbolDefinition::ResolvedTag(_, addr) => {
-                write!(f, "{addr:06o}")
+            SymbolDefinition::Origin(address)
+            | SymbolDefinition::Tag(TagDefinition::Resolved { address, .. }) => {
+                write!(f, "{address:06o}")
             }
-            SymbolDefinition::Tag {
+            SymbolDefinition::Tag(TagDefinition::Unresolved {
                 block_id,
                 block_offset,
                 span: _,
-            } => {
+            }) => {
                 write!(
                     f,
                     "tag at offset {block_offset} in {block_id} with unspecified address"

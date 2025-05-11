@@ -14,7 +14,7 @@ use super::lexer::Token;
 use super::span::*;
 use super::state::NumeralMode;
 use super::symbol::{SymbolContext, SymbolName};
-use super::symtab::{BadSymbolDefinition, SymbolDefinition, SymbolTable};
+use super::symtab::{BadSymbolDefinition, SymbolDefinition, SymbolTable, TagDefinition};
 use super::types::*;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -1019,11 +1019,11 @@ impl Tag {
         [(
             self.name.clone(),
             self.span,
-            SymbolUse::Definition(SymbolDefinition::Tag {
+            SymbolUse::Definition(SymbolDefinition::Tag(TagDefinition::Unresolved {
                 block_id,
                 block_offset,
                 span: self.span,
-            }),
+            })),
         )]
         .into_iter()
     }

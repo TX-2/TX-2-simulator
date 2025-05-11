@@ -17,7 +17,7 @@ use super::types::{
 use crate::symbol::SymbolContext;
 use crate::symtab::{
     FinalSymbolDefinition, FinalSymbolTable, FinalSymbolType, LookupOperation, SymbolDefinition,
-    SymbolTable,
+    SymbolTable, TagDefinition,
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -1321,19 +1321,22 @@ impl RegisterContaining {
     ) -> Result<RegisterContaining, RcWordAllocationFailure> {
         match self {
             RegisterContaining::Unallocated(mut tpibox) => {
-                let addr: Address = rc_allocator.allocate(source, Unsigned36Bit::ZERO)?;
+                let address: Address = rc_allocator.allocate(source, Unsigned36Bit::ZERO)?;
                 for tag in tpibox.tags.iter() {
                     if let Err(e) = symtab.define(
                         tag.span,
                         tag.name.clone(),
-                        SymbolDefinition::ResolvedTag(tag.span, addr),
+                        SymbolDefinition::Tag(TagDefinition::Resolved {
+                            span: tag.span,
+                            address,
+                        }),
                     ) {
                         return Err(RcWordAllocationFailure::InconsistentTag(e));
                     }
                 }
                 tpibox.assign_rc_words(symtab, rc_allocator)?;
                 let tpi: Box<TaggedProgramInstruction> = tpibox;
-                Ok(RegisterContaining::Allocated(addr, tpi))
+                Ok(RegisterContaining::Allocated(address, tpi))
             }
             other => Ok(other),
         }
