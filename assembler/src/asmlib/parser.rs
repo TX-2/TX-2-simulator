@@ -922,8 +922,6 @@ where
         |(tags, fragments): (Vec<Tag>, Vec<CommaDelimitedFragment>), extra| {
             let span: Span = extra.span();
             if let Some(t) = tags.first() {
-                dbg!(&span);
-                dbg!(&t.span);
                 assert_eq!(t.span.start, span.start);
             }
             TaggedProgramInstruction {

@@ -87,7 +87,7 @@ pub(crate) struct SymbolContext {
     configuration: bool,
     index: bool,
     address: bool,
-    origin_of_block: Option<BlockIdentifier>,
+    pub(super) origin_of_block: Option<BlockIdentifier>,
     uses: BTreeSet<OrderableSpan>, // Span does not implement Hash
 }
 

@@ -1401,13 +1401,6 @@ impl Directive {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Block {
-    pub(crate) origin: Option<Origin>,
-    pub(crate) location: Option<Address>,
-    pub(crate) statements: InstructionSequence,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct LocatedBlock {
     pub(crate) location: Address,
     pub(crate) statements: InstructionSequence,

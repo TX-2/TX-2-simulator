@@ -4,7 +4,7 @@ use std::ops::{Shl, Shr};
 use base::{
     charset::Script,
     prelude::{Address, IndexBy, Signed36Bit, Unsigned18Bit, Unsigned36Bit, DEFER_BIT},
-    u36,
+    subword, u36,
 };
 
 use super::ast::*;
@@ -12,12 +12,13 @@ use super::listing::{Listing, ListingLine};
 use super::span::*;
 use super::symbol::SymbolName;
 use super::types::{
-    AssemblerFailure, BlockIdentifier, MachineLimitExceededFailure, ProgramError, RcWordSource,
+    offset_from_origin, AssemblerFailure, BlockIdentifier, InconsistentOrigin, LineAndColumn,
+    MachineLimitExceededFailure, ProgramError, RcWordSource, WithLocation,
 };
 use crate::symbol::SymbolContext;
 use crate::symtab::{
-    FinalSymbolDefinition, FinalSymbolTable, FinalSymbolType, LookupOperation, SymbolDefinition,
-    SymbolTable, TagDefinition,
+    BlockPosition, FinalSymbolDefinition, FinalSymbolTable, FinalSymbolType, LookupOperation,
+    SymbolDefinition, SymbolTable, TagDefinition,
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -37,6 +38,16 @@ impl From<(SymbolName, Span)> for LookupTarget {
 impl From<(MemoryReference, Span)> for LookupTarget {
     fn from((r, span): (MemoryReference, Span)) -> LookupTarget {
         LookupTarget::MemRef(r, span)
+    }
+}
+
+impl Spanned for LookupTarget {
+    fn span(&self) -> Span {
+        match self {
+            LookupTarget::Symbol(_, span)
+            | LookupTarget::MemRef(_, span)
+            | LookupTarget::Hash(span) => *span,
+        }
     }
 }
 
@@ -79,17 +90,9 @@ pub(crate) enum SymbolValue {
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum SymbolLookupFailureKind {
-    InconsistentOrigins {
-        name: SymbolName,
-        span: Span,
-        msg: String,
-    },
-    Missing {
-        uses: SymbolContext,
-    },
-    Loop {
-        deps_in_order: Vec<SymbolName>,
-    },
+    InconsistentOrigins(InconsistentOrigin),
+    Missing { uses: SymbolContext },
+    Loop { deps_in_order: Vec<SymbolName> },
     MachineLimitExceeded(MachineLimitExceededFailure),
     HereIsNotAllowedHere,
 }
@@ -105,9 +108,7 @@ impl Display for SymbolLookupFailure {
         let desc = self.target.to_string();
         match self.kind() {
             SymbolLookupFailureKind::Missing { .. } => f.write_str("no definition found"),
-            SymbolLookupFailureKind::InconsistentOrigins { name, span: _, msg } => {
-                write!(f, "inconsistent definitions for origin {name}: {msg}")
-            }
+            SymbolLookupFailureKind::InconsistentOrigins(e) => write!(f, "{e}"),
             SymbolLookupFailureKind::Loop { deps_in_order } => {
                 let names: Vec<String> = deps_in_order.iter().map(|dep| dep.to_string()).collect();
                 write!(
@@ -140,6 +141,60 @@ impl From<(SymbolName, Span, SymbolLookupFailureKind)> for SymbolLookupFailure {
 impl SymbolLookupFailure {
     pub(crate) fn kind(&self) -> &SymbolLookupFailureKind {
         &self.kind
+    }
+
+    // TODO: this does much the same thing as
+    // translate_symbol_lookup_failure.  Eliminate one of these.
+    pub(crate) fn into_assembler_failure(self, source_file_body: &str) -> AssemblerFailure {
+        let span: Span = self.target.span();
+        let location: LineAndColumn = LineAndColumn::from((source_file_body, &span));
+        match self {
+            SymbolLookupFailure {
+                kind: SymbolLookupFailureKind::MachineLimitExceeded(mle),
+                ..
+            } => {
+                // We cannot use RcBlockTooLong because we don't have
+                // the correct RcWordSource value.
+                AssemblerFailure::MachineLimitExceeded(mle)
+            }
+            SymbolLookupFailure {
+                kind: SymbolLookupFailureKind::InconsistentOrigins(e),
+                ..
+            } => AssemblerFailure::BadProgram(vec![WithLocation {
+                location,
+                inner: ProgramError::InconsistentOriginDefinitions(e),
+            }]),
+            SymbolLookupFailure {
+                target: LookupTarget::Symbol(symbol_name, span),
+                kind: SymbolLookupFailureKind::Missing { .. } | SymbolLookupFailureKind::Loop { .. },
+            } => AssemblerFailure::BadProgram(vec![WithLocation {
+                location,
+                inner: ProgramError::UnexpectedlyUndefinedSymbol {
+                    name: symbol_name,
+                    span,
+                },
+            }]),
+            SymbolLookupFailure {
+                target,
+                kind: SymbolLookupFailureKind::Missing { .. } | SymbolLookupFailureKind::Loop { .. },
+            } => AssemblerFailure::InternalError(
+                format!("found evaluation loop while trying to resolve {target}, but representing this kind of error is not implemented"),
+            ),
+            SymbolLookupFailure {
+                target: LookupTarget::Hash(_),
+                ..
+            }
+            | SymbolLookupFailure {
+                kind: SymbolLookupFailureKind::HereIsNotAllowedHere,
+                ..
+            } => AssemblerFailure::BadProgram(vec![WithLocation {
+                location,
+                inner: ProgramError::SyntaxError {
+                    msg: self.to_string(),
+                    span,
+                },
+            }]),
+        }
     }
 }
 
@@ -981,6 +1036,9 @@ mod comma_tests {
     }
 }
 
+// TODO: this does much the same thing as
+// SymbolLookupFailure::to_assembler_failure().  Eliminate one of
+// these.
 fn translate_symbol_lookup_failure(
     source_file_body: &str,
     here: &HereValue,
@@ -1001,13 +1059,9 @@ fn translate_symbol_lookup_failure(
         HereIsNotAllowedHere => {
             unreachable!("should be able to use # where target_address={here:?}");
         }
-        InconsistentOrigins { name, span, msg } => Err(AssemblerFailure::BadProgram(vec![(
+        InconsistentOrigins(e) => Err(AssemblerFailure::BadProgram(vec![(
             source_file_body,
-            ProgramError::InconsistentOriginDefinitions {
-                origin_name: name,
-                span,
-                msg,
-            },
+            ProgramError::InconsistentOriginDefinitions(e),
         )
             .into()])),
         MachineLimitExceeded(e) => Err(AssemblerFailure::MachineLimitExceeded(e)),
@@ -1240,6 +1294,111 @@ impl Evaluate for RegisterContaining {
                 Ok(Unsigned36Bit::from(rc_word_addr))
             }
         }
+    }
+}
+
+impl Evaluate for Origin {
+    fn evaluate<R: RcUpdater>(
+        &self,
+        target_address: &HereValue,
+        symtab: &mut SymbolTable,
+        rc_updater: &mut R,
+        op: &mut LookupOperation,
+    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+        match self {
+            Origin::Literal(_span, address) => Ok(address.into()),
+            Origin::Symbolic(span, symbol_name) => symbol_name_lookup(
+                symbol_name,
+                Script::Normal,
+                *span,
+                target_address,
+                symtab,
+                rc_updater,
+                op,
+            ),
+        }
+    }
+}
+
+impl Spanned for (&BlockIdentifier, &BlockPosition) {
+    fn span(&self) -> Span {
+        self.1.span
+    }
+}
+
+impl Evaluate for (&BlockIdentifier, &BlockPosition) {
+    fn evaluate<R: RcUpdater>(
+        &self,
+        target_address: &HereValue,
+        symtab: &mut SymbolTable,
+        rc_updater: &mut R,
+        op: &mut LookupOperation,
+    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+        fn address_from_lower_half(x: Unsigned36Bit) -> Address {
+            subword::right_half(x).into()
+        }
+        let (block_id, block_position) = self;
+        let addr: Address = match block_position {
+            BlockPosition {
+                block_address: Some(address),
+                ..
+            } => Ok(*address),
+            BlockPosition {
+                block_address: None,
+                origin: Some(origin),
+                ..
+            } => origin
+                .evaluate(target_address, symtab, rc_updater, op)
+                .map(address_from_lower_half),
+            BlockPosition {
+                block_address: None,
+                origin: None,
+                span: block_span,
+                ..
+            } => {
+                match block_id.previous_block() {
+                    None => {
+                        // This is the first block.
+                        Ok(Origin::default_address())
+                    }
+                    Some(previous_block_id) => {
+                        match symtab.get_block_position(&previous_block_id).cloned() {
+                            Some(previous_block) => {
+                                let prev_addr_w: Unsigned36Bit = (
+                                    &previous_block_id,
+                                    &previous_block,
+                                )
+                                    .evaluate(target_address, symtab, rc_updater, op)?;
+                                let prev_addr: Address =
+                                    Address::from(subword::right_half(prev_addr_w));
+                                match offset_from_origin(&prev_addr, previous_block.block_size) {
+                                    Ok(addr) => Ok(addr),
+                                    Err(_) => Err(SymbolLookupFailure {
+                                        target: LookupTarget::MemRef(
+                                            MemoryReference {
+                                                block_id: **block_id,
+                                                block_offset: 0,
+                                            },
+                                            *block_span,
+                                        ),
+                                        kind: SymbolLookupFailureKind::MachineLimitExceeded(
+                                            MachineLimitExceededFailure::BlockTooLarge {
+                                                block_id: previous_block_id,
+                                                offset: previous_block.block_size.into(),
+                                            },
+                                        ),
+                                    }),
+                                }
+                            }
+                            None => {
+                                panic!("{previous_block_id} is missing from the block layout");
+                            }
+                        }
+                    }
+                }
+            }
+        }?;
+        Ok(Unsigned36Bit::from(addr))
     }
 }
 

@@ -3,7 +3,6 @@ mod output;
 #[cfg(test)]
 mod tests;
 
-use std::cmp::max;
 use std::collections::BTreeMap;
 use std::ffi::OsStr;
 use std::fs::OpenOptions;
@@ -15,19 +14,21 @@ use tracing::{event, span, Level};
 
 use super::ast::*;
 use super::eval::extract_final_equalities;
+use super::eval::Evaluate;
+use super::eval::HereValue;
 use super::eval::RcBlock;
 use super::lexer;
 use super::listing::*;
 use super::parser::parse_source_file;
 use super::span::*;
 use super::state::{NumeralMode, State};
-use super::symbol::SymbolName;
 use super::symtab::{
-    assign_default_rc_word_tags, BadSymbolDefinition, FinalSymbolDefinition, FinalSymbolTable,
-    FinalSymbolType, LookupOperation, SymbolDefinition, SymbolTable,
+    assign_default_rc_word_tags, BadSymbolDefinition, BlockPosition, FinalSymbolDefinition,
+    FinalSymbolTable, FinalSymbolType, LookupOperation, SymbolTable,
 };
 use super::types::*;
 use base::prelude::{Address, IndexBy, Unsigned18Bit, Unsigned36Bit};
+use base::subword;
 pub use output::write_user_program;
 
 #[cfg(test)]
@@ -64,141 +65,57 @@ impl SourceFile {
         source_file_body: &str,
         symtab: &mut SymbolTable,
     ) -> Result<Directive, AssemblerFailure> {
-        type MemoryMap = BTreeMap<BlockIdentifier, (Option<Origin>, LocatedBlock)>;
-
-        fn assign_block_positions(
-            source_file_body: &str,
-            blocks: BTreeMap<BlockIdentifier, Block>,
-            symtab: &mut SymbolTable,
-        ) -> Result<MemoryMap, AssemblerFailure> {
-            let mut no_rc_block = NoRcBlock {};
-            let mut memory_map: BTreeMap<BlockIdentifier, (Option<Origin>, LocatedBlock)> =
-                BTreeMap::new();
-
-            for (block_id, directive_block) in blocks.into_iter() {
-                let mut op = LookupOperation::default();
-                let address: Address =
-                    match symtab.finalise_origin(block_id, &mut no_rc_block, Some(&mut op)) {
-                        Ok(a) => a,
-                        Err(_) => {
-                            return Err(AssemblerFailure::InternalError(format!(
-                                "starting address for {block_id} was not calculated"
-                            )));
-                        }
-                    };
-
-                if let Some(Origin::Symbolic(span, symbol_name)) = directive_block.origin.as_ref() {
-                    if !symtab.is_defined(symbol_name) {
-                        if let Err(e) = symtab.define(
-                            *span,
-                            symbol_name.clone(),
-                            SymbolDefinition::Origin(address),
-                        ) {
-                            // Inconsistent definition.
-                            return Err(AssemblerFailure::BadProgram(vec![
-                                inconsistent_origin_definition(
-                                    source_file_body,
-                                    *span,
-                                    symbol_name.clone(),
-                                    e,
-                                ),
-                            ]));
-                        }
-                    }
-                }
-
-                memory_map.insert(
-                    block_id,
-                    (
-                        directive_block.origin.clone(),
-                        LocatedBlock {
-                            location: address,
-                            statements: directive_block.statements.clone(),
-                        },
-                    ),
-                );
-            }
-
-            Ok(memory_map)
-        }
-
         let SourceFile {
             punch,
             blocks: input_blocks,
             equalities,
             macros: _,
         } = self;
-        let mut output_blocks = BTreeMap::new();
-        let mut block_default_location: Address = Origin::default_address();
+        let mut output_blocks: BTreeMap<BlockIdentifier, (Option<Origin>, LocatedBlock)> =
+            BTreeMap::new();
+
+        let tmp_blocks: Vec<(BlockIdentifier, BlockPosition)> = symtab
+            .blocks_iter()
+            .map(|(block_identifier, block_position)| (*block_identifier, block_position.clone()))
+            .collect();
+        let mut block_locations: BTreeMap<BlockIdentifier, Address> = BTreeMap::new();
+        let mut no_rc_allocation = NoRcBlock {};
+        for (block_identifier, block_position) in tmp_blocks.into_iter() {
+            let mut op: LookupOperation = Default::default();
+            match (&block_identifier, &block_position).evaluate(
+                &HereValue::NotAllowed,
+                symtab,
+                &mut no_rc_allocation,
+                &mut op,
+            ) {
+                Ok(value) => {
+                    let address: Address = subword::right_half(value).into();
+                    block_locations.insert(block_identifier, address);
+                }
+                Err(e) => {
+                    return Err(e.into_assembler_failure(source_file_body));
+                }
+            }
+        }
 
         for (block_id, mblock) in input_blocks
             .iter()
             .enumerate()
             .map(|(id, b)| (BlockIdentifier::from(id), b))
         {
-            // We still include zero-word blocks in the directive output
-            // so that we don't change the block numbering.
-            let len = mblock.instruction_count();
-            let location: Option<Address> = match mblock.origin.as_ref() {
-                None => {
-                    event!(
-                    Level::DEBUG,
-                    "Locating directive {block_id} having {len} words at default origin {block_default_location:o}",
-                );
-                    Some(block_default_location)
-                }
-                Some(Origin::Literal(_, address)) => {
-                    event!(
-                        Level::DEBUG,
-                        "Locating directive {block_id} having {len} words at origin {address:o}",
-                    );
-                    Some(*address)
-                }
-                Some(Origin::Symbolic(span, name)) => {
-                    event!(
-                    Level::DEBUG,
-                    "Locating directive {block_id} having {len} words at symbolic location {name}, which we now known to be {block_default_location}",
-                );
-                    if !symtab.is_defined(name) {
-                        if let Err(e) = symtab.define(
-                            *span,
-                            name.clone(),
-                            SymbolDefinition::Origin(block_default_location),
-                        ) {
-                            return Err(AssemblerFailure::BadProgram(vec![
-                                inconsistent_origin_definition(
-                                    source_file_body,
-                                    *span,
-                                    name.clone(),
-                                    e,
-                                ),
-                            ]));
-                        }
-                        Some(block_default_location)
-                    } else {
-                        None
-                    }
-                }
-            };
+            let location: &Address = block_locations
+                .get(&block_id)
+                .expect("all block locations should have been determined");
             output_blocks.insert(
                 block_id,
-                Block {
-                    origin: mblock.origin.clone(),
-                    location,
-                    statements: mblock.statements.clone(),
-                },
+                (
+                    mblock.origin.clone(),
+                    LocatedBlock {
+                        location: *location,
+                        statements: mblock.statements.clone(),
+                    },
+                ),
             );
-            if let Some(loc) = location {
-                // Some programs could use equates or explicit origin
-                // specifications to generate blocks that overlap.  From
-                // my understanding of the User Handbook, such programs
-                // are not rejected.  The tape loader will happily load
-                // such programs.  But we don't have clear tests for such
-                // cases.  We can add these if we come across programs
-                // that seem to do this.
-                let block_end: Address = loc.index_by(len);
-                block_default_location = max(block_default_location, block_end);
-            }
         }
 
         let entry_point: Option<Address> = match punch {
@@ -234,11 +151,7 @@ impl SourceFile {
         // answers for right now.  For example, should the
         // existing program be cleared?  Should the symbol
         // table be cleared?
-        let directive: Directive = Directive::new(
-            assign_block_positions(source_file_body, output_blocks, symtab)?,
-            equalities,
-            entry_point,
-        );
+        let directive: Directive = Directive::new(output_blocks, equalities, entry_point);
         Ok(directive)
     }
 }
@@ -444,23 +357,6 @@ fn assemble_pass2(
         symbols: symtab,
         errors: Vec::new(),
     })
-}
-
-fn inconsistent_origin_definition(
-    source_file_body: &str,
-    span: Span,
-    origin_name: SymbolName,
-    e: BadSymbolDefinition,
-) -> WithLocation<ProgramError> {
-    (
-        source_file_body,
-        ProgramError::InconsistentOriginDefinitions {
-            origin_name,
-            span,
-            msg: e.to_string(),
-        },
-    )
-        .into()
 }
 
 struct NoRcBlock {}

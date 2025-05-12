@@ -192,13 +192,32 @@ impl Display for MachineLimitExceededFailure {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub struct InconsistentOrigin {
+    pub(crate) origin_name: SymbolName,
+    pub(crate) span: Span,
+    pub(crate) msg: String,
+}
+
+impl Display for InconsistentOrigin {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(
+            f,
+            "inconsistent definitions for origin {}: {}",
+            self.origin_name, self.msg,
+        )
+    }
+}
+
+impl Spanned for InconsistentOrigin {
+    fn span(&self) -> Span {
+        self.span
+    }
+}
+
 #[derive(Debug)]
 pub enum ProgramError {
-    InconsistentOriginDefinitions {
-        origin_name: SymbolName,
-        span: Span,
-        msg: String,
-    },
+    InconsistentOriginDefinitions(InconsistentOrigin),
     InconsistentTag {
         name: SymbolName,
         span: Span,
@@ -218,8 +237,8 @@ impl Spanned for ProgramError {
     fn span(&self) -> Span {
         use ProgramError::*;
         match self {
+            InconsistentOriginDefinitions(e) => e.span(),
             InconsistentTag { span, .. }
-            | InconsistentOriginDefinitions { span, .. }
             | UnexpectedlyUndefinedSymbol { span, .. }
             | SyntaxError { span, .. } => *span,
         }
@@ -230,18 +249,9 @@ impl PartialEq<ProgramError> for ProgramError {
     fn eq(&self, other: &ProgramError) -> bool {
         use ProgramError::*;
         match (self, other) {
-            (
-                InconsistentOriginDefinitions {
-                    origin_name: o1,
-                    span: p1,
-                    msg: m1,
-                },
-                InconsistentOriginDefinitions {
-                    origin_name: o2,
-                    span: p2,
-                    msg: m2,
-                },
-            ) if o1 == o2 && p1 == p2 && m1 == m2 => true,
+            (InconsistentOriginDefinitions(e1), InconsistentOriginDefinitions(e2)) if e1 == e2 => {
+                true
+            }
             (
                 UnexpectedlyUndefinedSymbol { name: n1, span: p1 },
                 UnexpectedlyUndefinedSymbol { name: n2, span: p2 },
@@ -263,16 +273,7 @@ impl Display for ProgramError {
             InconsistentTag { name, span: _, msg } => {
                 write!(f, "inconsistent definitions for tag {name}: {msg}")
             }
-            InconsistentOriginDefinitions {
-                origin_name,
-                span: _,
-                msg,
-            } => {
-                write!(
-                    f,
-                    "inconsistent definitions for origin {origin_name}: {msg}"
-                )
-            }
+            InconsistentOriginDefinitions(e) => write!(f, "{e}"),
             UnexpectedlyUndefinedSymbol { name, span: _ } => {
                 write!(f, "unexpected undefined symbol: {name}")
             }

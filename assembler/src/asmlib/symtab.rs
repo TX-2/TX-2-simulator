@@ -15,27 +15,9 @@ use super::eval::{
 use super::span::*;
 use super::symbol::{SymbolContext, SymbolName};
 use super::types::{
-    offset_from_origin, BlockIdentifier, MachineLimitExceededFailure, RcWordSource,
+    offset_from_origin, BlockIdentifier, InconsistentOrigin, MachineLimitExceededFailure,
+    RcWordSource,
 };
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub(crate) enum DefaultValueAssignmentError {
-    Inconsistency(String),
-    MachineLimitExceeded(MachineLimitExceededFailure),
-}
-
-impl Display for DefaultValueAssignmentError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        match self {
-            DefaultValueAssignmentError::Inconsistency(msg) => f.write_str(msg.as_str()),
-            DefaultValueAssignmentError::MachineLimitExceeded(mlef) => {
-                write!(f, "machine limit exceeded: {mlef}")
-            }
-        }
-    }
-}
-
-impl std::error::Error for DefaultValueAssignmentError {}
 
 #[derive(Debug, Clone)]
 pub(super) struct BlockPosition {
@@ -103,15 +85,34 @@ impl Evaluate for (&Span, &SymbolName, &SymbolDefinition) {
                 block_id,
                 block_offset,
                 span: _,
-            }) => match symtab.finalise_origin(*block_id, rc_updater, Some(op)) {
-                Ok(address) => {
-                    let computed_address: Address = address.index_by(*block_offset);
-                    Ok(computed_address.into())
+            }) => {
+                if let Some(block_position) = symtab.get_block_position(block_id).cloned() {
+                    let what: (&BlockIdentifier, &BlockPosition) = (block_id, &block_position);
+                    let block_origin: Address = subword::right_half(what.evaluate(
+                        target_address,
+                        symtab,
+                        rc_updater,
+                        op,
+                    )?)
+                    .into();
+                    match offset_from_origin(&block_origin, *block_offset) {
+                        Ok(computed_address) => Ok(computed_address.into()),
+                        Err(_overflow_error) => Err(SymbolLookupFailure {
+                            target: LookupTarget::Symbol(name.clone(), *span),
+                            kind: SymbolLookupFailureKind::MachineLimitExceeded(
+                                MachineLimitExceededFailure::BlockTooLarge {
+                                    block_id: *block_id,
+                                    offset: (*block_offset).into(),
+                                },
+                            ),
+                        }),
+                    }
+                } else {
+                    panic!(
+                        "Tag named {name} at {span:?} refers to unknown block {block_id}: {def:?}"
+                    );
                 }
-                Err(e) => {
-                    panic!("failed to finalise origin of {block_id}: {e}");
-                }
-            },
+            }
             SymbolDefinition::Equality(expression) => {
                 // The target address does not matter below
                 // since assignments are not allowed to use
@@ -139,11 +140,58 @@ fn final_lookup_helper_body<R: RcUpdater>(
 ) -> Result<SymbolValue, SymbolLookupFailure> {
     if let Some(def) = symtab.get_clone(name) {
         let what = (&span, name, &def);
-        match what
-            .evaluate(target_address, symtab, rc_updater, op)
-            .map(SymbolValue::Final)
-        {
-            Ok(value) => Ok(value),
+        match what.evaluate(target_address, symtab, rc_updater, op) {
+            Ok(value) => Ok(SymbolValue::Final(value)),
+            Err(SymbolLookupFailure {
+                target: _,
+                // This symbol was used as a block origin, but there
+                // is no definition for it.  So we position this block
+                // (and determine the value for this origin) by taking
+                // into account the position and length of the
+                // previous block.
+                kind:
+                    SymbolLookupFailureKind::Missing {
+                        uses:
+                            SymbolContext {
+                                origin_of_block: Some(block_identifier),
+                                ..
+                            },
+                    },
+            }) => {
+                if let Some(block_position) = symtab.blocks.get(&block_identifier).cloned() {
+                    // If we simply try to pass block_position to
+                    // evaluate() we will loop and diagnose this as an
+                    // undefined symbol.  While the symbol has no
+                    // definition via assignment, we can determine the
+                    // position of the block by appending it to the
+                    // previous block.  So we evaluate the block's
+                    // position as if it had no origin specification.
+                    let pos_with_unspecified_origin: BlockPosition = BlockPosition {
+                        origin: None,
+                        ..block_position
+                    };
+                    let what: (&BlockIdentifier, &BlockPosition) =
+                        (&block_identifier, &pos_with_unspecified_origin);
+                    match what.evaluate(target_address, symtab, rc_updater, op) {
+                        Ok(value) => {
+                            let address: Address = subword::right_half(value).into();
+                            match symtab.define(
+                                span,
+                                name.clone(),
+                                SymbolDefinition::Origin(address),
+                            ) {
+                                Ok(()) => Ok(SymbolValue::Final(value)),
+                                Err(e) => {
+                                    panic!("got a bad symbol definition error ({e}) on a previously undefined origin symbol, which should be impossible");
+                                }
+                            }
+                        }
+                        Err(e) => Err(e),
+                    }
+                } else {
+                    unreachable!("symbol {name} was used as an origin for block {block_identifier} but this is not a known block");
+                }
+            }
             Err(SymbolLookupFailure {
                 target: _,
                 kind:
@@ -209,6 +257,14 @@ impl SymbolTable {
         self.get(name).cloned()
     }
 
+    pub(crate) fn get_block_position(&self, block: &BlockIdentifier) -> Option<&BlockPosition> {
+        self.blocks.get(block)
+    }
+
+    pub(crate) fn blocks_iter(&self) -> impl Iterator<Item = (&BlockIdentifier, &BlockPosition)> {
+        self.blocks.iter()
+    }
+
     pub(crate) fn is_defined(&self, name: &SymbolName) -> bool {
         self.definitions.contains_key(name)
     }
@@ -255,151 +311,6 @@ impl SymbolTable {
             });
     }
 
-    pub(crate) fn finalise_origin<R: RcUpdater>(
-        &mut self,
-        block_id: BlockIdentifier,
-        rc_updater: &mut R,
-        maybe_op: Option<&mut LookupOperation>,
-    ) -> Result<Address, DefaultValueAssignmentError> {
-        let mut newdef: Option<(SymbolName, SymbolDefinition, Span)> = None;
-        match self
-            .blocks
-            .get(&block_id)
-            .expect("request to finalise origin of non-existent block")
-            .clone()
-        {
-            BlockPosition {
-                origin: _,
-                block_address: Some(address),
-                ..
-            }
-            | BlockPosition {
-                origin: Some(Origin::Literal(_, address)),
-                ..
-            } => Ok(address),
-            BlockPosition {
-                origin: None,
-                block_address: None,
-                ..
-            } => {
-                let mut new_op = LookupOperation::default();
-                let op: &mut LookupOperation = maybe_op.unwrap_or(&mut new_op);
-                self.assign_default_for_block(block_id, rc_updater, op)
-            }
-            BlockPosition {
-                origin: Some(Origin::Symbolic(span, symbol_name)),
-                block_address: None,
-                span: block_span,
-                ..
-            } => {
-                // The block hasn't yet been assigned an address, but it has a symbolic name.
-                // If the name has a definition, that's the address to use.  Otherwise, we
-                // assign an address and then update the symbol table.
-                match self.get_clone(&symbol_name) {
-                    Some(SymbolDefinition::Equality(rhs)) => {
-                        let mut new_op = LookupOperation::default();
-                        let op: &mut LookupOperation = maybe_op.unwrap_or(&mut new_op);
-                        match rhs.evaluate(&HereValue::NotAllowed, self, rc_updater, op) {
-                            Ok(value) => Ok(Address::from(subword::right_half(value))),
-                            Err(e) => {
-                                panic!("no code to handle symbol lookup failure in finalise_origin: {e}"); // TODO
-                            }
-                        }
-                    }
-                    Some(SymbolDefinition::Origin(addr)) => Ok(addr),
-                    Some(SymbolDefinition::Tag(TagDefinition::Resolved{span: _, address})) => Ok(address),
-                    Some(SymbolDefinition::Tag(TagDefinition::Unresolved { .. })) => {
-                        // e.g.
-                        //     FOO|FOO-> 1
-                        // or
-                        //     BAR-> 2
-                        //     BAR|  3
-                        //
-                        // The second case is certainly a
-                        // problem as it can give rise to a
-                        // single memory location having two
-                        // different contents (here, 2 or 3).
-                        //
-                        // TODO: handle this without a panic.
-                        panic!("origin of block {block_id} is defined as {symbol_name} but this is a tag, and that is not allowed");
-                    }
-                    Some(SymbolDefinition::DefaultAssigned(value, _)) => {
-                        Ok(Address::from(subword::right_half(value)))
-                    }
-                    None => {
-                        let context = SymbolContext::origin(block_id, span);
-                        let mut new_op = LookupOperation::default();
-                        let op: &mut LookupOperation = maybe_op.unwrap_or(&mut new_op);
-                        let addr = self.assign_default_for_block(block_id, rc_updater, op)?;
-                        newdef = Some((symbol_name.clone(), SymbolDefinition::DefaultAssigned(addr.into(), context), span));
-                        Ok(addr)
-                    }
-                    Some(SymbolDefinition::Undefined(context)) => {
-                        let mut new_op = LookupOperation::default();
-                        let op: &mut LookupOperation = maybe_op.unwrap_or(&mut new_op);
-                        let addr = self.assign_default_for_block(block_id, rc_updater, op)?;
-                        newdef = Some((symbol_name.clone(), SymbolDefinition::DefaultAssigned(addr.into(), context), block_span));
-                        Ok(addr)
-                    }
-                }
-            }
-        }.and_then(|addr| {
-            match self.blocks.get_mut(&block_id) {
-                Some(block_pos) => {
-                    block_pos.block_address = Some(addr);
-                    Ok(addr)
-                }
-                None => Err(DefaultValueAssignmentError::Inconsistency(
-                    format!("request to finalise origin of {block_id} but there is no such block"))),
-            }
-        }).inspect(|_a| {
-            if let Some((symbol_name, def, span)) = newdef {
-                self.definitions.insert(symbol_name, InternalSymbolDef {
-                    span,
-                    def,
-                });
-            }
-        })
-    }
-
-    fn assign_default_for_block<R: RcUpdater>(
-        &mut self,
-        block_id: BlockIdentifier,
-        rc_updater: &mut R,
-        op: &mut LookupOperation,
-    ) -> Result<Address, DefaultValueAssignmentError> {
-        let address = match block_id.previous_block() {
-            None => {
-                // This is the first block.
-                Ok(Origin::default_address())
-            }
-            Some(previous_block) => match self.blocks.get(&previous_block).cloned() {
-                Some(previous) => {
-                    let previous_block_origin =
-                        self.finalise_origin(previous_block, rc_updater, Some(op))?;
-                    match offset_from_origin(&previous_block_origin, previous.block_size) {
-                        Ok(addr) => Ok(addr),
-                        Err(_) => Err(DefaultValueAssignmentError::MachineLimitExceeded(
-                            MachineLimitExceededFailure::BlockTooLarge {
-                                block_id: previous_block,
-                                offset: previous.block_size.into(),
-                            },
-                        )),
-                    }
-                }
-                None => {
-                    panic!("{previous_block} is missing from the block layout");
-                }
-            },
-        }?;
-        if let Some(pos) = self.blocks.get_mut(&block_id) {
-            pos.block_address = Some(address);
-        } else {
-            panic!("{block_id} is missing from the block layout");
-        }
-        Ok(address)
-    }
-
     /// Assign a default value for a symbol, using the rules from
     /// section 6-2.2 of the Users Handbook ("SYMEX DEFINITON - TAGS -
     /// EQUALITIES - AUTOMATIC ASSIGNMENT").
@@ -421,17 +332,17 @@ impl SymbolTable {
         match contexts_used.bits() {
             [false, false, _, true] => {
                 // origin only or address and origin
-                todo!("assign origin value")
+                unreachable!("get_default_value should not be called for origin speicifations; attempted to assign default value for {name} (used in contexts: {contexts_used:?}")
             }
             [true, _, _, true] | [_, true, _, true] => {
                 // origin and either config or index
                 Err(SymbolLookupFailure {
                     target: get_target(),
-                    kind: SymbolLookupFailureKind::InconsistentOrigins {
-                        name: name.clone(),
+                    kind: SymbolLookupFailureKind::InconsistentOrigins(InconsistentOrigin {
+                        origin_name: name.clone(),
                         span: *span,
                         msg: format!("symbol {name} was used in both origin and other contexts"),
-                    },
+                    }),
                 })
             }
             [false, false, false, false] => unreachable!(), // apparently no usage at all
