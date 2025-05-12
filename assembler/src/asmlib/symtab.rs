@@ -114,10 +114,6 @@ impl Evaluate for (&Span, &SymbolName, &SymbolDefinition) {
                 }
             }
             SymbolDefinition::Equality(expression) => {
-                // The target address does not matter below
-                // since assignments are not allowed to use
-                // '#' on the right-hand-side of the
-                // assignment.
                 expression.evaluate(target_address, symtab, rc_updater, op)
             }
             SymbolDefinition::Undefined(context_union) => Err(SymbolLookupFailure {
