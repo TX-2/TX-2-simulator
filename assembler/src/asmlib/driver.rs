@@ -347,10 +347,6 @@ fn assemble_pass2(
             Level::INFO,
             "assembly pass 2 generated {instruction_count} instructions"
         );
-    } else {
-        return Err(AssemblerFailure::MachineLimitExceeded(
-            MachineLimitExceededFailure::ProgramTooBig,
-        ));
     }
     Ok(Pass2Output {
         directive: Some(directive),
@@ -429,8 +425,7 @@ fn assemble_pass3(
     let convert_rc_failure = |e: RcWordAllocationFailure| -> AssemblerFailure {
         match e {
             RcWordAllocationFailure::RcBlockTooBig { source, .. } => {
-                let location: Option<LineAndColumn> =
-                    source.span().map(|sp| LineAndColumn::from((body, sp)));
+                let location: LineAndColumn = LineAndColumn::from((body, &source.span()));
                 AssemblerFailure::RcBlockTooLong {
                     rc_word_source: source,
                     rc_word_location: location,

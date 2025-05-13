@@ -162,27 +162,34 @@ impl Display for BlockIdentifier {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum MachineLimitExceededFailure {
-    RanOutOfIndexRegisters(SymbolName),
-    RcBlockTooLarge,
+    RanOutOfIndexRegisters(Span, SymbolName),
     BlockTooLarge {
+        span: Span,
         block_id: BlockIdentifier,
         offset: usize,
     },
-    /// Program size does not fit in an Unsigned18Bit quantity.
-    ProgramTooBig,
+}
+
+impl Spanned for MachineLimitExceededFailure {
+    fn span(&self) -> Span {
+        match self {
+            MachineLimitExceededFailure::RanOutOfIndexRegisters(span, _)
+            | MachineLimitExceededFailure::BlockTooLarge { span, .. } => *span,
+        }
+    }
 }
 
 impl Display for MachineLimitExceededFailure {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         match self {
-            MachineLimitExceededFailure::ProgramTooBig => {
-                write!(f, "program does not fit into the TX-2's address space")
-            }
-            MachineLimitExceededFailure::RanOutOfIndexRegisters(name) => {
+            MachineLimitExceededFailure::RanOutOfIndexRegisters(_span, name) => {
                 write!(f, "there are not enough index registers to assign one as the default for the symbol {name}")
             }
-            MachineLimitExceededFailure::RcBlockTooLarge => f.write_str("RC block is too large"),
-            MachineLimitExceededFailure::BlockTooLarge { block_id, offset } => {
+            MachineLimitExceededFailure::BlockTooLarge {
+                span: _,
+                block_id,
+                offset,
+            } => {
                 write!(
                     f,
                     "{block_id} is too large; offset {offset} does not fit in physical memory"
@@ -345,14 +352,15 @@ impl PartialEq<IoFailed> for IoFailed {
 pub enum RcWordSource {
     PipeConstruct(Span),
     Braces(Span),
-    DefaultAssignment(SymbolName),
+    DefaultAssignment(Span, SymbolName),
 }
 
-impl RcWordSource {
-    pub fn span(&self) -> Option<&Span> {
+impl Spanned for RcWordSource {
+    fn span(&self) -> Span {
         match self {
-            RcWordSource::PipeConstruct(span) | RcWordSource::Braces(span) => Some(span),
-            RcWordSource::DefaultAssignment(_) => None,
+            RcWordSource::PipeConstruct(span)
+            | RcWordSource::Braces(span)
+            | RcWordSource::DefaultAssignment(span, _) => *span,
         }
     }
 }
@@ -362,7 +370,7 @@ impl Display for RcWordSource {
         match self {
             RcWordSource::PipeConstruct(_) => write!(f, "pipe construct"),
             RcWordSource::Braces(_) => write!(f, "RC-word"),
-            RcWordSource::DefaultAssignment(name) => write!(f, "default-assignment of {name}"),
+            RcWordSource::DefaultAssignment(_, name) => write!(f, "default-assignment of {name}"),
         }
     }
 }
@@ -379,7 +387,7 @@ pub enum AssemblerFailure {
     BadProgram(Vec<WithLocation<ProgramError>>),
     RcBlockTooLong {
         rc_word_source: RcWordSource,
-        rc_word_location: Option<LineAndColumn>,
+        rc_word_location: LineAndColumn,
     },
     MachineLimitExceeded(MachineLimitExceededFailure),
 }
@@ -439,17 +447,10 @@ impl Display for AssemblerFailure {
                 rc_word_source,
                 rc_word_location,
             } => {
-                if let Some(location) = rc_word_location {
-                    write!(
-                        f,
-                        "{location}: RC-word block grew too long to allocate {rc_word_source}"
-                    )
-                } else {
-                    write!(
-                        f,
-                        "RC-word block grew too long to allocate {rc_word_source}"
-                    )
-                }
+                write!(
+                    f,
+                    "{rc_word_location}: RC-word block grew too long to allocate {rc_word_source}"
+                )
             }
             AssemblerFailure::InternalError(msg) => {
                 write!(f, "internal error: {msg}")

@@ -84,7 +84,7 @@ impl Evaluate for (&Span, &SymbolName, &SymbolDefinition) {
             SymbolDefinition::Tag(TagDefinition::Unresolved {
                 block_id,
                 block_offset,
-                span: _,
+                span,
             }) => {
                 if let Some(block_position) = symtab.get_block_position(block_id).cloned() {
                     let what: (&BlockIdentifier, &BlockPosition) = (block_id, &block_position);
@@ -101,6 +101,7 @@ impl Evaluate for (&Span, &SymbolName, &SymbolDefinition) {
                             target: LookupTarget::Symbol(name.clone(), *span),
                             kind: SymbolLookupFailureKind::MachineLimitExceeded(
                                 MachineLimitExceededFailure::BlockTooLarge {
+                                    span: *span,
                                     block_id: *block_id,
                                     offset: (*block_offset).into(),
                                 },
@@ -356,7 +357,10 @@ impl SymbolTable {
                     None => Err(SymbolLookupFailure {
                         target: get_target(),
                         kind: SymbolLookupFailureKind::MachineLimitExceeded(
-                            MachineLimitExceededFailure::RanOutOfIndexRegisters(name.clone()),
+                            MachineLimitExceededFailure::RanOutOfIndexRegisters(
+                                *span,
+                                name.clone(),
+                            ),
                         ),
                     }),
                 }
@@ -680,8 +684,8 @@ pub(super) fn assign_default_rc_word_tags<R: RcAllocator>(
                 def: SymbolDefinition::Undefined(context),
             } if context.requires_rc_word_allocation() => {
                 let value = Unsigned36Bit::ZERO;
-                let addr =
-                    rcblock.allocate(RcWordSource::DefaultAssignment(name.clone()), value)?;
+                let addr = rcblock
+                    .allocate(RcWordSource::DefaultAssignment(*span, name.clone()), value)?;
                 final_symbols.define(
                     name.clone(),
                     FinalSymbolType::Equality,

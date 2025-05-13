@@ -61,7 +61,7 @@ impl Display for ListingLineWithBody<'_> {
         }
 
         match self.line.rc_source.as_ref() {
-            Some(RcWordSource::DefaultAssignment(name)) => {
+            Some(RcWordSource::DefaultAssignment(_, name)) => {
                 write!(f, "{name:10}-> ")?;
             }
             Some(RcWordSource::Braces(_)) | Some(RcWordSource::PipeConstruct(_)) | None => {
@@ -85,7 +85,7 @@ impl Display for ListingLineWithBody<'_> {
             write!(f, "{prefix}{s:54}")?;
         } else if matches!(
             &self.line.rc_source,
-            Some(RcWordSource::DefaultAssignment(_))
+            Some(RcWordSource::DefaultAssignment(_, _))
         ) {
             write!(f, "{:<54}", 0)?;
         }

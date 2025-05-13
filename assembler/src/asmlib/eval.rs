@@ -24,7 +24,7 @@ use crate::symtab::{
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum LookupTarget {
     Symbol(SymbolName, Span),
-    MemRef(MemoryReference, Span),
+    MemRef(MemoryReference),
     /// Attempt to look up "here", that is, '#'.
     Hash(Span),
 }
@@ -35,18 +35,17 @@ impl From<(SymbolName, Span)> for LookupTarget {
     }
 }
 
-impl From<(MemoryReference, Span)> for LookupTarget {
-    fn from((r, span): (MemoryReference, Span)) -> LookupTarget {
-        LookupTarget::MemRef(r, span)
+impl From<MemoryReference> for LookupTarget {
+    fn from(r: MemoryReference) -> LookupTarget {
+        LookupTarget::MemRef(r)
     }
 }
 
 impl Spanned for LookupTarget {
     fn span(&self) -> Span {
         match self {
-            LookupTarget::Symbol(_, span)
-            | LookupTarget::MemRef(_, span)
-            | LookupTarget::Hash(span) => *span,
+            LookupTarget::MemRef(r) => r.span(),
+            LookupTarget::Symbol(_, span) | LookupTarget::Hash(span) => *span,
         }
     }
 }
@@ -58,13 +57,11 @@ impl Display for LookupTarget {
             LookupTarget::Symbol(name, _) => {
                 write!(f, "symbol {name}")
             }
-            LookupTarget::MemRef(
-                MemoryReference {
-                    block_id,
-                    block_offset: _,
-                },
-                _,
-            ) => {
+            LookupTarget::MemRef(MemoryReference {
+                block_id,
+                block_offset: _,
+                span: _,
+            }) => {
                 write!(f, "{block_id}")
             }
         }
@@ -75,6 +72,13 @@ impl Display for LookupTarget {
 pub(crate) struct MemoryReference {
     pub(crate) block_id: BlockIdentifier,
     pub(crate) block_offset: usize,
+    pub(crate) span: Span,
+}
+
+impl Spanned for MemoryReference {
+    fn span(&self) -> Span {
+        self.span
+    }
 }
 
 // SymbolValue is the result of a symbol table lookup.
@@ -1374,15 +1378,14 @@ impl Evaluate for (&BlockIdentifier, &BlockPosition) {
                                 match offset_from_origin(&prev_addr, previous_block.block_size) {
                                     Ok(addr) => Ok(addr),
                                     Err(_) => Err(SymbolLookupFailure {
-                                        target: LookupTarget::MemRef(
-                                            MemoryReference {
-                                                block_id: **block_id,
-                                                block_offset: 0,
-                                            },
-                                            *block_span,
-                                        ),
+                                        target: LookupTarget::MemRef(MemoryReference {
+                                            block_id: **block_id,
+                                            block_offset: 0,
+                                            span: *block_span,
+                                        }),
                                         kind: SymbolLookupFailureKind::MachineLimitExceeded(
                                             MachineLimitExceededFailure::BlockTooLarge {
+                                                span: block_position.span,
                                                 block_id: previous_block_id,
                                                 offset: previous_block.block_size.into(),
                                             },
