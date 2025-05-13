@@ -5,7 +5,7 @@ fn is_error_token(t: &Token) -> bool {
     matches!(t, Token::Error(_))
 }
 
-fn scan_slices<'a>(input: &'a str) -> Result<Vec<(Token, &'a str)>, Unrecognised> {
+fn scan_slices(input: &str) -> Result<Vec<(Token, &str)>, Unrecognised> {
     dbg!(input);
     dbg!(input.len());
 
@@ -20,7 +20,7 @@ fn scan_slices<'a>(input: &'a str) -> Result<Vec<(Token, &'a str)>, Unrecognised
     Lexer::new(input).spanned().map(mapping).collect()
 }
 
-fn scan_tokens_only<'a>(input: &'a str) -> Result<Vec<Token>, Unrecognised> {
+fn scan_tokens_only(input: &str) -> Result<Vec<Token>, Unrecognised> {
     Lexer::new(input).collect()
 }
 
@@ -1520,11 +1520,8 @@ fn test_superscript_symex_long() {
 fn test_superscript_symex_bad() {
     let result = scan_tokens_only("@sup_sps@");
     dbg!(&result);
-    match result {
-        Ok(tokens) => {
-            assert!(tokens.iter().any(is_error_token));
-        }
-        Err(_) => (),
+    if let Ok(tokens) = result {
+        assert!(tokens.iter().any(is_error_token));
     }
 }
 
@@ -1680,11 +1677,8 @@ fn test_subscript_symex_long() {
 fn test_subscript_symex_bad() {
     let result = scan_tokens_only("@sub_sps@");
     dbg!(&result);
-    match result {
-        Ok(tokens) => {
-            assert!(tokens.iter().any(is_error_token));
-        }
-        Err(_) => (),
+    if let Ok(tokens) = result {
+        assert!(tokens.iter().any(is_error_token));
     }
 }
 

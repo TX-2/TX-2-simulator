@@ -546,7 +546,7 @@ where
         state: &State,
         span: Span,
     ) -> Result<MacroDefinition, chumsky::error::Rich<'a, lexer::Token>> {
-        match state.get_macro_definition(&name) {
+        match state.get_macro_definition(name) {
             None => Err(Rich::custom(span, format!("unknown macro {name}"))),
             Some(macro_def) => Ok(macro_def.clone()),
         }
@@ -554,7 +554,7 @@ where
 
     symex::parse_symex(SymexSyllableRule::OneOnly, Script::Normal).try_map_with(|name, extra| {
         let span: Span = extra.span();
-        let state: &State = &extra.state();
+        let state: &State = extra.state();
         mapping(&name, state, span)
     })
 }
@@ -593,7 +593,7 @@ where
 }
 
 #[cfg(test)] // not yet used outside tests.
-impl<'src, 'b, I> ExtParser<'src, I, MacroInvocation, ExtraWithoutContext<'src>>
+impl<'src, I> ExtParser<'src, I, MacroInvocation, ExtraWithoutContext<'src>>
     for MacroInvocationParser<'src, I>
 where
     I: Input<'src, Token = Tok, Span = Span> + ValueInput<'src>,

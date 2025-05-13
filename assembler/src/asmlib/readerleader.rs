@@ -461,7 +461,7 @@ fn test_reader_leader() {
 
     assert_eq!(expected.len(), 0o24);
     assert_eq!(leader.len(), expected.len());
-    for (i, expected_value) in expected.iter().copied().map(u64::from).enumerate() {
+    for (i, expected_value) in expected.iter().copied().enumerate() {
         assert_eq!(
             leader[i],
             expected_value,

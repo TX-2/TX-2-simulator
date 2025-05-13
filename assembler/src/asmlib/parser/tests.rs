@@ -264,15 +264,7 @@ fn parse_multiple_instruction_fragments(input: &str) -> Vec<InstructionFragment>
     parse_result
         .fragments
         .into_iter()
-        .map(|comma_delimited_insn| match comma_delimited_insn {
-            CommaDelimitedFragment {
-                span: _,
-                leading_commas: _,
-                holdbit: _,
-                fragment: inst,
-                trailing_commas: _,
-            } => inst,
-        })
+        .map(|comma_delimited_insn| comma_delimited_insn.fragment)
         .collect()
 }
 
@@ -1043,7 +1035,7 @@ fn test_assignment_literal() {
         dbg!(&input);
         dbg!(&begin);
         assert_eq!(
-            parse_successfully_with(*input, assignment.clone(), no_state_setup),
+            parse_successfully_with(input, assignment.clone(), no_state_setup),
             assignment_of_literal(
                 "FOO",
                 span(0..(*begin + 1)),
@@ -1066,7 +1058,7 @@ fn test_assignment_superscript() {
         let val_span = span(*val_begin..*val_end);
         let assignment = grammar().assignment;
         assert_eq!(
-            parse_successfully_with(*input, assignment, no_state_setup),
+            parse_successfully_with(input, assignment, no_state_setup),
             Equality {
                 span: span(0..*val_end),
                 name: SymbolName::from("FOO"),
@@ -1108,7 +1100,7 @@ fn test_assignment_subscript() {
         dbg!(&val_begin);
         dbg!(&val_end);
         assert_eq!(
-            parse_successfully_with(*input, assignment.clone(), no_state_setup),
+            parse_successfully_with(input, assignment.clone(), no_state_setup),
             assignment_of_literal(
                 "FOO",
                 span(0..*val_end),
@@ -2106,7 +2098,7 @@ mod comma_tests {
 
     impl PartialEq<CommaDelimitedFragment> for Briefly {
         fn eq(&self, other: &CommaDelimitedFragment) -> bool {
-            self == other
+            &self.0 == other
         }
     }
 
@@ -2552,7 +2544,7 @@ fn test_make_bit_designator_literal() {
                         if (n & (!MASK)) != 0 {
                             panic!("bit designator {what} produced output {n:o} but that has bits set outside the allowed mask {MASK:o}");
                         }
-                        if let Some((prevq, prevb)) = seen.insert(n.clone(), (q, bit)) {
+                        if let Some((prevq, prevb)) = seen.insert(n, (q, bit)) {
                             panic!(
                                 "two distinct bit designators both evaluate to {n}: {what} and {}",
                                 makename(prevq, prevb)
