@@ -833,16 +833,34 @@ fn test_symbol_definition_loop_detection() {
     use super::super::types::AssemblerFailure;
     use super::super::types::{ProgramError, WithLocation};
     let input = concat!("SA = SB\n", "SB = SA\n", "SA\n",);
+
+    fn sa_and_sb(c1: &str, c2: &str) -> bool {
+        matches!((c1, c2), ("SA", "SB") | ("SB", "SA"))
+    }
+
     match assemble_source(input, Default::default()) {
         Err(AssemblerFailure::BadProgram(errors)) => match errors.as_slice() {
             [WithLocation {
                 location: _,
                 inner:
                     ProgramError::UnexpectedlyUndefinedSymbol {
-                        name: SymbolName { canonical },
+                        name:
+                            SymbolName {
+                                canonical: canonical1,
+                            },
                         span: _,
                     },
-            }] if canonical.as_str() == "SA" || canonical.as_str() == "SB" => (),
+            }, WithLocation {
+                location: _,
+                inner:
+                    ProgramError::UnexpectedlyUndefinedSymbol {
+                        name:
+                            SymbolName {
+                                canonical: canonical2,
+                            },
+                        span: _,
+                    },
+            }] if sa_and_sb(canonical1, canonical2) => (),
             otherwise => {
                 panic!("expected an error from the assembler, but not : {otherwise:?}");
             }

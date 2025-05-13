@@ -22,6 +22,7 @@ use super::listing::*;
 use super::parser::parse_source_file;
 use super::span::*;
 use super::state::{NumeralMode, State};
+use super::symbol::SymbolName;
 use super::symtab::{
     assign_default_rc_word_tags, BadSymbolDefinition, BlockPosition, FinalSymbolDefinition,
     FinalSymbolTable, FinalSymbolType, LookupOperation, SymbolTable,
@@ -399,7 +400,7 @@ fn assemble_pass3(
     } = directive;
 
     let mut final_symbols = FinalSymbolTable::default();
-
+    let mut undefined_symbols: BTreeMap<SymbolName, Span> = Default::default();
     // TODO: consider moving this into pass 2.
     for (maybe_origin, block) in memory_map.values() {
         if let Some(Origin::Symbolic(span, symbol_name)) = maybe_origin.as_ref() {
@@ -420,6 +421,7 @@ fn assemble_pass3(
         symtab,
         &mut rcblock,
         &mut final_symbols,
+        &mut undefined_symbols,
     )?;
 
     let convert_rc_failure = |e: RcWordAllocationFailure| -> AssemblerFailure {
@@ -485,6 +487,7 @@ fn assemble_pass3(
             &mut final_symbols,
             body,
             listing,
+            &mut undefined_symbols,
         )?;
         if words.is_empty() {
             event!(
@@ -529,6 +532,18 @@ fn assemble_pass3(
             &chunk.address,
         );
         binary.add_chunk(chunk);
+    }
+
+    if !undefined_symbols.is_empty() {
+        return Err(AssemblerFailure::BadProgram(
+            undefined_symbols
+                .into_iter()
+                .map(|(name, span)| {
+                    let e = ProgramError::UnexpectedlyUndefinedSymbol { name, span };
+                    (body, e).into()
+                })
+                .collect(),
+        ));
     }
 
     Ok((binary, final_symbols))

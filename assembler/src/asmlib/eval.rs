@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::ops::{Shl, Shr};
 
@@ -153,8 +154,6 @@ impl Display for SymbolLookupFailure {
 }
 
 impl SymbolLookupFailure {
-    // TODO: this does much the same thing as
-    // translate_symbol_lookup_failure.  Eliminate one of these.
     pub(crate) fn into_assembler_failure(self, source_file_body: &str) -> AssemblerFailure {
         let span: Span = self.span();
         let location: LineAndColumn = LineAndColumn::from((source_file_body, &span));
@@ -1024,16 +1023,16 @@ mod comma_tests {
     }
 }
 
-fn translate_symbol_lookup_failure(
+fn record_undefined_symbol_or_return_failure(
     source_file_body: &str,
     e: SymbolLookupFailure,
-    undefined_symbols: &mut Vec<(Span, SymbolName)>,
+    undefined_symbols: &mut BTreeMap<SymbolName, Span>,
 ) -> Result<(), AssemblerFailure> {
     use SymbolLookupFailure::*;
     let span = e.span();
     match e {
         Missing { name, .. } | Loop { name, .. } => {
-            undefined_symbols.push((span, name));
+            undefined_symbols.entry(name).or_insert(span);
             Ok(())
         }
         other => Err(other.into_assembler_failure(source_file_body)),
@@ -1046,8 +1045,8 @@ pub(super) fn extract_final_equalities<R: RcUpdater>(
     symtab: &mut SymbolTable,
     rc_updater: &mut R,
     final_symbols: &mut FinalSymbolTable,
+    undefined_symbols: &mut BTreeMap<SymbolName, Span>,
 ) -> Result<(), AssemblerFailure> {
-    let mut undefined_symbols: Vec<(Span, SymbolName)> = Vec::new();
     for eq in equalities {
         let mut op = Default::default();
         match eq
@@ -1074,7 +1073,7 @@ pub(super) fn extract_final_equalities<R: RcUpdater>(
                 );
             }
             Err(e) => {
-                translate_symbol_lookup_failure(body, e, &mut undefined_symbols)?;
+                record_undefined_symbol_or_return_failure(body, e, undefined_symbols)?;
             }
         }
     }
@@ -1090,6 +1089,7 @@ impl LocatedBlock {
         final_symbols: &mut FinalSymbolTable,
         body: &str,
         listing: &mut Listing,
+        undefined_symbols: &mut BTreeMap<SymbolName, Span>,
     ) -> Result<Vec<Unsigned36Bit>, AssemblerFailure> {
         self.statements.build_binary_block(
             location,
@@ -1098,6 +1098,7 @@ impl LocatedBlock {
             final_symbols,
             body,
             listing,
+            undefined_symbols,
         )
     }
 }
@@ -1111,8 +1112,8 @@ impl InstructionSequence {
         final_symbols: &mut FinalSymbolTable,
         body: &str,
         listing: &mut Listing,
+        undefined_symbols: &mut BTreeMap<SymbolName, Span>,
     ) -> Result<Vec<Unsigned36Bit>, AssemblerFailure> {
-        let mut undefined_symbols: Vec<(Span, SymbolName)> = Vec::new();
         let mut words: Vec<Unsigned36Bit> = Vec::with_capacity(self.emitted_word_count().into());
         for (offset, instruction) in self.iter().enumerate() {
             let offset: Unsigned18Bit = Unsigned18Bit::try_from(offset)
@@ -1139,20 +1140,9 @@ impl InstructionSequence {
                     words.push(word);
                 }
                 Err(e) => {
-                    translate_symbol_lookup_failure(body, e, &mut undefined_symbols)?;
+                    record_undefined_symbol_or_return_failure(body, e, undefined_symbols)?;
                 }
             }
-        }
-        if !undefined_symbols.is_empty() {
-            return Err(AssemblerFailure::BadProgram(
-                undefined_symbols
-                    .into_iter()
-                    .map(|(span, name)| {
-                        let e = ProgramError::UnexpectedlyUndefinedSymbol { name, span };
-                        (body, e).into()
-                    })
-                    .collect(),
-            ));
         }
         Ok(words)
     }
