@@ -285,11 +285,11 @@ fn test_assemble_octal_superscript_literal() {
         Ok(ArithmeticExpression::from(SignedAtom {
             span: span(0..8),
             negated: false,
-            magnitude: Atom::from(Atom::from(LiteralValue::from((
+            magnitude: Atom::from(LiteralValue::from((
                 span(3..8),
                 Script::Super,
                 Unsigned36Bit::from(0o36_u32)
-            ))))
+            )))
         }))
     );
 }
@@ -302,11 +302,11 @@ fn test_assemble_octal_subscript_literal_nosign() {
         Ok(ArithmeticExpression::from(SignedAtom {
             span: span(0..6),
             negated: false,
-            magnitude: Atom::from(Atom::from(LiteralValue::from((
+            magnitude: Atom::from(LiteralValue::from((
                 span(0..6),
                 Script::Sub,
                 Unsigned36Bit::from(0o13_u32)
-            ))))
+            )))
         }))
     );
 
