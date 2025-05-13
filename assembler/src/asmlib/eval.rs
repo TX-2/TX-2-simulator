@@ -13,8 +13,8 @@ use super::listing::{Listing, ListingLine};
 use super::span::*;
 use super::symbol::SymbolName;
 use super::types::{
-    offset_from_origin, AssemblerFailure, BlockIdentifier, InconsistentOrigin, LineAndColumn,
-    MachineLimitExceededFailure, ProgramError, RcWordSource, WithLocation,
+    offset_from_origin, AssemblerFailure, BlockIdentifier, InconsistentOrigin,
+    MachineLimitExceededFailure, ProgramError, RcWordSource,
 };
 use crate::symbol::SymbolContext;
 use crate::symtab::{
@@ -103,7 +103,8 @@ pub(crate) enum SymbolLookupFailure {
         span: Span,
         deps_in_order: Vec<SymbolName>,
     },
-    MachineLimitExceeded(MachineLimitExceededFailure),
+    BlockTooLarge(Span, MachineLimitExceededFailure),
+    FailedToAssignIndexRegister(Span, SymbolName),
     HereIsNotAllowedHere(Span),
 }
 
@@ -114,11 +115,10 @@ impl Spanned for SymbolLookupFailure {
                 inconsistent_origin.span()
             }
             SymbolLookupFailure::HereIsNotAllowedHere(span)
+            | SymbolLookupFailure::FailedToAssignIndexRegister(span, _)
             | SymbolLookupFailure::Missing { span, .. }
-            | SymbolLookupFailure::Loop { span, .. } => *span,
-            SymbolLookupFailure::MachineLimitExceeded(machine_limit_exceeded_failure) => {
-                machine_limit_exceeded_failure.span()
-            }
+            | SymbolLookupFailure::Loop { span, .. }
+            | SymbolLookupFailure::BlockTooLarge(span, _) => *span,
         }
     }
 }
@@ -143,8 +143,11 @@ impl Display for SymbolLookupFailure {
                     names.join("->")
                 )
             }
-            MachineLimitExceeded(fail) => {
-                write!(f, "machine limit exceeded: {fail}")
+            FailedToAssignIndexRegister(_, name) => {
+                write!(f, "unable to assign index register as the default value for symbol {name} because there are not enough index registers")
+            }
+            BlockTooLarge(_span, mle) => {
+                write!(f, "program block too large: {mle}")
             }
             HereIsNotAllowedHere(_) => {
                 f.write_str("'#' (representing the current address) is not allowed here")
@@ -154,36 +157,23 @@ impl Display for SymbolLookupFailure {
 }
 
 impl SymbolLookupFailure {
-    pub(crate) fn into_assembler_failure(self, source_file_body: &str) -> AssemblerFailure {
+    pub(crate) fn into_program_error(self) -> ProgramError {
         let span: Span = self.span();
-        let location: LineAndColumn = LineAndColumn::from((source_file_body, &span));
         match self {
-            SymbolLookupFailure::MachineLimitExceeded(mle) => {
-                // We cannot use RcBlockTooLong because we don't have
-                // the correct RcWordSource value.
-                AssemblerFailure::MachineLimitExceeded(mle)
+            SymbolLookupFailure::FailedToAssignIndexRegister(span, name) => {
+                ProgramError::FailedToAssignIndexRegister(span, name)
             }
+            SymbolLookupFailure::BlockTooLarge(span, mle) => ProgramError::BlockTooLong(span, mle),
             SymbolLookupFailure::InconsistentOrigins(e) => {
-                AssemblerFailure::BadProgram(vec![WithLocation {
-                    location,
-                    inner: ProgramError::InconsistentOriginDefinitions(e),
-                }])
+                ProgramError::InconsistentOriginDefinitions(e)
             }
             SymbolLookupFailure::Missing { name, .. } | SymbolLookupFailure::Loop { name, .. } => {
-                AssemblerFailure::BadProgram(vec![WithLocation {
-                    location,
-                    inner: ProgramError::UnexpectedlyUndefinedSymbol { name, span },
-                }])
+                ProgramError::UnexpectedlyUndefinedSymbol { name, span }
             }
-            SymbolLookupFailure::HereIsNotAllowedHere(_) => {
-                AssemblerFailure::BadProgram(vec![WithLocation {
-                    location,
-                    inner: ProgramError::SyntaxError {
-                        msg: self.to_string(),
-                        span,
-                    },
-                }])
-            }
+            SymbolLookupFailure::HereIsNotAllowedHere(span) => ProgramError::SyntaxError {
+                span,
+                msg: "# is not allowed in this context".to_string(),
+            },
         }
     }
 }
@@ -1035,7 +1025,9 @@ fn record_undefined_symbol_or_return_failure(
             undefined_symbols.entry(name).or_insert(span);
             Ok(())
         }
-        other => Err(other.into_assembler_failure(source_file_body)),
+        other => Err(other
+            .into_program_error()
+            .into_assembler_failure(source_file_body)),
     }
 }
 
@@ -1081,6 +1073,8 @@ pub(super) fn extract_final_equalities<R: RcUpdater>(
 }
 
 impl LocatedBlock {
+    // It's not obvious how to fix this clippy warning, so allow it here.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn build_binary_block<R: RcUpdater>(
         &self,
         location: Address,
@@ -1104,6 +1098,8 @@ impl LocatedBlock {
 }
 
 impl InstructionSequence {
+    // It's not obvious how to fix this clippy warning, so allow it here.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn build_binary_block<R: RcUpdater>(
         &self,
         location: Address,
@@ -1327,7 +1323,8 @@ impl Evaluate for (&BlockIdentifier, &BlockPosition) {
                                     Address::from(subword::right_half(prev_addr_w));
                                 match offset_from_origin(&prev_addr, previous_block.block_size) {
                                     Ok(addr) => Ok(addr),
-                                    Err(_) => Err(SymbolLookupFailure::MachineLimitExceeded(
+                                    Err(_) => Err(SymbolLookupFailure::BlockTooLarge(
+                                        *block_span,
                                         MachineLimitExceededFailure::BlockTooLarge {
                                             span: *block_span,
                                             block_id: previous_block_id,

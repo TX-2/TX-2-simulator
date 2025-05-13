@@ -94,7 +94,8 @@ impl SourceFile {
                     block_locations.insert(block_identifier, address);
                 }
                 Err(e) => {
-                    return Err(e.into_assembler_failure(source_file_body));
+                    let prog_error: ProgramError = e.into_program_error();
+                    return Err(prog_error.into_assembler_failure(source_file_body));
                 }
             }
         }
@@ -427,11 +428,15 @@ fn assemble_pass3(
     let convert_rc_failure = |e: RcWordAllocationFailure| -> AssemblerFailure {
         match e {
             RcWordAllocationFailure::RcBlockTooBig { source, .. } => {
-                let location: LineAndColumn = LineAndColumn::from((body, &source.span()));
-                AssemblerFailure::RcBlockTooLong {
-                    rc_word_source: source,
-                    rc_word_location: location,
-                }
+                let span: Span = source.span();
+                let location: LineAndColumn = LineAndColumn::from((body, &span));
+                AssemblerFailure::BadProgram(vec![WithLocation {
+                    location,
+                    inner: ProgramError::RcBlockTooLong {
+                        rc_word_source: source,
+                        rc_word_span: span,
+                    },
+                }])
             }
             RcWordAllocationFailure::InconsistentTag(
                 ref e @ BadSymbolDefinition::Incompatible(ref name, span, _, _),

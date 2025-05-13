@@ -94,7 +94,8 @@ impl Evaluate for (&Span, &SymbolName, &SymbolDefinition) {
                     .into();
                     match offset_from_origin(&block_origin, *block_offset) {
                         Ok(computed_address) => Ok(computed_address.into()),
-                        Err(_overflow_error) => Err(SymbolLookupFailure::MachineLimitExceeded(
+                        Err(_overflow_error) => Err(SymbolLookupFailure::BlockTooLarge(
+                            *span,
                             MachineLimitExceededFailure::BlockTooLarge {
                                 span: *span,
                                 block_id: *block_id,
@@ -334,8 +335,9 @@ impl SymbolTable {
                         self.index_registers_used = n;
                         Ok(n.into())
                     }
-                    None => Err(SymbolLookupFailure::MachineLimitExceeded(
-                        MachineLimitExceededFailure::RanOutOfIndexRegisters(*span, name.clone()),
+                    None => Err(SymbolLookupFailure::FailedToAssignIndexRegister(
+                        *span,
+                        name.clone(),
                     )),
                 }
             }

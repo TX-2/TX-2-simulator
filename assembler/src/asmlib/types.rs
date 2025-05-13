@@ -238,6 +238,12 @@ pub enum ProgramError {
         msg: String,
         span: Span,
     },
+    BlockTooLong(Span, MachineLimitExceededFailure),
+    RcBlockTooLong {
+        rc_word_source: RcWordSource,
+        rc_word_span: Span,
+    },
+    FailedToAssignIndexRegister(Span, SymbolName),
 }
 
 impl Spanned for ProgramError {
@@ -245,7 +251,12 @@ impl Spanned for ProgramError {
         use ProgramError::*;
         match self {
             InconsistentOriginDefinitions(e) => e.span(),
-            InconsistentTag { span, .. }
+            RcBlockTooLong {
+                rc_word_span: span, ..
+            }
+            | FailedToAssignIndexRegister(span, _)
+            | BlockTooLong(span, _)
+            | InconsistentTag { span, .. }
             | UnexpectedlyUndefinedSymbol { span, .. }
             | SyntaxError { span, .. } => *span,
         }
@@ -277,6 +288,21 @@ impl Display for ProgramError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         use ProgramError::*;
         match self {
+            RcBlockTooLong {
+                rc_word_source,
+                rc_word_span: _,
+            } => {
+                write!(
+                    f,
+                    "RC-word block grew too long to allocate {rc_word_source}"
+                )
+            }
+            FailedToAssignIndexRegister(_span, symbol_name) => {
+                write!(f, "there are not enough index registers available to assign one for {symbol_name}")
+            }
+            BlockTooLong(_span, mle) => {
+                write!(f, "program block contains too many machine words: {mle}")
+            }
             InconsistentTag { name, span: _, msg } => {
                 write!(f, "inconsistent definitions for tag {name}: {msg}")
             }
@@ -288,6 +314,17 @@ impl Display for ProgramError {
                 write!(f, "{}", msg)
             }
         }
+    }
+}
+
+impl ProgramError {
+    pub(crate) fn into_assembler_failure(self, source_file_body: &str) -> AssemblerFailure {
+        let span: Span = self.span();
+        let location: LineAndColumn = LineAndColumn::from((source_file_body, &span));
+        AssemblerFailure::BadProgram(vec![WithLocation {
+            location,
+            inner: self,
+        }])
     }
 }
 
@@ -385,10 +422,6 @@ pub enum AssemblerFailure {
     },
     Io(IoFailed),
     BadProgram(Vec<WithLocation<ProgramError>>),
-    RcBlockTooLong {
-        rc_word_source: RcWordSource,
-        rc_word_location: LineAndColumn,
-    },
     MachineLimitExceeded(MachineLimitExceededFailure),
 }
 
@@ -417,12 +450,6 @@ impl PartialEq<AssemblerFailure> for AssemblerFailure {
     }
 }
 
-impl From<MachineLimitExceededFailure> for AssemblerFailure {
-    fn from(f: MachineLimitExceededFailure) -> AssemblerFailure {
-        AssemblerFailure::MachineLimitExceeded(f)
-    }
-}
-
 fn write_os_string(f: &mut Formatter<'_>, s: &OsStr) -> Result<(), fmt::Error> {
     match s.to_str() {
         Some(unicode_name) => f.write_str(unicode_name),
@@ -442,15 +469,6 @@ impl Display for AssemblerFailure {
                     write!(f, "error in user program: {e}")?;
                 }
                 Ok(())
-            }
-            AssemblerFailure::RcBlockTooLong {
-                rc_word_source,
-                rc_word_location,
-            } => {
-                write!(
-                    f,
-                    "{rc_word_location}: RC-word block grew too long to allocate {rc_word_source}"
-                )
             }
             AssemblerFailure::InternalError(msg) => {
                 write!(f, "internal error: {msg}")
