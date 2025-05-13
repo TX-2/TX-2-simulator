@@ -8,10 +8,7 @@ use base::prelude::*;
 use base::subword;
 
 use super::ast::{EqualityValue, Origin, RcAllocator, RcUpdater, RcWordAllocationFailure};
-use super::eval::{
-    Evaluate, HereValue, LookupTarget, SymbolLookup, SymbolLookupFailure, SymbolLookupFailureKind,
-    SymbolValue,
-};
+use super::eval::{Evaluate, HereValue, SymbolLookup, SymbolLookupFailure, SymbolValue};
 use super::span::*;
 use super::symbol::{SymbolContext, SymbolName};
 use super::types::{
@@ -97,16 +94,13 @@ impl Evaluate for (&Span, &SymbolName, &SymbolDefinition) {
                     .into();
                     match offset_from_origin(&block_origin, *block_offset) {
                         Ok(computed_address) => Ok(computed_address.into()),
-                        Err(_overflow_error) => Err(SymbolLookupFailure {
-                            target: LookupTarget::Symbol(name.clone(), *span),
-                            kind: SymbolLookupFailureKind::MachineLimitExceeded(
-                                MachineLimitExceededFailure::BlockTooLarge {
-                                    span: *span,
-                                    block_id: *block_id,
-                                    offset: (*block_offset).into(),
-                                },
-                            ),
-                        }),
+                        Err(_overflow_error) => Err(SymbolLookupFailure::MachineLimitExceeded(
+                            MachineLimitExceededFailure::BlockTooLarge {
+                                span: *span,
+                                block_id: *block_id,
+                                offset: (*block_offset).into(),
+                            },
+                        )),
                     }
                 } else {
                     panic!(
@@ -117,11 +111,10 @@ impl Evaluate for (&Span, &SymbolName, &SymbolDefinition) {
             SymbolDefinition::Equality(expression) => {
                 expression.evaluate(target_address, symtab, rc_updater, op)
             }
-            SymbolDefinition::Undefined(context_union) => Err(SymbolLookupFailure {
-                target: LookupTarget::Symbol(name.to_owned(), *span),
-                kind: SymbolLookupFailureKind::Missing {
-                    uses: context_union.clone(),
-                },
+            SymbolDefinition::Undefined(context_union) => Err(SymbolLookupFailure::Missing {
+                name: name.to_owned(),
+                span: *span,
+                uses: context_union.clone(),
             }),
         }
     }
@@ -139,21 +132,13 @@ fn final_lookup_helper_body<R: RcUpdater>(
         let what = (&span, name, &def);
         match what.evaluate(target_address, symtab, rc_updater, op) {
             Ok(value) => Ok(SymbolValue::Final(value)),
-            Err(SymbolLookupFailure {
-                target: _,
-                // This symbol was used as a block origin, but there
-                // is no definition for it.  So we position this block
-                // (and determine the value for this origin) by taking
-                // into account the position and length of the
-                // previous block.
-                kind:
-                    SymbolLookupFailureKind::Missing {
-                        uses:
-                            SymbolContext {
-                                origin_of_block: Some(block_identifier),
-                                ..
-                            },
+            Err(SymbolLookupFailure::Missing {
+                uses:
+                    SymbolContext {
+                        origin_of_block: Some(block_identifier),
+                        ..
                     },
+                ..
             }) => {
                 if let Some(block_position) = symtab.blocks.get(&block_identifier).cloned() {
                     // If we simply try to pass block_position to
@@ -189,12 +174,9 @@ fn final_lookup_helper_body<R: RcUpdater>(
                     unreachable!("symbol {name} was used as an origin for block {block_identifier} but this is not a known block");
                 }
             }
-            Err(SymbolLookupFailure {
-                target: _,
-                kind:
-                    SymbolLookupFailureKind::Missing {
-                        uses: context_union,
-                    },
+            Err(SymbolLookupFailure::Missing {
+                uses: context_union,
+                ..
             }) => match symtab.get_default_value(name, &span, &context_union) {
                 Ok(value) => {
                     match symtab.define(
@@ -321,7 +303,6 @@ impl SymbolTable {
         span: &Span,
         contexts_used: &SymbolContext,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-        let get_target = || LookupTarget::Symbol(name.clone(), *span);
         event!(
             Level::DEBUG,
             "assigning default value for {name} used in contexts {contexts_used:?}"
@@ -333,14 +314,13 @@ impl SymbolTable {
             }
             [true, _, _, true] | [_, true, _, true] => {
                 // origin and either config or index
-                Err(SymbolLookupFailure {
-                    target: get_target(),
-                    kind: SymbolLookupFailureKind::InconsistentOrigins(InconsistentOrigin {
+                Err(SymbolLookupFailure::InconsistentOrigins(
+                    InconsistentOrigin {
                         origin_name: name.clone(),
                         span: *span,
                         msg: format!("symbol {name} was used in both origin and other contexts"),
-                    }),
-                })
+                    },
+                ))
             }
             [false, false, false, false] => unreachable!(), // apparently no usage at all
             [true, _, _, false] => Ok(Unsigned36Bit::ZERO), // configuration (perhaps in combo with others)
@@ -354,15 +334,9 @@ impl SymbolTable {
                         self.index_registers_used = n;
                         Ok(n.into())
                     }
-                    None => Err(SymbolLookupFailure {
-                        target: get_target(),
-                        kind: SymbolLookupFailureKind::MachineLimitExceeded(
-                            MachineLimitExceededFailure::RanOutOfIndexRegisters(
-                                *span,
-                                name.clone(),
-                            ),
-                        ),
-                    }),
+                    None => Err(SymbolLookupFailure::MachineLimitExceeded(
+                        MachineLimitExceededFailure::RanOutOfIndexRegisters(*span, name.clone()),
+                    )),
                 }
             }
             [false, false, true, false] => {
@@ -382,7 +356,7 @@ impl SymbolTable {
     //    target_address: &HereValue,
     //    rc_allocator: &mut R,
     //    op: &mut LookupOperation,
-    //) -> Result<Unsigned36Bit, SymbolLookupFailure>
+    //) -> Result<Unsigned36Bit, SymbolLookupFailed>
     //where
     //    E: Evaluate,
     //    R: RcUpdater,
@@ -438,13 +412,11 @@ impl SymbolLookup for SymbolTable {
         if !op.depends_on.insert(name.clone()) {
             // `name` was already in `depends_on`; in other words,
             // we have a loop.
-            return Err(SymbolLookupFailure::from((
-                name.clone(),
+            return Err(SymbolLookupFailure::Loop {
+                name: name.clone(),
                 span,
-                SymbolLookupFailureKind::Loop {
-                    deps_in_order: op.deps_in_order.to_vec(),
-                },
-            )));
+                deps_in_order: op.deps_in_order.to_vec(),
+            });
         }
         let result = final_lookup_helper_body(self, name, span, target_address, rc_updater, op);
         op.deps_in_order.pop();

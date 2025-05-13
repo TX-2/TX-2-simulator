@@ -1,4 +1,4 @@
-use std::fmt::{self, Debug, Display, Formatter, Write};
+use std::fmt::{self, Debug, Display, Formatter};
 use std::ops::{Shl, Shr};
 
 use base::{
@@ -25,8 +25,6 @@ use crate::symtab::{
 pub(crate) enum LookupTarget {
     Symbol(SymbolName, Span),
     MemRef(MemoryReference),
-    /// Attempt to look up "here", that is, '#'.
-    Hash(Span),
 }
 
 impl From<(SymbolName, Span)> for LookupTarget {
@@ -45,7 +43,7 @@ impl Spanned for LookupTarget {
     fn span(&self) -> Span {
         match self {
             LookupTarget::MemRef(r) => r.span(),
-            LookupTarget::Symbol(_, span) | LookupTarget::Hash(span) => *span,
+            LookupTarget::Symbol(_, span) => *span,
         }
     }
 }
@@ -53,7 +51,6 @@ impl Spanned for LookupTarget {
 impl Display for LookupTarget {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         match self {
-            LookupTarget::Hash(_) => f.write_char('#'),
             LookupTarget::Symbol(name, _) => {
                 write!(f, "symbol {name}")
             }
@@ -93,111 +90,101 @@ pub(crate) enum SymbolValue {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) enum SymbolLookupFailureKind {
+pub(crate) enum SymbolLookupFailure {
     InconsistentOrigins(InconsistentOrigin),
-    Missing { uses: SymbolContext },
-    Loop { deps_in_order: Vec<SymbolName> },
+    Missing {
+        name: SymbolName,
+        span: Span,
+        uses: SymbolContext,
+    },
+    Loop {
+        name: SymbolName,
+        span: Span,
+        deps_in_order: Vec<SymbolName>,
+    },
     MachineLimitExceeded(MachineLimitExceededFailure),
-    HereIsNotAllowedHere,
+    HereIsNotAllowedHere(Span),
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) struct SymbolLookupFailure {
-    pub(crate) target: LookupTarget,
-    pub(crate) kind: SymbolLookupFailureKind,
+impl Spanned for SymbolLookupFailure {
+    fn span(&self) -> Span {
+        match self {
+            SymbolLookupFailure::InconsistentOrigins(inconsistent_origin) => {
+                inconsistent_origin.span()
+            }
+            SymbolLookupFailure::HereIsNotAllowedHere(span)
+            | SymbolLookupFailure::Missing { span, .. }
+            | SymbolLookupFailure::Loop { span, .. } => *span,
+            SymbolLookupFailure::MachineLimitExceeded(machine_limit_exceeded_failure) => {
+                machine_limit_exceeded_failure.span()
+            }
+        }
+    }
 }
 
 impl Display for SymbolLookupFailure {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        let desc = self.target.to_string();
-        match self.kind() {
-            SymbolLookupFailureKind::Missing { .. } => f.write_str("no definition found"),
-            SymbolLookupFailureKind::InconsistentOrigins(e) => write!(f, "{e}"),
-            SymbolLookupFailureKind::Loop { deps_in_order } => {
+        use SymbolLookupFailure::*;
+        match self {
+            Missing { name, .. } => {
+                write!(f, "no definition found for {name}")
+            }
+            InconsistentOrigins(e) => write!(f, "{e}"),
+            Loop {
+                name,
+                deps_in_order,
+                span: _,
+            } => {
                 let names: Vec<String> = deps_in_order.iter().map(|dep| dep.to_string()).collect();
                 write!(
                     f,
-                    "definition of {desc} has a dependency loop ({})",
+                    "definition of {name} has a dependency loop ({})",
                     names.join("->")
                 )
             }
-            SymbolLookupFailureKind::MachineLimitExceeded(fail) => {
+            MachineLimitExceeded(fail) => {
                 write!(f, "machine limit exceeded: {fail}")
             }
-            SymbolLookupFailureKind::HereIsNotAllowedHere => {
+            HereIsNotAllowedHere(_) => {
                 f.write_str("'#' (representing the current address) is not allowed here")
             }
         }
     }
 }
 
-impl From<(SymbolName, Span, SymbolLookupFailureKind)> for SymbolLookupFailure {
-    fn from(
-        (symbol_name, span, kind): (SymbolName, Span, SymbolLookupFailureKind),
-    ) -> SymbolLookupFailure {
-        SymbolLookupFailure {
-            target: LookupTarget::Symbol(symbol_name, span),
-            kind,
-        }
-    }
-}
-
 impl SymbolLookupFailure {
-    pub(crate) fn kind(&self) -> &SymbolLookupFailureKind {
-        &self.kind
-    }
-
     // TODO: this does much the same thing as
     // translate_symbol_lookup_failure.  Eliminate one of these.
     pub(crate) fn into_assembler_failure(self, source_file_body: &str) -> AssemblerFailure {
-        let span: Span = self.target.span();
+        let span: Span = self.span();
         let location: LineAndColumn = LineAndColumn::from((source_file_body, &span));
         match self {
-            SymbolLookupFailure {
-                kind: SymbolLookupFailureKind::MachineLimitExceeded(mle),
-                ..
-            } => {
+            SymbolLookupFailure::MachineLimitExceeded(mle) => {
                 // We cannot use RcBlockTooLong because we don't have
                 // the correct RcWordSource value.
                 AssemblerFailure::MachineLimitExceeded(mle)
             }
-            SymbolLookupFailure {
-                kind: SymbolLookupFailureKind::InconsistentOrigins(e),
-                ..
-            } => AssemblerFailure::BadProgram(vec![WithLocation {
-                location,
-                inner: ProgramError::InconsistentOriginDefinitions(e),
-            }]),
-            SymbolLookupFailure {
-                target: LookupTarget::Symbol(symbol_name, span),
-                kind: SymbolLookupFailureKind::Missing { .. } | SymbolLookupFailureKind::Loop { .. },
-            } => AssemblerFailure::BadProgram(vec![WithLocation {
-                location,
-                inner: ProgramError::UnexpectedlyUndefinedSymbol {
-                    name: symbol_name,
-                    span,
-                },
-            }]),
-            SymbolLookupFailure {
-                target,
-                kind: SymbolLookupFailureKind::Missing { .. } | SymbolLookupFailureKind::Loop { .. },
-            } => AssemblerFailure::InternalError(
-                format!("found evaluation loop while trying to resolve {target}, but representing this kind of error is not implemented"),
-            ),
-            SymbolLookupFailure {
-                target: LookupTarget::Hash(_),
-                ..
+            SymbolLookupFailure::InconsistentOrigins(e) => {
+                AssemblerFailure::BadProgram(vec![WithLocation {
+                    location,
+                    inner: ProgramError::InconsistentOriginDefinitions(e),
+                }])
             }
-            | SymbolLookupFailure {
-                kind: SymbolLookupFailureKind::HereIsNotAllowedHere,
-                ..
-            } => AssemblerFailure::BadProgram(vec![WithLocation {
-                location,
-                inner: ProgramError::SyntaxError {
-                    msg: self.to_string(),
-                    span,
-                },
-            }]),
+            SymbolLookupFailure::Missing { name, .. } | SymbolLookupFailure::Loop { name, .. } => {
+                AssemblerFailure::BadProgram(vec![WithLocation {
+                    location,
+                    inner: ProgramError::UnexpectedlyUndefinedSymbol { name, span },
+                }])
+            }
+            SymbolLookupFailure::HereIsNotAllowedHere(_) => {
+                AssemblerFailure::BadProgram(vec![WithLocation {
+                    location,
+                    inner: ProgramError::SyntaxError {
+                        msg: self.to_string(),
+                        span,
+                    },
+                }])
+            }
         }
     }
 }
@@ -231,10 +218,7 @@ impl HereValue {
     pub(crate) fn get_address(&self, span: &Span) -> Result<Address, SymbolLookupFailure> {
         match self {
             HereValue::Address(addr) => Ok(*addr),
-            HereValue::NotAllowed => Err(SymbolLookupFailure {
-                target: LookupTarget::Hash(*span),
-                kind: SymbolLookupFailureKind::HereIsNotAllowedHere,
-            }),
+            HereValue::NotAllowed => Err(SymbolLookupFailure::HereIsNotAllowedHere(*span)),
         }
     }
 }
@@ -1040,35 +1024,19 @@ mod comma_tests {
     }
 }
 
-// TODO: this does much the same thing as
-// SymbolLookupFailure::to_assembler_failure().  Eliminate one of
-// these.
 fn translate_symbol_lookup_failure(
     source_file_body: &str,
-    here: &HereValue,
     e: SymbolLookupFailure,
     undefined_symbols: &mut Vec<(Span, SymbolName)>,
 ) -> Result<(), AssemblerFailure> {
-    use SymbolLookupFailureKind::*;
-    match &e.target {
-        LookupTarget::Symbol(name, span) => {
-            undefined_symbols.push((*span, name.clone()));
+    use SymbolLookupFailure::*;
+    let span = e.span();
+    match e {
+        Missing { name, .. } | Loop { name, .. } => {
+            undefined_symbols.push((span, name));
+            Ok(())
         }
-        _ => {
-            unreachable!("unexpected error {e:?} for translate_symbol_lookup_failure");
-        }
-    }
-    match e.kind {
-        Missing { .. } | Loop { .. } => Ok(()),
-        HereIsNotAllowedHere => {
-            unreachable!("should be able to use # where target_address={here:?}");
-        }
-        InconsistentOrigins(e) => Err(AssemblerFailure::BadProgram(vec![(
-            source_file_body,
-            ProgramError::InconsistentOriginDefinitions(e),
-        )
-            .into()])),
-        MachineLimitExceeded(e) => Err(AssemblerFailure::MachineLimitExceeded(e)),
+        other => Err(other.into_assembler_failure(source_file_body)),
     }
 }
 
@@ -1094,10 +1062,7 @@ pub(super) fn extract_final_equalities<R: RcUpdater>(
                     FinalSymbolDefinition::PositionIndependent(value),
                 );
             }
-            Err(SymbolLookupFailure {
-                target: _,
-                kind: SymbolLookupFailureKind::HereIsNotAllowedHere,
-            }) => {
+            Err(SymbolLookupFailure::HereIsNotAllowedHere(_)) => {
                 // The value of this equality would depend on the
                 // address at which it is evaluated, so it has no
                 // single final value.  This is OK.
@@ -1109,12 +1074,7 @@ pub(super) fn extract_final_equalities<R: RcUpdater>(
                 );
             }
             Err(e) => {
-                translate_symbol_lookup_failure(
-                    body,
-                    &HereValue::NotAllowed,
-                    e,
-                    &mut undefined_symbols,
-                )?;
+                translate_symbol_lookup_failure(body, e, &mut undefined_symbols)?;
             }
         }
     }
@@ -1179,7 +1139,7 @@ impl InstructionSequence {
                     words.push(word);
                 }
                 Err(e) => {
-                    translate_symbol_lookup_failure(body, &here, e, &mut undefined_symbols)?;
+                    translate_symbol_lookup_failure(body, e, &mut undefined_symbols)?;
                 }
             }
         }
@@ -1377,20 +1337,13 @@ impl Evaluate for (&BlockIdentifier, &BlockPosition) {
                                     Address::from(subword::right_half(prev_addr_w));
                                 match offset_from_origin(&prev_addr, previous_block.block_size) {
                                     Ok(addr) => Ok(addr),
-                                    Err(_) => Err(SymbolLookupFailure {
-                                        target: LookupTarget::MemRef(MemoryReference {
-                                            block_id: **block_id,
-                                            block_offset: 0,
+                                    Err(_) => Err(SymbolLookupFailure::MachineLimitExceeded(
+                                        MachineLimitExceededFailure::BlockTooLarge {
                                             span: *block_span,
-                                        }),
-                                        kind: SymbolLookupFailureKind::MachineLimitExceeded(
-                                            MachineLimitExceededFailure::BlockTooLarge {
-                                                span: block_position.span,
-                                                block_id: previous_block_id,
-                                                offset: previous_block.block_size.into(),
-                                            },
-                                        ),
-                                    }),
+                                            block_id: previous_block_id,
+                                            offset: previous_block.block_size.into(),
+                                        },
+                                    )),
                                 }
                             }
                             None => {
