@@ -832,7 +832,7 @@ fn test_undefined_symbol_in_calculation() {
 fn test_symbol_definition_loop_detection() {
     use super::super::types::AssemblerFailure;
     use super::super::types::{ProgramError, WithLocation};
-    let input = concat!("A = B\n", "B = A\n", "A\n",);
+    let input = concat!("SA = SB\n", "SB = SA\n", "SA\n",);
     match assemble_source(input, Default::default()) {
         Err(AssemblerFailure::BadProgram(errors)) => match errors.as_slice() {
             [WithLocation {
@@ -842,7 +842,7 @@ fn test_symbol_definition_loop_detection() {
                         name: SymbolName { canonical },
                         span: _,
                     },
-            }] if canonical.as_str() == "A" || canonical.as_str() == "B" => (),
+            }] if canonical.as_str() == "SA" || canonical.as_str() == "SB" => (),
             otherwise => {
                 panic!("expected an error from the assembler, but not : {otherwise:?}");
             }
