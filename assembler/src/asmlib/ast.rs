@@ -1119,21 +1119,25 @@ impl Spanned for TaggedProgramInstruction {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub(crate) struct InstructionSequence(Vec<TaggedProgramInstruction>);
+pub(crate) struct InstructionSequence {
+    instructions: Vec<TaggedProgramInstruction>,
+}
 
 impl chumsky::container::Container<TaggedProgramInstruction> for InstructionSequence {
     fn push(&mut self, item: TaggedProgramInstruction) {
-        self.0.push(item)
+        self.instructions.push(item)
     }
 
     fn with_capacity(n: usize) -> Self {
-        InstructionSequence(Vec::with_capacity(n))
+        InstructionSequence {
+            instructions: Vec::with_capacity(n),
+        }
     }
 }
 
 impl From<Vec<TaggedProgramInstruction>> for InstructionSequence {
     fn from(v: Vec<TaggedProgramInstruction>) -> Self {
-        InstructionSequence(v)
+        InstructionSequence { instructions: v }
     }
 }
 
@@ -1142,22 +1146,24 @@ impl FromIterator<TaggedProgramInstruction> for InstructionSequence {
     where
         T: IntoIterator<Item = TaggedProgramInstruction>,
     {
-        Self(iter.into_iter().collect())
+        Self {
+            instructions: iter.into_iter().collect(),
+        }
     }
 }
 
 impl InstructionSequence {
     pub(super) fn iter(&self) -> impl Iterator<Item = &TaggedProgramInstruction> {
-        self.0.iter()
+        self.instructions.iter()
     }
 
     pub(crate) fn first(&self) -> Option<&TaggedProgramInstruction> {
-        self.0.first()
+        self.instructions.first()
     }
 
     #[cfg(test)]
     pub(crate) fn as_slice(&self) -> &[TaggedProgramInstruction] {
-        self.0.as_slice()
+        self.instructions.as_slice()
     }
 
     pub(super) fn assign_rc_words<R: RcAllocator>(
@@ -1165,7 +1171,7 @@ impl InstructionSequence {
         symtab: &mut SymbolTable,
         rc_allocator: &mut R,
     ) -> Result<(), RcWordAllocationFailure> {
-        for ref mut statement in self.0.iter_mut() {
+        for ref mut statement in self.instructions.iter_mut() {
             statement.assign_rc_words(symtab, rc_allocator)?;
         }
         Ok(())
@@ -1176,7 +1182,7 @@ impl InstructionSequence {
         block_id: BlockIdentifier,
     ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
         let mut result: Vec<(SymbolName, Span, SymbolUse)> = Vec::new();
-        for (offset, statement) in self.0.iter().enumerate() {
+        for (offset, statement) in self.instructions.iter().enumerate() {
             let off: Unsigned18Bit = Unsigned18Bit::try_from(offset)
                 .expect("block should not be larger than the TX-2's memory");
             result.extend(statement.symbol_uses(block_id, off));
@@ -1185,7 +1191,10 @@ impl InstructionSequence {
     }
 
     pub(crate) fn emitted_word_count(&self) -> Unsigned18Bit {
-        self.0.iter().map(|st| st.emitted_word_count()).sum()
+        self.instructions
+            .iter()
+            .map(|st| st.emitted_word_count())
+            .sum()
     }
 }
 
