@@ -1378,26 +1378,26 @@ pub(crate) struct Directive {
     // are assigned in the order they appear in the code, and
     // similarly for undefined origins (e.g. "FOO| JMP ..." where FOO
     // has no definition).
-    pub(crate) memory_map: BTreeMap<BlockIdentifier, (Option<Origin>, LocatedBlock)>,
+    pub(crate) blocks: BTreeMap<BlockIdentifier, (Option<Origin>, LocatedBlock)>,
     pub(crate) equalities: Vec<Equality>,
     pub(crate) entry_point: Option<Address>,
 }
 
 impl Directive {
     pub(crate) fn new(
-        memory_map: BTreeMap<BlockIdentifier, (Option<Origin>, LocatedBlock)>,
+        blocks: BTreeMap<BlockIdentifier, (Option<Origin>, LocatedBlock)>,
         equalities: Vec<Equality>,
         entry_point: Option<Address>,
     ) -> Self {
         Self {
-            memory_map,
+            blocks,
             equalities,
             entry_point,
         }
     }
 
     pub(crate) fn position_rc_block(&mut self) -> Address {
-        self.memory_map
+        self.blocks
             .values()
             .map(|(_origin, block)| block.following_addr())
             .max()

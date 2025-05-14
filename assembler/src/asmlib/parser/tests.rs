@@ -1300,7 +1300,7 @@ fn test_multi_syllable_symex() {
 
 #[test]
 fn program_instruction_with_opcode() {
-    let mut nosyms = SymbolTable::new(None);
+    let mut nosyms = SymbolTable::default();
     let mut op = LookupOperation::default();
     let mut rc_block =
         make_empty_rc_block_for_test(Address::from(Unsigned18Bit::from(0o20_000u16)));

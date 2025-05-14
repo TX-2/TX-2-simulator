@@ -25,7 +25,7 @@ use super::state::{NumeralMode, State};
 use super::symbol::SymbolName;
 use super::symtab::{
     assign_default_rc_word_tags, BadSymbolDefinition, BlockPosition, FinalSymbolDefinition,
-    FinalSymbolTable, FinalSymbolType, LookupOperation, SymbolTable,
+    FinalSymbolTable, FinalSymbolType, LookupOperation, MemoryMap, SymbolTable,
 };
 use super::types::*;
 use base::prelude::{Address, IndexBy, Unsigned18Bit, Unsigned36Bit};
@@ -61,11 +61,7 @@ impl OutputOptions {
 }
 
 impl SourceFile {
-    fn into_directive(
-        self,
-        source_file_body: &str,
-        symtab: &mut SymbolTable,
-    ) -> Result<Directive, AssemblerFailure> {
+    fn into_directive(self, symtab: &mut SymbolTable) -> Result<Directive, AssemblerFailure> {
         let SourceFile {
             punch,
             blocks: input_blocks,
@@ -75,38 +71,15 @@ impl SourceFile {
         let mut output_blocks: BTreeMap<BlockIdentifier, (Option<Origin>, LocatedBlock)> =
             BTreeMap::new();
 
-        let tmp_blocks: Vec<(BlockIdentifier, BlockPosition)> = symtab
-            .blocks_iter()
-            .map(|(block_identifier, block_position)| (*block_identifier, block_position.clone()))
-            .collect();
-        let mut block_locations: BTreeMap<BlockIdentifier, Address> = BTreeMap::new();
-        let mut no_rc_allocation = NoRcBlock {};
-        for (block_identifier, block_position) in tmp_blocks.into_iter() {
-            let mut op: LookupOperation = Default::default();
-            match (&block_identifier, &block_position).evaluate(
-                &HereValue::NotAllowed,
-                symtab,
-                &mut no_rc_allocation,
-                &mut op,
-            ) {
-                Ok(value) => {
-                    let address: Address = subword::right_half(value).into();
-                    block_locations.insert(block_identifier, address);
-                }
-                Err(e) => {
-                    let prog_error: ProgramError = e.into_program_error();
-                    return Err(prog_error.into_assembler_failure(source_file_body));
-                }
-            }
-        }
-
         for (block_id, mblock) in input_blocks
             .iter()
             .enumerate()
             .map(|(id, b)| (BlockIdentifier::from(id), b))
         {
-            let location: &Address = block_locations
-                .get(&block_id)
+            let location: &Address = symtab
+                .get_block_position(&block_id)
+                .map(|pos| pos.block_address.as_ref())
+                .flatten()
                 .expect("all block locations should have been determined");
             output_blocks.insert(
                 block_id,
@@ -286,12 +259,10 @@ struct Pass2Output<'a> {
 
 fn initial_symbol_table<'a>(
     source_file: &SourceFile,
+    memory_map: MemoryMap,
 ) -> Result<SymbolTable, Vec<Rich<'a, lexer::Token>>> {
     let mut errors = Vec::new();
-    let mut symtab = SymbolTable::new(source_file.blocks.iter().map(|block| {
-        let span: Span = block.origin_span();
-        (span, block.origin.clone(), block.instruction_count())
-    }));
+    let mut symtab = SymbolTable::new(memory_map);
     for (symbol, span, context) in source_file.global_symbol_references() {
         symtab.record_usage_context(symbol.clone(), span, context)
     }
@@ -327,7 +298,11 @@ fn assemble_pass2(
     let span = span!(Level::ERROR, "assembly pass 2");
     let _enter = span.enter();
 
-    let mut symtab = match initial_symbol_table(&source_file) {
+    let memory_map = MemoryMap::new(source_file.blocks.iter().map(|block| {
+        let span: Span = block.origin_span();
+        (span, block.origin.clone(), block.instruction_count())
+    }));
+    let mut symtab = match initial_symbol_table(&source_file, memory_map) {
         Ok(syms) => syms,
         Err(errors) => {
             return Err(AssemblerFailure::BadProgram(fail_with_diagnostics(
@@ -337,9 +312,33 @@ fn assemble_pass2(
         }
     };
 
-    let directive = source_file.into_directive(source_file_body, &mut symtab)?;
+    let tmp_blocks: Vec<(BlockIdentifier, BlockPosition)> = symtab
+        .blocks_iter()
+        .map(|(block_identifier, block_position)| (*block_identifier, block_position.clone()))
+        .collect();
+    let mut no_rc_allocation = NoRcBlock {};
+    for (block_identifier, block_position) in tmp_blocks.into_iter() {
+        let mut op: LookupOperation = Default::default();
+        match (&block_identifier, &block_position).evaluate(
+            &HereValue::NotAllowed,
+            &mut symtab,
+            &mut no_rc_allocation,
+            &mut op,
+        ) {
+            Ok(value) => {
+                let address: Address = subword::right_half(value).into();
+                symtab.set_block_position(block_identifier, address);
+            }
+            Err(e) => {
+                let prog_error: ProgramError = e.into_program_error();
+                return Err(prog_error.into_assembler_failure(source_file_body));
+            }
+        }
+    }
+
+    let directive = source_file.into_directive(&mut symtab)?;
     if let Some(instruction_count) = directive
-        .memory_map
+        .blocks
         .values()
         .try_fold(Unsigned18Bit::ZERO, |acc, (_, b)| {
             acc.checked_add(b.emitted_word_count())
@@ -395,7 +394,7 @@ fn assemble_pass3(
     };
 
     let Directive {
-        mut memory_map,
+        blocks: mut memory_map,
         equalities,
         entry_point: _,
     } = directive;

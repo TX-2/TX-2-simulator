@@ -101,7 +101,7 @@ fn test_metacommand_dec_changes_default_base() {
         location: _,
         statements,
     }] = directive
-        .memory_map
+        .blocks
         .values()
         .map(|(_maybe_origin, block)| block)
         .cloned()

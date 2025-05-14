@@ -40,14 +40,61 @@ impl From<(SymbolDefinition, Span)> for InternalSymbolDef {
     }
 }
 
+#[derive(Debug, Default)]
+pub(crate) struct MemoryMap {
+    blocks: BTreeMap<BlockIdentifier, BlockPosition>,
+}
+
+impl MemoryMap {
+    pub(crate) fn get(&self, block: &BlockIdentifier) -> Option<&BlockPosition> {
+        self.blocks.get(block)
+    }
+
+    pub(crate) fn set_block_position(&mut self, block: BlockIdentifier, location: Address) {
+        match self.blocks.get_mut(&block) {
+            Some(pos) => pos.block_address = Some(location),
+            None => {
+                unreachable!("attempted to set location of nonexistent block");
+            }
+        }
+    }
+
+    pub(crate) fn iter(&self) -> impl Iterator<Item = (&BlockIdentifier, &BlockPosition)> {
+        self.blocks.iter()
+    }
+
+    pub(crate) fn new<I>(block_sizes: I) -> MemoryMap
+    where
+        I: IntoIterator<Item = (Span, Option<Origin>, Unsigned18Bit)>,
+    {
+        let blocks = block_sizes
+            .into_iter()
+            .enumerate()
+            .map(|(i, (span, maybe_origin, block_size))| {
+                let block_id = BlockIdentifier::from(i);
+                (
+                    block_id,
+                    BlockPosition {
+                        span,
+                        origin: maybe_origin,
+                        block_address: None,
+                        block_size,
+                    },
+                )
+            })
+            .collect();
+        MemoryMap { blocks }
+    }
+}
+
 /// A symbol which has a reference but no definition is known, will
 /// ben represented it by having it map to None.  The rules for how
 /// such symbols are assigned values are indicated in "Unassigned
 /// Symexes" in section 6-2.2 of the User Handbook.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(crate) struct SymbolTable {
     definitions: BTreeMap<SymbolName, InternalSymbolDef>,
-    blocks: BTreeMap<BlockIdentifier, BlockPosition>,
+    memory_map: MemoryMap,
     index_registers_used: Unsigned6Bit,
 }
 
@@ -83,7 +130,7 @@ impl Evaluate for (&Span, &SymbolName, &SymbolDefinition) {
                 block_offset,
                 span,
             }) => {
-                if let Some(block_position) = symtab.get_block_position(block_id).cloned() {
+                if let Some(block_position) = symtab.memory_map.get(block_id).cloned() {
                     let what: (&BlockIdentifier, &BlockPosition) = (block_id, &block_position);
                     let block_origin: Address = subword::right_half(what.evaluate(
                         target_address,
@@ -141,7 +188,7 @@ fn final_lookup_helper_body<R: RcUpdater>(
                     },
                 ..
             }) => {
-                if let Some(block_position) = symtab.blocks.get(&block_identifier).cloned() {
+                if let Some(block_position) = symtab.memory_map.get(&block_identifier).cloned() {
                     // If we simply try to pass block_position to
                     // evaluate() we will loop and diagnose this as an
                     // undefined symbol.  While the symbol has no
@@ -201,30 +248,10 @@ fn final_lookup_helper_body<R: RcUpdater>(
 }
 
 impl SymbolTable {
-    pub(crate) fn new<I>(block_sizes: I) -> SymbolTable
-    where
-        I: IntoIterator<Item = (Span, Option<Origin>, Unsigned18Bit)>,
-    {
-        let blocks = block_sizes
-            .into_iter()
-            .enumerate()
-            .map(|(i, (span, maybe_origin, block_size))| {
-                let block_id = BlockIdentifier::from(i);
-                (
-                    block_id,
-                    BlockPosition {
-                        span,
-                        origin: maybe_origin,
-                        block_address: None,
-                        block_size,
-                    },
-                )
-            })
-            .collect();
-
+    pub(crate) fn new(memory_map: MemoryMap) -> SymbolTable {
         SymbolTable {
             definitions: Default::default(),
-            blocks,
+            memory_map,
             index_registers_used: Unsigned6Bit::ZERO,
         }
     }
@@ -238,11 +265,15 @@ impl SymbolTable {
     }
 
     pub(crate) fn get_block_position(&self, block: &BlockIdentifier) -> Option<&BlockPosition> {
-        self.blocks.get(block)
+        self.memory_map.get(block)
+    }
+
+    pub(crate) fn set_block_position(&mut self, block: BlockIdentifier, location: Address) {
+        self.memory_map.set_block_position(block, location);
     }
 
     pub(crate) fn blocks_iter(&self) -> impl Iterator<Item = (&BlockIdentifier, &BlockPosition)> {
-        self.blocks.iter()
+        self.memory_map.iter()
     }
 
     pub(crate) fn is_defined(&self, name: &SymbolName) -> bool {
