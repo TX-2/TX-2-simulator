@@ -1246,6 +1246,7 @@ where
                 I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
             {
                 literal(Script::Normal)
+                    .then_ignore(just(Tok::Pipe(Script::Normal)))
                     .try_map(|lit, span| match Address::try_from(lit.value()) {
                         Ok(addr) => Ok(Origin::Literal(span, addr)),
                         Err(e) => Err(Rich::custom(span, format!("not a valid address: {e}"))),
@@ -1259,6 +1260,7 @@ where
                 I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
             {
                 named_symbol(SymexSyllableRule::Multiple, Script::Normal)
+                    .then_ignore(just(Tok::Pipe(Script::Normal)))
                     .map_with(|name, extra| Origin::Symbolic(extra.span(), name))
                     .labelled("symbolic address expression")
             }
@@ -1266,7 +1268,6 @@ where
             // An origin specification is an expression followed by a
             // (normal-case) pipe symbol.
             choice((literal_address_expression(), symbolic_address_expression()))
-                .then_ignore(just(Tok::Pipe(Script::Normal)))
                 .labelled("origin specification")
         }
 

@@ -777,6 +777,14 @@ impl Ord for Origin {
             (Origin::Literal(_, _), Origin::Symbolic(_, _)) => Ordering::Less,
             (Origin::Symbolic(_, _), Origin::Literal(_, _)) => Ordering::Greater,
         }
+        .then_with(|| {
+            let my_span = self.span();
+            let their_span = other.span();
+            my_span
+                .start
+                .cmp(&their_span.start)
+                .then_with(|| my_span.end.cmp(&their_span.end))
+        })
     }
 }
 

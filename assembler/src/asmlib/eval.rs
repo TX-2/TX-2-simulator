@@ -752,7 +752,6 @@ impl InstructionSequence {
             match instruction.evaluate(&here, symtab, rc_updater, &mut op) {
                 Ok(word) => {
                     listing.push_line(ListingLine {
-                        origin: None,
                         span: Some(instruction.span),
                         rc_source: None,
                         content: Some((address, word)),

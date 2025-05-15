@@ -1,6 +1,5 @@
 use std::fmt::Display;
 
-use super::ast::Origin;
 use super::span::Span;
 use super::span::{extract_prefix, extract_span};
 use super::symtab::FinalSymbolTable;
@@ -34,7 +33,6 @@ impl Listing {
 
 #[derive(Debug)]
 pub(super) struct ListingLine {
-    pub(super) origin: Option<Origin>,
     pub(super) span: Option<Span>,
     pub(super) rc_source: Option<RcWordSource>,
     pub(super) content: Option<(Address, Unsigned36Bit)>,
@@ -56,10 +54,6 @@ fn write_address(f: &mut std::fmt::Formatter<'_>, addr: &Address) -> std::fmt::R
 
 impl Display for ListingLineWithBody<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(origin) = self.line.origin.as_ref() {
-            writeln!(f, "{origin}| ** origin")?;
-        }
-
         match self.line.rc_source.as_ref() {
             Some(RcWordSource::DefaultAssignment(_, name)) => {
                 write!(f, "{name:10}-> ")?;

@@ -473,7 +473,6 @@ fn assemble_pass3(
             // tag (6-2.2).
             let span = origin.span();
             listing.push_line(ListingLine {
-                origin: Some(origin),
                 span: Some(span),
                 rc_source: None,
                 content: None,
@@ -511,7 +510,6 @@ fn assemble_pass3(
             );
 
             listing.push_rc_line(ListingLine {
-                origin: None,
                 span: None,
                 rc_source: Some(rc_source.clone()),
                 content: Some((address, *word)),

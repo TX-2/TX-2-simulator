@@ -790,7 +790,7 @@ fn test_manuscript_with_origin() {
         SourceFile {
             punch: None,
             blocks: vec![ManuscriptBlock {
-                origin: Some(Origin::Literal(span(0..3), Address::new(u18!(0o100)))),
+                origin: Some(Origin::Literal(span(0..5), Address::new(u18!(0o100)))),
                 statements: vec![TaggedProgramInstruction::single(
                     notags(),
                     HoldBit::Unspecified,
@@ -1172,7 +1172,7 @@ fn test_assignment_origin() {
         SourceFile {
             punch: None,
             blocks: vec![ManuscriptBlock {
-                origin: Some(Origin::Literal(span(9..13), Address::new(u18!(0o1000)))),
+                origin: Some(Origin::Literal(span(9..14), Address::new(u18!(0o1000)))),
                 statements: vec![TaggedProgramInstruction::single(
                     Vec::new(),
                     HoldBit::Unspecified,
@@ -1187,6 +1187,35 @@ fn test_assignment_origin() {
                 span(0..8),
                 LiteralValue::from((span(4..8), Script::Normal, u36!(0o1000))),
             )],
+            macros: Default::default(),
+        }
+    );
+}
+
+#[test]
+fn test_symbolic_origin() {
+    const INPUT: &str = concat!("BEGIN|2\n",);
+    let tree = parse_successfully_with(INPUT, source_file(), no_state_setup);
+    assert_eq!(
+        tree,
+        SourceFile {
+            punch: None,
+            blocks: vec![ManuscriptBlock {
+                // One of the key things to check here is that the pipe
+                // symbol is included in the origin's span.  We do
+                // this in order to include the pipe symbol in the
+                // output listing.
+                origin: Some(Origin::Symbolic(span(0..6), SymbolName::from("BEGIN"))),
+                statements: vec![TaggedProgramInstruction::single(
+                    Vec::new(),
+                    HoldBit::Unspecified,
+                    span(6..7),
+                    span(6..7),
+                    InstructionFragment::from((span(6..7), Script::Normal, u36!(2),))
+                )]
+                .into(),
+            }],
+            equalities: Default::default(),
             macros: Default::default(),
         }
     );
