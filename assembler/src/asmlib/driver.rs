@@ -68,8 +68,7 @@ impl SourceFile {
             equalities,
             macros: _,
         } = self;
-        let mut output_blocks: BTreeMap<BlockIdentifier, (Option<Origin>, LocatedBlock)> =
-            BTreeMap::new();
+        let mut output_blocks: BTreeMap<BlockIdentifier, LocatedBlock> = BTreeMap::new();
 
         for (block_id, mblock) in input_blocks
             .iter()
@@ -78,18 +77,15 @@ impl SourceFile {
         {
             let location: &Address = symtab
                 .get_block_position(&block_id)
-                .map(|pos| pos.block_address.as_ref())
-                .flatten()
+                .and_then(|pos| pos.block_address.as_ref())
                 .expect("all block locations should have been determined");
             output_blocks.insert(
                 block_id,
-                (
-                    mblock.origin.clone(),
-                    LocatedBlock {
-                        location: *location,
-                        statements: mblock.statements.clone(),
-                    },
-                ),
+                LocatedBlock {
+                    origin: mblock.origin.clone(),
+                    location: *location,
+                    statements: mblock.statements.clone(),
+                },
             );
         }
 
@@ -340,7 +336,7 @@ fn assemble_pass2(
     if let Some(instruction_count) = directive
         .blocks
         .values()
-        .try_fold(Unsigned18Bit::ZERO, |acc, (_, b)| {
+        .try_fold(Unsigned18Bit::ZERO, |acc, b| {
             acc.checked_add(b.emitted_word_count())
         })
     {
@@ -402,8 +398,8 @@ fn assemble_pass3(
     let mut final_symbols = FinalSymbolTable::default();
     let mut undefined_symbols: BTreeMap<SymbolName, Span> = Default::default();
     // TODO: consider moving this into pass 2.
-    for (maybe_origin, block) in memory_map.values() {
-        if let Some(Origin::Symbolic(span, symbol_name)) = maybe_origin.as_ref() {
+    for block in memory_map.values() {
+        if let Some(Origin::Symbolic(span, symbol_name)) = block.origin.as_ref() {
             assert!(symtab.is_defined(symbol_name));
 
             final_symbols.define_if_undefined(
@@ -453,7 +449,7 @@ fn assemble_pass3(
         }
     };
 
-    for (_, directive_block) in memory_map.values_mut() {
+    for directive_block in memory_map.values_mut() {
         if let Err(e) = directive_block.assign_rc_words(symtab, &mut rcblock) {
             return Err(convert_rc_failure(e));
         }
@@ -464,7 +460,7 @@ fn assemble_pass3(
     }
 
     // Emit the binary code.
-    for (block_id, (maybe_origin, directive_block)) in memory_map.into_iter() {
+    for (block_id, directive_block) in memory_map.into_iter() {
         event!(
             Level::DEBUG,
             "{block_id} in output has address {0:#o} and length {1:#o}",
@@ -472,7 +468,7 @@ fn assemble_pass3(
             directive_block.emitted_word_count(),
         );
 
-        if let Some(origin) = maybe_origin {
+        if let Some(origin) = directive_block.origin.clone() {
             // This is an origin (Users Handbook section 6-2.5) not a
             // tag (6-2.2).
             let span = origin.span();

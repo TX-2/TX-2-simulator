@@ -98,15 +98,10 @@ fn test_metacommand_dec_changes_default_base() {
     const INPUT: &str = concat!("10\n", "☛☛DECIMAL\n", "10  ** Ten\n");
     let (directive, _) = assemble_nonempty_valid_input(INPUT);
     if let [LocatedBlock {
+        origin: _,
         location: _,
         statements,
-    }] = directive
-        .blocks
-        .values()
-        .map(|(_maybe_origin, block)| block)
-        .cloned()
-        .collect::<Vec<_>>()
-        .as_slice()
+    }] = directive.blocks.values().collect::<Vec<_>>().as_slice()
     {
         if let [TaggedProgramInstruction {
             span: _,
