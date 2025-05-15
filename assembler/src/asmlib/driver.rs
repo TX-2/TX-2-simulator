@@ -61,7 +61,7 @@ impl OutputOptions {
 }
 
 impl SourceFile {
-    fn into_directive(self, symtab: &mut SymbolTable) -> Result<Directive, AssemblerFailure> {
+    fn into_directive(self, mem_map: &MemoryMap) -> Result<Directive, AssemblerFailure> {
         let SourceFile {
             punch,
             blocks: input_blocks,
@@ -73,10 +73,7 @@ impl SourceFile {
             .enumerate()
             .map(|(id, mblock)| (BlockIdentifier::from(id), mblock))
             .map(|(block_id, mblock)| {
-                let location: Address = match symtab
-                    .get_block_position(&block_id)
-                    .map(|pos| pos.block_address)
-                {
+                let location: Address = match mem_map.get(&block_id).map(|pos| pos.block_address) {
                     Some(Some(addr)) => addr,
                     None => unreachable!("unknown block {block_id} in input_blocks"),
                     Some(None) => unreachable!(
@@ -336,7 +333,7 @@ fn assemble_pass2(
         }
     }
 
-    let directive = source_file.into_directive(&mut symtab)?;
+    let directive = source_file.into_directive(symtab.get_memory_map())?;
     if let Some(instruction_count) = directive
         .blocks
         .values()

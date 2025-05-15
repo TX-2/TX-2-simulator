@@ -256,16 +256,16 @@ impl SymbolTable {
         }
     }
 
+    pub(crate) fn get_memory_map(&self) -> &MemoryMap {
+        &self.memory_map
+    }
+
     pub(crate) fn get(&self, name: &SymbolName) -> Option<&SymbolDefinition> {
         self.definitions.get(name).map(|internal| &internal.def)
     }
 
     pub(crate) fn get_clone(&mut self, name: &SymbolName) -> Option<SymbolDefinition> {
         self.get(name).cloned()
-    }
-
-    pub(crate) fn get_block_position(&self, block: &BlockIdentifier) -> Option<&BlockPosition> {
-        self.memory_map.get(block)
     }
 
     pub(crate) fn set_block_position(&mut self, block: BlockIdentifier, location: Address) {

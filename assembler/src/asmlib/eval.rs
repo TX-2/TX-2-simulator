@@ -22,7 +22,7 @@ use super::types::{
 use crate::symbol::SymbolContext;
 use crate::symtab::{
     BlockPosition, FinalSymbolDefinition, FinalSymbolTable, FinalSymbolType, LookupOperation,
-    SymbolDefinition, SymbolTable, TagDefinition,
+    MemoryMap, SymbolDefinition, SymbolTable, TagDefinition,
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -907,6 +907,7 @@ impl Evaluate for (&BlockIdentifier, &BlockPosition) {
         rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+        let mmap: &MemoryMap = symtab.get_memory_map();
         fn address_from_lower_half(x: Unsigned36Bit) -> Address {
             subword::right_half(x).into()
         }
@@ -934,33 +935,28 @@ impl Evaluate for (&BlockIdentifier, &BlockPosition) {
                         // This is the first block.
                         Ok(Origin::default_address())
                     }
-                    Some(previous_block_id) => {
-                        match symtab.get_block_position(&previous_block_id).cloned() {
-                            Some(previous_block) => {
-                                let prev_addr_w: Unsigned36Bit = (
-                                    &previous_block_id,
-                                    &previous_block,
-                                )
-                                    .evaluate(target_address, symtab, rc_updater, op)?;
-                                let prev_addr: Address =
-                                    Address::from(subword::right_half(prev_addr_w));
-                                match offset_from_origin(&prev_addr, previous_block.block_size) {
-                                    Ok(addr) => Ok(addr),
-                                    Err(_) => Err(SymbolLookupFailure::BlockTooLarge(
-                                        *block_span,
-                                        MachineLimitExceededFailure::BlockTooLarge {
-                                            span: *block_span,
-                                            block_id: previous_block_id,
-                                            offset: previous_block.block_size.into(),
-                                        },
-                                    )),
-                                }
-                            }
-                            None => {
-                                panic!("{previous_block_id} is missing from the block layout");
+                    Some(previous_block_id) => match mmap.get(&previous_block_id).cloned() {
+                        Some(previous_block) => {
+                            let prev_addr_w: Unsigned36Bit = (&previous_block_id, &previous_block)
+                                .evaluate(target_address, symtab, rc_updater, op)?;
+                            let prev_addr: Address =
+                                Address::from(subword::right_half(prev_addr_w));
+                            match offset_from_origin(&prev_addr, previous_block.block_size) {
+                                Ok(addr) => Ok(addr),
+                                Err(_) => Err(SymbolLookupFailure::BlockTooLarge(
+                                    *block_span,
+                                    MachineLimitExceededFailure::BlockTooLarge {
+                                        span: *block_span,
+                                        block_id: previous_block_id,
+                                        offset: previous_block.block_size.into(),
+                                    },
+                                )),
                             }
                         }
-                    }
+                        None => {
+                            panic!("{previous_block_id} is missing from the block layout");
+                        }
+                    },
                 }
             }
         }?;
