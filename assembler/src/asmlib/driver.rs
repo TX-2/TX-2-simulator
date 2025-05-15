@@ -68,26 +68,31 @@ impl SourceFile {
             equalities,
             macros: _,
         } = self;
-        let mut output_blocks: BTreeMap<BlockIdentifier, LocatedBlock> = BTreeMap::new();
-
-        for (block_id, mblock) in input_blocks
-            .iter()
+        let output_blocks: BTreeMap<BlockIdentifier, LocatedBlock> = input_blocks
+            .into_iter()
             .enumerate()
-            .map(|(id, b)| (BlockIdentifier::from(id), b))
-        {
-            let location: &Address = symtab
-                .get_block_position(&block_id)
-                .and_then(|pos| pos.block_address.as_ref())
-                .expect("all block locations should have been determined");
-            output_blocks.insert(
-                block_id,
-                LocatedBlock {
-                    origin: mblock.origin.clone(),
-                    location: *location,
-                    statements: mblock.statements.clone(),
-                },
-            );
-        }
+            .map(|(id, mblock)| (BlockIdentifier::from(id), mblock))
+            .map(|(block_id, mblock)| {
+                let location: Address = match symtab
+                    .get_block_position(&block_id)
+                    .map(|pos| pos.block_address)
+                {
+                    Some(Some(addr)) => addr,
+                    None => unreachable!("unknown block {block_id} in input_blocks"),
+                    Some(None) => unreachable!(
+                        "block location for {block_id} should already have been determined"
+                    ),
+                };
+                (
+                    block_id,
+                    LocatedBlock {
+                        origin: mblock.origin,
+                        location,
+                        statements: mblock.statements,
+                    },
+                )
+            })
+            .collect();
 
         let entry_point: Option<Address> = match punch {
             Some(PunchCommand(Some(address))) => {
@@ -118,12 +123,11 @@ impl SourceFile {
         // for this to generate a fresh reader leader and so
         // on.  But this is not supported here.  The reason we
         // don't support it is that we'd need to know the
-        // answers to a lot of quesrtions we don't have
+        // answers to a lot of questions we don't have
         // answers for right now.  For example, should the
         // existing program be cleared?  Should the symbol
         // table be cleared?
-        let directive: Directive = Directive::new(output_blocks, equalities, entry_point);
-        Ok(directive)
+        Ok(Directive::new(output_blocks, equalities, entry_point))
     }
 }
 
