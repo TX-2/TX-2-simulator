@@ -16,7 +16,7 @@ use super::super::{
     parser::symex::{parse_multi_syllable_symex, parse_symex},
     state::NumeralMode,
     symbol::SymbolName,
-    symtab::{LookupOperation, SymbolTable},
+    symtab::{LookupOperation, MemoryMap, SymbolTable},
 };
 use super::*;
 
@@ -1330,14 +1330,16 @@ fn test_multi_syllable_symex() {
 #[test]
 fn program_instruction_with_opcode() {
     let mut nosyms = SymbolTable::default();
+    let input = "²¹IOS₅₂ 30106";
+    let memory_map = MemoryMap::new([(span(0..input.len()), None, u18!(1))]);
     let mut op = LookupOperation::default();
     let mut rc_block =
         make_empty_rc_block_for_test(Address::from(Unsigned18Bit::from(0o20_000u16)));
-    let input = "²¹IOS₅₂ 30106";
     assert_eq!(
         parse_tagged_instruction(input).evaluate(
             &HereValue::Address(Address::ZERO),
             &mut nosyms,
+            &memory_map,
             &mut rc_block,
             &mut op
         ),

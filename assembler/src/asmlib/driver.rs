@@ -153,7 +153,7 @@ fn assemble_pass1<'a>(
 /// This test helper is defined here so that we don't have to expose
 /// assemble_pass1, assemble_pass2.
 #[cfg(test)]
-pub(crate) fn assemble_nonempty_valid_input(input: &str) -> (Directive, SymbolTable) {
+pub(crate) fn assemble_nonempty_valid_input(input: &str) -> (Directive, SymbolTable, MemoryMap) {
     let mut errors: Vec<Rich<'_, lexer::Token>> = Vec::new();
     let result: Result<(Option<SourceFile>, OutputOptions), AssemblerFailure> =
         assemble_pass1(input, &mut errors);
@@ -171,7 +171,7 @@ pub(crate) fn assemble_nonempty_valid_input(input: &str) -> (Directive, SymbolTa
                 panic!("input should be valid: {:?}", &p2output.errors);
             }
             match p2output.directive {
-                Some(directive) => (directive, p2output.symbols),
+                Some(directive) => (directive, p2output.symbols, p2output.memory_map),
                 None => {
                     panic!("assembly pass 2 generated no errors but also no output");
                 }
@@ -251,15 +251,15 @@ impl Binary {
 struct Pass2Output<'a> {
     directive: Option<Directive>,
     symbols: SymbolTable,
+    memory_map: MemoryMap,
     errors: Vec<Rich<'a, lexer::Token>>,
 }
 
 fn initial_symbol_table<'a>(
     source_file: &SourceFile,
-    memory_map: MemoryMap,
 ) -> Result<SymbolTable, Vec<Rich<'a, lexer::Token>>> {
     let mut errors = Vec::new();
-    let mut symtab = SymbolTable::new(memory_map);
+    let mut symtab = SymbolTable::new();
     for (symbol, span, context) in source_file.global_symbol_references() {
         symtab.record_usage_context(symbol.clone(), span, context)
     }
@@ -295,11 +295,11 @@ fn assemble_pass2(
     let span = span!(Level::ERROR, "assembly pass 2");
     let _enter = span.enter();
 
-    let memory_map = MemoryMap::new(source_file.blocks.iter().map(|block| {
+    let mut memory_map = MemoryMap::new(source_file.blocks.iter().map(|block| {
         let span: Span = block.origin_span();
         (span, block.origin.clone(), block.instruction_count())
     }));
-    let mut symtab = match initial_symbol_table(&source_file, memory_map) {
+    let mut symtab = match initial_symbol_table(&source_file) {
         Ok(syms) => syms,
         Err(errors) => {
             return Err(AssemblerFailure::BadProgram(fail_with_diagnostics(
@@ -309,8 +309,8 @@ fn assemble_pass2(
         }
     };
 
-    let tmp_blocks: Vec<(BlockIdentifier, BlockPosition)> = symtab
-        .blocks_iter()
+    let tmp_blocks: Vec<(BlockIdentifier, BlockPosition)> = memory_map
+        .iter()
         .map(|(block_identifier, block_position)| (*block_identifier, block_position.clone()))
         .collect();
     let mut no_rc_allocation = NoRcBlock {};
@@ -319,12 +319,13 @@ fn assemble_pass2(
         match (&block_identifier, &block_position).evaluate(
             &HereValue::NotAllowed,
             &mut symtab,
+            &memory_map,
             &mut no_rc_allocation,
             &mut op,
         ) {
             Ok(value) => {
                 let address: Address = subword::right_half(value).into();
-                symtab.set_block_position(block_identifier, address);
+                memory_map.set_block_position(block_identifier, address);
             }
             Err(e) => {
                 let prog_error: ProgramError = e.into_program_error();
@@ -333,7 +334,7 @@ fn assemble_pass2(
         }
     }
 
-    let directive = source_file.into_directive(symtab.get_memory_map())?;
+    let directive = source_file.into_directive(&memory_map)?;
     if let Some(instruction_count) = directive
         .blocks
         .values()
@@ -349,6 +350,7 @@ fn assemble_pass2(
     Ok(Pass2Output {
         directive: Some(directive),
         symbols: symtab,
+        memory_map,
         errors: Vec::new(),
     })
 }
@@ -375,6 +377,7 @@ impl RcUpdater for NoRcBlock {
 fn assemble_pass3(
     mut directive: Directive,
     symtab: &mut SymbolTable,
+    memory_map: &mut MemoryMap,
     body: &str,
     listing: &mut Listing,
 ) -> Result<(Binary, FinalSymbolTable), AssemblerFailure> {
@@ -391,7 +394,7 @@ fn assemble_pass3(
     };
 
     let Directive {
-        blocks: mut memory_map,
+        mut blocks,
         equalities,
         entry_point: _,
     } = directive;
@@ -399,7 +402,7 @@ fn assemble_pass3(
     let mut final_symbols = FinalSymbolTable::default();
     let mut undefined_symbols: BTreeMap<SymbolName, Span> = Default::default();
     // TODO: consider moving this into pass 2.
-    for block in memory_map.values() {
+    for block in blocks.values() {
         if let Some(Origin::Symbolic(span, symbol_name)) = block.origin.as_ref() {
             assert!(symtab.is_defined(symbol_name));
 
@@ -416,6 +419,7 @@ fn assemble_pass3(
         equalities.as_slice(),
         body,
         symtab,
+        memory_map,
         &mut rcblock,
         &mut final_symbols,
         &mut undefined_symbols,
@@ -450,7 +454,7 @@ fn assemble_pass3(
         }
     };
 
-    for directive_block in memory_map.values_mut() {
+    for directive_block in blocks.values_mut() {
         if let Err(e) = directive_block.assign_rc_words(symtab, &mut rcblock) {
             return Err(convert_rc_failure(e));
         }
@@ -461,7 +465,7 @@ fn assemble_pass3(
     }
 
     // Emit the binary code.
-    for (block_id, directive_block) in memory_map.into_iter() {
+    for (block_id, directive_block) in blocks.into_iter() {
         event!(
             Level::DEBUG,
             "{block_id} in output has address {0:#o} and length {1:#o}",
@@ -483,6 +487,7 @@ fn assemble_pass3(
         let words = directive_block.build_binary_block(
             directive_block.location,
             symtab,
+            memory_map,
             &mut rcblock,
             &mut final_symbols,
             body,
@@ -601,6 +606,7 @@ pub(crate) fn assemble_source(
     let Pass2Output {
         directive,
         mut symbols,
+        mut memory_map,
         errors,
     } = assemble_pass2(source_file, source_file_body)?;
     if !errors.is_empty() {
@@ -621,8 +627,13 @@ pub(crate) fn assemble_source(
     // Now we do pass 3, which generates the binary output
     let binary = {
         let mut listing = Listing::default();
-        let (binary, final_symbols) =
-            assemble_pass3(directive, &mut symbols, source_file_body, &mut listing)?;
+        let (binary, final_symbols) = assemble_pass3(
+            directive,
+            &mut symbols,
+            &mut memory_map,
+            source_file_body,
+            &mut listing,
+        )?;
 
         listing.set_final_symbols(final_symbols);
         if options.list {

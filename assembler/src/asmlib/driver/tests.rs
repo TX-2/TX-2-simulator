@@ -23,7 +23,7 @@ use base::{
 fn assemble_check_symbols(input: &str, target_address: Address, expected: &[(&str, SymbolValue)]) {
     use crate::eval::HereValue;
 
-    let (_directive, mut symtab) = assemble_nonempty_valid_input(input);
+    let (_directive, mut symtab, memory_map) = assemble_nonempty_valid_input(input);
     for (name, expected_value) in expected.iter() {
         let sym = SymbolName {
             canonical: name.to_string(),
@@ -33,7 +33,7 @@ fn assemble_check_symbols(input: &str, target_address: Address, expected: &[(&st
         let mut op = LookupOperation::default();
         let mut rc_block =
             make_empty_rc_block_for_test(Address::from(Unsigned18Bit::from(0o020_000u16)));
-        match symtab.lookup_with_op(&sym, span, &here, &mut rc_block, &mut op) {
+        match symtab.lookup_with_op(&memory_map, &sym, span, &here, &mut rc_block, &mut op) {
             Ok(got) => {
                 if got != *expected_value {
                     panic!("incorrect value for symbol {name}; expected {expected_value:?}, got {got:?}");
@@ -96,7 +96,7 @@ fn span(range: Range<usize>) -> Span {
 #[test]
 fn test_metacommand_dec_changes_default_base() {
     const INPUT: &str = concat!("10\n", "☛☛DECIMAL\n", "10  ** Ten\n");
-    let (directive, _) = assemble_nonempty_valid_input(INPUT);
+    let (directive, _, _) = assemble_nonempty_valid_input(INPUT);
     if let [LocatedBlock {
         origin: _,
         location: _,

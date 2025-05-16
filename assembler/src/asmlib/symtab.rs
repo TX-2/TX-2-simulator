@@ -94,7 +94,6 @@ impl MemoryMap {
 #[derive(Debug, Default)]
 pub(crate) struct SymbolTable {
     definitions: BTreeMap<SymbolName, InternalSymbolDef>,
-    memory_map: MemoryMap,
     index_registers_used: Unsigned6Bit,
 }
 
@@ -115,6 +114,7 @@ impl Evaluate for (&Span, &SymbolName, &SymbolDefinition) {
         &self,
         target_address: &HereValue,
         symtab: &mut SymbolTable,
+        memory_map: &MemoryMap,
         rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
@@ -130,11 +130,12 @@ impl Evaluate for (&Span, &SymbolName, &SymbolDefinition) {
                 block_offset,
                 span,
             }) => {
-                if let Some(block_position) = symtab.memory_map.get(block_id).cloned() {
+                if let Some(block_position) = memory_map.get(block_id).cloned() {
                     let what: (&BlockIdentifier, &BlockPosition) = (block_id, &block_position);
                     let block_origin: Address = subword::right_half(what.evaluate(
                         target_address,
                         symtab,
+                        memory_map,
                         rc_updater,
                         op,
                     )?)
@@ -157,7 +158,7 @@ impl Evaluate for (&Span, &SymbolName, &SymbolDefinition) {
                 }
             }
             SymbolDefinition::Equality(expression) => {
-                expression.evaluate(target_address, symtab, rc_updater, op)
+                expression.evaluate(target_address, symtab, memory_map, rc_updater, op)
             }
             SymbolDefinition::Undefined(context_union) => Err(SymbolLookupFailure::Missing {
                 name: name.to_owned(),
@@ -170,6 +171,7 @@ impl Evaluate for (&Span, &SymbolName, &SymbolDefinition) {
 
 fn final_lookup_helper_body<R: RcUpdater>(
     symtab: &mut SymbolTable,
+    memory_map: &MemoryMap,
     name: &SymbolName,
     span: Span,
     target_address: &HereValue,
@@ -178,7 +180,7 @@ fn final_lookup_helper_body<R: RcUpdater>(
 ) -> Result<SymbolValue, SymbolLookupFailure> {
     if let Some(def) = symtab.get_clone(name) {
         let what = (&span, name, &def);
-        match what.evaluate(target_address, symtab, rc_updater, op) {
+        match what.evaluate(target_address, symtab, memory_map, rc_updater, op) {
             Ok(value) => Ok(SymbolValue::Final(value)),
             Err(SymbolLookupFailure::Missing {
                 uses:
@@ -188,7 +190,7 @@ fn final_lookup_helper_body<R: RcUpdater>(
                     },
                 ..
             }) => {
-                if let Some(block_position) = symtab.memory_map.get(&block_identifier).cloned() {
+                if let Some(block_position) = memory_map.get(&block_identifier).cloned() {
                     // If we simply try to pass block_position to
                     // evaluate() we will loop and diagnose this as an
                     // undefined symbol.  While the symbol has no
@@ -202,7 +204,7 @@ fn final_lookup_helper_body<R: RcUpdater>(
                     };
                     let what: (&BlockIdentifier, &BlockPosition) =
                         (&block_identifier, &pos_with_unspecified_origin);
-                    match what.evaluate(target_address, symtab, rc_updater, op) {
+                    match what.evaluate(target_address, symtab, memory_map, rc_updater, op) {
                         Ok(value) => {
                             let address: Address = subword::right_half(value).into();
                             match symtab.define(
@@ -248,16 +250,11 @@ fn final_lookup_helper_body<R: RcUpdater>(
 }
 
 impl SymbolTable {
-    pub(crate) fn new(memory_map: MemoryMap) -> SymbolTable {
+    pub(crate) fn new() -> SymbolTable {
         SymbolTable {
             definitions: Default::default(),
-            memory_map,
             index_registers_used: Unsigned6Bit::ZERO,
         }
-    }
-
-    pub(crate) fn get_memory_map(&self) -> &MemoryMap {
-        &self.memory_map
     }
 
     pub(crate) fn get(&self, name: &SymbolName) -> Option<&SymbolDefinition> {
@@ -266,14 +263,6 @@ impl SymbolTable {
 
     pub(crate) fn get_clone(&mut self, name: &SymbolName) -> Option<SymbolDefinition> {
         self.get(name).cloned()
-    }
-
-    pub(crate) fn set_block_position(&mut self, block: BlockIdentifier, location: Address) {
-        self.memory_map.set_block_position(block, location);
-    }
-
-    pub(crate) fn blocks_iter(&self) -> impl Iterator<Item = (&BlockIdentifier, &BlockPosition)> {
-        self.memory_map.iter()
     }
 
     pub(crate) fn is_defined(&self, name: &SymbolName) -> bool {
@@ -435,6 +424,7 @@ impl SymbolLookup for SymbolTable {
 
     fn lookup_with_op<R: RcUpdater>(
         &mut self,
+        memory_map: &MemoryMap,
         name: &SymbolName,
         span: Span,
         target_address: &HereValue,
@@ -451,7 +441,8 @@ impl SymbolLookup for SymbolTable {
                 deps_in_order: op.deps_in_order.to_vec(),
             });
         }
-        let result = final_lookup_helper_body(self, name, span, target_address, rc_updater, op);
+        let result =
+            final_lookup_helper_body(self, memory_map, name, span, target_address, rc_updater, op);
         op.deps_in_order.pop();
         op.depends_on.remove(name);
         result
