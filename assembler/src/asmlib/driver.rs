@@ -322,12 +322,14 @@ fn assemble_pass2(
     };
     let mut ctx = EvaluationContext {
         symtab: &mut symtab,
-        memory_map: &mut memory_map,
+        memory_map: &memory_map,
         here: HereValue::NotAllowed,
         index_register_assigner: &mut index_register_assigner,
         rc_allocator: &mut no_rc_allocation,
         lookup_operation: Default::default(),
     };
+
+    let mut assigned_block_addresses: BTreeMap<BlockIdentifier, Address> = Default::default();
     let tmp_blocks: Vec<(BlockIdentifier, BlockPosition)> = ctx
         .memory_map
         .iter()
@@ -344,13 +346,17 @@ fn assemble_pass2(
                 }
 
                 let address: Address = subword::right_half(value).into();
-                ctx.memory_map.set_block_position(block_identifier, address);
+                assigned_block_addresses.insert(block_identifier, address);
             }
             Err(e) => {
                 let prog_error: ProgramError = e.into_program_error();
                 return Err(prog_error.into_assembler_failure(source_file_body));
             }
         }
+    }
+
+    for (block_id, address) in assigned_block_addresses.into_iter() {
+        memory_map.set_block_position(block_id, address);
     }
 
     let directive = source_file.into_directive(&memory_map)?;

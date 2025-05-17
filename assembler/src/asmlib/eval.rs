@@ -208,7 +208,7 @@ pub(crate) struct EvaluationContext<'s, R: RcUpdater> {
     pub(crate) here: HereValue,
     pub(crate) symtab: &'s mut SymbolTable,
     pub(crate) index_register_assigner: &'s mut IndexRegisterAssigner,
-    pub(crate) memory_map: &'s mut MemoryMap,
+    pub(crate) memory_map: &'s MemoryMap,
     pub(crate) rc_allocator: &'s mut R,
     // TODO: consider removing lookup_operation in order to ensure
     // that we don't have false-positives in loop detection.
