@@ -332,7 +332,7 @@ fn assemble_pass2(
             memory_map: &memory_map,
             here: HereValue::NotAllowed,
             index_register_assigner: &mut index_register_assigner,
-            rc_allocator: &mut no_rc_allocation,
+            rc_updater: &mut no_rc_allocation,
             lookup_operation: Default::default(),
         };
         match (&block_identifier, &block_position).evaluate(&mut ctx) {

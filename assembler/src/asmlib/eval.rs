@@ -209,7 +209,7 @@ pub(crate) struct EvaluationContext<'s, R: RcUpdater> {
     pub(crate) symtab: &'s mut SymbolTable,
     pub(crate) index_register_assigner: &'s mut IndexRegisterAssigner,
     pub(crate) memory_map: &'s MemoryMap,
-    pub(crate) rc_allocator: &'s mut R,
+    pub(crate) rc_updater: &'s mut R,
     pub(crate) lookup_operation: LookupOperation,
 }
 
@@ -628,7 +628,7 @@ pub(super) fn extract_final_equalities<R: RcUpdater>(
             memory_map,
             here: HereValue::NotAllowed,
             index_register_assigner,
-            rc_allocator,
+            rc_updater: rc_allocator,
             lookup_operation: Default::default(),
         };
 
@@ -719,7 +719,7 @@ impl InstructionSequence {
                 memory_map,
                 here: HereValue::Address(address),
                 index_register_assigner,
-                rc_allocator,
+                rc_updater: rc_allocator,
                 lookup_operation: Default::default(),
             };
             match instruction.evaluate(&mut ctx) {
@@ -831,7 +831,7 @@ impl Evaluate for RegisterContaining {
                     .for_target_address(HereValue::Address(*rc_word_addr), |newctx| {
                         inst.evaluate(newctx)
                     })?;
-                ctx.rc_allocator.update(*rc_word_addr, rc_word_value);
+                ctx.rc_updater.update(*rc_word_addr, rc_word_value);
                 Ok(Unsigned36Bit::from(rc_word_addr))
             }
         }

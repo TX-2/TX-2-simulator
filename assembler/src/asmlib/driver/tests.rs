@@ -41,7 +41,7 @@ fn assemble_check_symbols(input: &str, target_address: Address, expected: &[(&st
             memory_map: &mut memory_map,
             here: HereValue::Address(target_address),
             index_register_assigner: &mut index_register_assigner,
-            rc_allocator: &mut rc_block,
+            rc_updater: &mut rc_block,
             lookup_operation: Default::default(),
         };
 

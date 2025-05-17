@@ -1340,7 +1340,7 @@ fn program_instruction_with_opcode() {
         memory_map: &mut memory_map,
         here: HereValue::Address(Address::ZERO),
         index_register_assigner: &mut index_register_assigner,
-        rc_allocator: &mut rc_block,
+        rc_updater: &mut rc_block,
         lookup_operation: Default::default(),
     };
     assert_eq!(
