@@ -16,7 +16,7 @@ use super::ast::*;
 use super::eval::extract_final_equalities;
 use super::eval::Evaluate;
 use super::eval::HereValue;
-use super::eval::RcBlock;
+use super::eval::{EvaluationContext, RcBlock};
 use super::lexer;
 use super::listing::*;
 use super::parser::parse_source_file;
@@ -25,8 +25,7 @@ use super::state::{NumeralMode, State};
 use super::symbol::SymbolName;
 use super::symtab::{
     assign_default_rc_word_tags, BadSymbolDefinition, BlockPosition, FinalSymbolDefinition,
-    FinalSymbolTable, FinalSymbolType, IndexRegisterAssigner, LookupOperation, MemoryMap,
-    SymbolTable,
+    FinalSymbolTable, FinalSymbolType, IndexRegisterAssigner, MemoryMap, SymbolTable,
 };
 use super::types::*;
 use base::prelude::{Address, IndexBy, Unsigned18Bit, Unsigned36Bit};
@@ -317,31 +316,35 @@ fn assemble_pass2(
             )));
         }
     };
-    let mut index_register_assigner = IndexRegisterAssigner::default();
-    let tmp_blocks: Vec<(BlockIdentifier, BlockPosition)> = memory_map
+    let mut index_register_assigner: IndexRegisterAssigner = IndexRegisterAssigner::default();
+    let mut no_rc_allocation = NoRcBlock {
+        why_blocked: "we don't expect origin computation to require RC-word allocation",
+    };
+    let mut ctx = EvaluationContext {
+        symtab: &mut symtab,
+        memory_map: &mut memory_map,
+        here: HereValue::NotAllowed,
+        index_register_assigner: &mut index_register_assigner,
+        rc_allocator: &mut no_rc_allocation,
+        lookup_operation: Default::default(),
+    };
+    let tmp_blocks: Vec<(BlockIdentifier, BlockPosition)> = ctx
+        .memory_map
         .iter()
         .map(|(block_identifier, block_position)| (*block_identifier, block_position.clone()))
         .collect();
-    let mut no_rc_allocation = NoRcBlock {};
     for (block_identifier, block_position) in tmp_blocks.into_iter() {
-        let mut op: LookupOperation = Default::default();
-        match (&block_identifier, &block_position).evaluate(
-            &HereValue::NotAllowed,
-            &mut symtab,
-            &memory_map,
-            &mut index_register_assigner,
-            &mut no_rc_allocation,
-            &mut op,
-        ) {
+        ctx.lookup_operation = Default::default();
+        match (&block_identifier, &block_position).evaluate(&mut ctx) {
             Ok(value) => {
-                if !index_register_assigner.is_empty() {
+                if !ctx.index_register_assigner.is_empty() {
                     return Err(AssemblerFailure::InternalError(
                         format!(
                             "While determining the addresses of {block_identifier}, we assigned an index register.  Block origins should not depend on index registers")));
                 }
 
                 let address: Address = subword::right_half(value).into();
-                memory_map.set_block_position(block_identifier, address);
+                ctx.memory_map.set_block_position(block_identifier, address);
             }
             Err(e) => {
                 let prog_error: ProgramError = e.into_program_error();
@@ -372,7 +375,9 @@ fn assemble_pass2(
     })
 }
 
-struct NoRcBlock {}
+struct NoRcBlock {
+    why_blocked: &'static str,
+}
 
 impl RcAllocator for NoRcBlock {
     fn allocate(
@@ -380,13 +385,19 @@ impl RcAllocator for NoRcBlock {
         _source: RcWordSource,
         _value: Unsigned36Bit,
     ) -> Result<Address, RcWordAllocationFailure> {
-        panic!("Cannot allocate an RC-word before we know the address of the RC block");
+        panic!(
+            "Cannot allocate an RC-word before we know the address of the RC block: {}",
+            self.why_blocked
+        );
     }
 }
 
 impl RcUpdater for NoRcBlock {
     fn update(&mut self, _address: Address, _value: Unsigned36Bit) {
-        panic!("Cannot update an RC-word in an RC-block which cannot allocate words");
+        panic!(
+            "Cannot update an RC-word in an RC-block which cannot allocate words: {}",
+            self.why_blocked
+        );
     }
 }
 
@@ -433,13 +444,18 @@ fn assemble_pass3(
         }
     }
 
+    let mut ctx = EvaluationContext {
+        symtab,
+        memory_map,
+        here: HereValue::NotAllowed,
+        index_register_assigner,
+        rc_allocator: &mut rcblock,
+        lookup_operation: Default::default(),
+    };
     extract_final_equalities(
         equalities.as_slice(),
         body,
-        symtab,
-        memory_map,
-        index_register_assigner,
-        &mut rcblock,
+        &mut ctx,
         &mut final_symbols,
         &mut undefined_symbols,
     )?;
@@ -484,6 +500,14 @@ fn assemble_pass3(
     }
 
     // Emit the binary code.
+    let mut ctx = EvaluationContext {
+        symtab,
+        memory_map,
+        here: HereValue::NotAllowed,
+        index_register_assigner,
+        rc_allocator: &mut rcblock,
+        lookup_operation: Default::default(),
+    };
     for (block_id, directive_block) in blocks.into_iter() {
         event!(
             Level::DEBUG,
@@ -505,10 +529,7 @@ fn assemble_pass3(
 
         let words = directive_block.build_binary_block(
             directive_block.location,
-            symtab,
-            memory_map,
-            index_register_assigner,
-            &mut rcblock,
+            &mut ctx,
             &mut final_symbols,
             body,
             listing,

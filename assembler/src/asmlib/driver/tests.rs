@@ -5,10 +5,12 @@ use super::super::ast::{
     LocatedBlock, ManuscriptBlock, PunchCommand, SourceFile, TaggedProgramInstruction,
     UntaggedProgramInstruction,
 };
-use super::super::eval::{make_empty_rc_block_for_test, SymbolLookup, SymbolValue};
+use super::super::eval::{
+    lookup_with_op, make_empty_rc_block_for_test, EvaluationContext, SymbolValue,
+};
 use super::super::span::*;
 use super::super::symbol::SymbolName;
-use super::super::symtab::LookupOperation;
+use super::super::symtab::IndexRegisterAssigner;
 use super::{assemble_nonempty_valid_input, assemble_source};
 use super::{assemble_pass1, Binary, BinaryChunk};
 use base::{
@@ -23,26 +25,27 @@ use base::{
 fn assemble_check_symbols(input: &str, target_address: Address, expected: &[(&str, SymbolValue)]) {
     use crate::eval::HereValue;
 
-    let (_directive, mut symtab, memory_map, mut index_register_assigner) =
-        assemble_nonempty_valid_input(input);
+    let (_directive, mut symtab, mut memory_map, _) = assemble_nonempty_valid_input(input);
+
     for (name, expected_value) in expected.iter() {
         let sym = SymbolName {
             canonical: name.to_string(),
         };
         let span = span(0..(name.len()));
-        let here = HereValue::Address(target_address);
-        let mut op = LookupOperation::default();
         let mut rc_block =
             make_empty_rc_block_for_test(Address::from(Unsigned18Bit::from(0o020_000u16)));
-        match symtab.lookup_with_op(
-            &memory_map,
-            &mut index_register_assigner,
-            &sym,
-            span,
-            &here,
-            &mut rc_block,
-            &mut op,
-        ) {
+
+        let mut index_register_assigner: IndexRegisterAssigner = IndexRegisterAssigner::default();
+        let mut ctx = EvaluationContext {
+            symtab: &mut symtab,
+            memory_map: &mut memory_map,
+            here: HereValue::Address(target_address),
+            index_register_assigner: &mut index_register_assigner,
+            rc_allocator: &mut rc_block,
+            lookup_operation: Default::default(),
+        };
+
+        match lookup_with_op(&mut ctx, &sym, span) {
             Ok(got) => {
                 if got != *expected_value {
                     panic!("incorrect value for symbol {name}; expected {expected_value:?}, got {got:?}");

@@ -11,12 +11,12 @@ use super::super::{
         Atom, HoldBit, InstructionFragment, LiteralValue, ManuscriptBlock, ManuscriptMetaCommand,
         Origin, SourceFile, TaggedProgramInstruction,
     },
-    eval::{make_empty_rc_block_for_test, Evaluate, HereValue},
+    eval::{make_empty_rc_block_for_test, Evaluate, EvaluationContext, HereValue},
     lexer::Token,
     parser::symex::{parse_multi_syllable_symex, parse_symex},
     state::NumeralMode,
     symbol::SymbolName,
-    symtab::{IndexRegisterAssigner, LookupOperation, MemoryMap, SymbolTable},
+    symtab::{IndexRegisterAssigner, MemoryMap, SymbolTable},
 };
 use super::*;
 
@@ -1331,20 +1331,20 @@ fn test_multi_syllable_symex() {
 fn program_instruction_with_opcode() {
     let mut nosyms = SymbolTable::default();
     let input = "²¹IOS₅₂ 30106";
-    let memory_map = MemoryMap::new([(span(0..input.len()), None, u18!(1))]);
-    let mut op = LookupOperation::default();
+    let mut memory_map = MemoryMap::new([(span(0..input.len()), None, u18!(1))]);
     let mut index_register_assigner = IndexRegisterAssigner::default();
     let mut rc_block =
         make_empty_rc_block_for_test(Address::from(Unsigned18Bit::from(0o20_000u16)));
+    let mut ctx = EvaluationContext {
+        symtab: &mut nosyms,
+        memory_map: &mut memory_map,
+        here: HereValue::Address(Address::ZERO),
+        index_register_assigner: &mut index_register_assigner,
+        rc_allocator: &mut rc_block,
+        lookup_operation: Default::default(),
+    };
     assert_eq!(
-        parse_tagged_instruction(input).evaluate(
-            &HereValue::Address(Address::ZERO),
-            &mut nosyms,
-            &memory_map,
-            &mut index_register_assigner,
-            &mut rc_block,
-            &mut op
-        ),
+        parse_tagged_instruction(input).evaluate(&mut ctx),
         Ok(u36!(0o210452_030106))
     );
     assert!(

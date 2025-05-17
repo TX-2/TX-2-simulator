@@ -8,7 +8,7 @@ use base::prelude::*;
 use base::subword;
 
 use super::ast::{EqualityValue, Origin, RcAllocator, RcUpdater, RcWordAllocationFailure};
-use super::eval::{Evaluate, HereValue, SymbolLookup, SymbolLookupFailure, SymbolValue};
+use super::eval::{Evaluate, EvaluationContext, SymbolLookupFailure, SymbolValue};
 use super::span::*;
 use super::symbol::{SymbolContext, SymbolName};
 use super::types::{
@@ -121,8 +121,8 @@ pub(crate) struct SymbolTable {
 
 #[derive(Debug, Default)]
 pub(crate) struct LookupOperation {
-    depends_on: HashSet<SymbolName>,
-    deps_in_order: Vec<SymbolName>,
+    pub(super) depends_on: HashSet<SymbolName>,
+    pub(super) deps_in_order: Vec<SymbolName>,
 }
 
 impl Spanned for (&Span, &SymbolName, &SymbolDefinition) {
@@ -134,12 +134,7 @@ impl Spanned for (&Span, &SymbolName, &SymbolDefinition) {
 impl Evaluate for (&Span, &SymbolName, &SymbolDefinition) {
     fn evaluate<R: RcUpdater>(
         &self,
-        target_address: &HereValue,
-        symtab: &mut SymbolTable,
-        memory_map: &MemoryMap,
-        index_register_assigner: &mut IndexRegisterAssigner,
-        rc_updater: &mut R,
-        op: &mut LookupOperation,
+        ctx: &mut EvaluationContext<R>,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         let (span, name, def): (&Span, &SymbolName, &SymbolDefinition) = *self;
         match def {
@@ -153,17 +148,9 @@ impl Evaluate for (&Span, &SymbolName, &SymbolDefinition) {
                 block_offset,
                 span,
             }) => {
-                if let Some(block_position) = memory_map.get(block_id).cloned() {
+                if let Some(block_position) = ctx.memory_map.get(block_id).cloned() {
                     let what: (&BlockIdentifier, &BlockPosition) = (block_id, &block_position);
-                    let block_origin: Address = subword::right_half(what.evaluate(
-                        target_address,
-                        symtab,
-                        memory_map,
-                        index_register_assigner,
-                        rc_updater,
-                        op,
-                    )?)
-                    .into();
+                    let block_origin: Address = subword::right_half(what.evaluate(ctx)?).into();
                     match offset_from_origin(&block_origin, *block_offset) {
                         Ok(computed_address) => Ok(computed_address.into()),
                         Err(_overflow_error) => Err(SymbolLookupFailure::BlockTooLarge(
@@ -181,14 +168,7 @@ impl Evaluate for (&Span, &SymbolName, &SymbolDefinition) {
                     );
                 }
             }
-            SymbolDefinition::Equality(expression) => expression.evaluate(
-                target_address,
-                symtab,
-                memory_map,
-                index_register_assigner,
-                rc_updater,
-                op,
-            ),
+            SymbolDefinition::Equality(expression) => expression.evaluate(ctx),
             SymbolDefinition::Undefined(context_union) => Err(SymbolLookupFailure::Missing {
                 name: name.to_owned(),
                 span: *span,
@@ -198,27 +178,14 @@ impl Evaluate for (&Span, &SymbolName, &SymbolDefinition) {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn final_lookup_helper_body<R: RcUpdater>(
-    symtab: &mut SymbolTable,
-    memory_map: &MemoryMap,
-    index_register_assigner: &mut IndexRegisterAssigner,
+pub(super) fn final_lookup_helper_body<R: RcUpdater>(
+    ctx: &mut EvaluationContext<R>,
     name: &SymbolName,
     span: Span,
-    target_address: &HereValue,
-    rc_updater: &mut R,
-    op: &mut LookupOperation,
 ) -> Result<SymbolValue, SymbolLookupFailure> {
-    if let Some(def) = symtab.get_clone(name) {
+    if let Some(def) = ctx.symtab.get_clone(name) {
         let what = (&span, name, &def);
-        match what.evaluate(
-            target_address,
-            symtab,
-            memory_map,
-            index_register_assigner,
-            rc_updater,
-            op,
-        ) {
+        match what.evaluate(ctx) {
             Ok(value) => Ok(SymbolValue::Final(value)),
             Err(SymbolLookupFailure::Missing {
                 uses:
@@ -228,7 +195,7 @@ fn final_lookup_helper_body<R: RcUpdater>(
                     },
                 ..
             }) => {
-                if let Some(block_position) = memory_map.get(&block_identifier).cloned() {
+                if let Some(block_position) = ctx.memory_map.get(&block_identifier).cloned() {
                     // If we simply try to pass block_position to
                     // evaluate() we will loop and diagnose this as an
                     // undefined symbol.  While the symbol has no
@@ -242,17 +209,10 @@ fn final_lookup_helper_body<R: RcUpdater>(
                     };
                     let what: (&BlockIdentifier, &BlockPosition) =
                         (&block_identifier, &pos_with_unspecified_origin);
-                    match what.evaluate(
-                        target_address,
-                        symtab,
-                        memory_map,
-                        index_register_assigner,
-                        rc_updater,
-                        op,
-                    ) {
+                    match what.evaluate(ctx) {
                         Ok(value) => {
                             let address: Address = subword::right_half(value).into();
-                            match symtab.define(
+                            match ctx.symtab.define(
                                 span,
                                 name.clone(),
                                 SymbolDefinition::Origin(address),
@@ -273,10 +233,14 @@ fn final_lookup_helper_body<R: RcUpdater>(
                 uses: context_union,
                 ..
             }) => {
-                match symtab.get_default_value(index_register_assigner, name, &span, &context_union)
-                {
+                match ctx.symtab.get_default_value(
+                    ctx.index_register_assigner,
+                    name,
+                    &span,
+                    &context_union,
+                ) {
                     Ok(value) => {
-                        match symtab.define(
+                        match ctx.symtab.define(
                             span,
                             name.clone(),
                             SymbolDefinition::DefaultAssigned(value, context_union),
@@ -293,7 +257,7 @@ fn final_lookup_helper_body<R: RcUpdater>(
             Err(other) => Err(other),
         }
     } else {
-        panic!("final symbol lookup of symbol '{name}' happened in an evaluation context which was not previously returned by SourceFile::global_symbol_references(): {op:?}");
+        panic!("final symbol lookup of symbol '{name}' happened in an evaluation context which was not previously returned by SourceFile::global_symbol_references(): {:?}", &ctx.lookup_operation);
     }
 }
 
@@ -372,6 +336,7 @@ impl SymbolTable {
         span: &Span,
         contexts_used: &SymbolContext,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+        // TODO: maybe make this a method of EvaluationContext instead.
         event!(
             Level::DEBUG,
             "assigning default value for {name} used in contexts {contexts_used:?}"
@@ -460,45 +425,6 @@ impl SymbolTable {
     //    }
     //    result
     //}
-}
-
-impl SymbolLookup for SymbolTable {
-    type Operation<'a> = LookupOperation;
-
-    fn lookup_with_op<R: RcUpdater>(
-        &mut self,
-        memory_map: &MemoryMap,
-        index_register_assigner: &mut IndexRegisterAssigner,
-        name: &SymbolName,
-        span: Span,
-        target_address: &HereValue,
-        rc_updater: &mut R,
-        op: &mut Self::Operation<'_>,
-    ) -> Result<SymbolValue, SymbolLookupFailure> {
-        op.deps_in_order.push(name.clone());
-        if !op.depends_on.insert(name.clone()) {
-            // `name` was already in `depends_on`; in other words,
-            // we have a loop.
-            return Err(SymbolLookupFailure::Loop {
-                name: name.clone(),
-                span,
-                deps_in_order: op.deps_in_order.to_vec(),
-            });
-        }
-        let result = final_lookup_helper_body(
-            self,
-            memory_map,
-            index_register_assigner,
-            name,
-            span,
-            target_address,
-            rc_updater,
-            op,
-        );
-        op.deps_in_order.pop();
-        op.depends_on.remove(name);
-        result
-    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
