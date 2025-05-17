@@ -210,8 +210,6 @@ pub(crate) struct EvaluationContext<'s, R: RcUpdater> {
     pub(crate) index_register_assigner: &'s mut IndexRegisterAssigner,
     pub(crate) memory_map: &'s MemoryMap,
     pub(crate) rc_allocator: &'s mut R,
-    // TODO: consider removing lookup_operation in order to ensure
-    // that we don't have false-positives in loop detection.
     pub(crate) lookup_operation: LookupOperation,
 }
 
@@ -617,14 +615,24 @@ fn record_undefined_symbol_or_return_failure(
 pub(super) fn extract_final_equalities<R: RcUpdater>(
     equalities: &[Equality],
     body: &str,
-    ctx: &mut EvaluationContext<R>,
+    symtab: &mut SymbolTable,
+    memory_map: &MemoryMap,
+    index_register_assigner: &mut IndexRegisterAssigner,
+    rc_allocator: &mut R,
     final_symbols: &mut FinalSymbolTable,
     undefined_symbols: &mut BTreeMap<SymbolName, Span>,
 ) -> Result<(), AssemblerFailure> {
-    assert_eq!(&ctx.here, &HereValue::NotAllowed);
     for eq in equalities {
-        ctx.lookup_operation = Default::default();
-        match eq.value.evaluate(ctx) {
+        let mut ctx = EvaluationContext {
+            symtab,
+            memory_map,
+            here: HereValue::NotAllowed,
+            index_register_assigner,
+            rc_allocator,
+            lookup_operation: Default::default(),
+        };
+
+        match eq.value.evaluate(&mut ctx) {
             Ok(value) => {
                 final_symbols.define(
                     eq.name.clone(),
@@ -656,7 +664,10 @@ impl LocatedBlock {
     pub(super) fn build_binary_block<R: RcUpdater>(
         &self,
         location: Address,
-        ctx: &mut EvaluationContext<R>,
+        symtab: &mut SymbolTable,
+        memory_map: &MemoryMap,
+        index_register_assigner: &mut IndexRegisterAssigner,
+        rc_allocator: &mut R,
         final_symbols: &mut FinalSymbolTable,
         body: &str,
         listing: &mut Listing,
@@ -664,7 +675,10 @@ impl LocatedBlock {
     ) -> Result<Vec<Unsigned36Bit>, AssemblerFailure> {
         self.statements.build_binary_block(
             location,
-            ctx,
+            symtab,
+            memory_map,
+            index_register_assigner,
+            rc_allocator,
             final_symbols,
             body,
             listing,
@@ -677,7 +691,10 @@ impl InstructionSequence {
     pub(super) fn build_binary_block<R: RcUpdater>(
         &self,
         location: Address,
-        ctx: &mut EvaluationContext<R>,
+        symtab: &mut SymbolTable,
+        memory_map: &MemoryMap,
+        index_register_assigner: &mut IndexRegisterAssigner,
+        rc_allocator: &mut R,
         final_symbols: &mut FinalSymbolTable,
         body: &str,
         listing: &mut Listing,
@@ -688,7 +705,6 @@ impl InstructionSequence {
             let offset: Unsigned18Bit = Unsigned18Bit::try_from(offset)
                 .expect("assembled code block should fit within physical memory");
             let address: Address = location.index_by(offset);
-            ctx.here = HereValue::Address(address);
             for tag in instruction.tags.iter() {
                 final_symbols.define(
                     tag.name.clone(),
@@ -697,8 +713,16 @@ impl InstructionSequence {
                     FinalSymbolDefinition::PositionIndependent(address.into()),
                 );
             }
-            ctx.lookup_operation = Default::default();
-            match instruction.evaluate(ctx) {
+
+            let mut ctx = EvaluationContext {
+                symtab,
+                memory_map,
+                here: HereValue::Address(address),
+                index_register_assigner,
+                rc_allocator,
+                lookup_operation: Default::default(),
+            };
+            match instruction.evaluate(&mut ctx) {
                 Ok(word) => {
                     listing.push_line(ListingLine {
                         span: Some(instruction.span),

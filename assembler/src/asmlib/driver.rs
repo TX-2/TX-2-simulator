@@ -320,23 +320,21 @@ fn assemble_pass2(
     let mut no_rc_allocation = NoRcBlock {
         why_blocked: "we don't expect origin computation to require RC-word allocation",
     };
-    let mut ctx = EvaluationContext {
-        symtab: &mut symtab,
-        memory_map: &memory_map,
-        here: HereValue::NotAllowed,
-        index_register_assigner: &mut index_register_assigner,
-        rc_allocator: &mut no_rc_allocation,
-        lookup_operation: Default::default(),
-    };
-
     let mut assigned_block_addresses: BTreeMap<BlockIdentifier, Address> = Default::default();
-    let tmp_blocks: Vec<(BlockIdentifier, BlockPosition)> = ctx
-        .memory_map
+    let tmp_blocks: Vec<(BlockIdentifier, BlockPosition)> = memory_map
         .iter()
         .map(|(block_identifier, block_position)| (*block_identifier, block_position.clone()))
         .collect();
+
     for (block_identifier, block_position) in tmp_blocks.into_iter() {
-        ctx.lookup_operation = Default::default();
+        let mut ctx = EvaluationContext {
+            symtab: &mut symtab,
+            memory_map: &memory_map,
+            here: HereValue::NotAllowed,
+            index_register_assigner: &mut index_register_assigner,
+            rc_allocator: &mut no_rc_allocation,
+            lookup_operation: Default::default(),
+        };
         match (&block_identifier, &block_position).evaluate(&mut ctx) {
             Ok(value) => {
                 if !ctx.index_register_assigner.is_empty() {
@@ -450,18 +448,13 @@ fn assemble_pass3(
         }
     }
 
-    let mut ctx = EvaluationContext {
-        symtab,
-        memory_map,
-        here: HereValue::NotAllowed,
-        index_register_assigner,
-        rc_allocator: &mut rcblock,
-        lookup_operation: Default::default(),
-    };
     extract_final_equalities(
         equalities.as_slice(),
         body,
-        &mut ctx,
+        symtab,
+        memory_map,
+        index_register_assigner,
+        &mut rcblock,
         &mut final_symbols,
         &mut undefined_symbols,
     )?;
@@ -506,14 +499,6 @@ fn assemble_pass3(
     }
 
     // Emit the binary code.
-    let mut ctx = EvaluationContext {
-        symtab,
-        memory_map,
-        here: HereValue::NotAllowed,
-        index_register_assigner,
-        rc_allocator: &mut rcblock,
-        lookup_operation: Default::default(),
-    };
     for (block_id, directive_block) in blocks.into_iter() {
         event!(
             Level::DEBUG,
@@ -521,7 +506,6 @@ fn assemble_pass3(
             directive_block.location,
             directive_block.emitted_word_count(),
         );
-
         if let Some(origin) = directive_block.origin.clone() {
             // This is an origin (Users Handbook section 6-2.5) not a
             // tag (6-2.2).
@@ -535,7 +519,10 @@ fn assemble_pass3(
 
         let words = directive_block.build_binary_block(
             directive_block.location,
-            &mut ctx,
+            symtab,
+            memory_map,
+            index_register_assigner,
+            &mut rcblock,
             &mut final_symbols,
             body,
             listing,
