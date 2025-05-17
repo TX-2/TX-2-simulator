@@ -25,7 +25,8 @@ use super::state::{NumeralMode, State};
 use super::symbol::SymbolName;
 use super::symtab::{
     assign_default_rc_word_tags, BadSymbolDefinition, BlockPosition, FinalSymbolDefinition,
-    FinalSymbolTable, FinalSymbolType, LookupOperation, MemoryMap, SymbolTable,
+    FinalSymbolTable, FinalSymbolType, IndexRegisterAssigner, LookupOperation, MemoryMap,
+    SymbolTable,
 };
 use super::types::*;
 use base::prelude::{Address, IndexBy, Unsigned18Bit, Unsigned36Bit};
@@ -153,7 +154,9 @@ fn assemble_pass1<'a>(
 /// This test helper is defined here so that we don't have to expose
 /// assemble_pass1, assemble_pass2.
 #[cfg(test)]
-pub(crate) fn assemble_nonempty_valid_input(input: &str) -> (Directive, SymbolTable, MemoryMap) {
+pub(crate) fn assemble_nonempty_valid_input(
+    input: &str,
+) -> (Directive, SymbolTable, MemoryMap, IndexRegisterAssigner) {
     let mut errors: Vec<Rich<'_, lexer::Token>> = Vec::new();
     let result: Result<(Option<SourceFile>, OutputOptions), AssemblerFailure> =
         assemble_pass1(input, &mut errors);
@@ -171,7 +174,12 @@ pub(crate) fn assemble_nonempty_valid_input(input: &str) -> (Directive, SymbolTa
                 panic!("input should be valid: {:?}", &p2output.errors);
             }
             match p2output.directive {
-                Some(directive) => (directive, p2output.symbols, p2output.memory_map),
+                Some(directive) => (
+                    directive,
+                    p2output.symbols,
+                    p2output.memory_map,
+                    p2output.index_register_assigner,
+                ),
                 None => {
                     panic!("assembly pass 2 generated no errors but also no output");
                 }
@@ -252,6 +260,7 @@ struct Pass2Output<'a> {
     directive: Option<Directive>,
     symbols: SymbolTable,
     memory_map: MemoryMap,
+    index_register_assigner: IndexRegisterAssigner,
     errors: Vec<Rich<'a, lexer::Token>>,
 }
 
@@ -308,7 +317,7 @@ fn assemble_pass2(
             )));
         }
     };
-
+    let mut index_register_assigner = IndexRegisterAssigner::default();
     let tmp_blocks: Vec<(BlockIdentifier, BlockPosition)> = memory_map
         .iter()
         .map(|(block_identifier, block_position)| (*block_identifier, block_position.clone()))
@@ -320,10 +329,17 @@ fn assemble_pass2(
             &HereValue::NotAllowed,
             &mut symtab,
             &memory_map,
+            &mut index_register_assigner,
             &mut no_rc_allocation,
             &mut op,
         ) {
             Ok(value) => {
+                if !index_register_assigner.is_empty() {
+                    return Err(AssemblerFailure::InternalError(
+                        format!(
+                            "While determining the addresses of {block_identifier}, we assigned an index register.  Block origins should not depend on index registers")));
+                }
+
                 let address: Address = subword::right_half(value).into();
                 memory_map.set_block_position(block_identifier, address);
             }
@@ -351,6 +367,7 @@ fn assemble_pass2(
         directive: Some(directive),
         symbols: symtab,
         memory_map,
+        index_register_assigner,
         errors: Vec::new(),
     })
 }
@@ -378,6 +395,7 @@ fn assemble_pass3(
     mut directive: Directive,
     symtab: &mut SymbolTable,
     memory_map: &mut MemoryMap,
+    index_register_assigner: &mut IndexRegisterAssigner,
     body: &str,
     listing: &mut Listing,
 ) -> Result<(Binary, FinalSymbolTable), AssemblerFailure> {
@@ -420,6 +438,7 @@ fn assemble_pass3(
         body,
         symtab,
         memory_map,
+        index_register_assigner,
         &mut rcblock,
         &mut final_symbols,
         &mut undefined_symbols,
@@ -488,6 +507,7 @@ fn assemble_pass3(
             directive_block.location,
             symtab,
             memory_map,
+            index_register_assigner,
             &mut rcblock,
             &mut final_symbols,
             body,
@@ -607,6 +627,7 @@ pub(crate) fn assemble_source(
         directive,
         mut symbols,
         mut memory_map,
+        mut index_register_assigner,
         errors,
     } = assemble_pass2(source_file, source_file_body)?;
     if !errors.is_empty() {
@@ -631,6 +652,7 @@ pub(crate) fn assemble_source(
             directive,
             &mut symbols,
             &mut memory_map,
+            &mut index_register_assigner,
             source_file_body,
             &mut listing,
         )?;

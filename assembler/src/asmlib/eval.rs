@@ -21,8 +21,8 @@ use super::types::{
 };
 use crate::symbol::SymbolContext;
 use crate::symtab::{
-    BlockPosition, FinalSymbolDefinition, FinalSymbolTable, FinalSymbolType, LookupOperation,
-    MemoryMap, SymbolDefinition, SymbolTable, TagDefinition,
+    BlockPosition, FinalSymbolDefinition, FinalSymbolTable, FinalSymbolType, IndexRegisterAssigner,
+    LookupOperation, MemoryMap, SymbolDefinition, SymbolTable, TagDefinition,
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -186,9 +186,11 @@ impl std::error::Error for SymbolLookupFailure {}
 pub(crate) trait SymbolLookup {
     type Operation<'a>;
 
+    #[allow(clippy::too_many_arguments)]
     fn lookup_with_op<R: RcUpdater>(
         &mut self,
         memory_map: &MemoryMap,
+        index_register_assigner: &mut IndexRegisterAssigner,
         name: &SymbolName,
         span: Span, // TODO: use &Span?
         target_address: &HereValue,
@@ -224,6 +226,7 @@ pub(super) trait Evaluate: Spanned {
         target_address: &HereValue,
         symtab: &mut SymbolTable,
         memory_map: &MemoryMap,
+        index_register_assigner: &mut IndexRegisterAssigner,
         rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure>;
@@ -306,6 +309,7 @@ pub(crate) fn evaluate_and_combine_values<R, E>(
     target_address: &HereValue,
     symtab: &mut SymbolTable,
     memory_map: &MemoryMap,
+    index_register_assigner: &mut IndexRegisterAssigner,
     rc_updater: &mut R,
     op: &mut LookupOperation,
 ) -> Result<Unsigned36Bit, SymbolLookupFailure>
@@ -314,8 +318,15 @@ where
     E: Evaluate,
 {
     items.iter().try_fold(Unsigned36Bit::ZERO, |acc, item| {
-        item.evaluate(target_address, symtab, memory_map, rc_updater, op)
-            .map(|value| combine_fragment_values(acc, value))
+        item.evaluate(
+            target_address,
+            symtab,
+            memory_map,
+            index_register_assigner,
+            rc_updater,
+            op,
+        )
+        .map(|value| combine_fragment_values(acc, value))
     })
 }
 
@@ -325,11 +336,18 @@ impl Evaluate for EqualityValue {
         target_address: &HereValue,
         symtab: &mut SymbolTable,
         memory_map: &MemoryMap,
+        index_register_assigner: &mut IndexRegisterAssigner,
         rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-        self.inner
-            .evaluate(target_address, symtab, memory_map, rc_updater, op)
+        self.inner.evaluate(
+            target_address,
+            symtab,
+            memory_map,
+            index_register_assigner,
+            rc_updater,
+            op,
+        )
     }
 }
 
@@ -339,6 +357,7 @@ impl Evaluate for UntaggedProgramInstruction {
         target_address: &HereValue,
         symtab: &mut SymbolTable,
         memory_map: &MemoryMap,
+        index_register_assigner: &mut IndexRegisterAssigner,
         rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
@@ -351,6 +370,7 @@ impl Evaluate for UntaggedProgramInstruction {
             target_address,
             symtab,
             memory_map,
+            index_register_assigner,
             rc_updater,
             op,
         )
@@ -371,11 +391,18 @@ impl Evaluate for TaggedProgramInstruction {
         target_address: &HereValue,
         symtab: &mut SymbolTable,
         memory_map: &MemoryMap,
+        index_register_assigner: &mut IndexRegisterAssigner,
         rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-        self.instruction
-            .evaluate(target_address, symtab, memory_map, rc_updater, op)
+        self.instruction.evaluate(
+            target_address,
+            symtab,
+            memory_map,
+            index_register_assigner,
+            rc_updater,
+            op,
+        )
     }
 }
 
@@ -385,6 +412,7 @@ impl Evaluate for LiteralValue {
         _target_address: &HereValue,
         _symtab: &mut SymbolTable,
         _memory_map: &MemoryMap,
+        _index_register_assigner: &mut IndexRegisterAssigner,
         _rc_updater: &mut R,
         _op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
@@ -392,17 +420,25 @@ impl Evaluate for LiteralValue {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn fold_step<R: RcUpdater>(
     acc: Unsigned36Bit,
     (binop, right): &(Operator, SignedAtom),
     target_address: &HereValue,
     symtab: &mut SymbolTable,
     memory_map: &MemoryMap,
+    index_register_assigner: &mut IndexRegisterAssigner,
     rc_updater: &mut R,
     op: &mut LookupOperation,
 ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-    let right: Unsigned36Bit =
-        right.evaluate(target_address, symtab, memory_map, rc_updater, op)?;
+    let right: Unsigned36Bit = right.evaluate(
+        target_address,
+        symtab,
+        memory_map,
+        index_register_assigner,
+        rc_updater,
+        op,
+    )?;
     Ok(ArithmeticExpression::eval_binop(acc, binop, right))
 }
 
@@ -412,12 +448,18 @@ impl Evaluate for ArithmeticExpression {
         target_address: &HereValue,
         symtab: &mut SymbolTable,
         memory_map: &MemoryMap,
+        index_register_assigner: &mut IndexRegisterAssigner,
         rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-        let first: Unsigned36Bit =
-            self.first
-                .evaluate(target_address, symtab, memory_map, rc_updater, op)?;
+        let first: Unsigned36Bit = self.first.evaluate(
+            target_address,
+            symtab,
+            memory_map,
+            index_register_assigner,
+            rc_updater,
+            op,
+        )?;
         let result: Result<Unsigned36Bit, SymbolLookupFailure> =
             self.tail.iter().try_fold(first, |acc, curr| {
                 fold_step(
@@ -426,6 +468,7 @@ impl Evaluate for ArithmeticExpression {
                     target_address,
                     symtab,
                     memory_map,
+                    index_register_assigner,
                     rc_updater,
                     op,
                 )
@@ -440,18 +483,29 @@ impl Evaluate for InstructionFragment {
         target_address: &HereValue,
         symtab: &mut SymbolTable,
         memory_map: &MemoryMap,
+        index_register_assigner: &mut IndexRegisterAssigner,
         rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         match self {
             InstructionFragment::Null(_) => Ok(Unsigned36Bit::ZERO),
-            InstructionFragment::Arithmetic(expr) => {
-                expr.evaluate(target_address, symtab, memory_map, rc_updater, op)
-            }
+            InstructionFragment::Arithmetic(expr) => expr.evaluate(
+                target_address,
+                symtab,
+                memory_map,
+                index_register_assigner,
+                rc_updater,
+                op,
+            ),
             InstructionFragment::DeferredAddressing(_) => Ok(DEFER_BIT),
-            InstructionFragment::Config(value) => {
-                value.evaluate(target_address, symtab, memory_map, rc_updater, op)
-            }
+            InstructionFragment::Config(value) => value.evaluate(
+                target_address,
+                symtab,
+                memory_map,
+                index_register_assigner,
+                rc_updater,
+                op,
+            ),
             InstructionFragment::PipeConstruct {
                 index: p,
                 rc_word_span: _,
@@ -467,11 +521,22 @@ impl Evaluate for InstructionFragment {
                 // of Q and ₜ were combined into the two parts of the
                 // rc_word_value tuple.  We evaluate Qₜ as
                 // rc_word_val.
-                let p_value: Unsigned36Bit =
-                    p.item
-                        .evaluate(target_address, symtab, memory_map, rc_updater, op)?;
-                let rc_word_addr: Unsigned36Bit =
-                    rc_word_value.evaluate(target_address, symtab, memory_map, rc_updater, op)?;
+                let p_value: Unsigned36Bit = p.item.evaluate(
+                    target_address,
+                    symtab,
+                    memory_map,
+                    index_register_assigner,
+                    rc_updater,
+                    op,
+                )?;
+                let rc_word_addr: Unsigned36Bit = rc_word_value.evaluate(
+                    target_address,
+                    symtab,
+                    memory_map,
+                    index_register_assigner,
+                    rc_updater,
+                    op,
+                )?;
                 Ok(combine_fragment_values(
                     combine_fragment_values(p_value, rc_word_addr),
                     DEFER_BIT,
@@ -487,6 +552,7 @@ impl Evaluate for ConfigValue {
         target_address: &HereValue,
         symtab: &mut SymbolTable,
         memory_map: &MemoryMap,
+        index_register_assigner: &mut IndexRegisterAssigner,
         rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
@@ -496,7 +562,14 @@ impl Evaluate for ConfigValue {
         // script (in which case we need to shift it ourselves).
         let shift = if self.already_superscript { 0 } else { 30u32 };
         self.expr
-            .evaluate(target_address, symtab, memory_map, rc_updater, op)
+            .evaluate(
+                target_address,
+                symtab,
+                memory_map,
+                index_register_assigner,
+                rc_updater,
+                op,
+            )
             .map(|value| value.shl(shift))
     }
 }
@@ -509,10 +582,19 @@ fn symbol_name_lookup<R: RcUpdater>(
     target_address: &HereValue,
     symtab: &mut SymbolTable,
     memory_map: &MemoryMap,
+    index_register_assigner: &mut IndexRegisterAssigner,
     rc_updater: &mut R,
     op: &mut LookupOperation,
 ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-    match symtab.lookup_with_op(memory_map, name, span, target_address, rc_updater, op) {
+    match symtab.lookup_with_op(
+        memory_map,
+        index_register_assigner,
+        name,
+        span,
+        target_address,
+        rc_updater,
+        op,
+    ) {
         Ok(SymbolValue::Final(value)) => Ok(value),
         Err(e) => Err(e),
     }
@@ -525,19 +607,35 @@ impl Evaluate for Atom {
         target_address: &HereValue,
         symtab: &mut SymbolTable,
         memory_map: &MemoryMap,
+        index_register_assigner: &mut IndexRegisterAssigner,
         rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         match self {
-            Atom::SymbolOrLiteral(value) => {
-                value.evaluate(target_address, symtab, memory_map, rc_updater, op)
-            }
-            Atom::Parens(_span, _script, expr) => {
-                expr.evaluate(target_address, symtab, memory_map, rc_updater, op)
-            }
-            Atom::RcRef(_span, registers_containing) => {
-                registers_containing.evaluate(target_address, symtab, memory_map, rc_updater, op)
-            }
+            Atom::SymbolOrLiteral(value) => value.evaluate(
+                target_address,
+                symtab,
+                memory_map,
+                index_register_assigner,
+                rc_updater,
+                op,
+            ),
+            Atom::Parens(_span, _script, expr) => expr.evaluate(
+                target_address,
+                symtab,
+                memory_map,
+                index_register_assigner,
+                rc_updater,
+                op,
+            ),
+            Atom::RcRef(_span, registers_containing) => registers_containing.evaluate(
+                target_address,
+                symtab,
+                memory_map,
+                index_register_assigner,
+                rc_updater,
+                op,
+            ),
         }
     }
 }
@@ -548,11 +646,19 @@ impl Evaluate for SignedAtom {
         target_address: &HereValue,
         symtab: &mut SymbolTable,
         memory_map: &MemoryMap,
+        index_register_assigner: &mut IndexRegisterAssigner,
         rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         self.magnitude
-            .evaluate(target_address, symtab, memory_map, rc_updater, op)
+            .evaluate(
+                target_address,
+                symtab,
+                memory_map,
+                index_register_assigner,
+                rc_updater,
+                op,
+            )
             .map(|magnitude| {
                 if self.negated {
                     let s36 = magnitude.reinterpret_as_signed();
@@ -571,6 +677,7 @@ impl Evaluate for SymbolOrLiteral {
         target_address: &HereValue,
         symtab: &mut SymbolTable,
         memory_map: &MemoryMap,
+        index_register_assigner: &mut IndexRegisterAssigner,
         rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
@@ -582,12 +689,18 @@ impl Evaluate for SymbolOrLiteral {
                 target_address,
                 symtab,
                 memory_map,
+                index_register_assigner,
                 rc_updater,
                 op,
             ),
-            SymbolOrLiteral::Literal(literal_value) => {
-                literal_value.evaluate(target_address, symtab, memory_map, rc_updater, op)
-            }
+            SymbolOrLiteral::Literal(literal_value) => literal_value.evaluate(
+                target_address,
+                symtab,
+                memory_map,
+                index_register_assigner,
+                rc_updater,
+                op,
+            ),
             SymbolOrLiteral::Here(script, span) => target_address
                 .get_address(span)
                 .map(|addr: Address| Unsigned36Bit::from(addr))
@@ -646,11 +759,19 @@ impl Evaluate for CommaDelimitedFragment {
         target_address: &HereValue,
         symtab: &mut SymbolTable,
         memory_map: &MemoryMap,
+        index_register_assigner: &mut IndexRegisterAssigner,
         rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         self.fragment
-            .evaluate(target_address, symtab, memory_map, rc_updater, op)
+            .evaluate(
+                target_address,
+                symtab,
+                memory_map,
+                index_register_assigner,
+                rc_updater,
+                op,
+            )
             .map(|word| {
                 // TODO: issue a diagnostic if there are inconsistent
                 //  values for the hold bit.  We will need to decide
@@ -687,11 +808,13 @@ fn record_undefined_symbol_or_return_failure(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn extract_final_equalities<R: RcUpdater>(
     equalities: &[Equality],
     body: &str,
     symtab: &mut SymbolTable,
     memory_map: &mut MemoryMap,
+    index_register_assigner: &mut IndexRegisterAssigner,
     rc_updater: &mut R,
     final_symbols: &mut FinalSymbolTable,
     undefined_symbols: &mut BTreeMap<SymbolName, Span>,
@@ -702,6 +825,7 @@ pub(super) fn extract_final_equalities<R: RcUpdater>(
             &HereValue::NotAllowed,
             symtab,
             memory_map,
+            index_register_assigner,
             rc_updater,
             &mut op,
         ) {
@@ -740,6 +864,7 @@ impl LocatedBlock {
         location: Address,
         symtab: &mut SymbolTable,
         memory_map: &mut MemoryMap,
+        index_register_assigner: &mut IndexRegisterAssigner,
         rc_updater: &mut R,
         final_symbols: &mut FinalSymbolTable,
         body: &str,
@@ -750,6 +875,7 @@ impl LocatedBlock {
             location,
             symtab,
             memory_map,
+            index_register_assigner,
             rc_updater,
             final_symbols,
             body,
@@ -767,6 +893,7 @@ impl InstructionSequence {
         location: Address,
         symtab: &mut SymbolTable,
         memory_map: &mut MemoryMap,
+        index_register_assigner: &mut IndexRegisterAssigner,
         rc_updater: &mut R,
         final_symbols: &mut FinalSymbolTable,
         body: &str,
@@ -788,7 +915,14 @@ impl InstructionSequence {
                 );
             }
             let mut op = Default::default();
-            match instruction.evaluate(&here, symtab, memory_map, rc_updater, &mut op) {
+            match instruction.evaluate(
+                &here,
+                symtab,
+                memory_map,
+                index_register_assigner,
+                rc_updater,
+                &mut op,
+            ) {
                 Ok(word) => {
                     listing.push_line(ListingLine {
                         span: Some(instruction.span),
@@ -812,6 +946,7 @@ impl Evaluate for RegistersContaining {
         _target_address: &HereValue,
         symtab: &mut SymbolTable,
         memory_map: &MemoryMap,
+        index_register_assigner: &mut IndexRegisterAssigner,
         rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
@@ -827,6 +962,7 @@ impl Evaluate for RegistersContaining {
                 &must_recompute_here_address,
                 symtab,
                 memory_map,
+                index_register_assigner,
                 rc_updater,
                 op,
             )?;
@@ -852,6 +988,7 @@ impl Evaluate for RegisterContaining {
         _target_address: &HereValue,
         symtab: &mut SymbolTable,
         memory_map: &MemoryMap,
+        index_register_assigner: &mut IndexRegisterAssigner,
         rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
@@ -908,8 +1045,14 @@ impl Evaluate for RegisterContaining {
                 //           0                              |000000 000000|   107
                 // TOMM ->   0                              |000000 000000|000110
                 // ```
-                let value: Unsigned36Bit =
-                    inst.evaluate(&here, symtab, memory_map, rc_updater, op)?;
+                let value: Unsigned36Bit = inst.evaluate(
+                    &here,
+                    symtab,
+                    memory_map,
+                    index_register_assigner,
+                    rc_updater,
+                    op,
+                )?;
                 rc_updater.update(*rc_word_addr, value);
                 Ok(Unsigned36Bit::from(rc_word_addr))
             }
@@ -923,6 +1066,7 @@ impl Evaluate for Origin {
         target_address: &HereValue,
         symtab: &mut SymbolTable,
         memory_map: &MemoryMap,
+        index_register_assigner: &mut IndexRegisterAssigner,
         rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
@@ -935,6 +1079,7 @@ impl Evaluate for Origin {
                 target_address,
                 symtab,
                 memory_map,
+                index_register_assigner,
                 rc_updater,
                 op,
             ),
@@ -954,6 +1099,7 @@ impl Evaluate for (&BlockIdentifier, &BlockPosition) {
         target_address: &HereValue,
         symtab: &mut SymbolTable,
         memory_map: &MemoryMap,
+        index_register_assigner: &mut IndexRegisterAssigner,
         rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
@@ -971,7 +1117,14 @@ impl Evaluate for (&BlockIdentifier, &BlockPosition) {
                 origin: Some(origin),
                 ..
             } => origin
-                .evaluate(target_address, symtab, memory_map, rc_updater, op)
+                .evaluate(
+                    target_address,
+                    symtab,
+                    memory_map,
+                    index_register_assigner,
+                    rc_updater,
+                    op,
+                )
                 .map(address_from_lower_half),
             BlockPosition {
                 block_address: None,
@@ -987,7 +1140,14 @@ impl Evaluate for (&BlockIdentifier, &BlockPosition) {
                     Some(previous_block_id) => match memory_map.get(&previous_block_id).cloned() {
                         Some(previous_block) => {
                             let prev_addr_w: Unsigned36Bit = (&previous_block_id, &previous_block)
-                                .evaluate(target_address, symtab, memory_map, rc_updater, op)?;
+                                .evaluate(
+                                    target_address,
+                                    symtab,
+                                    memory_map,
+                                    index_register_assigner,
+                                    rc_updater,
+                                    op,
+                                )?;
                             let prev_addr: Address =
                                 Address::from(subword::right_half(prev_addr_w));
                             match offset_from_origin(&prev_addr, previous_block.block_size) {

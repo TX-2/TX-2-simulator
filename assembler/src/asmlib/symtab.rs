@@ -87,6 +87,29 @@ impl MemoryMap {
     }
 }
 
+#[derive(Debug, Default)]
+pub(crate) struct IndexRegisterAssigner {
+    index_registers_used: Unsigned6Bit,
+}
+
+impl IndexRegisterAssigner {
+    pub(crate) fn assign_index_register(&mut self) -> Option<Unsigned6Bit> {
+        // These start at 0, but we can't assign X0 (since it is
+        // always zero), and this is why we increment
+        // `index_registers_used` first.
+        if let Some(n) = self.index_registers_used.checked_add(u6!(1)) {
+            self.index_registers_used = n;
+            Some(n)
+        } else {
+            None
+        }
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.index_registers_used == 0
+    }
+}
+
 /// A symbol which has a reference but no definition is known, will
 /// ben represented it by having it map to None.  The rules for how
 /// such symbols are assigned values are indicated in "Unassigned
@@ -94,7 +117,6 @@ impl MemoryMap {
 #[derive(Debug, Default)]
 pub(crate) struct SymbolTable {
     definitions: BTreeMap<SymbolName, InternalSymbolDef>,
-    index_registers_used: Unsigned6Bit,
 }
 
 #[derive(Debug, Default)]
@@ -115,6 +137,7 @@ impl Evaluate for (&Span, &SymbolName, &SymbolDefinition) {
         target_address: &HereValue,
         symtab: &mut SymbolTable,
         memory_map: &MemoryMap,
+        index_register_assigner: &mut IndexRegisterAssigner,
         rc_updater: &mut R,
         op: &mut LookupOperation,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
@@ -136,6 +159,7 @@ impl Evaluate for (&Span, &SymbolName, &SymbolDefinition) {
                         target_address,
                         symtab,
                         memory_map,
+                        index_register_assigner,
                         rc_updater,
                         op,
                     )?)
@@ -157,9 +181,14 @@ impl Evaluate for (&Span, &SymbolName, &SymbolDefinition) {
                     );
                 }
             }
-            SymbolDefinition::Equality(expression) => {
-                expression.evaluate(target_address, symtab, memory_map, rc_updater, op)
-            }
+            SymbolDefinition::Equality(expression) => expression.evaluate(
+                target_address,
+                symtab,
+                memory_map,
+                index_register_assigner,
+                rc_updater,
+                op,
+            ),
             SymbolDefinition::Undefined(context_union) => Err(SymbolLookupFailure::Missing {
                 name: name.to_owned(),
                 span: *span,
@@ -169,9 +198,11 @@ impl Evaluate for (&Span, &SymbolName, &SymbolDefinition) {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn final_lookup_helper_body<R: RcUpdater>(
     symtab: &mut SymbolTable,
     memory_map: &MemoryMap,
+    index_register_assigner: &mut IndexRegisterAssigner,
     name: &SymbolName,
     span: Span,
     target_address: &HereValue,
@@ -180,7 +211,14 @@ fn final_lookup_helper_body<R: RcUpdater>(
 ) -> Result<SymbolValue, SymbolLookupFailure> {
     if let Some(def) = symtab.get_clone(name) {
         let what = (&span, name, &def);
-        match what.evaluate(target_address, symtab, memory_map, rc_updater, op) {
+        match what.evaluate(
+            target_address,
+            symtab,
+            memory_map,
+            index_register_assigner,
+            rc_updater,
+            op,
+        ) {
             Ok(value) => Ok(SymbolValue::Final(value)),
             Err(SymbolLookupFailure::Missing {
                 uses:
@@ -204,7 +242,14 @@ fn final_lookup_helper_body<R: RcUpdater>(
                     };
                     let what: (&BlockIdentifier, &BlockPosition) =
                         (&block_identifier, &pos_with_unspecified_origin);
-                    match what.evaluate(target_address, symtab, memory_map, rc_updater, op) {
+                    match what.evaluate(
+                        target_address,
+                        symtab,
+                        memory_map,
+                        index_register_assigner,
+                        rc_updater,
+                        op,
+                    ) {
                         Ok(value) => {
                             let address: Address = subword::right_half(value).into();
                             match symtab.define(
@@ -227,21 +272,24 @@ fn final_lookup_helper_body<R: RcUpdater>(
             Err(SymbolLookupFailure::Missing {
                 uses: context_union,
                 ..
-            }) => match symtab.get_default_value(name, &span, &context_union) {
-                Ok(value) => {
-                    match symtab.define(
-                        span,
-                        name.clone(),
-                        SymbolDefinition::DefaultAssigned(value, context_union),
-                    ) {
-                        Err(e) => {
-                            panic!("got a bad symbol definition error ({e}) on a previously undefined symbol, which should be impossible");
+            }) => {
+                match symtab.get_default_value(index_register_assigner, name, &span, &context_union)
+                {
+                    Ok(value) => {
+                        match symtab.define(
+                            span,
+                            name.clone(),
+                            SymbolDefinition::DefaultAssigned(value, context_union),
+                        ) {
+                            Err(e) => {
+                                panic!("got a bad symbol definition error ({e}) on a previously undefined symbol, which should be impossible");
+                            }
+                            Ok(()) => Ok(SymbolValue::Final(value)),
                         }
-                        Ok(()) => Ok(SymbolValue::Final(value)),
                     }
+                    Err(e) => Err(e),
                 }
-                Err(e) => Err(e),
-            },
+            }
             Err(other) => Err(other),
         }
     } else {
@@ -253,7 +301,6 @@ impl SymbolTable {
     pub(crate) fn new() -> SymbolTable {
         SymbolTable {
             definitions: Default::default(),
-            index_registers_used: Unsigned6Bit::ZERO,
         }
     }
 
@@ -320,6 +367,7 @@ impl SymbolTable {
     /// default value assigned.
     pub(crate) fn get_default_value(
         &mut self,
+        index_register_assigner: &mut IndexRegisterAssigner,
         name: &SymbolName,
         span: &Span,
         contexts_used: &SymbolContext,
@@ -347,14 +395,9 @@ impl SymbolTable {
             [true, _, _, false] => Ok(Unsigned36Bit::ZERO), // configuration (perhaps in combo with others)
             [false, true, _, false] => {
                 // Index but not also configuration. Assign the next
-                // index register.  This count start at 0, but we
-                // Can't assign X0, so we increment first (as X0 is
-                // always 0 and we can't assign it).
-                match self.index_registers_used.checked_add(u6!(1)) {
-                    Some(n) => {
-                        self.index_registers_used = n;
-                        Ok(n.into())
-                    }
+                // index register.
+                match index_register_assigner.assign_index_register() {
+                    Some(n) => Ok(n.into()),
                     None => Err(SymbolLookupFailure::FailedToAssignIndexRegister(
                         *span,
                         name.clone(),
@@ -425,6 +468,7 @@ impl SymbolLookup for SymbolTable {
     fn lookup_with_op<R: RcUpdater>(
         &mut self,
         memory_map: &MemoryMap,
+        index_register_assigner: &mut IndexRegisterAssigner,
         name: &SymbolName,
         span: Span,
         target_address: &HereValue,
@@ -441,8 +485,16 @@ impl SymbolLookup for SymbolTable {
                 deps_in_order: op.deps_in_order.to_vec(),
             });
         }
-        let result =
-            final_lookup_helper_body(self, memory_map, name, span, target_address, rc_updater, op);
+        let result = final_lookup_helper_body(
+            self,
+            memory_map,
+            index_register_assigner,
+            name,
+            span,
+            target_address,
+            rc_updater,
+            op,
+        );
         op.deps_in_order.pop();
         op.depends_on.remove(name);
         result
