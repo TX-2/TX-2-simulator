@@ -388,7 +388,7 @@ fn make_pipe_construct(
     let rc_word_value: RegisterContaining = RegisterContaining::from(TaggedProgramInstruction {
         span: tqspan,
         tags: Vec::new(),
-        instruction: UntaggedProgramInstruction::from(vec![
+        instruction: UntaggedProgramInstruction::from(OneOrMore::with_tail(
             CommaDelimitedFragment {
                 span: q_span,
                 holdbit: HoldBit::Unspecified,
@@ -396,7 +396,7 @@ fn make_pipe_construct(
                 fragment: q,
                 trailing_commas: None,
             },
-            CommaDelimitedFragment {
+            vec![CommaDelimitedFragment {
                 span: t.span,
                 leading_commas: None,
                 holdbit: HoldBit::Unspecified,
@@ -404,8 +404,8 @@ fn make_pipe_construct(
                     t.item,
                 ))),
                 trailing_commas: None,
-            },
-        ]),
+            }],
+        )),
     });
     InstructionFragment::PipeConstruct {
         index: p,
@@ -921,7 +921,7 @@ where
         .collect()
         .then(comma_delimited_instructions.clone()))
     .map_with(
-        |(tags, fragments): (Vec<Tag>, Vec<CommaDelimitedFragment>), extra| {
+        |(tags, fragments): (Vec<Tag>, OneOrMore<CommaDelimitedFragment>), extra| {
             let span: Span = extra.span();
             if let Some(t) = tags.first() {
                 assert_eq!(t.span.start, span.start);
@@ -1139,6 +1139,12 @@ where
         .at_least(1)
         .collect::<Vec<CommasOrInstruction>>()
         .map(|ci_vec| instructions_with_comma_counts(ci_vec.into_iter()))
+        .map(|cdfs| match OneOrMore::try_from_iter(cdfs.into_iter()) {
+            Ok(cdfs) => cdfs,
+            Err(_) => {
+                unreachable!("instructions_with_comma_counts generated an empty output");
+            }
+        })
     });
 
     // Assginments are called "equalities" in the TX-2 Users Handbook.
@@ -1146,9 +1152,11 @@ where
     // AUTOMATIC ASSIGNMENT".
     let assignment = (symex::parse_symex(SymexSyllableRule::Multiple, Script::Normal)
         .then_ignore(just(Tok::Equals(Script::Normal)))
-        .then(comma_delimited_instructions.clone().map_with(|val, extra| {
-            EqualityValue::from((extra.span(), UntaggedProgramInstruction::from(val)))
-        })))
+        .then(comma_delimited_instructions.clone().map_with(
+            |val: OneOrMore<CommaDelimitedFragment>, extra| {
+                EqualityValue::from((extra.span(), UntaggedProgramInstruction::from(val)))
+            },
+        )))
     .map_with(|(name, value), extra| Equality {
         span: extra.span(),
         name,

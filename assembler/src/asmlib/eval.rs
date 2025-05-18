@@ -307,15 +307,16 @@ pub(crate) fn make_empty_rc_block_for_test(location: Address) -> RcBlock {
     }
 }
 
-pub(crate) fn evaluate_and_combine_values<R, E>(
-    items: &[E],
+pub(crate) fn evaluate_and_combine_values<'a, R, E, I>(
+    mut items: I,
     ctx: &mut EvaluationContext<R>,
 ) -> Result<Unsigned36Bit, SymbolLookupFailure>
 where
     R: RcUpdater,
-    E: Evaluate,
+    E: Evaluate + 'a,
+    I: Iterator<Item = &'a E>,
 {
-    items.iter().try_fold(Unsigned36Bit::ZERO, |acc, item| {
+    items.try_fold(Unsigned36Bit::ZERO, |acc, item| {
         item.evaluate(ctx)
             .map(|value| combine_fragment_values(acc, value))
     })
@@ -339,7 +340,7 @@ impl Evaluate for UntaggedProgramInstruction {
         // (b) in section 6-2.4, "NUMERICAL FORMAT - USE OF COMMAS" of
         // the Users Handbook.  The initial value is zero (as
         // specified in item (a) in the same place).
-        evaluate_and_combine_values(self.fragments.as_slice(), ctx)
+        evaluate_and_combine_values(self.fragments.iter(), ctx)
     }
 }
 

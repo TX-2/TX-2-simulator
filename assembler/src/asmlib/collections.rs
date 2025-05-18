@@ -22,12 +22,14 @@ pub struct OneOrMore<T> {
     head: T,
     tail: Vec<T>,
 }
+
 impl<T> OneOrMore<T> {
     pub fn new(head: T) -> OneOrMore<T> {
-        OneOrMore {
-            head,
-            tail: Vec::new(),
-        }
+        OneOrMore::with_tail(head, Vec::new())
+    }
+
+    pub fn with_tail(head: T, tail: Vec<T>) -> OneOrMore<T> {
+        OneOrMore { head, tail }
     }
 
     pub fn first(&self) -> &T {
@@ -78,6 +80,10 @@ impl<T> OneOrMore<T> {
             Err(NoItems {})
         }
     }
+
+    pub fn extend<I: Iterator<Item = T>>(&mut self, items: I) {
+        self.tail.extend(items)
+    }
 }
 
 pub struct OneOrMoreIter<'a, T> {
@@ -122,6 +128,39 @@ impl<T> From<OneOrMore<T>> for Vec<T> {
         result.push(value.head);
         result.append(&mut value.tail);
         result
+    }
+}
+
+impl<T: PartialEq<T>> PartialEq<Vec<T>> for OneOrMore<T> {
+    fn eq(&self, other: &Vec<T>) -> bool {
+        let mut other_it = other.iter();
+        match other_it.next() {
+            Some(first) => {
+                if first != &self.head {
+                    return false;
+                }
+                let mut self_it = self.tail.iter();
+                // We don't want to use zip() here because we want our
+                // comparison to fail when one iterator is shorter
+                // than the other.
+                loop {
+                    match (self_it.next(), other_it.next()) {
+                        (Some(mine), Some(theirs)) => {
+                            if mine != theirs {
+                                return false;
+                            }
+                        }
+                        (None, Some(_)) | (Some(_), None) => {
+                            return false;
+                        }
+                        (None, None) => {
+                            return true;
+                        }
+                    }
+                }
+            }
+            None => false,
+        }
     }
 }
 
@@ -219,5 +258,31 @@ mod one_or_more_tests {
         }
         let values: Vec<i32> = v.into_iter().collect();
         assert_eq!(values, vec![2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn test_extend() {
+        let mut v: OneOrMore<i32> = OneOrMore::new(1);
+        v.extend([2, 3].into_iter());
+        assert_eq!(v, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn test_self_eq() {
+        assert_eq!(OneOrMore::new(1), OneOrMore::new(1));
+        assert_ne!(OneOrMore::new(1), OneOrMore::new(2));
+
+        assert_eq!(
+            OneOrMore::with_tail(1, vec![2]),
+            OneOrMore::with_tail(1, vec![2])
+        );
+        assert_ne!(
+            OneOrMore::with_tail(1, vec![2]),
+            OneOrMore::with_tail(1, vec![2, 2])
+        );
+        assert_ne!(
+            OneOrMore::with_tail(1, vec![2, 2]),
+            OneOrMore::with_tail(1, vec![2])
+        );
     }
 }

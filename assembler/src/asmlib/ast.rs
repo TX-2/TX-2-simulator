@@ -957,13 +957,32 @@ impl Spanned for CommaDelimitedFragment {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct UntaggedProgramInstruction {
-    pub(crate) fragments: Vec<CommaDelimitedFragment>,
+    pub(crate) fragments: OneOrMore<CommaDelimitedFragment>,
 }
 
-impl From<Vec<CommaDelimitedFragment>> for UntaggedProgramInstruction {
-    fn from(fragments: Vec<CommaDelimitedFragment>) -> Self {
-        assert!(!fragments.is_empty(), "input fragments should not be empty");
+impl From<OneOrMore<CommaDelimitedFragment>> for UntaggedProgramInstruction {
+    fn from(fragments: OneOrMore<CommaDelimitedFragment>) -> Self {
         Self { fragments }
+    }
+}
+
+// Because this conversion only allows a runtime check of the
+// invariant we want to establish, we allow it only in tests.
+#[cfg(test)]
+impl From<Vec<CommaDelimitedFragment>> for UntaggedProgramInstruction {
+    // TODO: move the establishment of the non-empty invariant into the callers.
+    fn from(fragments: Vec<CommaDelimitedFragment>) -> Self {
+        let mut it = fragments.into_iter();
+        match it.next() {
+            Some(head) => {
+                let mut items = OneOrMore::new(head);
+                items.extend(it);
+                Self { fragments: items }
+            }
+            None => {
+                panic!("input fragments should not be empty");
+            }
+        }
     }
 }
 
@@ -981,12 +1000,7 @@ impl UntaggedProgramInstruction {
 
 impl Spanned for UntaggedProgramInstruction {
     fn span(&self) -> Span {
-        match (self.fragments.first(), self.fragments.last()) {
-            (Some(f), Some(b)) => span(f.span.start..b.span.end),
-            (None, _) | (_, None) => {
-                unreachable!("invariant broken: zero fragments in UntaggedProgramInstruction");
-            }
-        }
+        span(self.fragments.first().span.start..self.fragments.last().span.end)
     }
 }
 
