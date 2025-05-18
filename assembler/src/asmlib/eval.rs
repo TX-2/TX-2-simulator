@@ -5,6 +5,8 @@ use std::collections::BTreeMap;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::ops::{Shl, Shr};
 
+use tracing::{event, Level};
+
 use base::{
     charset::Script,
     prelude::{Address, IndexBy, Signed36Bit, Unsigned18Bit, Unsigned36Bit, DEFER_BIT},
@@ -21,9 +23,8 @@ use super::types::{
 };
 use crate::symbol::SymbolContext;
 use crate::symtab::{
-    final_lookup_helper_body, BlockPosition, FinalSymbolDefinition, FinalSymbolTable,
-    FinalSymbolType, IndexRegisterAssigner, LookupOperation, MemoryMap, SymbolDefinition,
-    SymbolTable, TagDefinition,
+    BlockPosition, FinalSymbolDefinition, FinalSymbolTable, FinalSymbolType, IndexRegisterAssigner,
+    LookupOperation, MemoryMap, SymbolDefinition, SymbolTable, TagDefinition,
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -211,6 +212,60 @@ pub(crate) struct EvaluationContext<'s, R: RcUpdater> {
     pub(crate) memory_map: &'s MemoryMap,
     pub(crate) rc_updater: &'s mut R,
     pub(crate) lookup_operation: LookupOperation,
+}
+
+impl<'s, R: RcUpdater> EvaluationContext<'s, R> {
+    /// Assign a default value for a symbol, using the rules from
+    /// section 6-2.2 of the Users Handbook ("SYMEX DEFINITON - TAGS -
+    /// EQUALITIES - AUTOMATIC ASSIGNMENT").
+    ///
+    /// Values which refer to addresses (and which therefore should
+    /// point to a zero-initialised RC-word) should already have a
+    /// default value assigned.
+    pub(crate) fn get_default_value(
+        &mut self,
+        name: &SymbolName,
+        span: &Span,
+        contexts_used: &SymbolContext,
+    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+        // TODO: maybe make this a method of EvaluationContext instead.
+        event!(
+            Level::DEBUG,
+            "assigning default value for {name} used in contexts {contexts_used:?}"
+        );
+        match contexts_used.bits() {
+            [false, false, _, true] => {
+                // origin only or address and origin
+                unreachable!("get_default_value should not be called for origin speicifations; attempted to assign default value for {name} (used in contexts: {contexts_used:?}")
+            }
+            [true, _, _, true] | [_, true, _, true] => {
+                // origin and either config or index
+                Err(SymbolLookupFailure::InconsistentOrigins(
+                    InconsistentOrigin {
+                        origin_name: name.clone(),
+                        span: *span,
+                        msg: format!("symbol {name} was used in both origin and other contexts"),
+                    },
+                ))
+            }
+            [false, false, false, false] => unreachable!(), // apparently no usage at all
+            [true, _, _, false] => Ok(Unsigned36Bit::ZERO), // configuration (perhaps in combo with others)
+            [false, true, _, false] => {
+                // Index but not also configuration. Assign the next
+                // index register.
+                match self.index_register_assigner.assign_index_register() {
+                    Some(n) => Ok(n.into()),
+                    None => Err(SymbolLookupFailure::FailedToAssignIndexRegister(
+                        *span,
+                        name.clone(),
+                    )),
+                }
+            }
+            [false, false, true, false] => {
+                unreachable!("default assignments for address-context symexes should be assigned before evaluation starts")
+            }
+        }
+    }
 }
 
 impl<R: RcUpdater> EvaluationContext<'_, R> {
@@ -440,6 +495,82 @@ impl Evaluate for ConfigValue {
         // script (in which case we need to shift it ourselves).
         let shift = if self.already_superscript { 0 } else { 30u32 };
         self.expr.evaluate(ctx).map(|value| value.shl(shift))
+    }
+}
+
+fn final_lookup_helper_body<R: RcUpdater>(
+    ctx: &mut EvaluationContext<R>,
+    name: &SymbolName,
+    span: Span,
+) -> Result<SymbolValue, SymbolLookupFailure> {
+    if let Some(def) = ctx.symtab.get_clone(name) {
+        let what = (&span, name, &def);
+        match what.evaluate(ctx) {
+            Ok(value) => Ok(SymbolValue::Final(value)),
+            Err(SymbolLookupFailure::Missing {
+                uses:
+                    SymbolContext {
+                        origin_of_block: Some(block_identifier),
+                        ..
+                    },
+                ..
+            }) => {
+                if let Some(block_position) = ctx.memory_map.get(&block_identifier).cloned() {
+                    // If we simply try to pass block_position to
+                    // evaluate() we will loop and diagnose this as an
+                    // undefined symbol.  While the symbol has no
+                    // definition via assignment, we can determine the
+                    // position of the block by appending it to the
+                    // previous block.  So we evaluate the block's
+                    // position as if it had no origin specification.
+                    let pos_with_unspecified_origin: BlockPosition = BlockPosition {
+                        origin: None,
+                        ..block_position
+                    };
+                    let what: (&BlockIdentifier, &BlockPosition) =
+                        (&block_identifier, &pos_with_unspecified_origin);
+                    match what.evaluate(ctx) {
+                        Ok(value) => {
+                            let address: Address = subword::right_half(value).into();
+                            match ctx.symtab.define(
+                                span,
+                                name.clone(),
+                                SymbolDefinition::Origin(address),
+                            ) {
+                                Ok(()) => Ok(SymbolValue::Final(value)),
+                                Err(e) => {
+                                    panic!("got a bad symbol definition error ({e}) on a previously undefined origin symbol, which should be impossible");
+                                }
+                            }
+                        }
+                        Err(e) => Err(e),
+                    }
+                } else {
+                    unreachable!("symbol {name} was used as an origin for block {block_identifier} but this is not a known block");
+                }
+            }
+            Err(SymbolLookupFailure::Missing {
+                uses: context_union,
+                ..
+            }) => match ctx.get_default_value(name, &span, &context_union) {
+                Ok(value) => {
+                    match ctx.symtab.define(
+                        span,
+                        name.clone(),
+                        SymbolDefinition::DefaultAssigned(value, context_union),
+                    ) {
+                        Err(e) => {
+                            panic!("got a bad symbol definition error ({e}) on a previously undefined symbol, which should be impossible");
+                        }
+                        Ok(()) => Ok(SymbolValue::Final(value)),
+                    }
+                }
+                Err(e) => Err(e),
+            },
+            Err(other) => Err(other),
+        }
+    } else {
+        panic!("final symbol lookup of symbol '{name}' happened in an evaluation context which was not previously returned by SourceFile::global_symbol_references(): {:?}", &ctx.lookup_operation);
     }
 }
 
