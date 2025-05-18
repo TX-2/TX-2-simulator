@@ -966,26 +966,6 @@ impl From<OneOrMore<CommaDelimitedFragment>> for UntaggedProgramInstruction {
     }
 }
 
-// Because this conversion only allows a runtime check of the
-// invariant we want to establish, we allow it only in tests.
-#[cfg(test)]
-impl From<Vec<CommaDelimitedFragment>> for UntaggedProgramInstruction {
-    // TODO: move the establishment of the non-empty invariant into the callers.
-    fn from(fragments: Vec<CommaDelimitedFragment>) -> Self {
-        let mut it = fragments.into_iter();
-        match it.next() {
-            Some(head) => {
-                let mut items = OneOrMore::new(head);
-                items.extend(it);
-                Self { fragments: items }
-            }
-            None => {
-                panic!("input fragments should not be empty");
-            }
-        }
-    }
-}
-
 impl UntaggedProgramInstruction {
     fn symbol_uses(
         &self,
@@ -1096,30 +1076,33 @@ impl TaggedProgramInstruction {
         frag_span: Span,
         frag: InstructionFragment,
     ) -> TaggedProgramInstruction {
-        TaggedProgramInstruction::multiple(
+        TaggedProgramInstruction {
             tags,
-            inst_span,
-            vec![CommaDelimitedFragment {
+            span: inst_span,
+            instruction: UntaggedProgramInstruction::from(OneOrMore::new(CommaDelimitedFragment {
                 span: frag_span,
                 leading_commas: None,
                 holdbit,
                 fragment: frag,
                 trailing_commas: None,
-            }],
-        )
+            })),
+        }
     }
 
     #[cfg(test)]
     pub(crate) fn multiple(
         tags: Vec<Tag>,
         span: Span,
-        fragments: Vec<CommaDelimitedFragment>,
+        first_fragment: CommaDelimitedFragment,
+        more_fragments: Vec<CommaDelimitedFragment>,
     ) -> TaggedProgramInstruction {
-        assert!(!fragments.is_empty());
         TaggedProgramInstruction {
             tags,
             span,
-            instruction: UntaggedProgramInstruction::from(fragments),
+            instruction: UntaggedProgramInstruction::from(OneOrMore::with_tail(
+                first_fragment,
+                more_fragments,
+            )),
         }
     }
 

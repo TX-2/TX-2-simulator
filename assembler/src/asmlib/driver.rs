@@ -13,6 +13,8 @@ use chumsky::error::Rich;
 use tracing::{event, span, Level};
 
 use super::ast::*;
+#[cfg(test)]
+use super::collections::OneOrMore;
 use super::eval::extract_final_equalities;
 use super::eval::Evaluate;
 use super::eval::HereValue;
@@ -706,7 +708,7 @@ fn test_assemble_pass1() {
         statements: vec![TaggedProgramInstruction {
             span: span(0..2),
             tags: Vec::new(),
-            instruction: UntaggedProgramInstruction::from(vec![CommaDelimitedFragment {
+            instruction: UntaggedProgramInstruction::from(OneOrMore::new(CommaDelimitedFragment {
                 leading_commas: None,
                 holdbit: HoldBit::Unspecified,
                 span: span(0..2),
@@ -716,7 +718,7 @@ fn test_assemble_pass1() {
                     u36!(0o14),
                 )))),
                 trailing_commas: None,
-            }]),
+            })),
         }]
         .into(),
     };
