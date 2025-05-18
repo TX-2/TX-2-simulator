@@ -25,6 +25,8 @@ use chumsky::select;
 use chumsky::Boxed;
 use chumsky::Parser;
 
+use crate::collections::OneOrMore;
+
 use super::ast::*;
 use super::glyph::Unrecognised;
 use super::lexer::{self};
@@ -948,7 +950,9 @@ where
         .map_with(|tagged_instruction, extra| {
             Atom::RcRef(
                 extra.span(),
-                RegistersContaining::from_words(vec![RegisterContaining::from(tagged_instruction)]),
+                RegistersContaining::from_words(OneOrMore::new(RegisterContaining::from(
+                    tagged_instruction,
+                ))),
             )
         })
         .labelled("RC-word");

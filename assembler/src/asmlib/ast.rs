@@ -9,6 +9,7 @@ use std::hash::Hash;
 use base::charset::{subscript_char, superscript_char, Script};
 use base::prelude::*;
 
+use super::collections::OneOrMore;
 use super::glyph;
 use super::lexer::Token;
 use super::span::*;
@@ -393,16 +394,15 @@ impl Spanned for ConfigValue {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct RegistersContaining(Vec<RegisterContaining>);
+pub(crate) struct RegistersContaining(OneOrMore<RegisterContaining>);
 
 impl RegistersContaining {
-    pub(crate) fn from_words(words: Vec<RegisterContaining>) -> RegistersContaining {
-        assert!(!words.is_empty());
+    pub(crate) fn from_words(words: OneOrMore<RegisterContaining>) -> RegistersContaining {
         Self(words)
     }
 
-    pub(crate) fn words(&self) -> &[RegisterContaining] {
-        &self.0
+    pub(crate) fn words(&self) -> impl Iterator<Item = &RegisterContaining> {
+        self.0.iter()
     }
 
     pub(crate) fn words_mut(&mut self) -> impl Iterator<Item = &mut RegisterContaining> {

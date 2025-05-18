@@ -2,6 +2,7 @@
 #![deny(unsafe_code)]
 
 mod ast;
+mod collections;
 mod driver;
 mod eval;
 mod glyph;

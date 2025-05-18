@@ -645,7 +645,7 @@ fn test_comment_in_rc_block() {
                     // The output is an RC-reference to a location containing the value 1.
                     InstructionFragment::from(ArithmeticExpression::from(Atom::RcRef(
                         span(0..10),
-                        RegistersContaining::from_words(vec![RegisterContaining::from(
+                        RegistersContaining::from_words(OneOrMore::new(RegisterContaining::from(
                             TaggedProgramInstruction {
                                 span: span(1..2),
                                 tags: notags(),
@@ -667,7 +667,7 @@ fn test_comment_in_rc_block() {
                                     }
                                 ])
                             }
-                        )]),
+                        ))),
                     )))
                 )]
                 .into()
