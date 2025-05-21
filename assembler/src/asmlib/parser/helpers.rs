@@ -110,7 +110,7 @@ pub(super) fn manuscript_lines_to_source_file<'a>(
         if !statements.is_empty() {
             result.push(ManuscriptBlock {
                 origin: maybe_origin,
-                statements: statements.iter().map(|(_, t)| t.clone()).collect(),
+                sequences: statements.iter().map(|(_, t)| t.clone()).collect(),
             });
         }
     }
@@ -197,7 +197,7 @@ pub(super) fn manuscript_lines_to_source_file<'a>(
     Ok(SourceFile {
         punch: maybe_punch,
         blocks,
-        equalities,
+        global_equalities: equalities,
         macros,
     })
 }

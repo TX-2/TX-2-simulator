@@ -33,6 +33,7 @@ use super::lexer::{self};
 use super::span::*;
 use super::state::{NumeralMode, State};
 use super::symbol::SymbolName;
+use super::symtab::SymbolTable;
 use base::charset::Script;
 use base::prelude::*;
 use helpers::Sign;
@@ -507,6 +508,13 @@ where
             (tagged_instruction().then_ignore(end_of_line()))
                 .repeated()
                 .collect()
+                .map(
+                    |v: Vec<TaggedProgramInstruction>| InstructionSequence::Scoped {
+                        // TODO: figure out how best to populate local_symbols.
+                        local_symbols: SymbolTable::default(),
+                        instructions: v,
+                    },
+                )
                 .labelled("macro body"),
         )
         .then_ignore(named_metacommand(Metacommand::EndMacroDefinition))

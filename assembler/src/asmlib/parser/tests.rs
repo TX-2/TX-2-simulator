@@ -470,7 +470,7 @@ fn test_empty_manuscript() {
         parse_successfully_with("", source_file(), no_state_setup),
         SourceFile {
             blocks: Vec::new(),
-            equalities: Default::default(), // no equalities
+            global_equalities: Default::default(), // no equalities
             macros: Default::default(),
             punch: None,
         }
@@ -483,7 +483,7 @@ fn test_blank_lines_manuscript() {
         parse_successfully_with("\n\n", source_file(), no_state_setup),
         SourceFile {
             blocks: Default::default(),
-            equalities: Default::default(), // no equalities
+            global_equalities: Default::default(), // no equalities
             macros: Default::default(),
             punch: None,
         }
@@ -508,7 +508,7 @@ fn test_comments_only_manuscript() {
         ),
         SourceFile {
             blocks: Default::default(),
-            equalities: Default::default(), // no equalities
+            global_equalities: Default::default(), // no equalities
             macros: Default::default(),
             punch: None,
         }
@@ -537,7 +537,7 @@ fn test_manuscript_with_bare_literal() {
             punch: None,
             blocks: vec![ManuscriptBlock {
                 origin: None,
-                statements: vec![TaggedProgramInstruction::single(
+                sequences: vec![TaggedProgramInstruction::single(
                     notags(),
                     HoldBit::Unspecified,
                     span(0..1),
@@ -550,7 +550,7 @@ fn test_manuscript_with_bare_literal() {
                 )]
                 .into()
             }],
-            equalities: Default::default(), // no equalities
+            global_equalities: Default::default(), // no equalities
             macros: Default::default(),
         }
     );
@@ -591,7 +591,7 @@ fn test_manuscript_without_tag() {
         SourceFile {
             blocks: vec![ManuscriptBlock {
                 origin: None,
-                statements: vec![
+                sequences: vec![
                     TaggedProgramInstruction::single(
                         notags(),
                         HoldBit::Unspecified,
@@ -617,7 +617,7 @@ fn test_manuscript_without_tag() {
                 ]
                 .into()
             }],
-            equalities: Default::default(), // no equalities
+            global_equalities: Default::default(), // no equalities
             macros: Default::default(),
             punch: None,
         }
@@ -637,7 +637,7 @@ fn test_comment_in_rc_block() {
         SourceFile {
             blocks: vec![ManuscriptBlock {
                 origin: None,
-                statements: vec![TaggedProgramInstruction::single(
+                sequences: vec![TaggedProgramInstruction::single(
                     notags(),
                     HoldBit::Unspecified,
                     span(0..10),
@@ -672,7 +672,7 @@ fn test_comment_in_rc_block() {
                 )]
                 .into()
             }],
-            equalities: Default::default(), // no equalities
+            global_equalities: Default::default(), // no equalities
             macros: Default::default(),
             punch: None,
         }
@@ -714,7 +714,7 @@ fn test_manuscript_with_single_syllable_tag() {
         SourceFile {
             blocks: vec![ManuscriptBlock {
                 origin: None,
-                statements: vec![TaggedProgramInstruction::single(
+                sequences: vec![TaggedProgramInstruction::single(
                     vec![Tag {
                         name: SymbolName {
                             canonical: "START4".to_string(),
@@ -732,7 +732,7 @@ fn test_manuscript_with_single_syllable_tag() {
                 )]
                 .into()
             }],
-            equalities: Default::default(), // no equalities
+            global_equalities: Default::default(), // no equalities
             macros: Default::default(),
             punch: None
         }
@@ -746,7 +746,7 @@ fn test_manuscript_with_multiple_tags() {
         SourceFile {
             blocks: vec![ManuscriptBlock {
                 origin: None,
-                statements: vec![TaggedProgramInstruction::single(
+                sequences: vec![TaggedProgramInstruction::single(
                     vec![
                         Tag {
                             name: SymbolName {
@@ -772,7 +772,7 @@ fn test_manuscript_with_multiple_tags() {
                 )]
                 .into()
             }],
-            equalities: Default::default(), // no equalities
+            global_equalities: Default::default(), // no equalities
             macros: Default::default(),
             punch: None
         }
@@ -791,7 +791,7 @@ fn test_manuscript_with_origin() {
             punch: None,
             blocks: vec![ManuscriptBlock {
                 origin: Some(Origin::Literal(span(0..5), Address::new(u18!(0o100)))),
-                statements: vec![TaggedProgramInstruction::single(
+                sequences: vec![TaggedProgramInstruction::single(
                     notags(),
                     HoldBit::Unspecified,
                     span(6..9),
@@ -804,7 +804,7 @@ fn test_manuscript_with_origin() {
                 )]
                 .into()
             }],
-            equalities: Default::default(), // no equalities
+            global_equalities: Default::default(), // no equalities
             macros: Default::default(),
         }
     );
@@ -924,7 +924,7 @@ fn test_manuscript_with_multi_syllable_tag() {
             punch: None,
             blocks: vec![ManuscriptBlock {
                 origin: None,
-                statements: vec![TaggedProgramInstruction::single(
+                sequences: vec![TaggedProgramInstruction::single(
                     vec![Tag {
                         name: SymbolName {
                             canonical: "CODEHERE".to_string(),
@@ -942,7 +942,7 @@ fn test_manuscript_with_multi_syllable_tag() {
                 )]
                 .into()
             }],
-            equalities: Default::default(), // no equalities
+            global_equalities: Default::default(), // no equalities
             macros: Default::default(),
         }
     );
@@ -981,7 +981,7 @@ fn test_manuscript_with_real_arrow_tag() {
             punch: None,
             blocks: vec![ManuscriptBlock {
                 origin: None,
-                statements: vec![TaggedProgramInstruction::single(
+                sequences: vec![TaggedProgramInstruction::single(
                     vec![Tag {
                         name: SymbolName {
                             canonical: "HERE".to_string(),
@@ -999,7 +999,7 @@ fn test_manuscript_with_real_arrow_tag() {
                 )]
                 .into()
             }],
-            equalities: Default::default(), // no equalities
+            global_equalities: Default::default(), // no equalities
             macros: Default::default(),
         }
     );
@@ -1133,7 +1133,7 @@ fn test_assignment_lines() {
             punch: None,
             blocks: vec![ManuscriptBlock {
                 origin: None,
-                statements: vec![TaggedProgramInstruction::single(
+                sequences: vec![TaggedProgramInstruction::single(
                     Vec::new(),
                     HoldBit::Unspecified,
                     span(19..20),
@@ -1146,7 +1146,7 @@ fn test_assignment_lines() {
                 )]
                 .into()
             }],
-            equalities: vec![
+            global_equalities: vec![
                 assignment_of_literal(
                     "FOO",
                     span(0..5),
@@ -1173,7 +1173,7 @@ fn test_assignment_origin() {
             punch: None,
             blocks: vec![ManuscriptBlock {
                 origin: Some(Origin::Literal(span(9..14), Address::new(u18!(0o1000)))),
-                statements: vec![TaggedProgramInstruction::single(
+                sequences: vec![TaggedProgramInstruction::single(
                     Vec::new(),
                     HoldBit::Unspecified,
                     span(14..15),
@@ -1182,7 +1182,7 @@ fn test_assignment_origin() {
                 )]
                 .into(),
             }],
-            equalities: vec![assignment_of_literal(
+            global_equalities: vec![assignment_of_literal(
                 "FOO",
                 span(0..8),
                 LiteralValue::from((span(4..8), Script::Normal, u36!(0o1000))),
@@ -1206,7 +1206,7 @@ fn test_symbolic_origin() {
                 // this in order to include the pipe symbol in the
                 // output listing.
                 origin: Some(Origin::Symbolic(span(0..6), SymbolName::from("BEGIN"))),
-                statements: vec![TaggedProgramInstruction::single(
+                sequences: vec![TaggedProgramInstruction::single(
                     Vec::new(),
                     HoldBit::Unspecified,
                     span(6..7),
@@ -1215,7 +1215,7 @@ fn test_symbolic_origin() {
                 )]
                 .into(),
             }],
-            equalities: Default::default(),
+            global_equalities: Default::default(),
             macros: Default::default(),
         }
     );
@@ -2022,7 +2022,7 @@ fn test_comments_without_newline_manuscript() {
         parse_successfully_with("** NO NEWLINE AFTER COMMENT", source_file(), no_state_setup),
         SourceFile {
             blocks: Default::default(),
-            equalities: Default::default(), // no equalities
+            global_equalities: Default::default(), // no equalities
             macros: Default::default(),
             punch: None,
         }
@@ -2619,7 +2619,10 @@ mod macro_tests {
         let expected = MacroDefinition {
             name: SymbolName::from("MYMACRO".to_string()),
             params: MacroDummyParameters::Zero(Token::IdenticalTo(Script::Normal)),
-            body: Default::default(), // no body
+            body: InstructionSequence::Scoped {
+                local_symbols: SymbolTable::default(),
+                instructions: Default::default(),
+            },
             span: span(0..30),
         };
         assert_eq!(got, expected);
@@ -2644,16 +2647,22 @@ mod macro_tests {
                 span: span(14..16),
                 preceding_terminator: Token::Pipe(Script::Normal),
             }]),
-            body: vec![TaggedProgramInstruction::single(
-                notags(),
-                HoldBit::Unspecified,
-                span(17..18),
-                span(17..18),
-                InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::SymbolOrLiteral(
-                    SymbolOrLiteral::Symbol(Script::Normal, SymbolName::from("A"), span(17..18)),
-                ))),
-            )]
-            .into(),
+            body: InstructionSequence::Scoped {
+                local_symbols: SymbolTable::default(),
+                instructions: vec![TaggedProgramInstruction::single(
+                    notags(),
+                    HoldBit::Unspecified,
+                    span(17..18),
+                    span(17..18),
+                    InstructionFragment::Arithmetic(ArithmeticExpression::from(
+                        Atom::SymbolOrLiteral(SymbolOrLiteral::Symbol(
+                            Script::Normal,
+                            SymbolName::from("A"),
+                            span(17..18),
+                        )),
+                    )),
+                )],
+            },
             span: span(0..66),
         };
         assert_eq!(got, expected);
@@ -2663,24 +2672,25 @@ mod macro_tests {
     fn test_macro_definition_as_entire_source_file() {
         let got =
             parse_successfully_with("☛☛DEF JUST|A\nA\n☛☛EMD\n", source_file(), no_state_setup);
-        let expected =
-            SourceFile {
-                blocks: Default::default(),     // empty
-                equalities: Default::default(), // no equalities
-                macros: [(
-                    SymbolName::from("JUST".to_string()),
-                    MacroDefinition {
+        let expected = SourceFile {
+            blocks: Default::default(),            // empty
+            global_equalities: Default::default(), // no equalities
+            macros: [(
+                SymbolName::from("JUST".to_string()),
+                MacroDefinition {
+                    name: SymbolName {
+                        canonical: "JUST".to_string(),
+                    },
+                    params: MacroDummyParameters::OneOrMore(vec![MacroParameter {
                         name: SymbolName {
-                            canonical: "JUST".to_string(),
+                            canonical: "A".to_string(),
                         },
-                        params: MacroDummyParameters::OneOrMore(vec![MacroParameter {
-                            name: SymbolName {
-                                canonical: "A".to_string(),
-                            },
-                            span: span(14..16),
-                            preceding_terminator: Token::Pipe(Script::Normal),
-                        }]),
-                        body: vec![TaggedProgramInstruction::single(
+                        span: span(14..16),
+                        preceding_terminator: Token::Pipe(Script::Normal),
+                    }]),
+                    body: InstructionSequence::Scoped {
+                        local_symbols: SymbolTable::default(),
+                        instructions: vec![TaggedProgramInstruction::single(
                             notags(),
                             HoldBit::Unspecified,
                             span(17..18),
@@ -2688,14 +2698,14 @@ mod macro_tests {
                             InstructionFragment::Arithmetic(ArithmeticExpression::from(
                                 Atom::from((span(17..18), Script::Normal, SymbolName::from("A"))),
                             )),
-                        )]
-                        .into(),
-                        span: span(0..28),
+                        )],
                     },
-                )]
-                .into(),
-                punch: None,
-            };
+                    span: span(0..28),
+                },
+            )]
+            .into(),
+            punch: None,
+        };
         assert_eq!(got, expected);
     }
 

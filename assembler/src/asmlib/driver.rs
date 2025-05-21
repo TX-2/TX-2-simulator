@@ -27,7 +27,8 @@ use super::state::{NumeralMode, State};
 use super::symbol::SymbolName;
 use super::symtab::{
     assign_default_rc_word_tags, BadSymbolDefinition, BlockPosition, FinalSymbolDefinition,
-    FinalSymbolTable, FinalSymbolType, IndexRegisterAssigner, MemoryMap, SymbolTable,
+    FinalSymbolTable, FinalSymbolType, IndexRegisterAssigner, MemoryMap, SymbolDefinition,
+    SymbolTable,
 };
 use super::types::*;
 use base::prelude::{Address, IndexBy, Unsigned18Bit, Unsigned36Bit};
@@ -67,7 +68,7 @@ impl SourceFile {
         let SourceFile {
             punch,
             blocks: input_blocks,
-            equalities,
+            global_equalities: equalities,
             macros: _,
         } = self;
         let output_blocks: BTreeMap<BlockIdentifier, LocatedBlock> = input_blocks
@@ -87,7 +88,7 @@ impl SourceFile {
                     LocatedBlock {
                         origin: mblock.origin,
                         location,
-                        statements: mblock.statements,
+                        statements: mblock.sequences,
                     },
                 )
             })
@@ -147,9 +148,38 @@ fn assemble_pass1<'a>(
         state.numeral_mode.set_numeral_mode(NumeralMode::Octal);
     }
 
-    let (sf, mut new_errors) = parse_source_file(source_file_body, setup);
+    let (mut sf, mut new_errors) = parse_source_file(source_file_body, setup);
     errors.append(&mut new_errors);
+
+    if let Some(source_file) = sf.as_mut() {
+        if let Err(tag_errors) = source_file.build_local_symbol_tables() {
+            errors.extend(
+                tag_errors
+                    .into_iter()
+                    .map(|tag_err| Rich::custom(tag_err.span(), tag_err.to_string())),
+            );
+        }
+    }
     Ok((sf, options))
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum AssemblerPass1Or2Output<'a> {
+    Pass1Failed(Result<Vec<Rich<'a, lexer::Token>>, AssemblerFailure>),
+    Pass2Failed(AssemblerFailure),
+    Success(Vec<Rich<'a, lexer::Token>>, OutputOptions, Pass2Output<'a>),
+}
+
+fn assemble_nonempty_input(input: &str) -> AssemblerPass1Or2Output {
+    let mut errors: Vec<Rich<'_, lexer::Token>> = Vec::new();
+    match assemble_pass1(input, &mut errors) {
+        Err(e) => AssemblerPass1Or2Output::Pass1Failed(Err(e)),
+        Ok((None, _output_options)) => AssemblerPass1Or2Output::Pass1Failed(Ok(errors)),
+        Ok((Some(source_file), output_options)) => match assemble_pass2(source_file, input) {
+            Err(e) => AssemblerPass1Or2Output::Pass2Failed(e),
+            Ok(p2output) => AssemblerPass1Or2Output::Success(errors, output_options, p2output),
+        },
+    }
 }
 
 /// This test helper is defined here so that we don't have to expose
@@ -158,36 +188,41 @@ fn assemble_pass1<'a>(
 pub(crate) fn assemble_nonempty_valid_input(
     input: &str,
 ) -> (Directive, SymbolTable, MemoryMap, IndexRegisterAssigner) {
-    let mut errors: Vec<Rich<'_, lexer::Token>> = Vec::new();
-    let result: Result<(Option<SourceFile>, OutputOptions), AssemblerFailure> =
-        assemble_pass1(input, &mut errors);
-    if !errors.is_empty() {
-        panic!(
-            "assemble_nonempty_valid_input: for input\n{input}\nerrors were reported: {errors:?}"
-        );
-    }
-    match result {
-        Ok((None, _)) => unreachable!("parser should generate output if there are no errors"),
-        Ok((Some(source_file), _options)) => {
-            let p2output = assemble_pass2(source_file, input)
-                .expect("test program should not extend beyong physical memory");
-            if !p2output.errors.is_empty() {
-                panic!("input should be valid: {:?}", &p2output.errors);
-            }
-            match p2output.directive {
-                Some(directive) => (
-                    directive,
-                    p2output.symbols,
-                    p2output.memory_map,
-                    p2output.index_register_assigner,
-                ),
-                None => {
-                    panic!("assembly pass 2 generated no errors but also no output");
-                }
-            }
+    match assemble_nonempty_input(input) {
+        AssemblerPass1Or2Output::Pass1Failed(Err(e)) => {
+            panic!("pass 1 failed with an error result: {e}");
         }
-        Err(e) => {
-            panic!("input should be valid: {}", e);
+        AssemblerPass1Or2Output::Pass1Failed(Ok(errors)) => {
+            panic!("pass 1 failed with diagnostics: {errors:?}");
+        }
+        AssemblerPass1Or2Output::Pass2Failed(e) => {
+            panic!("pass 1 failed with an error result: {e}");
+        }
+        AssemblerPass1Or2Output::Success(errors, _output_options, p2output) => {
+            if errors.is_empty() {
+                match p2output {
+                    Pass2Output {
+                        directive: None, ..
+                    } => {
+                        panic!("directive is None but no errors were reported");
+                    }
+                    Pass2Output {
+                        directive: Some(directive),
+                        symbols,
+                        memory_map,
+                        index_register_assigner,
+                        errors,
+                    } => {
+                        if !errors.is_empty() {
+                            panic!("input should be valid: {:?}", &errors);
+                        } else {
+                            (directive, symbols, memory_map, index_register_assigner)
+                        }
+                    }
+                }
+            } else {
+                panic!("pass 2 failed with diagnostics: {errors:?}");
+            }
         }
     }
 }
@@ -257,11 +292,12 @@ impl Binary {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
 struct Pass2Output<'a> {
     directive: Option<Directive>,
     symbols: SymbolTable,
     memory_map: MemoryMap,
-    index_register_assigner: IndexRegisterAssigner,
+    index_register_assigner: IndexRegisterAssigner, // not cloneable
     errors: Vec<Rich<'a, lexer::Token>>,
 }
 
@@ -270,11 +306,15 @@ fn initial_symbol_table<'a>(
 ) -> Result<SymbolTable, Vec<Rich<'a, lexer::Token>>> {
     let mut errors = Vec::new();
     let mut symtab = SymbolTable::new();
-    for (symbol, span, context) in source_file.global_symbol_references() {
-        symtab.record_usage_context(symbol.clone(), span, context)
-    }
+    // All explicit definitions in the program take effect either
+    // locally (for the bodies of macro expansions) or globally (for
+    // everything else).  So, before we can enumerate all global
+    // symbol references, we need to identidy which symbol references
+    // are references to something defined in a local scope.  And so
+    // we need to enumerate definitions before references.
     for (symbol, span, definition) in source_file.global_symbol_definitions() {
-        match symtab.define(span, symbol.clone(), definition.clone()) {
+        let definition = SymbolDefinition::Explicit(definition.clone());
+        match symtab.define(span, symbol.clone(), definition) {
             Ok(_) => (),
             Err(e) => {
                 errors.push(Rich::custom(
@@ -283,6 +323,9 @@ fn initial_symbol_table<'a>(
                 ));
             }
         }
+    }
+    for (symbol, span, context) in source_file.global_symbol_references() {
+        symtab.record_usage_context(symbol.clone(), span, context)
     }
     if errors.is_empty() {
         Ok(symtab)
@@ -625,50 +668,51 @@ pub(crate) fn assemble_source(
     source_file_body: &str,
     mut options: OutputOptions,
 ) -> Result<Binary, AssemblerFailure> {
-    let mut errors: Vec<Rich<'_, lexer::Token>> = Vec::new();
-    let (source_file, source_options) = assemble_pass1(source_file_body, &mut errors)?;
-    if !errors.is_empty() {
-        return Err(AssemblerFailure::BadProgram(fail_with_diagnostics(
-            source_file_body,
-            errors,
-        )));
-    }
-    options = options.merge(source_options);
-
-    let source_file =
-        source_file.expect("assembly pass1 generated no errors, an AST should have been returned");
-
-    // Now we do pass 2.
-    let Pass2Output {
-        directive,
-        mut symbols,
-        mut memory_map,
-        mut index_register_assigner,
-        errors,
-    } = assemble_pass2(source_file, source_file_body)?;
-    if !errors.is_empty() {
-        return Err(AssemblerFailure::BadProgram(fail_with_diagnostics(
-            source_file_body,
-            errors,
-        )));
-    }
-    let directive = match directive {
-        None => {
-            return Err(AssemblerFailure::InternalError(
-                "assembly pass 2 generated no errors, so it should have generated ouptut code (even if empty)".to_string()
-            ));
+    let mut p2output = match assemble_nonempty_input(source_file_body) {
+        AssemblerPass1Or2Output::Pass1Failed(Err(e)) => {
+            return Err(e);
         }
-        Some(d) => d,
+        AssemblerPass1Or2Output::Pass1Failed(Ok(errors)) => {
+            return Err(AssemblerFailure::BadProgram(fail_with_diagnostics(
+                source_file_body,
+                errors,
+            )));
+        }
+        AssemblerPass1Or2Output::Pass2Failed(e) => {
+            return Err(e);
+        }
+        AssemblerPass1Or2Output::Success(
+            errors,
+            _output_options,
+            Pass2Output {
+                directive: None, ..
+            },
+        ) if errors.is_empty() => {
+            panic!("assembly pass1 generated no errors, a directive should have been returned");
+        }
+        AssemblerPass1Or2Output::Success(errors, output_options, p2output) => {
+            if !errors.is_empty() {
+                return Err(AssemblerFailure::BadProgram(fail_with_diagnostics(
+                    source_file_body,
+                    errors,
+                )));
+            } else {
+                options = options.merge(output_options);
+                p2output
+            }
+        }
     };
 
     // Now we do pass 3, which generates the binary output
     let binary = {
         let mut listing = Listing::default();
         let (binary, final_symbols) = assemble_pass3(
-            directive,
-            &mut symbols,
-            &mut memory_map,
-            &mut index_register_assigner,
+            p2output
+                .directive
+                .expect("directive should have already been checked for None-ness"),
+            &mut p2output.symbols,
+            &mut p2output.memory_map,
+            &mut p2output.index_register_assigner,
             source_file_body,
             &mut listing,
         )?;
@@ -705,7 +749,7 @@ fn test_assemble_pass1() {
     let expected_directive_entry_point = Some(Address::new(Unsigned18Bit::from(0o26_u8)));
     let expected_block = ManuscriptBlock {
         origin: None,
-        statements: vec![TaggedProgramInstruction {
+        sequences: vec![TaggedProgramInstruction {
             span: span(0..2),
             tags: Vec::new(),
             instruction: UntaggedProgramInstruction::from(OneOrMore::new(CommaDelimitedFragment {
@@ -730,7 +774,7 @@ fn test_assemble_pass1() {
             Some(SourceFile {
                 punch: Some(PunchCommand(expected_directive_entry_point)),
                 blocks: vec![expected_block],
-                equalities: Default::default(), // no equalities
+                global_equalities: Default::default(), // no equalities
                 macros: Default::default(),
             }),
             OutputOptions { list: false }
@@ -787,4 +831,34 @@ pub fn assemble_file(
         })?;
     let mut writer = BufWriter::new(output_file);
     write_user_program(&user_program, &mut writer, output_file_name)
+}
+
+#[test]
+fn test_duplicate_global_tag() {
+    let input = concat!("TGX->0\n", "TGX->0\n");
+    match assemble_nonempty_input(input) {
+        AssemblerPass1Or2Output::Pass2Failed(AssemblerFailure::BadProgram(errors)) => {
+            dbg!(&errors);
+            match errors.as_slice() {
+                [WithLocation {
+                    inner: ProgramError::SyntaxError { msg, span: _ },
+                    ..
+                }] => {
+                    assert!(msg
+                        .contains("bad symbol definition for TGX: TGX is defined more than once"));
+                }
+                other => {
+                    panic!("expected a syntax error report, got {other:?}");
+                }
+            }
+        }
+        AssemblerPass1Or2Output::Success(errors, _output_options, p2output) => {
+            dbg!(&errors);
+            dbg!(&p2output);
+            panic!("assembler unexpectedly succeeded with a bad input {input}");
+        }
+        unexpected => {
+            panic!("assembly failed, but not in the way expected by this test: {unexpected:?}");
+        }
+    }
 }

@@ -84,6 +84,18 @@ impl<T> OneOrMore<T> {
     pub fn extend<I: Iterator<Item = T>>(&mut self, items: I) {
         self.tail.extend(items)
     }
+
+    pub fn try_from_vec(mut value: Vec<T>) -> Result<OneOrMore<T>, NoItems> {
+        if value.is_empty() {
+            Err(NoItems {})
+        } else {
+            let tail = value.split_off(1);
+            Ok(OneOrMore::with_tail(
+                value.pop().expect("known to be non-empty"),
+                tail,
+            ))
+        }
+    }
 }
 
 pub struct OneOrMoreIter<'a, T> {
@@ -166,7 +178,7 @@ impl<T: PartialEq<T>> PartialEq<Vec<T>> for OneOrMore<T> {
 
 #[cfg(test)]
 mod one_or_more_tests {
-    use super::OneOrMore;
+    use super::{NoItems, OneOrMore};
 
     #[test]
     fn test_first() {
@@ -283,6 +295,19 @@ mod one_or_more_tests {
         assert_ne!(
             OneOrMore::with_tail(1, vec![2, 2]),
             OneOrMore::with_tail(1, vec![2])
+        );
+    }
+
+    #[test]
+    fn test_from_vec_to_option() {
+        assert_eq!(Err(NoItems {}), OneOrMore::try_from_vec(Vec::<u64>::new()));
+        assert_eq!(
+            Ok(OneOrMore::new(2)),
+            OneOrMore::try_from_vec(vec![2].into())
+        );
+        assert_eq!(
+            Ok(OneOrMore::with_tail(10, vec![20])),
+            OneOrMore::try_from_vec(vec![10, 20])
         );
     }
 }

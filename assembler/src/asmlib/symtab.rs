@@ -15,7 +15,7 @@ use super::types::{
     offset_from_origin, BlockIdentifier, MachineLimitExceededFailure, RcWordSource,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct BlockPosition {
     // span is either the span of the origin specification if there is
     // one, or otherwise the span of the first thing in the block.
@@ -39,7 +39,7 @@ impl From<(SymbolDefinition, Span)> for InternalSymbolDef {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub(crate) struct MemoryMap {
     blocks: BTreeMap<BlockIdentifier, BlockPosition>,
 }
@@ -86,7 +86,7 @@ impl MemoryMap {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub(crate) struct IndexRegisterAssigner {
     index_registers_used: Unsigned6Bit,
 }
@@ -113,7 +113,7 @@ impl IndexRegisterAssigner {
 /// ben represented it by having it map to None.  The rules for how
 /// such symbols are assigned values are indicated in "Unassigned
 /// Symexes" in section 6-2.2 of the User Handbook.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub(crate) struct SymbolTable {
     definitions: BTreeMap<SymbolName, InternalSymbolDef>,
 }
@@ -137,16 +137,30 @@ impl Evaluate for (&Span, &SymbolName, &SymbolDefinition) {
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         let (span, name, def): (&Span, &SymbolName, &SymbolDefinition) = *self;
         match def {
-            SymbolDefinition::DefaultAssigned(value, _) => Ok(*value),
-            SymbolDefinition::Origin(addr) => Ok((*addr).into()),
-            SymbolDefinition::Tag(TagDefinition::Resolved { span: _, address }) => {
-                Ok(address.into())
+            SymbolDefinition::Implicit(ImplicitDefinition::DefaultAssigned(value, _)) => Ok(*value),
+            SymbolDefinition::Explicit(ExplicitDefinition::Origin(
+                Origin::Symbolic(_span, name),
+                _block_id,
+            )) => {
+                unreachable!("symbolic origin {name} should already have been deduced")
             }
-            SymbolDefinition::Tag(TagDefinition::Unresolved {
+            SymbolDefinition::Explicit(ExplicitDefinition::Origin(
+                Origin::Literal(_span, address),
+                _block_id,
+            ))
+            | SymbolDefinition::Explicit(ExplicitDefinition::Origin(
+                Origin::Deduced(_span, _, address),
+                _block_id,
+            )) => Ok((*address).into()),
+            SymbolDefinition::Explicit(ExplicitDefinition::Tag(TagDefinition::Resolved {
+                span: _,
+                address,
+            })) => Ok(address.into()),
+            SymbolDefinition::Explicit(ExplicitDefinition::Tag(TagDefinition::Unresolved {
                 block_id,
                 block_offset,
                 span,
-            }) => {
+            })) => {
                 if let Some(block_position) = ctx.memory_map.get(block_id).cloned() {
                     let what: (&BlockIdentifier, &BlockPosition) = (block_id, &block_position);
                     let block_origin: Address = subword::right_half(what.evaluate(ctx)?).into();
@@ -167,12 +181,16 @@ impl Evaluate for (&Span, &SymbolName, &SymbolDefinition) {
                     );
                 }
             }
-            SymbolDefinition::Equality(expression) => expression.evaluate(ctx),
-            SymbolDefinition::Undefined(context_union) => Err(SymbolLookupFailure::Missing {
-                name: name.to_owned(),
-                span: *span,
-                uses: context_union.clone(),
-            }),
+            SymbolDefinition::Explicit(ExplicitDefinition::Equality(expression)) => {
+                expression.evaluate(ctx)
+            }
+            SymbolDefinition::Implicit(ImplicitDefinition::Undefined(context_union)) => {
+                Err(SymbolLookupFailure::Missing {
+                    name: name.to_owned(),
+                    span: *span,
+                    uses: context_union.clone(),
+                })
+            }
         }
     }
 }
@@ -202,8 +220,13 @@ impl SymbolTable {
         name: SymbolName,
         new_definition: SymbolDefinition,
     ) -> Result<(), BadSymbolDefinition> {
+        dbg!(&new_definition);
         if let Some(existing) = self.definitions.get_mut(&name) {
-            if matches!(&new_definition, SymbolDefinition::Undefined(_),) {
+            dbg!(&existing);
+            if matches!(
+                &new_definition,
+                SymbolDefinition::Implicit(ImplicitDefinition::Undefined(_)),
+            ) {
                 event!(Level::DEBUG, "skipping redefinition of symbol {name} with undefined value because it already has a definition, {}", existing.def);
                 Ok(())
             } else {
@@ -234,7 +257,7 @@ impl SymbolTable {
             })
             .or_insert_with(|| InternalSymbolDef {
                 span,
-                def: SymbolDefinition::Undefined(context.clone()),
+                def: SymbolDefinition::Implicit(ImplicitDefinition::Undefined(context.clone())),
             });
     }
 }
@@ -324,58 +347,79 @@ pub(crate) enum TagDefinition {
     },
 }
 
-#[derive(PartialEq, Eq, Clone)]
-pub(crate) enum SymbolDefinition {
-    Tag(TagDefinition),
-    Origin(Address),
-    Equality(EqualityValue),
-    Undefined(SymbolContext),
-    DefaultAssigned(Unsigned36Bit, SymbolContext),
-}
-
-impl Debug for SymbolDefinition {
+impl Display for TagDefinition {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            SymbolDefinition::Origin(address) => write!(f, "Origin({address:o})"),
-            SymbolDefinition::Tag(tagdef) => {
-                write!(f, "Tag({tagdef:?})")
-            }
-            SymbolDefinition::Equality(expr) => f.debug_tuple("Equality").field(expr).finish(),
-            SymbolDefinition::DefaultAssigned(value, _) => {
-                write!(f, "DefaultAssigned({value:o})")
-            }
-            SymbolDefinition::Undefined(context) => {
-                f.debug_tuple("Undefined").field(context).finish()
-            }
-        }
-    }
-}
-
-impl Display for SymbolDefinition {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            SymbolDefinition::DefaultAssigned(value, _) => {
-                write!(f, "default-assigned as {value}")
-            }
-            SymbolDefinition::Origin(address)
-            | SymbolDefinition::Tag(TagDefinition::Resolved { address, .. }) => {
-                write!(f, "{address:06o}")
-            }
-            SymbolDefinition::Tag(TagDefinition::Unresolved {
+            TagDefinition::Unresolved {
                 block_id,
                 block_offset,
                 span: _,
-            }) => {
+            } => {
                 write!(
                     f,
                     "tag at offset {block_offset} in {block_id} with unspecified address"
                 )
             }
-            SymbolDefinition::Equality(inst) => {
+            TagDefinition::Resolved { address, span: _ } => {
+                write!(f, "tag with address {address:06o}")
+            }
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub(crate) enum ExplicitDefinition {
+    Tag(TagDefinition),
+    Equality(EqualityValue),
+    Origin(Origin, BlockIdentifier),
+}
+
+impl Display for ExplicitDefinition {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            ExplicitDefinition::Origin(origin, _block_identifier) => {
+                write!(f, "{origin}")
+            }
+            ExplicitDefinition::Tag(tagdef) => {
+                write!(f, "{tagdef}")
+            }
+            ExplicitDefinition::Equality(inst) => {
                 // TODO: print the assigned value, too?
                 write!(f, "assignment with value {inst:#?}")
             }
-            SymbolDefinition::Undefined(_context) => f.write_str("undefined"),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub(crate) enum ImplicitDefinition {
+    Undefined(SymbolContext),
+    DefaultAssigned(Unsigned36Bit, SymbolContext),
+}
+
+impl Display for ImplicitDefinition {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        use ImplicitDefinition::*;
+        match self {
+            Undefined(_context) => f.write_str("undefined"),
+            DefaultAssigned(value, _) => {
+                write!(f, "default-assigned as {value}")
+            }
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub(crate) enum SymbolDefinition {
+    Explicit(ExplicitDefinition),
+    Implicit(ImplicitDefinition),
+}
+
+impl Display for SymbolDefinition {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            SymbolDefinition::Implicit(definition) => write!(f, "{}", definition),
+            SymbolDefinition::Explicit(definition) => write!(f, "{}", definition),
         }
     }
 }
@@ -404,8 +448,19 @@ impl Spanned for BadSymbolDefinition {
 impl Display for BadSymbolDefinition {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            BadSymbolDefinition::Incompatible(
+                name,
+                _,
+                SymbolDefinition::Explicit(ExplicitDefinition::Tag(td1)),
+                SymbolDefinition::Explicit(ExplicitDefinition::Tag(td2)),
+            ) => {
+                write!(
+                    f,
+                    "{name} is defined more than once (tag defitions are {td1} and {td2})"
+                )
+            }
             BadSymbolDefinition::Incompatible(name, _, previous, new) => {
-                write!(f, "it is not allowed to override symbol definition of {name} as {previous} with a new definition {new}")
+                write!(f, "it is not allowed to override the symbol definition of {name} as {previous} with a new definition {new}")
             }
         }
     }
@@ -415,7 +470,7 @@ impl std::error::Error for BadSymbolDefinition {}
 
 impl SymbolDefinition {
     pub(crate) fn merge_context(&mut self, context: SymbolContext) {
-        if let SymbolDefinition::Undefined(current) = self {
+        if let SymbolDefinition::Implicit(ImplicitDefinition::Undefined(current)) = self {
             match current.merge(context) {
                 Ok(_) => (),
                 Err(e) => {
@@ -431,13 +486,17 @@ impl SymbolDefinition {
         span: Span,
         update: SymbolDefinition,
     ) -> Result<(), BadSymbolDefinition> {
+        use SymbolDefinition::{Explicit, Implicit};
         match (self, update) {
-            (current @ SymbolDefinition::Equality(_), new @ SymbolDefinition::Equality(_)) => {
+            (
+                current @ Explicit(ExplicitDefinition::Equality(_)),
+                new @ Explicit(ExplicitDefinition::Equality(_)),
+            ) => {
                 // This is always OK.
                 *current = new;
                 Ok(())
             }
-            (current @ SymbolDefinition::Undefined(_), new) => {
+            (current @ Implicit(ImplicitDefinition::Undefined(_)), new) => {
                 // This is always OK.
                 *current = new;
                 Ok(())
@@ -467,7 +526,7 @@ pub(super) fn assign_default_rc_word_tags<R: RcAllocator>(
         *def = match &def {
             InternalSymbolDef {
                 span,
-                def: SymbolDefinition::Undefined(context),
+                def: SymbolDefinition::Implicit(ImplicitDefinition::Undefined(context)),
             } if context.requires_rc_word_allocation() => {
                 let value = Unsigned36Bit::ZERO;
                 let addr = rcblock
@@ -481,7 +540,10 @@ pub(super) fn assign_default_rc_word_tags<R: RcAllocator>(
 
                 InternalSymbolDef {
                     span: *span,
-                    def: SymbolDefinition::DefaultAssigned(addr.into(), context.clone()),
+                    def: SymbolDefinition::Implicit(ImplicitDefinition::DefaultAssigned(
+                        addr.into(),
+                        context.clone(),
+                    )),
                 }
             }
             other => (*other).clone(),

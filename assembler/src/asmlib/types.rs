@@ -222,7 +222,7 @@ impl Spanned for InconsistentOrigin {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum ProgramError {
     InconsistentOriginDefinitions(InconsistentOrigin),
     InconsistentTag {
@@ -259,27 +259,6 @@ impl Spanned for ProgramError {
             | InconsistentTag { span, .. }
             | UnexpectedlyUndefinedSymbol { span, .. }
             | SyntaxError { span, .. } => *span,
-        }
-    }
-}
-
-impl PartialEq<ProgramError> for ProgramError {
-    fn eq(&self, other: &ProgramError) -> bool {
-        use ProgramError::*;
-        match (self, other) {
-            (InconsistentOriginDefinitions(e1), InconsistentOriginDefinitions(e2)) if e1 == e2 => {
-                true
-            }
-            (
-                UnexpectedlyUndefinedSymbol { name: n1, span: p1 },
-                UnexpectedlyUndefinedSymbol { name: n2, span: p2 },
-            ) if n1 == n2 && p1 == p2 => true,
-            (SyntaxError { msg: m1, span: p1 }, SyntaxError { msg: m2, span: p2 })
-                if m1 == m2 && p1 == p2 =>
-            {
-                true
-            }
-            _ => false,
         }
     }
 }
@@ -328,7 +307,7 @@ impl ProgramError {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub enum IoAction {
     Read,
     Write,
@@ -343,7 +322,7 @@ impl Display for IoAction {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum IoTarget {
     File(PathBuf),
 }
@@ -363,7 +342,7 @@ impl Display for IoTarget {
 pub struct IoFailed {
     pub action: IoAction,
     pub target: IoTarget,
-    pub error: IoError,
+    pub error: IoError, // not cloneable, doesn't implement PartialEq
 }
 
 impl Display for IoFailed {
@@ -378,12 +357,15 @@ impl Display for IoFailed {
 }
 
 impl PartialEq<IoFailed> for IoFailed {
+    // We implement this ourselves since IoError does not implement PartialEq.
     fn eq(&self, other: &IoFailed) -> bool {
         self.action == other.action
             && self.target == other.target
             && self.error.to_string() == other.error.to_string()
     }
 }
+
+impl Eq for IoFailed {}
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum RcWordSource {
@@ -412,7 +394,7 @@ impl Display for RcWordSource {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum AssemblerFailure {
     InternalError(String),
     BadTapeBlock {
@@ -420,34 +402,9 @@ pub enum AssemblerFailure {
         length: usize,
         msg: String,
     },
-    Io(IoFailed),
+    Io(IoFailed), // not cloneable
     BadProgram(Vec<WithLocation<ProgramError>>),
     MachineLimitExceeded(MachineLimitExceededFailure),
-}
-
-impl PartialEq<AssemblerFailure> for AssemblerFailure {
-    fn eq(&self, other: &AssemblerFailure) -> bool {
-        use AssemblerFailure::*;
-        match (self, other) {
-            (BadProgram(e1), BadProgram(e2)) if e1 == e2 => true,
-            (InternalError(s1), InternalError(s2)) if s1 == s2 => true,
-            (
-                BadTapeBlock {
-                    address: a1,
-                    length: l1,
-                    msg: s1,
-                },
-                BadTapeBlock {
-                    address: a2,
-                    length: l2,
-                    msg: s2,
-                },
-            ) if a1 == a2 && l1 == l2 && s1 == s2 => true,
-            (Io(e1), Io(e2)) if e1 == e2 => true,
-            (MachineLimitExceeded(e1), MachineLimitExceeded(e2)) if e1 == e2 => true,
-            _ => false,
-        }
-    }
 }
 
 fn write_os_string(f: &mut Formatter<'_>, s: &OsStr) -> Result<(), fmt::Error> {

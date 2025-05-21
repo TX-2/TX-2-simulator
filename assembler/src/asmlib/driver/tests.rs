@@ -76,7 +76,7 @@ fn test_assemble_pass1() {
             punch: Some(PunchCommand(Some(Address::from(u18!(0o26))))),
             blocks: vec![ManuscriptBlock {
                 origin: None,
-                statements: [TaggedProgramInstruction {
+                sequences: [TaggedProgramInstruction {
                     span: span(0..2),
                     tags: Vec::new(),
                     instruction: UntaggedProgramInstruction {
@@ -96,8 +96,8 @@ fn test_assemble_pass1() {
                 .into_iter()
                 .collect()
             }],
-            equalities: Default::default(), // no equalities
-            macros: Default::default(),     // no macros
+            global_equalities: Default::default(), // no equalities
+            macros: Default::default(),            // no macros
         })
     );
 }

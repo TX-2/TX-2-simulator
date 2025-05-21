@@ -23,8 +23,9 @@ use super::types::{
 };
 use crate::symbol::SymbolContext;
 use crate::symtab::{
-    BlockPosition, FinalSymbolDefinition, FinalSymbolTable, FinalSymbolType, IndexRegisterAssigner,
-    LookupOperation, MemoryMap, SymbolDefinition, SymbolTable, TagDefinition,
+    BlockPosition, ExplicitDefinition, FinalSymbolDefinition, FinalSymbolTable, FinalSymbolType,
+    ImplicitDefinition, IndexRegisterAssigner, LookupOperation, MemoryMap, SymbolDefinition,
+    SymbolTable, TagDefinition,
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -214,7 +215,7 @@ pub(crate) struct EvaluationContext<'s, R: RcUpdater> {
     pub(crate) lookup_operation: LookupOperation,
 }
 
-impl<'s, R: RcUpdater> EvaluationContext<'s, R> {
+impl<R: RcUpdater> EvaluationContext<'_, R> {
     /// Assign a default value for a symbol, using the rules from
     /// section 6-2.2 of the Users Handbook ("SYMEX DEFINITON - TAGS -
     /// EQUALITIES - AUTOMATIC ASSIGNMENT").
@@ -535,7 +536,10 @@ fn final_lookup_helper_body<R: RcUpdater>(
                             match ctx.symtab.define(
                                 span,
                                 name.clone(),
-                                SymbolDefinition::Origin(address),
+                                SymbolDefinition::Explicit(ExplicitDefinition::Origin(
+                                    Origin::Deduced(span, name.clone(), address),
+                                    block_identifier,
+                                )),
                             ) {
                                 Ok(()) => Ok(SymbolValue::Final(value)),
                                 Err(e) => {
@@ -557,7 +561,10 @@ fn final_lookup_helper_body<R: RcUpdater>(
                     match ctx.symtab.define(
                         span,
                         name.clone(),
-                        SymbolDefinition::DefaultAssigned(value, context_union),
+                        SymbolDefinition::Implicit(ImplicitDefinition::DefaultAssigned(
+                            value,
+                            context_union,
+                        )),
                     ) {
                         Err(e) => {
                             panic!("got a bad symbol definition error ({e}) on a previously undefined symbol, which should be impossible");
@@ -744,6 +751,7 @@ fn record_undefined_symbol_or_return_failure(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn extract_final_equalities<R: RcUpdater>(
     equalities: &[Equality],
     body: &str,
@@ -793,6 +801,7 @@ pub(super) fn extract_final_equalities<R: RcUpdater>(
 }
 
 impl LocatedBlock {
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn build_binary_block<R: RcUpdater>(
         &self,
         location: Address,
@@ -820,6 +829,7 @@ impl LocatedBlock {
 }
 
 impl InstructionSequence {
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn build_binary_block<R: RcUpdater>(
         &self,
         location: Address,
@@ -976,7 +986,9 @@ impl Evaluate for Origin {
         ctx: &mut EvaluationContext<R>,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         match self {
-            Origin::Literal(_span, address) => Ok(address.into()),
+            Origin::Deduced(_span, _, address) | Origin::Literal(_span, address) => {
+                Ok(address.into())
+            }
             Origin::Symbolic(span, symbol_name) => {
                 symbol_name_lookup(symbol_name, Script::Normal, *span, ctx)
             }
@@ -1134,10 +1146,12 @@ impl RegisterContaining {
                     if let Err(e) = symtab.define(
                         tag.span,
                         tag.name.clone(),
-                        SymbolDefinition::Tag(TagDefinition::Resolved {
-                            span: tag.span,
-                            address,
-                        }),
+                        SymbolDefinition::Explicit(ExplicitDefinition::Tag(
+                            TagDefinition::Resolved {
+                                span: tag.span,
+                                address,
+                            },
+                        )),
                     ) {
                         return Err(RcWordAllocationFailure::InconsistentTag(e));
                     }
