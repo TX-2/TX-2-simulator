@@ -426,7 +426,17 @@ impl Display for SymbolDefinition {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub(crate) enum BadSymbolDefinition {
-    Incompatible(SymbolName, Span, SymbolDefinition, SymbolDefinition),
+    Incompatible(
+        SymbolName,
+        Span,
+        // We box the two definitions here to reduce the (direct) size
+        // of the BadSymbolDefinition object itself.  Otherwise, this
+        // will give rise to large disparities between the Ok() and
+        // Err() variants of results that directly or indirectly
+        // include BadSymbolDefinition instances.
+        Box<SymbolDefinition>,
+        Box<SymbolDefinition>,
+    ),
 }
 
 impl BadSymbolDefinition {
@@ -447,19 +457,18 @@ impl Spanned for BadSymbolDefinition {
 
 impl Display for BadSymbolDefinition {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            BadSymbolDefinition::Incompatible(
-                name,
-                _,
+        let BadSymbolDefinition::Incompatible(name, _, def1, def2) = self;
+        match (&**def1, &**def2) {
+            (
                 SymbolDefinition::Explicit(ExplicitDefinition::Tag(td1)),
                 SymbolDefinition::Explicit(ExplicitDefinition::Tag(td2)),
             ) => {
                 write!(
                     f,
-                    "{name} is defined more than once (tag defitions are {td1} and {td2})"
+                    "{name} is defined more than once, but this is not allowed for tags (tag defitions are {td1} and {td2})"
                 )
             }
-            BadSymbolDefinition::Incompatible(name, _, previous, new) => {
+            (previous, new) => {
                 write!(f, "it is not allowed to override the symbol definition of {name} as {previous} with a new definition {new}")
             }
         }
@@ -508,8 +517,8 @@ impl SymbolDefinition {
                     Err(BadSymbolDefinition::Incompatible(
                         name,
                         span,
-                        current.clone(),
-                        new,
+                        Box::new(current.clone()),
+                        Box::new(new),
                     ))
                 }
             }

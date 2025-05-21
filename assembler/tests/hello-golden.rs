@@ -1,6 +1,6 @@
 use std::ffi::OsStr;
 use std::fs::{File, OpenOptions};
-use std::io::{BufWriter, Read, Write};
+use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 
 use assembler::*;
@@ -45,9 +45,11 @@ fn files_are_identical(expected: &OsStr, got: &OsStr) -> Result<(), String> {
     }
 
     const READ_ERR: &str = "unexpected read error";
-    for (offset, (expected_byte, got_byte)) in expected_file
+    let expected_file_reader = BufReader::new(expected_file);
+    let got_file_reader = BufReader::new(got_file);
+    for (offset, (expected_byte, got_byte)) in expected_file_reader
         .bytes()
-        .zip(got_file.bytes())
+        .zip(got_file_reader.bytes())
         .map(|(exp, got)| (exp.expect(READ_ERR), got.expect(READ_ERR)))
         .enumerate()
     {
