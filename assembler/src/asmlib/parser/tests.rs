@@ -1087,9 +1087,9 @@ fn test_assignment_literal() {
 fn test_assignment_superscript() {
     const INPUTS: &[(&str, usize, usize)] = &[
         // Unicode code point B2 is a superscript 2.
-        ("FOO=\u{00B2}", 4, 6),
-        ("FOO =\u{00B2}", 5, 7),
-        ("F O O = \u{00B2}", 8, 10), // spaces are also allowed inside symexes.
+        ("ZOO=\u{00B2}", 4, 6),
+        ("ZOO =\u{00B2}", 5, 7),
+        ("Z O O = \u{00B2}", 8, 10), // spaces are also allowed inside symexes.
     ];
     for (input, val_begin, val_end) in INPUTS {
         dbg!(input);
@@ -1099,7 +1099,7 @@ fn test_assignment_superscript() {
             parse_successfully_with(input, assignment, no_state_setup),
             Equality {
                 span: span(0..*val_end),
-                name: SymbolName::from("FOO"),
+                name: SymbolName::from("ZOO"),
                 value: EqualityValue::from((
                     val_span,
                     UntaggedProgramInstruction::from(OneOrMore::new(CommaDelimitedFragment {
@@ -2670,9 +2670,9 @@ mod macro_tests {
     fn test_macro_definition_with_trivial_body() {
         let got = parse_successfully_with(
             concat!(
-                "☛☛DEF JUST|A\n",
+                "☛☛DEF JUST|Q\n",
                 // This macro definition has a one-line body.
-                "A ** This is the only line in the body.\n",
+                "Q ** This is the only line in the body.\n",
                 "☛☛EMD" // deliberately no terminating newline, see comment in macro_definition().
             ),
             macro_definition(),
@@ -2681,7 +2681,7 @@ mod macro_tests {
         let expected = MacroDefinition {
             name: SymbolName::from("JUST".to_string()),
             params: MacroDummyParameters::OneOrMore(vec![MacroParameter {
-                name: SymbolName::from("A".to_string()),
+                name: SymbolName::from("Q".to_string()),
                 span: span(14..16),
                 preceding_terminator: Token::Pipe(Script::Normal),
             }]),
@@ -2695,7 +2695,7 @@ mod macro_tests {
                     InstructionFragment::Arithmetic(ArithmeticExpression::from(
                         Atom::SymbolOrLiteral(SymbolOrLiteral::Symbol(
                             Script::Normal,
-                            SymbolName::from("A"),
+                            SymbolName::from("Q"),
                             span(17..18),
                         )),
                     )),
@@ -2709,7 +2709,7 @@ mod macro_tests {
     #[test]
     fn test_macro_definition_as_entire_source_file() {
         let got =
-            parse_successfully_with("☛☛DEF JUST|A\nA\n☛☛EMD\n", source_file(), no_state_setup);
+            parse_successfully_with("☛☛DEF JUST|Q\nQ\n☛☛EMD\n", source_file(), no_state_setup);
         let expected = SourceFile {
             blocks: Default::default(),            // empty
             global_equalities: Default::default(), // no equalities
@@ -2721,7 +2721,7 @@ mod macro_tests {
                     },
                     params: MacroDummyParameters::OneOrMore(vec![MacroParameter {
                         name: SymbolName {
-                            canonical: "A".to_string(),
+                            canonical: "Q".to_string(),
                         },
                         span: span(14..16),
                         preceding_terminator: Token::Pipe(Script::Normal),
@@ -2734,7 +2734,7 @@ mod macro_tests {
                             span(17..18),
                             span(17..18),
                             InstructionFragment::Arithmetic(ArithmeticExpression::from(
-                                Atom::from((span(17..18), Script::Normal, SymbolName::from("A"))),
+                                Atom::from((span(17..18), Script::Normal, SymbolName::from("Q"))),
                             )),
                         )],
                     },
