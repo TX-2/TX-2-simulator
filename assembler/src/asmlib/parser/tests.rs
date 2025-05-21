@@ -423,44 +423,82 @@ fn test_program_instruction_negative_config_value() {
 }
 
 #[test]
-fn test_parse_symex() {
-    for (input, expected) in [
-        ("Q", "Q"),
-        ("SOMENAME", "SOMENAME"),
-        ("SOME NAME", "SOMENAME"),
+fn test_parse_multi_syllable_symex() {
+    let zero_or_more_symexes = parse_symex(SymexSyllableRule::Multiple, Script::Normal)
+        .repeated()
+        .collect();
+    struct Case(&'static str, &'static [&'static str]);
+
+    const TEST_CASES: &'static [Case] = &[
+        Case("Q", &["Q"]),
+        Case("SOMENAME", &["SOMENAME"]),
+        Case("SOME NAME", &["SOMENAME"]),
         // OK to use a reserved identifier if it is not the first
         // syllable in the symex.
-        ("TEST A", "TESTA"),
+        Case("TEST A", &["TESTA"]),
         // If there's no space after it, it's not reserved
-        ("ATEST", "ATEST"),
+        Case("ATEST", &["ATEST"]),
         // Otherwise, the reserved identifier is the whole of it.
-        ("B", "B"),
+        Case("B", &["B"]),
+        // For reserved identifier, we don't join the first syllable
+        // of the symex with one that follows (unlike for example the
+        // "TEST A" case above).
+        Case("B Z", &["B", "Z"]),
         // A symex can contain digits and can even start with one.
-        ("HOP2", "HOP2"),
-        ("HOP2IT", "HOP2IT"),
-        ("HOP 2", "HOP2"),
-        ("HOP 2@dot@", "HOP2·"),
-        ("HOP 2 IT", "HOP2IT"),
-        ("4REAL", "4REAL"),
+        Case("HOP2", &["HOP2"]),
+        Case("HOP2IT", &["HOP2IT"]),
+        Case("HOP 2", &["HOP2"]),
+        Case("HOP 2@dot@", &["HOP2·"]),
+        Case("HOP 2 IT", &["HOP2IT"]),
+        Case("4REAL", &["4REAL"]),
         // Some lower case letters are supported
-        ("j2", "j2"),
+        Case("j2", &["j2"]),
         // Dot.  We don't use underscore because on the Lincoln Writer
         // this character does not advance the carriage.  IOW it
         // generates a combined symex.
-        ("@dot@x", "\u{00B7}x"),
-        ("q@dot@q", "q\u{00B7}q"),
+        Case("@dot@x", &["\u{00B7}x"]),
+        Case("q@dot@q", &["q\u{00B7}q"]),
         // Single quotes are allowed too
-        ("@dot@'X", "\u{00B7}'X"),
-        ("SCRATCH 'N' SNIFF", "SCRATCH'N'SNIFF"),
-        ("SCRATCH @apostrophe@N@apostrophe@ SNIFF", "SCRATCH'N'SNIFF"),
-        ("F '", "F'"),
-    ] {
-        let got: SymbolName = parse_successfully_with(
-            input,
-            parse_symex(SymexSyllableRule::Multiple, Script::Normal),
-            no_state_setup,
-        );
-        assert_eq!(got.canonical, expected);
+        Case("@dot@'X", &["\u{00B7}'X"]),
+        Case("SCRATCH 'N' SNIFF", &["SCRATCH'N'SNIFF"]),
+        Case(
+            "SCRATCH @apostrophe@N@apostrophe@ SNIFF",
+            &["SCRATCH'N'SNIFF"],
+        ),
+        Case("F '", &["F'"]),
+    ];
+    for Case(input, expected) in TEST_CASES {
+        let got: Vec<SymbolName> =
+            parse_successfully_with(input, zero_or_more_symexes.clone(), no_state_setup);
+        let got_canonicals: Vec<String> =
+            got.into_iter().map(|symbol| symbol.to_string()).collect();
+        let expected_canonicals: Vec<String> =
+            expected.into_iter().map(|s| s.to_string()).collect();
+        assert_eq!(got_canonicals, expected_canonicals);
+    }
+}
+
+#[test]
+fn test_parse_single_syllable_symex() {
+    let zero_or_more_symexes = parse_symex(SymexSyllableRule::OneOnly, Script::Normal)
+        .repeated()
+        .collect();
+    struct Case(&'static str, &'static [&'static str]);
+
+    const TEST_CASES: &'static [Case] = &[
+        Case("Q", &["Q"]),        // there's only one syllable anyway
+        Case("A", &["A"]),        // there's only one syllable anyway
+        Case("A A", &["A", "A"]), // special symexes are never joined anyway
+        Case("Q Q", &["Q", "Q"]), // Use of OneOnly forces these syllables not to be joined.
+    ];
+    for Case(input, expected) in TEST_CASES {
+        let got: Vec<SymbolName> =
+            parse_successfully_with(input, zero_or_more_symexes.clone(), no_state_setup);
+        let got_canonicals: Vec<String> =
+            got.into_iter().map(|symbol| symbol.to_string()).collect();
+        let expected_canonicals: Vec<String> =
+            expected.into_iter().map(|s| s.to_string()).collect();
+        assert_eq!(got_canonicals, expected_canonicals);
     }
 }
 
