@@ -301,10 +301,7 @@ mod one_or_more_tests {
     #[test]
     fn test_from_vec_to_option() {
         assert_eq!(Err(NoItems {}), OneOrMore::try_from_vec(Vec::<u64>::new()));
-        assert_eq!(
-            Ok(OneOrMore::new(2)),
-            OneOrMore::try_from_vec(vec![2].into())
-        );
+        assert_eq!(Ok(OneOrMore::new(2)), OneOrMore::try_from_vec(vec![2]));
         assert_eq!(
             Ok(OneOrMore::with_tail(10, vec![20])),
             OneOrMore::try_from_vec(vec![10, 20])

@@ -429,7 +429,7 @@ fn test_parse_multi_syllable_symex() {
         .collect();
     struct Case(&'static str, &'static [&'static str]);
 
-    const TEST_CASES: &'static [Case] = &[
+    const TEST_CASES: &[Case] = &[
         Case("Q", &["Q"]),
         Case("SOMENAME", &["SOMENAME"]),
         Case("SOME NAME", &["SOMENAME"]),
@@ -472,8 +472,7 @@ fn test_parse_multi_syllable_symex() {
             parse_successfully_with(input, zero_or_more_symexes.clone(), no_state_setup);
         let got_canonicals: Vec<String> =
             got.into_iter().map(|symbol| symbol.to_string()).collect();
-        let expected_canonicals: Vec<String> =
-            expected.into_iter().map(|s| s.to_string()).collect();
+        let expected_canonicals: Vec<String> = expected.iter().map(|s| s.to_string()).collect();
         assert_eq!(got_canonicals, expected_canonicals);
     }
 }
@@ -485,7 +484,7 @@ fn test_parse_single_syllable_symex() {
         .collect();
     struct Case(&'static str, &'static [&'static str]);
 
-    const TEST_CASES: &'static [Case] = &[
+    const TEST_CASES: &[Case] = &[
         Case("Q", &["Q"]),        // there's only one syllable anyway
         Case("A", &["A"]),        // there's only one syllable anyway
         Case("A A", &["A", "A"]), // special symexes are never joined anyway
@@ -496,8 +495,7 @@ fn test_parse_single_syllable_symex() {
             parse_successfully_with(input, zero_or_more_symexes.clone(), no_state_setup);
         let got_canonicals: Vec<String> =
             got.into_iter().map(|symbol| symbol.to_string()).collect();
-        let expected_canonicals: Vec<String> =
-            expected.into_iter().map(|s| s.to_string()).collect();
+        let expected_canonicals: Vec<String> = expected.iter().map(|s| s.to_string()).collect();
         assert_eq!(got_canonicals, expected_canonicals);
     }
 }
