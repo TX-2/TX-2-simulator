@@ -1,12 +1,5 @@
 # Building and Running the Web-based TX-2 Simulator
 
-## Disclaimer
-
-The web-based simulator is still under development, so you may not get
-a result which actually does much even if you follow these
-instructions.  For the time being the [command-line](cli.md) simulator
-is probably more useful.
-
 ## Introduction
 
 The web-based simulator runs locally in a browser.   It is implemented
@@ -59,7 +52,19 @@ just visit that in your browser if `npm` doesn't open a browser window
 for you automatically.
 
 
-### Problems with wasm-opt
+### Build Problems
+
+On my development system there is often incompatibility between the
+Rust development tools (as installed by rustup) and various Node.js
+tools installed by my operating system's package manager.  This is
+often because the tool versions installed by operating system's
+package manager are quite old.
+
+Usually the solution to these is to uninstall the operating system's
+installed version (of, for example, webpack or binaryen) and use
+`npm`'s version of the tool.
+
+#### Problems with wasm-opt
 
 Some versions of `wasm-pack` [have a bug in how they locate the
 `wasm-opt` binary](https://github.com/rustwasm/wasm-pack/issues/1062);
