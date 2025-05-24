@@ -307,6 +307,11 @@ fn compute_throughput(
     if let Some(connected_at) = connect_time {
         if let Some(elapsed) = now.checked_sub(connected_at) {
             let elapsed = elapsed.as_secs_f64();
+
+            // It seems that in a WASM build, f64::value_from(usize)
+            // is irrefutable.  But clippy doesn't warn about it in
+            // non-WASM builds because it's not always irrefutable.
+            #[allow(irrefutable_let_patterns)]
             if let Ok(n) = f64::value_from(pos) {
                 let throughput = n / elapsed;
                 return Some(Throughput {
