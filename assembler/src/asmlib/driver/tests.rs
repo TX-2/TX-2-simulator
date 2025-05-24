@@ -885,3 +885,48 @@ fn test_symbol_definition_loop_detection() {
         }
     }
 }
+
+#[test]
+fn test_hash_evaluation() {
+    let input_a = "1| 1\n";
+    let program_a =
+        assemble_source(input_a, Default::default()).expect("input_a should be a valid program");
+    dbg!(&program_a);
+
+    let input_b = "1| @hash@\n";
+    let program_b =
+        assemble_source(input_b, Default::default()).expect("input_b should be a valid program");
+    dbg!(&program_b);
+
+    assert_eq!(&program_a, &program_b);
+}
+
+#[test]
+fn test_minus_hash_evaluation() {
+    let input_a = "1| -1\n";
+    let program_a =
+        assemble_source(input_a, Default::default()).expect("input_a should be a valid program");
+    dbg!(&program_a);
+
+    let input_b = "1| -@hash@\n";
+    let program_b =
+        assemble_source(input_b, Default::default()).expect("input_b should be a valid program");
+    dbg!(&program_b);
+
+    assert_eq!(&program_a, &program_b);
+}
+
+#[test]
+fn test_minus_hash_config_evaluation() {
+    let input_a = "1| ⁻¹ 0\n";
+    let program_a =
+        assemble_source(input_a, Default::default()).expect("input_a should be a valid program");
+    dbg!(&program_a);
+
+    let input_b = "1| @sup_minus@@sup_hash@ 0\n";
+    let program_b =
+        assemble_source(input_b, Default::default()).expect("input_b should be a valid program");
+    dbg!(&program_b);
+
+    assert_eq!(&program_a, &program_b);
+}
