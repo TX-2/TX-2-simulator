@@ -1161,6 +1161,114 @@ where
     }
 }
 
+#[test]
+fn test_build_local_symbol_table_happy_case() {
+    let instruction_tagged_with = |name: &str, beginpos: usize| {
+        let tag_span = span(beginpos..(beginpos + 1));
+        let literal_span = span((beginpos + 3)..(beginpos + 4));
+        TaggedProgramInstruction::single(
+            vec![Tag {
+                name: SymbolName::from(name),
+                span: tag_span,
+            }],
+            HoldBit::Unspecified,
+            literal_span,
+            literal_span,
+            InstructionFragment::from((literal_span, Script::Normal, Unsigned36Bit::ZERO)),
+        )
+    };
+
+    let seq = InstructionSequence::Scoped {
+        local_symbols: SymbolTable::default(),
+        instructions: vec![
+            // Two lines which are identical (hence with the same tag)
+            // apart from their spans.
+            instruction_tagged_with("T", 0),
+            instruction_tagged_with("U", 5),
+        ],
+    };
+
+    let mut expected: SymbolTable = SymbolTable::default();
+    expected
+        .define(
+            span(0..1),
+            SymbolName::from("T"),
+            SymbolDefinition::Explicit(ExplicitDefinition::Tag(TagDefinition::Unresolved {
+                block_id: BlockIdentifier::from(0),
+                block_offset: u18!(0),
+                span: span(0..1),
+            })),
+        )
+        .expect("symbol definition should be OK since there is no other defintion for that symbol");
+    expected
+        .define(
+            span(5..6),
+            SymbolName::from("U"),
+            SymbolDefinition::Explicit(ExplicitDefinition::Tag(TagDefinition::Unresolved {
+                block_id: BlockIdentifier::from(0),
+                block_offset: u18!(1),
+                span: span(5..6),
+            })),
+        )
+        .expect("symbol definition should be OK since there is no other defintion for that symbol");
+    assert_eq!(
+        build_local_symbol_table(BlockIdentifier::from(0), seq.iter()),
+        Ok(expected)
+    );
+}
+
+#[test]
+fn test_build_local_symbol_table_detects_tag_conflict() {
+    let instruction_tagged_with_t = |beginpos: usize| {
+        // This is the result of parsing a line "T->0\n" at some
+        // position `beginpos`.
+        let tag_span = span(beginpos..(beginpos + 1));
+        let literal_span = span((beginpos + 3)..(beginpos + 4));
+        TaggedProgramInstruction::single(
+            vec![Tag {
+                name: SymbolName::from("T"),
+                span: tag_span,
+            }],
+            HoldBit::Unspecified,
+            literal_span,
+            literal_span,
+            InstructionFragment::from((literal_span, Script::Normal, Unsigned36Bit::ZERO)),
+        )
+    };
+
+    let seq = InstructionSequence::Scoped {
+        local_symbols: SymbolTable::default(),
+        instructions: vec![
+            // Two lines which are identical (hence with the same tag)
+            // apart from their spans.
+            instruction_tagged_with_t(0),
+            instruction_tagged_with_t(5),
+        ],
+    };
+
+    assert_eq!(
+        build_local_symbol_table(BlockIdentifier::from(0), seq.iter()),
+        Err(OneOrMore::new(BadSymbolDefinition::Incompatible(
+            SymbolName::from("T"),
+            span(5..6),
+            Box::new(SymbolDefinition::Explicit(ExplicitDefinition::Tag(
+                TagDefinition::Unresolved {
+                    block_id: BlockIdentifier::from(0),
+                    block_offset: u18!(0),
+                    span: span(0..1),
+                }
+            ))),
+            Box::new(SymbolDefinition::Explicit(ExplicitDefinition::Tag(
+                TagDefinition::Unresolved {
+                    block_id: BlockIdentifier::from(0),
+                    block_offset: u18!(1),
+                    span: span(5..6),
+                }
+            )))
+        )))
+    );
+}
+
 impl InstructionSequence {
     pub(super) fn iter(&self) -> impl Iterator<Item = &TaggedProgramInstruction> {
         match self {
