@@ -1105,20 +1105,18 @@ impl Spanned for TaggedProgramInstruction {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum InstructionSequence {
-    Unscoped {
-        instructions: Vec<TaggedProgramInstruction>,
-    },
-    Scoped {
-        local_symbols: SymbolTable,
-        instructions: Vec<TaggedProgramInstruction>,
-    },
+pub(crate) struct InstructionSequence {
+    pub(super) local_symbols: Option<SymbolTable>,
+    pub(super) instructions: Vec<TaggedProgramInstruction>,
 }
 
 #[cfg(test)]
 impl From<Vec<TaggedProgramInstruction>> for InstructionSequence {
     fn from(v: Vec<TaggedProgramInstruction>) -> Self {
-        InstructionSequence::Unscoped { instructions: v }
+        InstructionSequence {
+            local_symbols: None,
+            instructions: v,
+        }
     }
 }
 
@@ -1127,7 +1125,8 @@ impl FromIterator<TaggedProgramInstruction> for InstructionSequence {
     where
         T: IntoIterator<Item = TaggedProgramInstruction>,
     {
-        InstructionSequence::Unscoped {
+        InstructionSequence {
+            local_symbols: None,
             instructions: iter.into_iter().collect(),
         }
     }
@@ -1190,8 +1189,8 @@ fn test_build_local_symbol_table_happy_case() {
         )
     };
 
-    let seq = InstructionSequence::Scoped {
-        local_symbols: SymbolTable::default(),
+    let seq = InstructionSequence {
+        local_symbols: Some(SymbolTable::default()),
         instructions: vec![
             // Two lines which are identical (hence with the same tag)
             // apart from their spans.
@@ -1248,8 +1247,8 @@ fn test_build_local_symbol_table_detects_tag_conflict() {
         )
     };
 
-    let seq = InstructionSequence::Scoped {
-        local_symbols: SymbolTable::default(),
+    let seq = InstructionSequence {
+        local_symbols: Some(SymbolTable::default()),
         instructions: vec![
             // Two lines which are identical (hence with the same tag)
             // apart from their spans.
@@ -1283,23 +1282,11 @@ fn test_build_local_symbol_table_detects_tag_conflict() {
 
 impl InstructionSequence {
     pub(super) fn iter(&self) -> impl Iterator<Item = &TaggedProgramInstruction> {
-        match self {
-            InstructionSequence::Unscoped { instructions }
-            | InstructionSequence::Scoped {
-                local_symbols: _,
-                instructions,
-            } => instructions.iter(),
-        }
+        self.instructions.iter()
     }
 
     pub(crate) fn first(&self) -> Option<&TaggedProgramInstruction> {
-        match self {
-            InstructionSequence::Unscoped { instructions }
-            | InstructionSequence::Scoped {
-                local_symbols: _,
-                instructions,
-            } => instructions.first(),
-        }
+        self.instructions.first()
     }
 
     pub(super) fn assign_rc_words<R: RcAllocator>(
@@ -1307,18 +1294,10 @@ impl InstructionSequence {
         symtab: &mut SymbolTable,
         rc_allocator: &mut R,
     ) -> Result<(), RcWordAllocationFailure> {
-        match self {
-            InstructionSequence::Unscoped { instructions }
-            | InstructionSequence::Scoped {
-                local_symbols: _,
-                instructions,
-            } => {
-                for ref mut statement in instructions.iter_mut() {
-                    statement.assign_rc_words(symtab, rc_allocator)?;
-                }
-                Ok(())
-            }
+        for ref mut statement in self.instructions.iter_mut() {
+            statement.assign_rc_words(symtab, rc_allocator)?;
         }
+        Ok(())
     }
 
     fn symbol_uses(
@@ -1326,26 +1305,15 @@ impl InstructionSequence {
         block_id: BlockIdentifier,
     ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
         let no_symbols = SymbolTable::default();
-        let local_scope: &SymbolTable = match self {
-            InstructionSequence::Unscoped { .. } => &no_symbols,
-            InstructionSequence::Scoped { local_symbols, .. } => local_symbols,
-        };
-
+        let local_scope: &SymbolTable = self.local_symbols.as_ref().unwrap_or(&no_symbols);
         let mut result: Vec<(SymbolName, Span, SymbolUse)> = Vec::new();
-        match self {
-            InstructionSequence::Unscoped { instructions }
-            | InstructionSequence::Scoped {
-                local_symbols: _,
-                instructions,
-            } => {
-                for (off, statement) in block_items_with_offset(instructions.iter()) {
-                    result.extend(
-                        statement
-                            .symbol_uses(block_id, off)
-                            .filter(|(symbol, _, _)| !local_scope.is_defined(symbol)),
-                    );
-                }
-            }
+
+        for (off, statement) in block_items_with_offset(self.instructions.iter()) {
+            result.extend(
+                statement
+                    .symbol_uses(block_id, off)
+                    .filter(|(symbol, _, _)| !local_scope.is_defined(symbol)),
+            );
         }
         result.into_iter()
     }
@@ -1558,12 +1526,9 @@ impl ManuscriptBlock {
         block_identifier: BlockIdentifier,
     ) -> Result<(), OneOrMore<BadSymbolDefinition>> {
         for seq in self.sequences.iter_mut() {
-            if let InstructionSequence::Scoped {
-                ref mut local_symbols,
-                ref mut instructions,
-            } = seq
-            {
-                *local_symbols = build_local_symbol_table(block_identifier, instructions.iter())?;
+            if let Some(local_symbols) = seq.local_symbols.as_mut() {
+                *local_symbols =
+                    build_local_symbol_table(block_identifier, seq.instructions.iter())?;
             }
         }
         Ok(())

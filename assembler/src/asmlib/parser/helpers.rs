@@ -115,7 +115,10 @@ pub(super) fn manuscript_lines_to_source_file<'a>(
 
             result.push(ManuscriptBlock {
                 origin: maybe_origin,
-                sequences: vec![InstructionSequence::Unscoped { instructions }],
+                sequences: vec![InstructionSequence {
+                    local_symbols: None,
+                    instructions,
+                }],
             });
         }
     }

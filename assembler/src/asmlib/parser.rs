@@ -508,13 +508,11 @@ where
             (tagged_instruction().then_ignore(end_of_line()))
                 .repeated()
                 .collect()
-                .map(
-                    |v: Vec<TaggedProgramInstruction>| InstructionSequence::Scoped {
-                        // TODO: figure out how best to populate local_symbols.
-                        local_symbols: SymbolTable::default(),
-                        instructions: v,
-                    },
-                )
+                .map(|v: Vec<TaggedProgramInstruction>| InstructionSequence {
+                    // TODO: figure out how best to populate local_symbols.
+                    local_symbols: Some(SymbolTable::default()),
+                    instructions: v,
+                })
                 .labelled("macro body"),
         )
         .then_ignore(named_metacommand(Metacommand::EndMacroDefinition))

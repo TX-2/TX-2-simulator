@@ -573,7 +573,8 @@ fn test_manuscript_with_bare_literal() {
             punch: None,
             blocks: vec![ManuscriptBlock {
                 origin: None,
-                sequences: vec![InstructionSequence::Unscoped {
+                sequences: vec![InstructionSequence {
+                    local_symbols: None,
                     instructions: vec![TaggedProgramInstruction::single(
                         notags(),
                         HoldBit::Unspecified,
@@ -628,7 +629,8 @@ fn test_manuscript_without_tag() {
         SourceFile {
             blocks: vec![ManuscriptBlock {
                 origin: None,
-                sequences: vec![InstructionSequence::Unscoped {
+                sequences: vec![InstructionSequence {
+                    local_symbols: None,
                     instructions: vec![
                         TaggedProgramInstruction::single(
                             notags(),
@@ -675,7 +677,8 @@ fn test_comment_in_rc_block() {
         SourceFile {
             blocks: vec![ManuscriptBlock {
                 origin: None,
-                sequences: vec![InstructionSequence::Unscoped {
+                sequences: vec![InstructionSequence {
+                    local_symbols: None,
                     instructions: vec![TaggedProgramInstruction::single(
                         notags(),
                         HoldBit::Unspecified,
@@ -753,7 +756,8 @@ fn test_manuscript_with_single_syllable_tag() {
         SourceFile {
             blocks: vec![ManuscriptBlock {
                 origin: None,
-                sequences: vec![InstructionSequence::Unscoped {
+                sequences: vec![InstructionSequence {
+                    local_symbols: None,
                     instructions: vec![TaggedProgramInstruction::single(
                         vec![Tag {
                             name: SymbolName {
@@ -786,7 +790,8 @@ fn test_manuscript_with_multiple_tags() {
         SourceFile {
             blocks: vec![ManuscriptBlock {
                 origin: None,
-                sequences: vec![InstructionSequence::Unscoped {
+                sequences: vec![InstructionSequence {
+                    local_symbols: None,
                     instructions: vec![TaggedProgramInstruction::single(
                         vec![
                             Tag {
@@ -832,7 +837,8 @@ fn test_manuscript_with_origin() {
             punch: None,
             blocks: vec![ManuscriptBlock {
                 origin: Some(Origin::Literal(span(0..5), Address::new(u18!(0o100)))),
-                sequences: vec![InstructionSequence::Unscoped {
+                sequences: vec![InstructionSequence {
+                    local_symbols: None,
                     instructions: vec![TaggedProgramInstruction::single(
                         notags(),
                         HoldBit::Unspecified,
@@ -966,7 +972,8 @@ fn test_manuscript_with_multi_syllable_tag() {
             punch: None,
             blocks: vec![ManuscriptBlock {
                 origin: None,
-                sequences: vec![InstructionSequence::Unscoped {
+                sequences: vec![InstructionSequence {
+                    local_symbols: None,
                     instructions: vec![TaggedProgramInstruction::single(
                         vec![Tag {
                             name: SymbolName {
@@ -1024,7 +1031,8 @@ fn test_manuscript_with_real_arrow_tag() {
             punch: None,
             blocks: vec![ManuscriptBlock {
                 origin: None,
-                sequences: vec![InstructionSequence::Unscoped {
+                sequences: vec![InstructionSequence {
+                    local_symbols: None,
                     instructions: vec![TaggedProgramInstruction::single(
                         vec![Tag {
                             name: SymbolName {
@@ -1177,7 +1185,8 @@ fn test_assignment_lines() {
             punch: None,
             blocks: vec![ManuscriptBlock {
                 origin: None,
-                sequences: vec![InstructionSequence::Unscoped {
+                sequences: vec![InstructionSequence {
+                    local_symbols: None,
                     instructions: vec![TaggedProgramInstruction::single(
                         Vec::new(),
                         HoldBit::Unspecified,
@@ -1218,7 +1227,8 @@ fn test_assignment_origin() {
             punch: None,
             blocks: vec![ManuscriptBlock {
                 origin: Some(Origin::Literal(span(9..14), Address::new(u18!(0o1000)))),
-                sequences: vec![InstructionSequence::Unscoped {
+                sequences: vec![InstructionSequence {
+                    local_symbols: None,
                     instructions: vec![TaggedProgramInstruction::single(
                         Vec::new(),
                         HoldBit::Unspecified,
@@ -1252,7 +1262,8 @@ fn test_symbolic_origin() {
                 // this in order to include the pipe symbol in the
                 // output listing.
                 origin: Some(Origin::Symbolic(span(0..6), SymbolName::from("BEGIN"))),
-                sequences: vec![InstructionSequence::Unscoped {
+                sequences: vec![InstructionSequence {
+                    local_symbols: None,
                     instructions: vec![TaggedProgramInstruction::single(
                         Vec::new(),
                         HoldBit::Unspecified,
@@ -2666,8 +2677,8 @@ mod macro_tests {
         let expected = MacroDefinition {
             name: SymbolName::from("MYMACRO".to_string()),
             params: MacroDummyParameters::Zero(Token::IdenticalTo(Script::Normal)),
-            body: InstructionSequence::Scoped {
-                local_symbols: SymbolTable::default(),
+            body: InstructionSequence {
+                local_symbols: Some(SymbolTable::default()),
                 instructions: Default::default(),
             },
             span: span(0..30),
@@ -2694,8 +2705,8 @@ mod macro_tests {
                 span: span(14..16),
                 preceding_terminator: Token::Pipe(Script::Normal),
             }]),
-            body: InstructionSequence::Scoped {
-                local_symbols: SymbolTable::default(),
+            body: InstructionSequence {
+                local_symbols: Some(SymbolTable::default()),
                 instructions: vec![TaggedProgramInstruction::single(
                     notags(),
                     HoldBit::Unspecified,
@@ -2735,8 +2746,8 @@ mod macro_tests {
                         span: span(14..16),
                         preceding_terminator: Token::Pipe(Script::Normal),
                     }]),
-                    body: InstructionSequence::Scoped {
-                        local_symbols: SymbolTable::default(),
+                    body: InstructionSequence {
+                        local_symbols: Some(SymbolTable::default()),
                         instructions: vec![TaggedProgramInstruction::single(
                             notags(),
                             HoldBit::Unspecified,

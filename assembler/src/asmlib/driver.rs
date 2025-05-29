@@ -749,7 +749,8 @@ fn test_assemble_pass1() {
     let expected_directive_entry_point = Some(Address::new(Unsigned18Bit::from(0o26_u8)));
     let expected_block = ManuscriptBlock {
         origin: None,
-        sequences: vec![InstructionSequence::Unscoped {
+        sequences: vec![InstructionSequence {
+            local_symbols: None,
             instructions: vec![TaggedProgramInstruction {
                 span: span(0..2),
                 tags: Vec::new(),

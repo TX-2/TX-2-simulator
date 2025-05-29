@@ -76,7 +76,8 @@ fn test_assemble_pass1() {
             punch: Some(PunchCommand(Some(Address::from(u18!(0o26))))),
             blocks: vec![ManuscriptBlock {
                 origin: None,
-                sequences: vec![InstructionSequence::Unscoped {
+                sequences: vec![InstructionSequence {
+                    local_symbols: None,
                     instructions: vec![TaggedProgramInstruction {
                         span: span(0..2),
                         tags: Vec::new(),
@@ -120,7 +121,11 @@ fn test_metacommand_dec_changes_default_base() {
         sequences,
     }] = directive.blocks.values().collect::<Vec<_>>().as_slice()
     {
-        if let [InstructionSequence::Unscoped { instructions }] = sequences.as_slice() {
+        if let [InstructionSequence {
+            local_symbols: None,
+            instructions,
+        }] = sequences.as_slice()
+        {
             if let [TaggedProgramInstruction {
                 span: _,
                 tags: tags1,
