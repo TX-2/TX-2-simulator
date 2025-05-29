@@ -1,9 +1,9 @@
 use std::ops::{Range, Shl};
 
 use super::super::ast::{
-    ArithmeticExpression, Atom, CommaDelimitedFragment, HoldBit, InstructionFragment, LiteralValue,
-    LocatedBlock, ManuscriptBlock, PunchCommand, SourceFile, TaggedProgramInstruction,
-    UntaggedProgramInstruction,
+    ArithmeticExpression, Atom, CommaDelimitedFragment, HoldBit, InstructionFragment,
+    InstructionSequence, LiteralValue, LocatedBlock, ManuscriptBlock, PunchCommand, SourceFile,
+    TaggedProgramInstruction, UntaggedProgramInstruction,
 };
 use super::super::collections::OneOrMore;
 use super::super::eval::{
@@ -76,25 +76,25 @@ fn test_assemble_pass1() {
             punch: Some(PunchCommand(Some(Address::from(u18!(0o26))))),
             blocks: vec![ManuscriptBlock {
                 origin: None,
-                sequences: [TaggedProgramInstruction {
-                    span: span(0..2),
-                    tags: Vec::new(),
-                    instruction: UntaggedProgramInstruction {
-                        fragments: OneOrMore::new(CommaDelimitedFragment {
-                            leading_commas: None,
-                            holdbit: HoldBit::Unspecified,
-                            span: span(0..2),
-                            fragment: atom_to_fragment(Atom::from(LiteralValue::from((
-                                Span::from(0..2),
-                                Script::Normal,
-                                u36!(0o14)
-                            )))),
-                            trailing_commas: None,
-                        })
-                    }
-                }]
-                .into_iter()
-                .collect()
+                sequences: vec![InstructionSequence::Unscoped {
+                    instructions: vec![TaggedProgramInstruction {
+                        span: span(0..2),
+                        tags: Vec::new(),
+                        instruction: UntaggedProgramInstruction {
+                            fragments: OneOrMore::new(CommaDelimitedFragment {
+                                leading_commas: None,
+                                holdbit: HoldBit::Unspecified,
+                                span: span(0..2),
+                                fragment: atom_to_fragment(Atom::from(LiteralValue::from((
+                                    Span::from(0..2),
+                                    Script::Normal,
+                                    u36!(0o14)
+                                )))),
+                                trailing_commas: None,
+                            })
+                        }
+                    }]
+                }],
             }],
             global_equalities: Default::default(), // no equalities
             macros: Default::default(),            // no macros
@@ -117,47 +117,49 @@ fn test_metacommand_dec_changes_default_base() {
     if let [LocatedBlock {
         origin: _,
         location: _,
-        statements,
+        sequences,
     }] = directive.blocks.values().collect::<Vec<_>>().as_slice()
     {
-        if let [TaggedProgramInstruction {
-            span: _,
-            tags: tags1,
-            instruction: first_instruction,
-        }, TaggedProgramInstruction {
-            span: _,
-            tags: tags2,
-            instruction: second_instruction,
-        }] = statements.as_slice()
-        {
-            assert!(tags1.is_empty());
-            assert!(tags2.is_empty());
+        if let [InstructionSequence::Unscoped { instructions }] = sequences.as_slice() {
+            if let [TaggedProgramInstruction {
+                span: _,
+                tags: tags1,
+                instruction: first_instruction,
+            }, TaggedProgramInstruction {
+                span: _,
+                tags: tags2,
+                instruction: second_instruction,
+            }] = instructions.as_slice()
+            {
+                assert!(tags1.is_empty());
+                assert!(tags2.is_empty());
 
-            let first_fragment = first_instruction.fragments.first();
-            let second_fragment = second_instruction.fragments.first();
+                let first_fragment = first_instruction.fragments.first();
+                let second_fragment = second_instruction.fragments.first();
 
-            assert_eq!(first_fragment.leading_commas, None);
-            assert_eq!(first_fragment.trailing_commas, None);
-            assert_eq!(second_fragment.leading_commas, None);
-            assert_eq!(second_fragment.trailing_commas, None);
+                assert_eq!(first_fragment.leading_commas, None);
+                assert_eq!(first_fragment.trailing_commas, None);
+                assert_eq!(second_fragment.leading_commas, None);
+                assert_eq!(second_fragment.trailing_commas, None);
 
-            assert_eq!(
-                &first_fragment.fragment,
-                &InstructionFragment::from((
-                    Span::from(0..2usize),
-                    Script::Normal,
-                    Unsigned36Bit::from(0o10_u32),
-                )),
-            );
-            assert_eq!(
-                &second_fragment.fragment,
-                &InstructionFragment::from((
-                    span(17..19),
-                    Script::Normal,
-                    Unsigned36Bit::from(0o12_u32),
-                )),
-            );
-            return;
+                assert_eq!(
+                    &first_fragment.fragment,
+                    &InstructionFragment::from((
+                        Span::from(0..2usize),
+                        Script::Normal,
+                        Unsigned36Bit::from(0o10_u32),
+                    )),
+                );
+                assert_eq!(
+                    &second_fragment.fragment,
+                    &InstructionFragment::from((
+                        span(17..19),
+                        Script::Normal,
+                        Unsigned36Bit::from(0o12_u32),
+                    )),
+                );
+                return;
+            }
         }
     }
     panic!(

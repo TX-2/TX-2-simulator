@@ -88,7 +88,7 @@ impl SourceFile {
                     LocatedBlock {
                         origin: mblock.origin,
                         location,
-                        statements: mblock.sequences,
+                        sequences: mblock.sequences,
                     },
                 )
             })
@@ -749,22 +749,25 @@ fn test_assemble_pass1() {
     let expected_directive_entry_point = Some(Address::new(Unsigned18Bit::from(0o26_u8)));
     let expected_block = ManuscriptBlock {
         origin: None,
-        sequences: vec![TaggedProgramInstruction {
-            span: span(0..2),
-            tags: Vec::new(),
-            instruction: UntaggedProgramInstruction::from(OneOrMore::new(CommaDelimitedFragment {
-                leading_commas: None,
-                holdbit: HoldBit::Unspecified,
+        sequences: vec![InstructionSequence::Unscoped {
+            instructions: vec![TaggedProgramInstruction {
                 span: span(0..2),
-                fragment: atom_to_fragment(Atom::from(LiteralValue::from((
-                    span(0..2),
-                    Script::Normal,
-                    u36!(0o14),
-                )))),
-                trailing_commas: None,
-            })),
-        }]
-        .into(),
+                tags: Vec::new(),
+                instruction: UntaggedProgramInstruction::from(OneOrMore::new(
+                    CommaDelimitedFragment {
+                        leading_commas: None,
+                        holdbit: HoldBit::Unspecified,
+                        span: span(0..2),
+                        fragment: atom_to_fragment(Atom::from(LiteralValue::from((
+                            span(0..2),
+                            Script::Normal,
+                            u36!(0o14),
+                        )))),
+                        trailing_commas: None,
+                    },
+                )),
+            }],
+        }],
     };
 
     let mut errors = Vec::new();

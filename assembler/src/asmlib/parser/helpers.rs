@@ -98,19 +98,24 @@ pub(super) fn manuscript_lines_to_source_file<'a>(
     let mut blocks: Vec<ManuscriptBlock> = Vec::new();
     let mut equalities: Vec<Equality> = Vec::new();
     let mut macros: BTreeMap<SymbolName, MacroDefinition> = Default::default();
-    let mut current_statements: Vec<(Span, TaggedProgramInstruction)> = Vec::new();
+    let mut current_statements: Vec<TaggedProgramInstruction> = Vec::new();
     let mut maybe_punch: Option<PunchCommand> = None;
     let mut effective_origin: Option<Origin> = None;
 
-    fn ship_block(
-        statements: &[(Span, TaggedProgramInstruction)],
+    fn append_unscoped_instructions_and_complete_block(
+        unscoped_instructions: &mut Vec<TaggedProgramInstruction>,
         maybe_origin: Option<Origin>,
         result: &mut Vec<ManuscriptBlock>,
     ) {
-        if !statements.is_empty() {
+        if !unscoped_instructions.is_empty() {
+            let mut instructions: Vec<TaggedProgramInstruction> =
+                Vec::with_capacity(unscoped_instructions.len());
+            instructions.append(unscoped_instructions); // this clears statements, too.
+            assert!(unscoped_instructions.is_empty());
+
             result.push(ManuscriptBlock {
                 origin: maybe_origin,
-                sequences: statements.iter().map(|(_, t)| t.clone()).collect(),
+                sequences: vec![InstructionSequence::Unscoped { instructions }],
             });
         }
     }
@@ -130,7 +135,7 @@ pub(super) fn manuscript_lines_to_source_file<'a>(
         )
     };
 
-    for (span, line) in lines {
+    for (_span, line) in lines {
         match line {
             ManuscriptLine::TagsOnly(tags) => {
                 pending_tags.extend(tags);
@@ -161,23 +166,29 @@ pub(super) fn manuscript_lines_to_source_file<'a>(
                 if let Some(t) = pending_tags.pop() {
                     return Err(bad_tag_pos(t));
                 }
-                ship_block(&current_statements, effective_origin, &mut blocks);
-                current_statements.clear();
+                append_unscoped_instructions_and_complete_block(
+                    &mut current_statements,
+                    effective_origin,
+                    &mut blocks,
+                );
                 effective_origin = Some(origin.clone());
             }
             ManuscriptLine::StatementOnly(mut tagged_program_instruction) => {
                 prepend_tags(&mut tagged_program_instruction.tags, &mut pending_tags);
-                current_statements.push((span, tagged_program_instruction));
+                current_statements.push(tagged_program_instruction);
             }
             ManuscriptLine::OriginAndStatement(origin, statement) => {
                 if let Some(t) = pending_tags.pop() {
                     return Err(bad_tag_pos(t));
                 }
-                ship_block(&current_statements, effective_origin, &mut blocks);
-                current_statements.clear();
+                append_unscoped_instructions_and_complete_block(
+                    &mut current_statements,
+                    effective_origin,
+                    &mut blocks,
+                );
                 effective_origin = Some(origin.clone());
 
-                current_statements.push((span, statement));
+                current_statements.push(statement);
             }
             ManuscriptLine::Eq(equality) => {
                 if let Some(t) = pending_tags.pop() {
@@ -191,8 +202,11 @@ pub(super) fn manuscript_lines_to_source_file<'a>(
         return Err(bad_tag_pos(t));
     }
 
-    ship_block(&current_statements, effective_origin, &mut blocks);
-    current_statements.clear();
+    append_unscoped_instructions_and_complete_block(
+        &mut current_statements,
+        effective_origin,
+        &mut blocks,
+    );
 
     Ok(SourceFile {
         punch: maybe_punch,

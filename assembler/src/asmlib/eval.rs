@@ -814,17 +814,32 @@ impl LocatedBlock {
         listing: &mut Listing,
         undefined_symbols: &mut BTreeMap<SymbolName, Span>,
     ) -> Result<Vec<Unsigned36Bit>, AssemblerFailure> {
-        self.statements.build_binary_block(
-            location,
-            symtab,
-            memory_map,
-            index_register_assigner,
-            rc_allocator,
-            final_symbols,
-            body,
-            listing,
-            undefined_symbols,
-        )
+        let word_count: Unsigned18Bit = self
+            .sequences
+            .iter()
+            .map(|seq| seq.emitted_word_count())
+            .sum();
+        let mut result: Vec<Unsigned36Bit> = Vec::with_capacity(word_count.into());
+        for seq in self.sequences.iter() {
+            let current_block_len: Unsigned18Bit = result
+                .len()
+                .try_into()
+                .expect("assembled code block should fit within physical memory");
+            let mut words: Vec<Unsigned36Bit> = seq.build_binary_block(
+                location,
+                current_block_len,
+                symtab,
+                memory_map,
+                index_register_assigner,
+                rc_allocator,
+                final_symbols,
+                body,
+                listing,
+                undefined_symbols,
+            )?;
+            result.append(&mut words);
+        }
+        Ok(result)
     }
 }
 
@@ -833,6 +848,7 @@ impl InstructionSequence {
     pub(super) fn build_binary_block<R: RcUpdater>(
         &self,
         location: Address,
+        start_offset: Unsigned18Bit,
         symtab: &mut SymbolTable,
         memory_map: &MemoryMap,
         index_register_assigner: &mut IndexRegisterAssigner,
@@ -845,6 +861,8 @@ impl InstructionSequence {
         let mut words: Vec<Unsigned36Bit> = Vec::with_capacity(self.emitted_word_count().into());
         for (offset, instruction) in self.iter().enumerate() {
             let offset: Unsigned18Bit = Unsigned18Bit::try_from(offset)
+                .ok()
+                .and_then(|off| off.checked_add(start_offset))
                 .expect("assembled code block should fit within physical memory");
             let address: Address = location.index_by(offset);
             for tag in instruction.tags.iter() {
@@ -1069,7 +1087,10 @@ impl LocatedBlock {
         symtab: &mut SymbolTable,
         rc_allocator: &mut R,
     ) -> Result<(), RcWordAllocationFailure> {
-        self.statements.assign_rc_words(symtab, rc_allocator)
+        for seq in self.sequences.iter_mut() {
+            seq.assign_rc_words(symtab, rc_allocator)?;
+        }
+        Ok(())
     }
 }
 

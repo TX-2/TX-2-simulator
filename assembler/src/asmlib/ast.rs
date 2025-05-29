@@ -1290,17 +1290,6 @@ impl InstructionSequence {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn as_slice(&self) -> &[TaggedProgramInstruction] {
-        match self {
-            InstructionSequence::Unscoped { instructions }
-            | InstructionSequence::Scoped {
-                local_symbols: _,
-                instructions,
-            } => instructions.as_slice(),
-        }
-    }
-
     pub(super) fn assign_rc_words<R: RcAllocator>(
         &mut self,
         symtab: &mut SymbolTable,
@@ -1525,7 +1514,11 @@ pub(crate) struct MacroInvocation {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ManuscriptBlock {
     pub(crate) origin: Option<Origin>,
-    pub(crate) sequences: InstructionSequence,
+    // Macro invocations generate an InstructionSequence::Scoped(),
+    // and since a single block may contain more than one macro
+    // invocation, a block must comprise a sequence of
+    // InstructionSequence instances.
+    pub(crate) sequences: Vec<InstructionSequence>,
 }
 
 impl ManuscriptBlock {
@@ -1537,7 +1530,11 @@ impl ManuscriptBlock {
         if let Some(origin) = self.origin.as_ref() {
             result.extend(origin.symbol_uses(block_id));
         }
-        result.extend(self.sequences.symbol_uses(block_id));
+        result.extend(
+            self.sequences
+                .iter()
+                .flat_map(|seq| seq.symbol_uses(block_id)),
+        );
         result.into_iter()
     }
 
@@ -1545,28 +1542,34 @@ impl ManuscriptBlock {
         &mut self,
         block_identifier: BlockIdentifier,
     ) -> Result<(), OneOrMore<BadSymbolDefinition>> {
-        match self.sequences {
-            InstructionSequence::Scoped {
+        for seq in self.sequences.iter_mut() {
+            if let InstructionSequence::Scoped {
                 ref mut local_symbols,
                 ref mut instructions,
-            } => {
+            } = seq
+            {
                 *local_symbols = build_local_symbol_table(block_identifier, instructions.iter())?;
-                Ok(())
             }
-            InstructionSequence::Unscoped { .. } => Ok(()),
         }
+        Ok(())
     }
 
     pub(crate) fn instruction_count(&self) -> Unsigned18Bit {
-        self.sequences.emitted_word_count()
+        self.sequences
+            .iter()
+            .map(|seq| seq.emitted_word_count())
+            .sum()
     }
 
     pub(crate) fn origin_span(&self) -> Span {
         if let Some(origin) = self.origin.as_ref() {
             origin.span()
-        } else if let Some(first) = self.sequences.first() {
-            first.span()
         } else {
+            if let Some(s) = self.sequences.first() {
+                if let Some(first) = s.first() {
+                    return first.span();
+                }
+            }
             Span::from(0..0)
         }
     }
@@ -1613,12 +1616,15 @@ impl Directive {
 pub(crate) struct LocatedBlock {
     pub(crate) origin: Option<Origin>,
     pub(crate) location: Address,
-    pub(crate) statements: InstructionSequence,
+    pub(crate) sequences: Vec<InstructionSequence>,
 }
 
 impl LocatedBlock {
     pub(crate) fn emitted_word_count(&self) -> Unsigned18Bit {
-        self.statements.emitted_word_count()
+        self.sequences
+            .iter()
+            .map(|seq| seq.emitted_word_count())
+            .sum()
     }
 
     pub(crate) fn following_addr(&self) -> Address {
