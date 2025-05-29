@@ -1,4 +1,16 @@
 //! Abstract syntax representation.   It's mostly not actually a tree.
+//!
+//! In the AST, terminology follows the TX-2 assembler's
+//! documentation, and this doesn't always match modern usage.  In
+//! particular, "block" is used to refer to a contiguously-allocated
+//! sequence of instructions which share an origin statement.  Such as
+//! the RC-block.  This is not the same as a block in a language like
+//! C, where "block" is also a declaration-scoping construct.
+//!
+//! Instead, in the TX-2 assembler, scopes are introduced by macro
+//! expansion.  So, a "block" may contain some instructions followed
+//! by a macro-expansion (which has an associated scope) which itself
+//! might contain a macro-expansion, with another scope.
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
@@ -1346,6 +1358,9 @@ impl InstructionSequence {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SourceFile {
     pub(crate) punch: Option<PunchCommand>,
+    /// Each block is an optional origin followed by some
+    /// instructions.  A block is not a scoping artifact (see the
+    /// module documentation).
     pub(crate) blocks: Vec<ManuscriptBlock>,
     pub(crate) global_equalities: Vec<Equality>,
     pub(crate) macros: BTreeMap<SymbolName, MacroDefinition>,
