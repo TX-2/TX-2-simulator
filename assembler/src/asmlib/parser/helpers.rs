@@ -92,35 +92,38 @@ pub(super) fn punch_address(a: Option<LiteralValue>) -> Result<PunchCommand, Str
     }
 }
 
+fn expand_macro(_invocation: &MacroInvocation) -> InstructionSequence {
+    unimplemented!("expand_macro")
+}
+
 pub(super) fn manuscript_lines_to_source_file<'a>(
     lines: Vec<(Span, ManuscriptLine)>,
 ) -> Result<SourceFile, chumsky::error::Rich<'a, super::super::lexer::Token>> {
     let mut blocks: Vec<ManuscriptBlock> = Vec::new();
     let mut equalities: Vec<Equality> = Vec::new();
     let mut macros: BTreeMap<SymbolName, MacroDefinition> = Default::default();
-    let mut current_statements: Vec<TaggedProgramInstruction> = Vec::new();
     let mut maybe_punch: Option<PunchCommand> = None;
-    let mut effective_origin: Option<Origin> = None;
 
-    fn append_unscoped_instructions_and_complete_block(
-        unscoped_instructions: &mut Vec<TaggedProgramInstruction>,
-        maybe_origin: Option<Origin>,
-        result: &mut Vec<ManuscriptBlock>,
-    ) {
-        if !unscoped_instructions.is_empty() {
-            let mut instructions: Vec<TaggedProgramInstruction> =
-                Vec::with_capacity(unscoped_instructions.len());
-            instructions.append(unscoped_instructions); // this clears statements, too.
-            assert!(unscoped_instructions.is_empty());
-
+    fn get_or_create_output_block(result: &mut Vec<ManuscriptBlock>) -> &mut ManuscriptBlock {
+        if result.is_empty() {
             result.push(ManuscriptBlock {
-                origin: maybe_origin,
-                sequences: vec![InstructionSequence {
-                    local_symbols: None,
-                    instructions,
-                }],
+                origin: None,
+                sequences: Vec::new(),
             });
         }
+        result
+            .last_mut()
+            .expect("result cannot be empty because we just pushed an item onto it")
+    }
+
+    fn begin_new_block(origin: Origin, result: &mut Vec<ManuscriptBlock>) -> &mut ManuscriptBlock {
+        result.push(ManuscriptBlock {
+            origin: Some(origin),
+            sequences: Vec::new(),
+        });
+        result
+            .last_mut()
+            .expect("result cannot be empty because we just pushed an item onto it")
     }
 
     fn prepend_tags(v: &mut Vec<Tag>, initial: &mut Vec<Tag>) {
@@ -140,66 +143,54 @@ pub(super) fn manuscript_lines_to_source_file<'a>(
 
     for (_span, line) in lines {
         match line {
-            ManuscriptLine::Macro(_invocation) => {
-                panic!("macro expansion is not yet supported");
+            ManuscriptLine::Macro(invocation) => {
+                get_or_create_output_block(&mut blocks)
+                    .sequences
+                    .push(expand_macro(&invocation));
             }
             ManuscriptLine::TagsOnly(tags) => {
                 pending_tags.extend(tags);
             }
+
+            ManuscriptLine::Meta(_)
+            | ManuscriptLine::OriginOnly(_)
+            | ManuscriptLine::OriginAndStatement(_, _)
+            | ManuscriptLine::Eq(_)
+                if !pending_tags.is_empty() =>
+            {
+                return Err(bad_tag_pos(
+                    pending_tags
+                        .pop()
+                        .expect("we know pending_tags is non-empty"),
+                ));
+            }
+
             ManuscriptLine::Meta(ManuscriptMetaCommand::Punch(punch)) => {
-                if let Some(t) = pending_tags.pop() {
-                    return Err(bad_tag_pos(t));
-                }
                 maybe_punch = Some(punch);
             }
             ManuscriptLine::Meta(ManuscriptMetaCommand::BaseChange(_)) => {
-                if let Some(t) = pending_tags.pop() {
-                    return Err(bad_tag_pos(t));
-                }
                 // These already took effect on the statements which
                 // were parsed following them, so no need to keep them
                 // now.
             }
             ManuscriptLine::Meta(ManuscriptMetaCommand::Macro(macro_def)) => {
-                if let Some(t) = pending_tags.pop() {
-                    return Err(bad_tag_pos(t));
-                }
                 if let Some(previous) = macros.insert(macro_def.name.clone(), macro_def) {
                     event!(Level::INFO, "Redefinition of macro {}", &previous.name);
                 }
             }
+
             ManuscriptLine::OriginOnly(origin) => {
-                if let Some(t) = pending_tags.pop() {
-                    return Err(bad_tag_pos(t));
-                }
-                append_unscoped_instructions_and_complete_block(
-                    &mut current_statements,
-                    effective_origin,
-                    &mut blocks,
-                );
-                effective_origin = Some(origin.clone());
+                begin_new_block(origin, &mut blocks);
             }
             ManuscriptLine::StatementOnly(mut tagged_program_instruction) => {
                 prepend_tags(&mut tagged_program_instruction.tags, &mut pending_tags);
-                current_statements.push(tagged_program_instruction);
+                get_or_create_output_block(&mut blocks)
+                    .push_unscoped_instruction(tagged_program_instruction);
             }
             ManuscriptLine::OriginAndStatement(origin, statement) => {
-                if let Some(t) = pending_tags.pop() {
-                    return Err(bad_tag_pos(t));
-                }
-                append_unscoped_instructions_and_complete_block(
-                    &mut current_statements,
-                    effective_origin,
-                    &mut blocks,
-                );
-                effective_origin = Some(origin.clone());
-
-                current_statements.push(statement);
+                begin_new_block(origin, &mut blocks).push_unscoped_instruction(statement);
             }
             ManuscriptLine::Eq(equality) => {
-                if let Some(t) = pending_tags.pop() {
-                    return Err(bad_tag_pos(t));
-                }
                 equalities.push(equality);
             }
         }
@@ -207,12 +198,6 @@ pub(super) fn manuscript_lines_to_source_file<'a>(
     if let Some(t) = pending_tags.pop() {
         return Err(bad_tag_pos(t));
     }
-
-    append_unscoped_instructions_and_complete_block(
-        &mut current_statements,
-        effective_origin,
-        &mut blocks,
-    );
 
     Ok(SourceFile {
         punch: maybe_punch,

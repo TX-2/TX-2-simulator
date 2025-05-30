@@ -1560,6 +1560,21 @@ impl ManuscriptBlock {
             Span::from(0..0)
         }
     }
+
+    pub(super) fn push_unscoped_instruction(&mut self, inst: TaggedProgramInstruction) {
+        if let Some(InstructionSequence {
+            local_symbols: None,
+            instructions,
+        }) = self.sequences.last_mut()
+        {
+            instructions.push(inst);
+        } else {
+            self.sequences.push(InstructionSequence {
+                local_symbols: None,
+                instructions: vec![inst],
+            });
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
