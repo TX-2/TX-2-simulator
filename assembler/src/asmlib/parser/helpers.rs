@@ -140,6 +140,9 @@ pub(super) fn manuscript_lines_to_source_file<'a>(
 
     for (_span, line) in lines {
         match line {
+            ManuscriptLine::Macro(_invocation) => {
+                panic!("macro expansion is not yet supported");
+            }
             ManuscriptLine::TagsOnly(tags) => {
                 pending_tags.extend(tags);
             }

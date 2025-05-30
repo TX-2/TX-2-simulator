@@ -2809,11 +2809,9 @@ mod macro_tests {
                 macro_def: macro_definition_foo,
                 param_values: vec![(
                     SymbolName::from("A1"),
-                    Some(ArithmeticExpression::from(Atom::from((
-                        span(4..5),
-                        Script::Normal,
-                        SymbolName::from("X"),
-                    ))))
+                    Some(MacroParameterValue::Value(ArithmeticExpression::from(
+                        Atom::from((span(4..5), Script::Normal, SymbolName::from("X"),))
+                    )))
                 )]
                 .into_iter()
                 .collect()

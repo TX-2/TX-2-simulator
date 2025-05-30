@@ -1451,6 +1451,7 @@ impl Equality {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ManuscriptLine {
     Meta(ManuscriptMetaCommand),
+    Macro(MacroInvocation),
     Eq(Equality),
     OriginOnly(Origin),
     TagsOnly(Vec<Tag>),
@@ -1487,11 +1488,17 @@ pub(crate) struct MacroDefinition {
     pub(crate) span: Span,
 }
 
-#[cfg(test)] // not yet used outside tests.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum MacroParameterValue {
+    Value(ArithmeticExpression),
+    // TODO: bindings representing sequences of instructions (see for
+    // example the SQ/NSQ example in the Users Handbook).
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct MacroInvocation {
     pub(crate) macro_def: MacroDefinition,
-    pub(crate) param_values: BTreeMap<SymbolName, Option<ArithmeticExpression>>,
+    pub(crate) param_values: BTreeMap<SymbolName, Option<MacroParameterValue>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

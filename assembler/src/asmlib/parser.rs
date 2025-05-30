@@ -11,12 +11,9 @@ mod symex;
 mod tests;
 
 use chumsky::error::Rich;
-#[cfg(test)] // not yet used outside tests.
 use chumsky::extension::v1::Ext;
-#[cfg(test)] // not yet used outside tests.
 use chumsky::extension::v1::ExtParser;
 use chumsky::extra::{Full, ParserExtra};
-#[cfg(test)] // not yet used outside tests.
 use chumsky::input::InputRef;
 use chumsky::input::{Emitter, MapExtra, Stream, ValueInput};
 
@@ -530,7 +527,6 @@ where
         })
 }
 
-#[cfg(test)] // not yet used outside tests.
 fn arithmetic_expression_in_any_script_allowing_spaces<'a, I>(
 ) -> impl Parser<'a, I, ArithmeticExpression, ExtraWithoutContext<'a>>
 where
@@ -544,7 +540,6 @@ where
     ))
 }
 
-#[cfg(test)] // not yet used outside tests.
 fn defined_macro_name<'src, I>() -> impl Parser<'src, I, MacroDefinition, ExtraWithoutContext<'src>>
 where
     I: Input<'src, Token = Tok, Span = Span> + ValueInput<'src>,
@@ -567,7 +562,6 @@ where
     })
 }
 
-#[cfg(test)] // not yet used outside tests.
 #[derive(Clone)]
 struct MacroInvocationParser<'src, I>
 where
@@ -577,7 +571,6 @@ where
     defined_macro_name_parser: Boxed<'src, 'src, I, MacroDefinition, ExtraWithoutContext<'src>>,
 }
 
-#[cfg(test)] // not yet used outside tests.
 impl<'src, I> Default for MacroInvocationParser<'src, I>
 where
     I: Input<'src, Token = Tok, Span = Span> + ValueInput<'src>,
@@ -592,7 +585,6 @@ where
     }
 }
 
-#[cfg(test)] // not yet used outside tests.
 fn macro_invocation<'src, I>() -> impl Parser<'src, I, MacroInvocation, ExtraWithoutContext<'src>>
 where
     I: Input<'src, Token = Tok, Span = Span> + ValueInput<'src>,
@@ -600,7 +592,6 @@ where
     Ext(MacroInvocationParser::default())
 }
 
-#[cfg(test)] // not yet used outside tests.
 impl<'src, I> ExtParser<'src, I, MacroInvocation, ExtraWithoutContext<'src>>
     for MacroInvocationParser<'src, I>
 where
@@ -641,7 +632,7 @@ where
             }
             MacroDummyParameters::OneOrMore(ref params) => params.clone(),
         };
-        let mut param_values: BTreeMap<SymbolName, Option<ArithmeticExpression>> =
+        let mut param_values: BTreeMap<SymbolName, Option<MacroParameterValue>> =
             Default::default();
         for param_def in param_defs.into_iter() {
             let before = inp.cursor();
@@ -649,7 +640,9 @@ where
                 let span = inp.span_since(&before);
                 if got == &param_def.preceding_terminator {
                     let expr = inp.parse(&self.expr_parser)?;
-                    param_values.insert(param_def.name, expr);
+                    let param_value: Option<MacroParameterValue> =
+                        expr.map(MacroParameterValue::Value);
+                    param_values.insert(param_def.name, param_value);
                 } else {
                     return Err(Rich::custom(span, format!("in invocation of macro {}, expected macro terminator {} before parameter {} but got {}",
                                                           &macro_def.name,
@@ -904,13 +897,10 @@ where
 {
     assignment: Boxed<'a, 'b, I, Equality, ExtraWithoutContext<'a>>,
     tagged_program_instruction: Boxed<'a, 'b, I, TaggedProgramInstruction, ExtraWithoutContext<'a>>,
-    #[cfg(test)]
     normal_arithmetic_expression_allowing_spaces:
         Boxed<'a, 'b, I, ArithmeticExpression, ExtraWithoutContext<'a>>,
-    #[cfg(test)]
     subscript_arithmetic_expression_allowing_spaces:
         Boxed<'a, 'b, I, ArithmeticExpression, ExtraWithoutContext<'a>>,
-    #[cfg(test)]
     superscript_arithmetic_expression_allowing_spaces:
         Boxed<'a, 'b, I, ArithmeticExpression, ExtraWithoutContext<'a>>,
     #[cfg(test)]
@@ -1172,25 +1162,21 @@ where
 
     let tagged_program_instruction = tagged_program_instruction.clone();
 
-    #[cfg(test)]
     const ALLOW_SPACES: bool = true;
 
     Grammar {
         assignment: assignment.boxed(),
         tagged_program_instruction: tagged_program_instruction.boxed(),
-        #[cfg(test)]
         normal_arithmetic_expression_allowing_spaces: arith_expr.clone()(
             ALLOW_SPACES,
             Script::Normal,
         )
         .boxed(),
-        #[cfg(test)]
         superscript_arithmetic_expression_allowing_spaces: arith_expr.clone()(
             ALLOW_SPACES,
             Script::Super,
         )
         .boxed(),
-        #[cfg(test)]
         subscript_arithmetic_expression_allowing_spaces: arith_expr.clone()(
             ALLOW_SPACES,
             Script::Sub,
@@ -1311,6 +1297,7 @@ where
             // accept "FOO=2" as an assignment rather than the instruction
             // fragment "FOO" followed by a syntax error.
             equality,
+            macro_invocation().map(ManuscriptLine::Macro),
             // Ignore whitespace after the metacommand but not before it.
             parse_and_execute_metacommand(),
             optional_origin_with_statement,

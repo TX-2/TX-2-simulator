@@ -59,7 +59,6 @@ where
         }
     }
 
-    #[cfg(test)]
     pub(crate) fn get(&self, k: &K) -> Option<&V> {
         self.items.get(k)
     }
@@ -100,7 +99,6 @@ impl<'src> State<'src> {
         self.macros.insert(definition.name.clone(), definition)
     }
 
-    #[cfg(test)] // not yet used outside tests.
     pub(crate) fn get_macro_definition(&self, name: &SymbolName) -> Option<&MacroDefinition> {
         self.macros.get(name)
     }
