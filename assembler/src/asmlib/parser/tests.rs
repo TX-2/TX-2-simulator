@@ -2803,18 +2803,20 @@ mod macro_tests {
             state.define_macro(macro_definition_foo.clone());
         };
         let got = parse_successfully_with("FOO~X", macro_invocation(), set_up_macro_definition);
+
+        let mut bindings: MacroParameterBindings = Default::default();
+        bindings.insert(
+            SymbolName::from("A1"),
+            Some(MacroParameterValue::Value(ArithmeticExpression::from(
+                Atom::from((span(4..5), Script::Normal, SymbolName::from("X"))),
+            ))),
+        );
+
         assert_eq!(
             got,
             MacroInvocation {
                 macro_def: macro_definition_foo,
-                param_values: vec![(
-                    SymbolName::from("A1"),
-                    Some(MacroParameterValue::Value(ArithmeticExpression::from(
-                        Atom::from((span(4..5), Script::Normal, SymbolName::from("X"),))
-                    )))
-                )]
-                .into_iter()
-                .collect()
+                param_values: bindings,
             }
         );
     }

@@ -1495,10 +1495,21 @@ pub(crate) enum MacroParameterValue {
     // example the SQ/NSQ example in the Users Handbook).
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(crate) struct MacroParameterBindings {
+    inner: BTreeMap<SymbolName, Option<MacroParameterValue>>,
+}
+
+impl MacroParameterBindings {
+    pub(super) fn insert(&mut self, name: SymbolName, value: Option<MacroParameterValue>) {
+        self.inner.insert(name, value);
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct MacroInvocation {
     pub(crate) macro_def: MacroDefinition,
-    pub(crate) param_values: BTreeMap<SymbolName, Option<MacroParameterValue>>,
+    pub(crate) param_values: MacroParameterBindings,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

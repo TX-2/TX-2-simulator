@@ -632,8 +632,7 @@ where
             }
             MacroDummyParameters::OneOrMore(ref params) => params.clone(),
         };
-        let mut param_values: BTreeMap<SymbolName, Option<MacroParameterValue>> =
-            Default::default();
+        let mut param_values: MacroParameterBindings = Default::default();
         for param_def in param_defs.into_iter() {
             let before = inp.cursor();
             if let Some(got) = inp.next_maybe().as_deref() {
