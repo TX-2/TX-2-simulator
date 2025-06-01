@@ -222,6 +222,20 @@ impl SignedAtom {
     ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
         self.magnitude.symbol_uses(block_id, block_offset)
     }
+
+    pub(super) fn substitute_macro_parameters(
+        &self,
+        param_values: &MacroParameterBindings,
+        on_missing: OnUnboundMacroParameter,
+        macros: &BTreeMap<SymbolName, MacroDefinition>,
+    ) -> Option<SignedAtom> {
+        self.magnitude
+            .substitute_macro_parameters(param_values, on_missing, macros)
+            .map(|magnitude| SignedAtom {
+                magnitude,
+                ..self.clone()
+            })
+    }
 }
 
 impl Spanned for SignedAtom {
@@ -366,6 +380,34 @@ impl ArithmeticExpression {
             Operator::LogicalOr => left.bitor(right.into()),
         }
     }
+
+    pub(super) fn substitute_macro_parameters(
+        &self,
+        param_values: &MacroParameterBindings,
+        on_missing: OnUnboundMacroParameter,
+        macros: &BTreeMap<SymbolName, MacroDefinition>,
+    ) -> Option<ArithmeticExpression> {
+        match self
+            .first
+            .substitute_macro_parameters(param_values, on_missing, macros)
+        {
+            None => None,
+            Some(first) => {
+                let mut tail: Vec<(Operator, SignedAtom)> = Vec::with_capacity(self.tail.len());
+                for (op, atom) in self.tail.iter() {
+                    match atom.substitute_macro_parameters(param_values, on_missing, macros) {
+                        Some(atom) => {
+                            tail.push((*op, atom));
+                        }
+                        None => {
+                            return None;
+                        }
+                    }
+                }
+                Some(ArithmeticExpression { first, tail })
+            }
+        }
+    }
 }
 
 /// A configuration syllable can be specified by putting it in a
@@ -397,6 +439,20 @@ impl ConfigValue {
         self.expr
             .symbol_uses(block_id, block_offset)
             .map(move |(name, span, _ignore_symbol_use)| (name, span, used_as_config.clone()))
+    }
+
+    pub(super) fn substitute_macro_parameters(
+        &self,
+        param_values: &MacroParameterBindings,
+        on_missing: OnUnboundMacroParameter,
+        macros: &BTreeMap<SymbolName, MacroDefinition>,
+    ) -> Option<ConfigValue> {
+        self.expr
+            .substitute_macro_parameters(param_values, on_missing, macros)
+            .map(|expr| ConfigValue {
+                expr,
+                already_superscript: self.already_superscript,
+            })
     }
 }
 
@@ -430,6 +486,41 @@ impl RegistersContaining {
         self.0
             .iter()
             .flat_map(move |rc| rc.symbol_uses(block_id, block_offset))
+    }
+
+    pub(super) fn substitute_macro_parameters(
+        &self,
+        param_values: &MacroParameterBindings,
+        on_missing: OnUnboundMacroParameter,
+        macros: &BTreeMap<SymbolName, MacroDefinition>,
+    ) -> Option<RegistersContaining> {
+        // TODO: this implementation probably requires more thought.
+        // At the moment, if the contents of {...} yield any single
+        // item that gets omitted because it references an unbound
+        // macro paramter, then the whole {...} (and therefore
+        // anything containing it) gets omitted.
+        //
+        // This may not match the required behaviour of the TX-2's M4
+        // assembler, which might instead just omit that RC-word.
+        // However, if we switch to that option, then this could
+        // create a situation in which {...} results in zero words of
+        // the RC-block being reserved.  In that case, what is the
+        // resulting numerical value of the {...} expression?  If it
+        // actually does reserve zero words, then it means that two or
+        // more instances of {...} could resolve to the same address,
+        // and that is likely not intended.  It wold also mean trouble
+        // for the current implementation of the Spanned trait for
+        // RegistersContaining.
+        let tmp_rc: OneOrMore<Option<RegisterContaining>> = self
+            .0
+            .map(|rc| rc.substitute_macro_parameters(param_values, on_missing, macros));
+        if tmp_rc.iter().all(|maybe_rc| maybe_rc.is_some()) {
+            Some(RegistersContaining(tmp_rc.into_map(|maybe_rc| {
+                maybe_rc.expect("we already checked this wasn't None")
+            })))
+        } else {
+            None
+        }
     }
 }
 
@@ -521,6 +612,39 @@ impl RegisterContaining {
         }
         result.into_iter()
     }
+
+    pub(super) fn substitute_macro_parameters(
+        &self,
+        param_values: &MacroParameterBindings,
+        on_missing: OnUnboundMacroParameter,
+        macros: &BTreeMap<SymbolName, MacroDefinition>,
+    ) -> Option<RegisterContaining> {
+        match self {
+            RegisterContaining::Unallocated(tagged_program_instruction) => {
+                tagged_program_instruction
+                    .substitute_macro_parameters(param_values, on_missing, macros)
+                    .map(|tagged_program_instruction| {
+                        RegisterContaining::Unallocated(Box::new(tagged_program_instruction))
+                    })
+            }
+            RegisterContaining::Allocated(_address, _tagged_program_instruction) => {
+                // One reason we don't support this is because if we
+                // twice instantiate a macro which contains {...} or a
+                // pipe construct, then both of those RC-words would
+                // have the same address, and this is likely not
+                // intended.  It's certainly user-surprising.
+                //
+                // The second reason we don't support this (and the
+                // reason why we don't need to issue an error message
+                // for the user) is that the assembler implementation
+                // does in fact perform macro-expansion before
+                // RC-words are allocated.
+                unreachable!(
+                    "macro expansion must be completed before any RC-block addresses are allocated"
+                )
+            }
+        }
+    }
 }
 
 /// Eventually we will support real expressions, but for now we only
@@ -569,6 +693,52 @@ impl Atom {
             }
         }
         result.into_iter()
+    }
+
+    pub(super) fn substitute_macro_parameters(
+        &self,
+        param_values: &MacroParameterBindings,
+        on_missing: OnUnboundMacroParameter,
+        macros: &BTreeMap<SymbolName, MacroDefinition>,
+    ) -> Option<Atom> {
+        match self {
+            Atom::SymbolOrLiteral(symbol_or_literal) => {
+                match symbol_or_literal.substitute_macro_parameters(param_values, on_missing) {
+                    SymbolSubstitution::AsIs(symbol_or_literal) => {
+                        Some(Atom::SymbolOrLiteral(symbol_or_literal))
+                    }
+                    SymbolSubstitution::Hit(span, script, arithmetic_expression) => Some(
+                        Atom::Parens(span, script, Box::new(arithmetic_expression.clone())),
+                    ),
+                    SymbolSubstitution::Omit => {
+                        // The parameter was not set, and this atom is
+                        // being used in a context where omitted
+                        // parameters cause the affected instructin to
+                        // be omitted.  That is, this expression is
+                        // not on the right-hand-side of an equality.
+                        None
+                    }
+                    SymbolSubstitution::Zero(span) => {
+                        Some(Atom::SymbolOrLiteral(SymbolOrLiteral::Literal(
+                            LiteralValue {
+                                span,
+                                // Since the value is zero the elevation actually doesn't matter.
+                                elevation: Script::Normal,
+                                value: Unsigned36Bit::ZERO,
+                            },
+                        )))
+                    }
+                }
+            }
+            Atom::Parens(span, script, arithmetic_expression) => arithmetic_expression
+                .substitute_macro_parameters(param_values, on_missing, macros)
+                .map(|arithmetic_expression| {
+                    Atom::Parens(*span, *script, Box::new(arithmetic_expression))
+                }),
+            Atom::RcRef(span, registers_containing) => registers_containing
+                .substitute_macro_parameters(param_values, on_missing, macros)
+                .map(|registers_containing| Atom::RcRef(*span, registers_containing)),
+        }
     }
 }
 
@@ -625,6 +795,14 @@ impl std::fmt::Display for Atom {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum SymbolSubstitution<T> {
+    AsIs(T),
+    Hit(Span, Script, ArithmeticExpression),
+    Omit,
+    Zero(Span),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum SymbolOrLiteral {
     Symbol(Script, SymbolName, Span),
     Literal(LiteralValue),
@@ -643,6 +821,50 @@ impl SymbolOrLiteral {
             }
         }
         result.into_iter()
+    }
+
+    pub(super) fn substitute_macro_parameters(
+        &self,
+        param_values: &MacroParameterBindings,
+        on_missing: OnUnboundMacroParameter,
+    ) -> SymbolSubstitution<SymbolOrLiteral> {
+        match self {
+            SymbolOrLiteral::Symbol(_script, symbol_name, _span) => {
+                match param_values.get(symbol_name) {
+                    Some((
+                        span,
+                        Some(MacroParameterValue::Value(script, arithmetic_expression)),
+                    )) => {
+                        // symbol_name was a parameter name, and the
+                        // macro invocation specified it, so
+                        // substitute it.
+                        SymbolSubstitution::Hit(*span, *script, arithmetic_expression.clone())
+                    }
+                    Some((span, None)) => {
+                        // symbol_name was a parameter name, but the
+                        // macro invocation did not specify it, so we
+                        // either elide the instruction or behave if
+                        // it is zero, according to on_missing.
+                        match on_missing {
+                            OnUnboundMacroParameter::ElideReference => SymbolSubstitution::Omit,
+                            OnUnboundMacroParameter::SubstituteZero => {
+                                SymbolSubstitution::Zero(*span)
+                            }
+                        }
+                    }
+                    None => {
+                        // symbol_name is not a macro parameter.
+                        SymbolSubstitution::AsIs(self.clone())
+                    }
+                }
+            }
+            SymbolOrLiteral::Literal(literal) => {
+                SymbolSubstitution::AsIs(SymbolOrLiteral::Literal(literal.clone()))
+            }
+            SymbolOrLiteral::Here(script, span) => {
+                SymbolSubstitution::AsIs(SymbolOrLiteral::Here(*script, *span))
+            }
+        }
     }
 }
 
@@ -676,6 +898,29 @@ impl Display for SymbolOrLiteral {
 pub(crate) struct SpannedSymbolOrLiteral {
     pub(crate) item: SymbolOrLiteral,
     pub(crate) span: Span,
+}
+
+impl SpannedSymbolOrLiteral {
+    pub(super) fn substitute_macro_parameters(
+        &self,
+        param_values: &MacroParameterBindings,
+        on_missing: OnUnboundMacroParameter,
+    ) -> SymbolSubstitution<SpannedSymbolOrLiteral> {
+        match self
+            .item
+            .substitute_macro_parameters(param_values, on_missing)
+        {
+            SymbolSubstitution::AsIs(item) => SymbolSubstitution::AsIs(SpannedSymbolOrLiteral {
+                item,
+                span: self.span,
+            }),
+            SymbolSubstitution::Hit(span, script, arithmetic_expression) => {
+                SymbolSubstitution::Hit(span, script, arithmetic_expression)
+            }
+            SymbolSubstitution::Omit => SymbolSubstitution::Omit,
+            SymbolSubstitution::Zero(span) => SymbolSubstitution::Zero(span),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -756,6 +1001,44 @@ impl InstructionFragment {
             }
         }
         result.into_iter()
+    }
+
+    pub(super) fn substitute_macro_parameters(
+        &self,
+        param_values: &MacroParameterBindings,
+        on_missing: OnUnboundMacroParameter,
+        macros: &BTreeMap<SymbolName, MacroDefinition>,
+    ) -> Option<InstructionFragment> {
+        match self {
+            InstructionFragment::Arithmetic(arithmetic_expression) => arithmetic_expression
+                .substitute_macro_parameters(param_values, on_missing, macros)
+                .map(InstructionFragment::Arithmetic),
+            InstructionFragment::DeferredAddressing(span) => {
+                Some(InstructionFragment::DeferredAddressing(*span))
+            }
+            InstructionFragment::Config(config_value) => config_value
+                .substitute_macro_parameters(param_values, on_missing, macros)
+                .map(InstructionFragment::Config),
+            InstructionFragment::PipeConstruct {
+                index,
+                rc_word_span,
+                rc_word_value,
+            } => match index.substitute_macro_parameters(param_values, on_missing) {
+                SymbolSubstitution::AsIs(index) => rc_word_value
+                    .substitute_macro_parameters(param_values, on_missing, macros)
+                    .map(|rc_word_value| InstructionFragment::PipeConstruct {
+                        index,
+                        rc_word_span: *rc_word_span,
+                        rc_word_value,
+                    }),
+                SymbolSubstitution::Hit(_span, _script, _arithmetic_expression) => {
+                    todo!("macro parameter expansion is not yet fully supported in the index part of pipe constructs")
+                }
+                SymbolSubstitution::Omit => None,
+                SymbolSubstitution::Zero(span) => Some(InstructionFragment::Null(span)),
+            },
+            InstructionFragment::Null(span) => Some(InstructionFragment::Null(*span)),
+        }
     }
 }
 
@@ -928,6 +1211,20 @@ impl CommaDelimitedFragment {
     ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> + '_ {
         self.fragment.symbol_uses(block_id, block_offset)
     }
+
+    pub(super) fn substitute_macro_parameters(
+        &self,
+        param_values: &MacroParameterBindings,
+        on_missing: OnUnboundMacroParameter,
+        macros: &BTreeMap<SymbolName, MacroDefinition>,
+    ) -> Option<CommaDelimitedFragment> {
+        self.fragment
+            .substitute_macro_parameters(param_values, on_missing, macros)
+            .map(|fragment| Self {
+                fragment,
+                ..self.clone()
+            })
+    }
 }
 
 impl Spanned for CommaDelimitedFragment {
@@ -959,6 +1256,30 @@ impl UntaggedProgramInstruction {
     }
 }
 
+impl UntaggedProgramInstruction {
+    pub(super) fn substitute_macro_parameters(
+        &self,
+        param_values: &MacroParameterBindings,
+        on_missing: OnUnboundMacroParameter,
+        macros: &BTreeMap<SymbolName, MacroDefinition>,
+    ) -> Option<UntaggedProgramInstruction> {
+        let tmp_frags: OneOrMore<Option<CommaDelimitedFragment>> = self
+            .fragments
+            .map(|frag| frag.substitute_macro_parameters(param_values, on_missing, macros));
+        if tmp_frags.iter().any(|frag| frag.is_none()) {
+            None
+        } else {
+            Some(UntaggedProgramInstruction {
+                fragments: tmp_frags.into_map(|mut maybe_frag| {
+                    maybe_frag
+                        .take()
+                        .expect("we already checked this fragment wasn't None")
+                }),
+            })
+        }
+    }
+}
+
 impl Spanned for UntaggedProgramInstruction {
     fn span(&self) -> Span {
         span(self.fragments.first().span.start..self.fragments.last().span.end)
@@ -980,6 +1301,41 @@ impl Spanned for EqualityValue {
 impl From<(Span, UntaggedProgramInstruction)> for EqualityValue {
     fn from((span, inner): (Span, UntaggedProgramInstruction)) -> Self {
         Self { span, inner }
+    }
+}
+
+impl EqualityValue {
+    pub(super) fn substitute_macro_parameters(
+        &self,
+        param_values: &MacroParameterBindings,
+        macros: &BTreeMap<SymbolName, MacroDefinition>,
+    ) -> EqualityValue {
+        // If we set an equality to the value of an unspecified macro
+        // parameter, then that equality is set to zero.  This is
+        // required by item (7) of section 6-4.6 ("The Defining
+        // Subprogram") of the TX-2 User's Handbook.
+        //
+        // However, that item does not cover more complex cases like
+        // "G = DUM2 + 4".  Our current interpretation will assign G
+        // the value 4 when DUM2 is an unspecified macro parameter.
+        // However, analysis of actual TX-2 programs may show that
+        // this is not the correct interpretation.
+        if let Some(inner) = self.inner.substitute_macro_parameters(
+            param_values,
+            // We use SubstituteZero here for the reasons
+            // described in the block comment above.
+            OnUnboundMacroParameter::SubstituteZero,
+            macros,
+        ) {
+            EqualityValue {
+                span: self.span,
+                inner,
+            }
+        } else {
+            unreachable!(
+                "substitute_macro_parameters should not return None when OnUnboundMacroParameter::SubstituteZero is in effect"
+            )
+        }
     }
 }
 
@@ -1090,6 +1446,21 @@ impl TaggedProgramInstruction {
     #[inline(always)]
     fn emitted_word_count(&self) -> Unsigned18Bit {
         Unsigned18Bit::ONE
+    }
+
+    pub(super) fn substitute_macro_parameters(
+        &self,
+        param_values: &MacroParameterBindings,
+        on_missing: OnUnboundMacroParameter,
+        macros: &BTreeMap<SymbolName, MacroDefinition>,
+    ) -> Option<TaggedProgramInstruction> {
+        self.instruction
+            .substitute_macro_parameters(param_values, on_missing, macros)
+            .map(|instruction| TaggedProgramInstruction {
+                span: self.span,
+                tags: self.tags.clone(),
+                instruction,
+            })
     }
 }
 
@@ -1481,28 +1852,106 @@ pub(crate) enum MacroDummyParameters {
 pub(crate) struct MacroDefinition {
     pub(crate) name: SymbolName, // composite character macros are not yet supported
     pub(crate) params: MacroDummyParameters,
-    // body should probably be a sequence of ManuscriptLine in order
-    // to allow an origin specification to exist within a macro body.
-    // But that is not supported yet.
-    pub(crate) body: InstructionSequence,
+    pub(crate) body: Vec<MacroBodyLine>,
     pub(crate) span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum MacroBodyLine {
+    Expansion(MacroInvocation),
+    Instruction(TaggedProgramInstruction),
+    Equality(Equality),
+}
+
+impl MacroDefinition {
+    pub(super) fn substitute_macro_parameters(
+        &self,
+        bindings: &MacroParameterBindings,
+        macros: &BTreeMap<SymbolName, MacroDefinition>,
+    ) -> InstructionSequence {
+        let mut local_symbols = SymbolTable::default();
+        let mut instructions: Vec<TaggedProgramInstruction> = Vec::with_capacity(self.body.len());
+        for body_line in self.body.iter() {
+            match body_line {
+                MacroBodyLine::Expansion(_macro_invocation) => {
+                    unimplemented!("recursive macros are not yet supported")
+                }
+                MacroBodyLine::Instruction(tagged_program_instruction) => {
+                    if let Some(tagged_program_instruction) = tagged_program_instruction
+                        .substitute_macro_parameters(
+                            bindings,
+                            OnUnboundMacroParameter::ElideReference,
+                            macros,
+                        )
+                    {
+                        instructions.push(tagged_program_instruction);
+                    } else {
+                        // The instruction referred to an unbound
+                        // macro parameter, and therefore the
+                        // instruction is omitted.
+                        //
+                        // This is required by the text of the first
+                        // paragraph of section 6-4 "MACRO
+                        // INSTRUCTIONS" of the TX-2 User's Handbook.
+                        // Also item (4) in section 6-4.6 ("The
+                        // Defining Subprogram").
+                    }
+                }
+                // Equalities and tags which occur inside the body of
+                // a macro are not visible outside it.
+                MacroBodyLine::Equality(Equality { span, name, value }) => {
+                    let value: EqualityValue = value.substitute_macro_parameters(bindings, macros);
+                    if let Err(e) = local_symbols.define(
+                        *span,
+                        name.clone(),
+                        SymbolDefinition::Explicit(ExplicitDefinition::Equality(value)),
+                    ) {
+                        // We do not expect this to fail because only
+                        // tag definitions can be invalid, equalities
+                        // cannot (as long as the right-hand-side can
+                        // be parsed, which has already happened).
+                        panic!("unexpected failure when defining equality for {name} inside a macro body: {e}");
+                    }
+                }
+            }
+        }
+        InstructionSequence {
+            // build_local_symbol_tables extracts tags and propagates
+            // them into the local symbol table, so this is not the
+            // final version of the local symbol table.
+            local_symbols: Some(local_symbols),
+            instructions,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum MacroParameterValue {
-    Value(ArithmeticExpression),
+    Value(Script, ArithmeticExpression),
     // TODO: bindings representing sequences of instructions (see for
     // example the SQ/NSQ example in the Users Handbook).
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct MacroParameterBindings {
-    inner: BTreeMap<SymbolName, Option<MacroParameterValue>>,
+    // TODO: all bindings should have a span, even if the parameter is
+    // unset (in which case the span should correspond to the location
+    // where the parameter would have been supplied.
+    inner: BTreeMap<SymbolName, (Span, Option<MacroParameterValue>)>,
 }
 
 impl MacroParameterBindings {
-    pub(super) fn insert(&mut self, name: SymbolName, value: Option<MacroParameterValue>) {
-        self.inner.insert(name, value);
+    pub(super) fn insert(
+        &mut self,
+        name: SymbolName,
+        span: Span,
+        value: Option<MacroParameterValue>,
+    ) {
+        self.inner.insert(name, (span, value));
+    }
+
+    pub(super) fn get(&self, name: &SymbolName) -> Option<&(Span, Option<MacroParameterValue>)> {
+        self.inner.get(name)
     }
 }
 
@@ -1510,6 +1959,16 @@ impl MacroParameterBindings {
 pub(crate) struct MacroInvocation {
     pub(crate) macro_def: MacroDefinition,
     pub(crate) param_values: MacroParameterBindings,
+}
+
+impl MacroInvocation {
+    pub(super) fn substitute_macro_parameters(
+        &self,
+        macros: &BTreeMap<SymbolName, MacroDefinition>,
+    ) -> InstructionSequence {
+        self.macro_def
+            .substitute_macro_parameters(&self.param_values, macros)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

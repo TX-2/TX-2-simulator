@@ -92,8 +92,11 @@ pub(super) fn punch_address(a: Option<LiteralValue>) -> Result<PunchCommand, Str
     }
 }
 
-fn expand_macro(_invocation: &MacroInvocation) -> InstructionSequence {
-    unimplemented!("expand_macro")
+fn expand_macro(
+    invocation: &MacroInvocation,
+    macros: &BTreeMap<SymbolName, MacroDefinition>,
+) -> InstructionSequence {
+    invocation.substitute_macro_parameters(macros)
 }
 
 pub(super) fn manuscript_lines_to_source_file<'a>(
@@ -146,7 +149,7 @@ pub(super) fn manuscript_lines_to_source_file<'a>(
             ManuscriptLine::Macro(invocation) => {
                 get_or_create_output_block(&mut blocks)
                     .sequences
-                    .push(expand_macro(&invocation));
+                    .push(expand_macro(&invocation, &macros));
             }
             ManuscriptLine::TagsOnly(tags) => {
                 pending_tags.extend(tags);

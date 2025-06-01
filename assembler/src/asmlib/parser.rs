@@ -30,7 +30,6 @@ use super::lexer::{self};
 use super::span::*;
 use super::state::{NumeralMode, State};
 use super::symbol::SymbolName;
-use super::symtab::SymbolTable;
 use base::charset::Script;
 use base::prelude::*;
 use helpers::Sign;
@@ -491,7 +490,9 @@ where
 }
 
 /// Macros are described in section 6-4 of the TX-2 User Handbook.
-fn macro_definition<'a, I>() -> impl Parser<'a, I, MacroDefinition, ExtraWithoutContext<'a>>
+fn macro_definition<'a, 'b, I>(
+    grammar: &Grammar<'a, 'b, I>,
+) -> impl Parser<'a, I, MacroDefinition, ExtraWithoutContext<'a>> + use<'a, 'b, I>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
@@ -502,14 +503,9 @@ where
         .then(macro_definition_dummy_parameters())
         .then_ignore(end_of_line())
         .then(
-            (tagged_instruction().then_ignore(end_of_line()))
+            (macro_body_line(grammar).then_ignore(end_of_line()))
                 .repeated()
                 .collect()
-                .map(|v: Vec<TaggedProgramInstruction>| InstructionSequence {
-                    // TODO: figure out how best to populate local_symbols.
-                    local_symbols: Some(SymbolTable::default()),
-                    instructions: v,
-                })
                 .labelled("macro body"),
         )
         .then_ignore(named_metacommand(Metacommand::EndMacroDefinition))
@@ -527,16 +523,35 @@ where
         })
 }
 
+fn macro_body_line<'a, 'b, I>(
+    grammar: &Grammar<'a, 'b, I>,
+) -> impl Parser<'a, I, MacroBodyLine, ExtraWithoutContext<'a>> + use<'a, 'b, I>
+where
+    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
+{
+    choice((
+        macro_invocation().map(MacroBodyLine::Expansion),
+        grammar.assignment.clone().map(MacroBodyLine::Equality),
+        grammar
+            .tagged_program_instruction
+            .clone()
+            .map(MacroBodyLine::Instruction),
+    ))
+}
+
 fn arithmetic_expression_in_any_script_allowing_spaces<'a, I>(
-) -> impl Parser<'a, I, ArithmeticExpression, ExtraWithoutContext<'a>>
+) -> impl Parser<'a, I, (Span, Script, ArithmeticExpression), ExtraWithoutContext<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
     let g = grammar();
     choice((
-        g.normal_arithmetic_expression_allowing_spaces,
-        g.subscript_arithmetic_expression_allowing_spaces,
-        g.superscript_arithmetic_expression_allowing_spaces,
+        g.normal_arithmetic_expression_allowing_spaces
+            .map_with(|expr, extra| (extra.span(), Script::Normal, expr)),
+        g.subscript_arithmetic_expression_allowing_spaces
+            .map_with(|expr, extra| (extra.span(), Script::Sub, expr)),
+        g.superscript_arithmetic_expression_allowing_spaces
+            .map_with(|expr, extra| (extra.span(), Script::Super, expr)),
     ))
 }
 
@@ -562,12 +577,14 @@ where
     })
 }
 
+type ParsedMacroArg = Option<(Script, ArithmeticExpression)>;
+
 #[derive(Clone)]
 struct MacroInvocationParser<'src, I>
 where
     I: Input<'src, Token = Tok, Span = Span> + ValueInput<'src>,
 {
-    expr_parser: Boxed<'src, 'src, I, Option<ArithmeticExpression>, ExtraWithoutContext<'src>>,
+    expr_parser: Boxed<'src, 'src, I, (Span, ParsedMacroArg), ExtraWithoutContext<'src>>,
     defined_macro_name_parser: Boxed<'src, 'src, I, MacroDefinition, ExtraWithoutContext<'src>>,
 }
 
@@ -579,6 +596,10 @@ where
         Self {
             expr_parser: arithmetic_expression_in_any_script_allowing_spaces()
                 .or_not()
+                .map_with(|got, extra| match got {
+                    Some((span, script, expr)) => (span, Some((script, expr))),
+                    None => (extra.span(), None),
+                })
                 .boxed(),
             defined_macro_name_parser: defined_macro_name().boxed(),
         }
@@ -638,10 +659,19 @@ where
             if let Some(got) = inp.next_maybe().as_deref() {
                 let span = inp.span_since(&before);
                 if got == &param_def.preceding_terminator {
-                    let expr = inp.parse(&self.expr_parser)?;
-                    let param_value: Option<MacroParameterValue> =
-                        expr.map(MacroParameterValue::Value);
-                    param_values.insert(param_def.name, param_value);
+                    match inp.parse(&self.expr_parser)? {
+                        (span, Some((script, expr))) => {
+                            param_values.insert(
+                                param_def.name,
+                                span,
+                                Some(MacroParameterValue::Value(script, expr)),
+                            );
+                        }
+                        (span, None) => {
+                            // Record the fact that this parameter was missing.
+                            param_values.insert(param_def.name, span, None);
+                        }
+                    }
                 } else {
                     return Err(Rich::custom(span, format!("in invocation of macro {}, expected macro terminator {} before parameter {} but got {}",
                                                           &macro_def.name,
@@ -698,7 +728,9 @@ where
         .then_ignore(matching_metacommand_name)
 }
 
-fn metacommand<'a, I>() -> impl Parser<'a, I, ManuscriptMetaCommand, ExtraWithoutContext<'a>>
+fn metacommand<'a, 'b, I>(
+    grammar: &Grammar<'a, 'b, I>,
+) -> impl Parser<'a, I, ManuscriptMetaCommand, ExtraWithoutContext<'a>> + use<'a, 'b, I>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
@@ -735,7 +767,7 @@ where
     choice((
         base_change(),
         punch(),
-        macro_definition().map(ManuscriptMetaCommand::Macro),
+        macro_definition(grammar).map(ManuscriptMetaCommand::Macro),
     ))
     .labelled("metacommand")
 }
@@ -1186,6 +1218,7 @@ where
     }
 }
 
+#[cfg(test)]
 fn tagged_instruction<'a, I>(
 ) -> impl Parser<'a, I, TaggedProgramInstruction, ExtraWithoutContext<'a>>
 where
@@ -1209,12 +1242,13 @@ where
         }
     }
 
-    fn parse_and_execute_metacommand<'a, I>(
-    ) -> impl Parser<'a, I, ManuscriptLine, ExtraWithoutContext<'a>>
+    fn parse_and_execute_metacommand<'a, 'b, I>(
+        grammar: &Grammar<'a, 'b, I>,
+    ) -> impl Parser<'a, I, ManuscriptLine, ExtraWithoutContext<'a>> + use<'a, 'b, I>
     where
         I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
     {
-        metacommand()
+        metacommand(grammar)
             .map_with(|cmd, extra| {
                 execute_metacommand(&mut extra.state().numeral_mode, &cmd);
                 ManuscriptLine::Meta(cmd)
@@ -1278,7 +1312,7 @@ where
 
         let optional_origin_with_statement = origin()
             .or_not()
-            .then(grammar.tagged_program_instruction)
+            .then(grammar.tagged_program_instruction.clone())
             .map(build_code_line)
             .labelled("statement with origin");
 
@@ -1298,7 +1332,7 @@ where
             equality,
             macro_invocation().map(ManuscriptLine::Macro),
             // Ignore whitespace after the metacommand but not before it.
-            parse_and_execute_metacommand(),
+            parse_and_execute_metacommand(&grammar),
             optional_origin_with_statement,
             // Because we prefer to parse a statement if one exists,
             // the origin_only alternative has to appear after the

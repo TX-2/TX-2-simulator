@@ -96,6 +96,20 @@ impl<T> OneOrMore<T> {
             ))
         }
     }
+
+    pub fn map<U, F: FnMut(&T) -> U>(&self, mut f: F) -> OneOrMore<U> {
+        OneOrMore {
+            head: f(&self.head),
+            tail: self.tail.iter().map(f).collect(),
+        }
+    }
+
+    pub fn into_map<U, F: FnMut(T) -> U>(self, mut f: F) -> OneOrMore<U> {
+        OneOrMore {
+            head: f(self.head),
+            tail: self.tail.into_iter().map(f).collect(),
+        }
+    }
 }
 
 pub struct OneOrMoreIter<'a, T> {
@@ -306,5 +320,21 @@ mod one_or_more_tests {
             Ok(OneOrMore::with_tail(10, vec![20])),
             OneOrMore::try_from_vec(vec![10, 20])
         );
+    }
+
+    #[test]
+    fn test_map() {
+        assert_eq!(
+            OneOrMore::with_tail(1, vec![2]).map(|x| -x),
+            OneOrMore::with_tail(-1, vec![-2])
+        )
+    }
+
+    #[test]
+    fn test_into_map() {
+        assert_eq!(
+            OneOrMore::with_tail(1, vec![2]).into_map(|x| -x),
+            OneOrMore::with_tail(-1, vec![-2])
+        )
     }
 }
