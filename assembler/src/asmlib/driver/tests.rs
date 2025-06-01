@@ -937,3 +937,37 @@ fn test_minus_hash_config_evaluation() {
 
     assert_eq!(&program_a, &program_b);
 }
+
+#[test]
+fn test_diagnose_duplicate_tags_in_macro_body() {
+    let input = concat!(
+        "☛☛DEF MYMACRO≡\n",
+        // First tag assignment
+        " T-> 2\n",
+        // Second tag assignment (which is not allowed for the
+        // same tag name, even inside a macro body).
+        " T-> 3\n",
+        "☛☛EMD",
+        "\n",
+        // Expand the macro just once.
+        "MYMACRO≡\n",
+    );
+    let mut errors = Default::default();
+    let expected_msg = "T is defined more than once";
+    match dbg!(assemble_pass1(input, &mut errors)) {
+        Ok((_source_file, _options)) => {
+            dbg!(&errors);
+            assert!(!errors.is_empty());
+            assert!(errors.iter().any(|e| e.to_string().contains(expected_msg)));
+        }
+        Err(e) => {
+            dbg!(&errors);
+            dbg!(&e);
+            // Although the current implementation successfully parses
+            // the program but returns an error in `errors`, we also
+            // accept a hypothetical implementation in which
+            // assemble_pass1() returns Err.
+            assert!(e.to_string().contains(expected_msg));
+        }
+    }
+}
