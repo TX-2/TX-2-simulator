@@ -576,6 +576,10 @@ fn assemble_pass3(
         }
     }
 
+    // Now that RC-word allocation is complete, we no longer need to
+    // mutate the explicit symbol table.
+    let explicit_symtab: &ExplicitSymbolTable = &*explicit_symtab;
+
     for name in implicit_symtab.symbols() {
         match (implicit_symtab.get(name), explicit_symtab.get(name)) {
             (Some(implicit), Some(explicit)) => {
