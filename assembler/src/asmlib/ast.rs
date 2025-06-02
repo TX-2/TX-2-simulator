@@ -21,15 +21,16 @@ use std::hash::Hash;
 use base::charset::{subscript_char, superscript_char, Script};
 use base::prelude::*;
 
-use crate::symtab::SymbolDefinition;
-
 use super::collections::OneOrMore;
 use super::glyph;
 use super::lexer::Token;
 use super::span::*;
 use super::state::NumeralMode;
 use super::symbol::{SymbolContext, SymbolName};
-use super::symtab::{BadSymbolDefinition, ExplicitDefinition, SymbolTable, TagDefinition};
+use super::symtab::{
+    BadSymbolDefinition, ExplicitDefinition, ExplicitSymbolTable, ImplicitSymbolTable,
+    TagDefinition,
+};
 use super::types::*;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -435,10 +436,15 @@ impl ConfigValue {
         block_id: BlockIdentifier,
         block_offset: Unsigned18Bit,
     ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
-        let used_as_config = SymbolUse::Reference(SymbolContext::configuration());
         self.expr
             .symbol_uses(block_id, block_offset)
-            .map(move |(name, span, _ignore_symbol_use)| (name, span, used_as_config.clone()))
+            .map(|(name, span, _ignore_symbol_use)| {
+                (
+                    name,
+                    span,
+                    SymbolUse::Reference(SymbolContext::configuration(span)),
+                )
+            })
     }
 
     pub(super) fn substitute_macro_parameters(
@@ -1062,9 +1068,6 @@ pub(crate) enum Origin {
     /// An origin specified by name (which would refer to e.g. an
     /// equality).
     Symbolic(Span, SymbolName),
-    /// A deduced origin is a symbolic origin whose location we deduced
-    /// by placing it immediately after the end of the preceding block.
-    Deduced(Span, SymbolName, Address),
 }
 
 impl Display for Origin {
@@ -1072,9 +1075,6 @@ impl Display for Origin {
         match self {
             Origin::Literal(_span, addr) => fmt::Display::fmt(&addr, f),
             Origin::Symbolic(_span, sym) => fmt::Display::fmt(&sym, f),
-            Origin::Deduced(_span, name, address) => {
-                write!(f, "{name} (placed at {address:06o})")
-            }
         }
     }
 }
@@ -1092,9 +1092,7 @@ impl Origin {
 impl Spanned for Origin {
     fn span(&self) -> Span {
         match self {
-            Origin::Literal(span, _) | Origin::Symbolic(span, _) | Origin::Deduced(span, _, _) => {
-                *span
-            }
+            Origin::Literal(span, _) | Origin::Symbolic(span, _) => *span,
         }
     }
 }
@@ -1102,9 +1100,7 @@ impl Spanned for Origin {
 impl Octal for Origin {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Origin::Literal(_span, address) | Origin::Deduced(_span, _, address) => {
-                fmt::Octal::fmt(&address, f)
-            }
+            Origin::Literal(_span, address) => fmt::Octal::fmt(&address, f),
             Origin::Symbolic(_span, name) => fmt::Display::fmt(&name, f),
         }
     }
@@ -1118,12 +1114,11 @@ impl Origin {
         let mut result = Vec::with_capacity(1);
         match self {
             Origin::Literal(_span, _) => (),
-            org @ Origin::Deduced(span, name, _) | org @ Origin::Symbolic(span, name) => result
-                .push((
-                    name.clone(),
-                    *span,
-                    SymbolUse::Definition(ExplicitDefinition::Origin(org.clone(), block_id)),
-                )),
+            org @ Origin::Symbolic(span, name) => result.push((
+                name.clone(),
+                *span,
+                SymbolUse::Definition(ExplicitDefinition::Origin(org.clone(), block_id)),
+            )),
         }
         result.into_iter()
     }
@@ -1477,7 +1472,7 @@ impl Spanned for TaggedProgramInstruction {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct InstructionSequence {
-    pub(super) local_symbols: Option<SymbolTable>,
+    pub(super) local_symbols: Option<ExplicitSymbolTable>,
     pub(super) instructions: Vec<TaggedProgramInstruction>,
 }
 
@@ -1517,22 +1512,18 @@ where
 fn build_local_symbol_table<'a, I>(
     block_identifier: BlockIdentifier,
     instructions: I,
-) -> Result<SymbolTable, OneOrMore<BadSymbolDefinition>>
+) -> Result<ExplicitSymbolTable, OneOrMore<BadSymbolDefinition>>
 where
     I: Iterator<Item = &'a TaggedProgramInstruction>,
 {
     let mut errors: Vec<BadSymbolDefinition> = Default::default();
-    let mut local_symbols = SymbolTable::default();
+    let mut local_symbols = ExplicitSymbolTable::default();
     for (offset, instruction) in block_items_with_offset(instructions) {
-        for (symbol_name, span, definition) in instruction
+        for (symbol_name, _span, definition) in instruction
             .symbol_uses(block_identifier, offset)
             .filter_map(definitions_only)
         {
-            if let Err(e) = local_symbols.define(
-                span,
-                symbol_name.clone(),
-                SymbolDefinition::Explicit(definition),
-            ) {
+            if let Err(e) = local_symbols.define(symbol_name.clone(), definition) {
                 errors.push(e);
             }
         }
@@ -1561,7 +1552,7 @@ fn test_build_local_symbol_table_happy_case() {
     };
 
     let seq = InstructionSequence {
-        local_symbols: Some(SymbolTable::default()),
+        local_symbols: Some(ExplicitSymbolTable::default()),
         instructions: vec![
             // Two lines which are identical (hence with the same tag)
             // apart from their spans.
@@ -1570,27 +1561,25 @@ fn test_build_local_symbol_table_happy_case() {
         ],
     };
 
-    let mut expected: SymbolTable = SymbolTable::default();
+    let mut expected: ExplicitSymbolTable = ExplicitSymbolTable::default();
     expected
         .define(
-            span(0..1),
             SymbolName::from("T"),
-            SymbolDefinition::Explicit(ExplicitDefinition::Tag(TagDefinition::Unresolved {
+            ExplicitDefinition::Tag(TagDefinition::Unresolved {
                 block_id: BlockIdentifier::from(0),
                 block_offset: u18!(0),
                 span: span(0..1),
-            })),
+            }),
         )
         .expect("symbol definition should be OK since there is no other defintion for that symbol");
     expected
         .define(
-            span(5..6),
             SymbolName::from("U"),
-            SymbolDefinition::Explicit(ExplicitDefinition::Tag(TagDefinition::Unresolved {
+            ExplicitDefinition::Tag(TagDefinition::Unresolved {
                 block_id: BlockIdentifier::from(0),
                 block_offset: u18!(1),
                 span: span(5..6),
-            })),
+            }),
         )
         .expect("symbol definition should be OK since there is no other defintion for that symbol");
     assert_eq!(
@@ -1619,7 +1608,7 @@ fn test_build_local_symbol_table_detects_tag_conflict() {
     };
 
     let seq = InstructionSequence {
-        local_symbols: Some(SymbolTable::default()),
+        local_symbols: Some(ExplicitSymbolTable::default()),
         instructions: vec![
             // Two lines which are identical (hence with the same tag)
             // apart from their spans.
@@ -1633,20 +1622,16 @@ fn test_build_local_symbol_table_detects_tag_conflict() {
         Err(OneOrMore::new(BadSymbolDefinition::Incompatible(
             SymbolName::from("T"),
             span(5..6),
-            Box::new(SymbolDefinition::Explicit(ExplicitDefinition::Tag(
-                TagDefinition::Unresolved {
-                    block_id: BlockIdentifier::from(0),
-                    block_offset: u18!(0),
-                    span: span(0..1),
-                }
-            ))),
-            Box::new(SymbolDefinition::Explicit(ExplicitDefinition::Tag(
-                TagDefinition::Unresolved {
-                    block_id: BlockIdentifier::from(0),
-                    block_offset: u18!(1),
-                    span: span(5..6),
-                }
-            )))
+            Box::new(ExplicitDefinition::Tag(TagDefinition::Unresolved {
+                block_id: BlockIdentifier::from(0),
+                block_offset: u18!(0),
+                span: span(0..1),
+            })),
+            Box::new(ExplicitDefinition::Tag(TagDefinition::Unresolved {
+                block_id: BlockIdentifier::from(0),
+                block_offset: u18!(1),
+                span: span(5..6),
+            }))
         )))
     );
 }
@@ -1662,11 +1647,12 @@ impl InstructionSequence {
 
     pub(super) fn assign_rc_words<R: RcAllocator>(
         &mut self,
-        symtab: &mut SymbolTable,
+        explicit_symtab: &mut ExplicitSymbolTable,
+        implicit_symtab: &mut ImplicitSymbolTable,
         rc_allocator: &mut R,
     ) -> Result<(), RcWordAllocationFailure> {
         for ref mut statement in self.instructions.iter_mut() {
-            statement.assign_rc_words(symtab, rc_allocator)?;
+            statement.assign_rc_words(explicit_symtab, implicit_symtab, rc_allocator)?;
         }
         Ok(())
     }
@@ -1675,8 +1661,8 @@ impl InstructionSequence {
         &self,
         block_id: BlockIdentifier,
     ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
-        let no_symbols = SymbolTable::default();
-        let local_scope: &SymbolTable = self.local_symbols.as_ref().unwrap_or(&no_symbols);
+        let no_symbols = ExplicitSymbolTable::default();
+        let local_scope: &ExplicitSymbolTable = self.local_symbols.as_ref().unwrap_or(&no_symbols);
         let mut result: Vec<(SymbolName, Span, SymbolUse)> = Vec::new();
 
         for (off, statement) in block_items_with_offset(self.instructions.iter()) {
@@ -1869,7 +1855,7 @@ impl MacroDefinition {
         bindings: &MacroParameterBindings,
         macros: &BTreeMap<SymbolName, MacroDefinition>,
     ) -> InstructionSequence {
-        let mut local_symbols = SymbolTable::default();
+        let mut local_symbols = ExplicitSymbolTable::default();
         let mut instructions: Vec<TaggedProgramInstruction> = Vec::with_capacity(self.body.len());
         for body_line in self.body.iter() {
             match body_line {
@@ -1899,13 +1885,15 @@ impl MacroDefinition {
                 }
                 // Equalities and tags which occur inside the body of
                 // a macro are not visible outside it.
-                MacroBodyLine::Equality(Equality { span, name, value }) => {
+                MacroBodyLine::Equality(Equality {
+                    span: _,
+                    name,
+                    value,
+                }) => {
                     let value: EqualityValue = value.substitute_macro_parameters(bindings, macros);
-                    if let Err(e) = local_symbols.define(
-                        *span,
-                        name.clone(),
-                        SymbolDefinition::Explicit(ExplicitDefinition::Equality(value)),
-                    ) {
+                    if let Err(e) =
+                        local_symbols.define(name.clone(), ExplicitDefinition::Equality(value))
+                    {
                         // We do not expect this to fail because only
                         // tag definitions can be invalid, equalities
                         // cannot (as long as the right-hand-side can

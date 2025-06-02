@@ -15,20 +15,19 @@ use tracing::{event, span, Level};
 use super::ast::*;
 #[cfg(test)]
 use super::collections::OneOrMore;
-use super::eval::extract_final_equalities;
 use super::eval::Evaluate;
 use super::eval::HereValue;
-use super::eval::{EvaluationContext, RcBlock};
+use super::eval::{extract_final_equalities, EvaluationContext, RcBlock};
 use super::lexer;
 use super::listing::*;
 use super::parser::parse_source_file;
 use super::span::*;
 use super::state::{NumeralMode, State};
-use super::symbol::SymbolName;
+use super::symbol::{SymbolContextMergeError, SymbolName};
 use super::symtab::{
-    assign_default_rc_word_tags, BadSymbolDefinition, BlockPosition, FinalSymbolDefinition,
-    FinalSymbolTable, FinalSymbolType, IndexRegisterAssigner, MemoryMap, SymbolDefinition,
-    SymbolTable,
+    assign_default_rc_word_tags, BadSymbolDefinition, BlockPosition, ExplicitSymbolTable,
+    FinalSymbolDefinition, FinalSymbolTable, FinalSymbolType, ImplicitSymbolTable,
+    IndexRegisterAssigner, MemoryMap,
 };
 use super::types::*;
 use base::prelude::{Address, IndexBy, Unsigned18Bit, Unsigned36Bit};
@@ -187,7 +186,13 @@ fn assemble_nonempty_input(input: &str) -> AssemblerPass1Or2Output {
 #[cfg(test)]
 pub(crate) fn assemble_nonempty_valid_input(
     input: &str,
-) -> (Directive, SymbolTable, MemoryMap, IndexRegisterAssigner) {
+) -> (
+    Directive,
+    ExplicitSymbolTable,
+    ImplicitSymbolTable,
+    MemoryMap,
+    IndexRegisterAssigner,
+) {
     match assemble_nonempty_input(input) {
         AssemblerPass1Or2Output::Pass1Failed(Err(e)) => {
             panic!("pass 1 failed with an error result: {e}");
@@ -208,7 +213,8 @@ pub(crate) fn assemble_nonempty_valid_input(
                     }
                     Pass2Output {
                         directive: Some(directive),
-                        symbols,
+                        explicit_symbols,
+                        implicit_symbols,
                         memory_map,
                         index_register_assigner,
                         errors,
@@ -216,7 +222,13 @@ pub(crate) fn assemble_nonempty_valid_input(
                         if !errors.is_empty() {
                             panic!("input should be valid: {:?}", &errors);
                         } else {
-                            (directive, symbols, memory_map, index_register_assigner)
+                            (
+                                directive,
+                                explicit_symbols,
+                                implicit_symbols,
+                                memory_map,
+                                index_register_assigner,
+                            )
                         }
                     }
                 }
@@ -295,7 +307,8 @@ impl Binary {
 #[derive(Debug, PartialEq, Eq)]
 struct Pass2Output<'a> {
     directive: Option<Directive>,
-    symbols: SymbolTable,
+    explicit_symbols: ExplicitSymbolTable,
+    implicit_symbols: ImplicitSymbolTable,
     memory_map: MemoryMap,
     index_register_assigner: IndexRegisterAssigner, // not cloneable
     errors: Vec<Rich<'a, lexer::Token>>,
@@ -303,9 +316,10 @@ struct Pass2Output<'a> {
 
 fn initial_symbol_table<'a>(
     source_file: &SourceFile,
-) -> Result<SymbolTable, Vec<Rich<'a, lexer::Token>>> {
+) -> Result<(ExplicitSymbolTable, ImplicitSymbolTable), Vec<Rich<'a, lexer::Token>>> {
     let mut errors = Vec::new();
-    let mut symtab = SymbolTable::new();
+    // TODO: split these out into separate functions.
+    let mut explicit_symbols = ExplicitSymbolTable::new();
     // All explicit definitions in the program take effect either
     // locally (for the bodies of macro expansions) or globally (for
     // everything else).  So, before we can enumerate all global
@@ -313,8 +327,7 @@ fn initial_symbol_table<'a>(
     // are references to something defined in a local scope.  And so
     // we need to enumerate definitions before references.
     for (symbol, span, definition) in source_file.global_symbol_definitions() {
-        let definition = SymbolDefinition::Explicit(definition.clone());
-        match symtab.define(span, symbol.clone(), definition) {
+        match explicit_symbols.define(symbol.clone(), definition.clone()) {
             Ok(_) => (),
             Err(e) => {
                 errors.push(Rich::custom(
@@ -324,11 +337,23 @@ fn initial_symbol_table<'a>(
             }
         }
     }
-    for (symbol, span, context) in source_file.global_symbol_references() {
-        symtab.record_usage_context(symbol.clone(), span, context)
+    let mut implicit_symbols = ImplicitSymbolTable::default();
+    for (symbol, span, context) in source_file
+        .global_symbol_references()
+        .filter(|(symbol, _span, _context)| !explicit_symbols.is_defined(symbol))
+    {
+        match implicit_symbols.record_usage_context(symbol.clone(), context) {
+            Ok(()) => (),
+            Err(SymbolContextMergeError::ConflictingOrigin(name, _bid1, _bid2)) => {
+                errors.push(Rich::custom(
+                    span,
+                    format!("origin {name} is used for two different blocks"),
+                ));
+            }
+        }
     }
     if errors.is_empty() {
-        Ok(symtab)
+        Ok((explicit_symbols, implicit_symbols))
     } else {
         Err(errors)
     }
@@ -352,7 +377,7 @@ fn assemble_pass2(
         let span: Span = block.origin_span();
         (span, block.origin.clone(), block.instruction_count())
     }));
-    let mut symtab = match initial_symbol_table(&source_file) {
+    let (mut explicit_symbols, mut implicit_symbols) = match initial_symbol_table(&source_file) {
         Ok(syms) => syms,
         Err(errors) => {
             return Err(AssemblerFailure::BadProgram(fail_with_diagnostics(
@@ -373,7 +398,8 @@ fn assemble_pass2(
 
     for (block_identifier, block_position) in tmp_blocks.into_iter() {
         let mut ctx = EvaluationContext {
-            symtab: &mut symtab,
+            explicit_symtab: &mut explicit_symbols,
+            implicit_symtab: &mut implicit_symbols,
             memory_map: &memory_map,
             here: HereValue::NotAllowed,
             index_register_assigner: &mut index_register_assigner,
@@ -417,7 +443,8 @@ fn assemble_pass2(
     }
     Ok(Pass2Output {
         directive: Some(directive),
-        symbols: symtab,
+        explicit_symbols,
+        implicit_symbols,
         memory_map,
         index_register_assigner,
         errors: Vec::new(),
@@ -453,7 +480,8 @@ impl RcUpdater for NoRcBlock {
 /// Pass 3 generates binary code.
 fn assemble_pass3(
     mut directive: Directive,
-    symtab: &mut SymbolTable,
+    explicit_symtab: &mut ExplicitSymbolTable,
+    implicit_symtab: &mut ImplicitSymbolTable,
     memory_map: &mut MemoryMap,
     index_register_assigner: &mut IndexRegisterAssigner,
     body: &str,
@@ -477,31 +505,38 @@ fn assemble_pass3(
         entry_point: _,
     } = directive;
 
+    // TODO: we should be able to convert implicit_symtab into
+    // final_symbols (and drop implicit_symtab).
     let mut final_symbols = FinalSymbolTable::default();
-    let mut undefined_symbols: BTreeMap<SymbolName, Span> = Default::default();
+    let mut bad_symbol_definitions: BTreeMap<SymbolName, (Span, ProgramError)> = Default::default();
     // TODO: consider moving this into pass 2.
     for block in blocks.values() {
         if let Some(Origin::Symbolic(span, symbol_name)) = block.origin.as_ref() {
-            assert!(symtab.is_defined(symbol_name));
-
-            final_symbols.define_if_undefined(
-                symbol_name.clone(),
-                FinalSymbolType::Tag, // actually origin
-                extract_span(body, span).trim().to_string(),
-                FinalSymbolDefinition::PositionIndependent(block.location.into()),
-            );
+            if !explicit_symtab.is_defined(symbol_name) {
+                final_symbols.define_if_undefined(
+                    symbol_name.clone(),
+                    FinalSymbolType::Tag, // actually origin
+                    extract_span(body, span).trim().to_string(),
+                    FinalSymbolDefinition::PositionIndependent(block.location.into()),
+                );
+            }
         }
     }
 
+    // We call extract_final_equalities here is to ensure that we
+    // diagnose all looping definitions of equalities and get the data
+    // we need for the listing, if there will be one.  It isn't
+    // actually needed to generate the output binary.
     extract_final_equalities(
         equalities.as_slice(),
         body,
-        symtab,
+        explicit_symtab,
+        implicit_symtab,
         memory_map,
         index_register_assigner,
         &mut rcblock,
         &mut final_symbols,
-        &mut undefined_symbols,
+        &mut bad_symbol_definitions,
     )?;
 
     let convert_rc_failure = |e: RcWordAllocationFailure| -> AssemblerFailure {
@@ -534,12 +569,26 @@ fn assemble_pass3(
     };
 
     for directive_block in blocks.values_mut() {
-        if let Err(e) = directive_block.assign_rc_words(symtab, &mut rcblock) {
+        if let Err(e) =
+            directive_block.assign_rc_words(explicit_symtab, implicit_symtab, &mut rcblock)
+        {
             return Err(convert_rc_failure(e));
         }
     }
 
-    if let Err(e) = assign_default_rc_word_tags(symtab, &mut rcblock, &mut final_symbols) {
+    for name in implicit_symtab.symbols() {
+        match (implicit_symtab.get(name), explicit_symtab.get(name)) {
+            (Some(implicit), Some(explicit)) => {
+                panic!("symbol {name} appears in both the implicit ({implicit:#?} and the explicit ({explicit:#?} symbol tables");
+            }
+            (Some(_), None) | (None, Some(_)) => (),
+            (None, None) => {
+                panic!("symbol {name} is returned by ImplicitSymbolTable::symbols() but is not defined there");
+            }
+        }
+    }
+
+    if let Err(e) = assign_default_rc_word_tags(implicit_symtab, &mut rcblock, &mut final_symbols) {
         return Err(convert_rc_failure(e));
     }
 
@@ -564,14 +613,15 @@ fn assemble_pass3(
 
         let words = directive_block.build_binary_block(
             directive_block.location,
-            symtab,
+            explicit_symtab,
+            implicit_symtab,
             memory_map,
             index_register_assigner,
             &mut rcblock,
             &mut final_symbols,
             body,
             listing,
-            &mut undefined_symbols,
+            &mut bad_symbol_definitions,
         )?;
         if words.is_empty() {
             event!(
@@ -617,14 +667,11 @@ fn assemble_pass3(
         binary.add_chunk(chunk);
     }
 
-    if !undefined_symbols.is_empty() {
+    if !bad_symbol_definitions.is_empty() {
         return Err(AssemblerFailure::BadProgram(
-            undefined_symbols
+            bad_symbol_definitions
                 .into_iter()
-                .map(|(name, span)| {
-                    let e = ProgramError::UnexpectedlyUndefinedSymbol { name, span };
-                    (body, e).into()
-                })
+                .map(|(_name, (_span, error))| (body, error).into())
                 .collect(),
         ));
     }
@@ -710,7 +757,8 @@ pub(crate) fn assemble_source(
             p2output
                 .directive
                 .expect("directive should have already been checked for None-ness"),
-            &mut p2output.symbols,
+            &mut p2output.explicit_symbols,
+            &mut p2output.implicit_symbols,
             &mut p2output.memory_map,
             &mut p2output.index_register_assigner,
             source_file_body,

@@ -2,8 +2,6 @@ use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::fmt::{self, Debug, Display, Formatter};
 
-use tracing::{event, Level};
-
 use base::prelude::*;
 use base::subword;
 
@@ -11,7 +9,7 @@ use super::ast::{EqualityValue, Origin, RcAllocator, RcUpdater, RcWordAllocation
 use super::collections::OneOrMore;
 use super::eval::{Evaluate, EvaluationContext, SymbolLookupFailure};
 use super::span::*;
-use super::symbol::{SymbolContext, SymbolName};
+use super::symbol::{SymbolContext, SymbolContextMergeError, SymbolName};
 use super::types::{
     offset_from_origin, BlockIdentifier, MachineLimitExceededFailure, RcWordSource,
 };
@@ -24,20 +22,6 @@ pub(super) struct BlockPosition {
     pub(super) origin: Option<Origin>,
     pub(super) block_address: Option<Address>,
     pub(super) block_size: Unsigned18Bit,
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-struct InternalSymbolDef {
-    // Where the definition exists
-    span: Span,
-    // What the definition is.
-    def: SymbolDefinition,
-}
-
-impl From<(SymbolDefinition, Span)> for InternalSymbolDef {
-    fn from((def, span): (SymbolDefinition, Span)) -> InternalSymbolDef {
-        InternalSymbolDef { def, span }
-    }
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -110,13 +94,60 @@ impl IndexRegisterAssigner {
     }
 }
 
-/// A symbol which has a reference but no definition is known, will
-/// ben represented it by having it map to None.  The rules for how
-/// such symbols are assigned values are indicated in "Unassigned
+/// The rules for how symbols which have references but no explicit
+/// definition are assigned values are indicated in "Unassigned
 /// Symexes" in section 6-2.2 of the User Handbook.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub(crate) struct SymbolTable {
-    definitions: BTreeMap<SymbolName, InternalSymbolDef>,
+pub(crate) struct ImplicitSymbolTable {
+    definitions: BTreeMap<SymbolName, ImplicitDefinition>,
+}
+
+impl ImplicitSymbolTable {
+    pub(super) fn symbols(&self) -> impl Iterator<Item = &SymbolName> {
+        self.definitions.keys()
+    }
+
+    pub(crate) fn get(&self, name: &SymbolName) -> Option<&ImplicitDefinition> {
+        self.definitions.get(name)
+    }
+
+    pub(super) fn get_mut(&mut self, name: &SymbolName) -> Option<&mut ImplicitDefinition> {
+        self.definitions.get_mut(name)
+    }
+
+    pub(crate) fn remove(&mut self, name: &SymbolName) -> Option<ImplicitDefinition> {
+        self.definitions.remove(name)
+    }
+
+    pub(crate) fn record_usage_context(
+        &mut self,
+        name: SymbolName,
+        context: SymbolContext,
+    ) -> Result<(), SymbolContextMergeError> {
+        self.definitions
+            .entry(name.clone())
+            .or_insert_with(|| ImplicitDefinition::Undefined(context.clone()))
+            .merge_context(&name, context.clone())
+    }
+
+    pub(super) fn record_computed_origin_value(
+        &mut self,
+        name: SymbolName,
+        value: Address,
+        block_id: BlockIdentifier,
+        span: Span,
+    ) -> Result<(), SymbolContextMergeError> {
+        let context = SymbolContext::origin(block_id, span);
+        self.definitions
+            .entry(name.clone())
+            .or_insert_with(|| ImplicitDefinition::DefaultAssigned(value.into(), context.clone()))
+            .merge_context(&name, context)
+    }
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub(crate) struct ExplicitSymbolTable {
+    definitions: BTreeMap<SymbolName, ExplicitDefinition>,
 }
 
 #[derive(Debug, Default)]
@@ -125,43 +156,37 @@ pub(crate) struct LookupOperation {
     pub(super) deps_in_order: Vec<SymbolName>,
 }
 
-impl Spanned for (&Span, &SymbolName, &SymbolDefinition) {
+// TODO: check whether we still need this at all.
+impl Spanned for (&Span, &SymbolName, &ExplicitDefinition) {
     fn span(&self) -> Span {
-        *self.0
+        let r1: &Span = self.0;
+        let r2: Span = self.2.span();
+        assert_eq!(r1, &r2);
+        r2
     }
 }
 
-impl Evaluate for (&Span, &SymbolName, &SymbolDefinition) {
+impl Evaluate for (&Span, &SymbolName, &ExplicitDefinition) {
     fn evaluate<R: RcUpdater>(
         &self,
         ctx: &mut EvaluationContext<R>,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-        let (span, name, def): (&Span, &SymbolName, &SymbolDefinition) = *self;
+        let (_span, name, def): (&Span, &SymbolName, &ExplicitDefinition) = *self;
         match def {
-            SymbolDefinition::Implicit(ImplicitDefinition::DefaultAssigned(value, _)) => Ok(*value),
-            SymbolDefinition::Explicit(ExplicitDefinition::Origin(
-                Origin::Symbolic(_span, name),
-                _block_id,
-            )) => {
+            ExplicitDefinition::Origin(Origin::Symbolic(_span, name), _block_id) => {
                 unreachable!("symbolic origin {name} should already have been deduced")
             }
-            SymbolDefinition::Explicit(ExplicitDefinition::Origin(
-                Origin::Literal(_span, address),
-                _block_id,
-            ))
-            | SymbolDefinition::Explicit(ExplicitDefinition::Origin(
-                Origin::Deduced(_span, _, address),
-                _block_id,
-            )) => Ok((*address).into()),
-            SymbolDefinition::Explicit(ExplicitDefinition::Tag(TagDefinition::Resolved {
-                span: _,
-                address,
-            })) => Ok(address.into()),
-            SymbolDefinition::Explicit(ExplicitDefinition::Tag(TagDefinition::Unresolved {
+            ExplicitDefinition::Origin(Origin::Literal(_span, address), _block_id) => {
+                Ok((*address).into())
+            }
+            ExplicitDefinition::Tag(TagDefinition::Resolved { span: _, address }) => {
+                Ok(address.into())
+            }
+            ExplicitDefinition::Tag(TagDefinition::Unresolved {
                 block_id,
                 block_offset,
                 span,
-            })) => {
+            }) => {
                 if let Some(block_position) = ctx.memory_map.get(block_id).cloned() {
                     let what: (&BlockIdentifier, &BlockPosition) = (block_id, &block_position);
                     let block_origin: Address = subword::right_half(what.evaluate(ctx)?).into();
@@ -182,32 +207,23 @@ impl Evaluate for (&Span, &SymbolName, &SymbolDefinition) {
                     );
                 }
             }
-            SymbolDefinition::Explicit(ExplicitDefinition::Equality(expression)) => {
-                expression.evaluate(ctx)
-            }
-            SymbolDefinition::Implicit(ImplicitDefinition::Undefined(context_union)) => {
-                Err(SymbolLookupFailure::Missing {
-                    name: name.to_owned(),
-                    span: *span,
-                    uses: context_union.clone(),
-                })
-            }
+            ExplicitDefinition::Equality(expression) => expression.evaluate(ctx),
         }
     }
 }
 
-impl SymbolTable {
-    pub(crate) fn new() -> SymbolTable {
-        SymbolTable {
+impl ExplicitSymbolTable {
+    pub(crate) fn new() -> ExplicitSymbolTable {
+        ExplicitSymbolTable {
             definitions: Default::default(),
         }
     }
 
-    pub(crate) fn get(&self, name: &SymbolName) -> Option<&SymbolDefinition> {
-        self.definitions.get(name).map(|internal| &internal.def)
+    pub(crate) fn get(&self, name: &SymbolName) -> Option<&ExplicitDefinition> {
+        self.definitions.get(name)
     }
 
-    pub(crate) fn get_clone(&mut self, name: &SymbolName) -> Option<SymbolDefinition> {
+    pub(crate) fn get_clone(&mut self, name: &SymbolName) -> Option<ExplicitDefinition> {
         self.get(name).cloned()
     }
 
@@ -217,58 +233,23 @@ impl SymbolTable {
 
     pub(crate) fn define(
         &mut self,
-        span: Span,
         name: SymbolName,
-        new_definition: SymbolDefinition,
+        new_definition: ExplicitDefinition,
     ) -> Result<(), BadSymbolDefinition> {
-        dbg!(&new_definition);
         if let Some(existing) = self.definitions.get_mut(&name) {
-            dbg!(&existing);
-            if matches!(
-                &new_definition,
-                SymbolDefinition::Implicit(ImplicitDefinition::Undefined(_)),
-            ) {
-                event!(Level::DEBUG, "skipping redefinition of symbol {name} with undefined value because it already has a definition, {}", existing.def);
-                Ok(())
-            } else {
-                existing.def.override_with(name, span, new_definition)
-            }
+            existing.override_with(name, new_definition)
         } else {
-            self.definitions.insert(
-                name,
-                InternalSymbolDef {
-                    span,
-                    def: new_definition,
-                },
-            );
+            self.definitions.insert(name, new_definition);
             Ok(())
         }
     }
-
-    pub(crate) fn record_usage_context(
-        &mut self,
-        name: SymbolName,
-        span: Span,
-        context: SymbolContext,
-    ) {
-        self.definitions
-            .entry(name)
-            .and_modify(|def| {
-                def.def.merge_context(context.clone());
-            })
-            .or_insert_with(|| InternalSymbolDef {
-                span,
-                def: SymbolDefinition::Implicit(ImplicitDefinition::Undefined(context.clone())),
-            });
-    }
-
     pub(crate) fn merge(
         &mut self,
-        other: SymbolTable,
+        other: ExplicitSymbolTable,
     ) -> Result<(), OneOrMore<BadSymbolDefinition>> {
         let mut errors: Vec<BadSymbolDefinition> = Vec::new();
-        for (name, InternalSymbolDef { span, def }) in other.definitions.into_iter() {
-            if let Err(e) = self.define(span, name, def) {
+        for (name, def) in other.definitions.into_iter() {
+            if let Err(e) = self.define(name, def) {
                 errors.push(e);
             }
         }
@@ -276,6 +257,13 @@ impl SymbolTable {
             Ok(errors) => Err(errors),
             Err(_) => Ok(()), // errors was empty
         }
+    }
+}
+
+// TODO: do we still need this?
+impl Spanned for (&Span, &SymbolName, &ImplicitDefinition) {
+    fn span(&self) -> Span {
+        *self.0
     }
 }
 
@@ -364,6 +352,14 @@ pub(crate) enum TagDefinition {
     },
 }
 
+impl Spanned for TagDefinition {
+    fn span(&self) -> Span {
+        match self {
+            TagDefinition::Unresolved { span, .. } | TagDefinition::Resolved { span, .. } => *span,
+        }
+    }
+}
+
 impl Display for TagDefinition {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -391,6 +387,16 @@ pub(crate) enum ExplicitDefinition {
     Origin(Origin, BlockIdentifier),
 }
 
+impl Spanned for ExplicitDefinition {
+    fn span(&self) -> Span {
+        match self {
+            ExplicitDefinition::Tag(tag_definition) => tag_definition.span(),
+            ExplicitDefinition::Equality(equality_value) => equality_value.span(),
+            ExplicitDefinition::Origin(origin, _block_identifier) => origin.span(),
+        }
+    }
+}
+
 impl Display for ExplicitDefinition {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -408,10 +414,47 @@ impl Display for ExplicitDefinition {
     }
 }
 
+impl ExplicitDefinition {
+    pub(crate) fn override_with(
+        &mut self,
+        name: SymbolName,
+        update: ExplicitDefinition,
+    ) -> Result<(), BadSymbolDefinition> {
+        match (self, update) {
+            (current @ ExplicitDefinition::Equality(_), new @ ExplicitDefinition::Equality(_)) => {
+                // This is always OK.
+                *current = new;
+                Ok(())
+            }
+            (current, new) => {
+                if current == &new {
+                    Ok(()) // nothing to do.
+                } else {
+                    Err(BadSymbolDefinition::Incompatible(
+                        name,
+                        new.span(),
+                        Box::new(current.clone()),
+                        Box::new(new),
+                    ))
+                }
+            }
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub(crate) enum ImplicitDefinition {
     Undefined(SymbolContext),
     DefaultAssigned(Unsigned36Bit, SymbolContext),
+}
+
+impl ImplicitDefinition {
+    pub(crate) fn context(&self) -> &SymbolContext {
+        match self {
+            ImplicitDefinition::Undefined(context)
+            | ImplicitDefinition::DefaultAssigned(_, context) => context,
+        }
+    }
 }
 
 impl Display for ImplicitDefinition {
@@ -427,21 +470,6 @@ impl Display for ImplicitDefinition {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub(crate) enum SymbolDefinition {
-    Explicit(ExplicitDefinition),
-    Implicit(ImplicitDefinition),
-}
-
-impl Display for SymbolDefinition {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            SymbolDefinition::Implicit(definition) => write!(f, "{}", definition),
-            SymbolDefinition::Explicit(definition) => write!(f, "{}", definition),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
 pub(crate) enum BadSymbolDefinition {
     Incompatible(
         SymbolName,
@@ -451,8 +479,8 @@ pub(crate) enum BadSymbolDefinition {
         // will give rise to large disparities between the Ok() and
         // Err() variants of results that directly or indirectly
         // include BadSymbolDefinition instances.
-        Box<SymbolDefinition>,
-        Box<SymbolDefinition>,
+        Box<ExplicitDefinition>,
+        Box<ExplicitDefinition>,
     ),
 }
 
@@ -476,10 +504,7 @@ impl Display for BadSymbolDefinition {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let BadSymbolDefinition::Incompatible(name, _, def1, def2) = self;
         match (&**def1, &**def2) {
-            (
-                SymbolDefinition::Explicit(ExplicitDefinition::Tag(td1)),
-                SymbolDefinition::Explicit(ExplicitDefinition::Tag(td2)),
-            ) => {
+            (ExplicitDefinition::Tag(td1), ExplicitDefinition::Tag(td2)) => {
                 write!(
                     f,
                     "{name} is defined more than once, but this is not allowed for tags (tag defitions are {td1} and {td2})"
@@ -494,49 +519,19 @@ impl Display for BadSymbolDefinition {
 
 impl std::error::Error for BadSymbolDefinition {}
 
-impl SymbolDefinition {
-    pub(crate) fn merge_context(&mut self, context: SymbolContext) {
-        if let SymbolDefinition::Implicit(ImplicitDefinition::Undefined(current)) = self {
-            match current.merge(context) {
-                Ok(_) => (),
-                Err(e) => {
-                    panic!("cannot have an origin block number conflict if one of the merge sides has no block number: {e:?}")
-                }
-            }
-        }
-    }
-
-    pub(crate) fn override_with(
+impl ImplicitDefinition {
+    pub(crate) fn merge_context(
         &mut self,
-        name: SymbolName,
-        span: Span,
-        update: SymbolDefinition,
-    ) -> Result<(), BadSymbolDefinition> {
-        use SymbolDefinition::{Explicit, Implicit};
-        match (self, update) {
-            (
-                current @ Explicit(ExplicitDefinition::Equality(_)),
-                new @ Explicit(ExplicitDefinition::Equality(_)),
-            ) => {
-                // This is always OK.
-                *current = new;
-                Ok(())
-            }
-            (current @ Implicit(ImplicitDefinition::Undefined(_)), new) => {
-                // This is always OK.
-                *current = new;
-                Ok(())
-            }
-            (current, new) => {
-                if current == &new {
-                    Ok(()) // nothing to do.
+        name: &SymbolName,
+        context: SymbolContext,
+    ) -> Result<(), SymbolContextMergeError> {
+        match self {
+            ImplicitDefinition::Undefined(current) => current.merge(name, context),
+            ImplicitDefinition::DefaultAssigned(value, existing_context) => {
+                if &context != existing_context {
+                    panic!("attempting to change the rescorded usage context for {name} after a default value {value:?} has been assigned; previous context was {existing_context:?}, new context is {context:?}");
                 } else {
-                    Err(BadSymbolDefinition::Incompatible(
-                        name,
-                        span,
-                        Box::new(current.clone()),
-                        Box::new(new),
-                    ))
+                    Ok(())
                 }
             }
         }
@@ -544,35 +539,25 @@ impl SymbolDefinition {
 }
 
 pub(super) fn assign_default_rc_word_tags<R: RcAllocator>(
-    symtab: &mut SymbolTable,
+    implicit_symtab: &mut ImplicitSymbolTable,
     rcblock: &mut R,
     final_symbols: &mut FinalSymbolTable,
 ) -> Result<(), RcWordAllocationFailure> {
-    for (name, def) in symtab.definitions.iter_mut() {
-        *def = match &def {
-            InternalSymbolDef {
-                span,
-                def: SymbolDefinition::Implicit(ImplicitDefinition::Undefined(context)),
-            } if context.requires_rc_word_allocation() => {
+    for (name, def) in implicit_symtab.definitions.iter_mut() {
+        if let ImplicitDefinition::Undefined(context) = def {
+            if context.requires_rc_word_allocation() {
+                let span: Span = *context.any_span();
                 let value = Unsigned36Bit::ZERO;
-                let addr = rcblock
-                    .allocate(RcWordSource::DefaultAssignment(*span, name.clone()), value)?;
+                let addr =
+                    rcblock.allocate(RcWordSource::DefaultAssignment(span, name.clone()), value)?;
                 final_symbols.define(
                     name.clone(),
                     FinalSymbolType::Equality,
                     value.to_string(),
                     FinalSymbolDefinition::PositionIndependent(value),
                 );
-
-                InternalSymbolDef {
-                    span: *span,
-                    def: SymbolDefinition::Implicit(ImplicitDefinition::DefaultAssigned(
-                        addr.into(),
-                        context.clone(),
-                    )),
-                }
+                *def = ImplicitDefinition::DefaultAssigned(addr.into(), context.clone());
             }
-            other => (*other).clone(),
         }
     }
     Ok(())

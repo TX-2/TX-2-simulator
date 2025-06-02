@@ -16,7 +16,7 @@ use super::super::{
     parser::symex::{parse_multi_syllable_symex, parse_symex},
     state::NumeralMode,
     symbol::SymbolName,
-    symtab::{IndexRegisterAssigner, MemoryMap, SymbolTable},
+    symtab::{ExplicitSymbolTable, ImplicitSymbolTable, IndexRegisterAssigner, MemoryMap},
 };
 use super::*;
 
@@ -1391,14 +1391,16 @@ fn test_multi_syllable_symex() {
 
 #[test]
 fn program_instruction_with_opcode() {
-    let mut nosyms = SymbolTable::default();
+    let mut nosyms = ExplicitSymbolTable::default();
+    let mut implicit_symbols = ImplicitSymbolTable::default();
     let input = "²¹IOS₅₂ 30106";
     let mut memory_map = MemoryMap::new([(span(0..input.len()), None, u18!(1))]);
     let mut index_register_assigner = IndexRegisterAssigner::default();
     let mut rc_block =
         make_empty_rc_block_for_test(Address::from(Unsigned18Bit::from(0o20_000u16)));
     let mut ctx = EvaluationContext {
-        symtab: &mut nosyms,
+        explicit_symtab: &mut nosyms,
+        implicit_symtab: &mut implicit_symbols,
         memory_map: &mut memory_map,
         here: HereValue::Address(Address::ZERO),
         index_register_assigner: &mut index_register_assigner,
@@ -2666,7 +2668,7 @@ mod macro_tests {
         ast::{Atom, HoldBit, InstructionFragment, SourceFile, TaggedProgramInstruction},
         lexer::Token,
         symbol::SymbolName,
-        symtab::{ExplicitDefinition, SymbolDefinition, SymbolTable},
+        symtab::{ExplicitDefinition, ExplicitSymbolTable},
     };
     use super::super::*;
     use super::{
@@ -2851,12 +2853,11 @@ mod macro_tests {
             no_state_setup,
         );
 
-        let symtab: SymbolTable = {
-            let mut st = SymbolTable::default();
+        let symtab: ExplicitSymbolTable = {
+            let mut st = ExplicitSymbolTable::default();
             st.define(
-                span(26..31),
                 SymbolName::from("X"),
-                SymbolDefinition::Explicit(ExplicitDefinition::Equality(EqualityValue::from((
+                ExplicitDefinition::Equality(EqualityValue::from((
                     span(30..31),
                     UntaggedProgramInstruction::from(OneOrMore::new(CommaDelimitedFragment {
                         leading_commas: None,
@@ -2869,7 +2870,7 @@ mod macro_tests {
                         )))),
                         trailing_commas: None,
                     })),
-                )))),
+                ))),
             )
             .expect("assignment should be valid");
             st

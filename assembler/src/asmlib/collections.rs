@@ -97,6 +97,10 @@ impl<T> OneOrMore<T> {
         }
     }
 
+    pub fn as_parts(&self) -> (&T, &Vec<T>) {
+        (&self.head, &self.tail)
+    }
+
     pub fn map<U, F: FnMut(&T) -> U>(&self, mut f: F) -> OneOrMore<U> {
         OneOrMore {
             head: f(&self.head),

@@ -26,7 +26,8 @@ use base::{
 fn assemble_check_symbols(input: &str, target_address: Address, expected: &[(&str, SymbolValue)]) {
     use crate::eval::HereValue;
 
-    let (_directive, mut symtab, mut memory_map, _) = assemble_nonempty_valid_input(input);
+    let (_directive, mut explicit_symbols, mut implicit_symbols, mut memory_map, _) =
+        assemble_nonempty_valid_input(input);
 
     for (name, expected_value) in expected.iter() {
         let sym = SymbolName {
@@ -38,7 +39,8 @@ fn assemble_check_symbols(input: &str, target_address: Address, expected: &[(&st
 
         let mut index_register_assigner: IndexRegisterAssigner = IndexRegisterAssigner::default();
         let mut ctx = EvaluationContext {
-            symtab: &mut symtab,
+            explicit_symtab: &mut explicit_symbols,
+            implicit_symtab: &mut implicit_symbols,
             memory_map: &mut memory_map,
             here: HereValue::Address(target_address),
             index_register_assigner: &mut index_register_assigner,
@@ -121,7 +123,7 @@ fn test_metacommand_dec_changes_default_base() {
     const INPUT: &str = concat!("10\n", "☛☛DECIMAL\n", "10  ** Ten\n");
 
     // When we assemble it
-    let (directive, _, _, index_register_assigner) = assemble_nonempty_valid_input(INPUT);
+    let (directive, _, _, _, index_register_assigner) = assemble_nonempty_valid_input(INPUT);
     assert!(
         index_register_assigner.is_empty(),
         "no index register should have been default-assigned"
@@ -1008,9 +1010,9 @@ fn test_undefined_symbol_in_calculation() {
     let program = assemble_source(input, Default::default()).expect("program is valid");
     dbg!(&program);
 
-    // Then the symbol B is assigned the correct default definition
-    // and the value of A is consistent with that definition.
-    assert_eq!(program.chunks.len(), 1);
+    // Then the symbol B is assigned the correct default definition (1)
+    // and the value of A is consistent with that definition (so, 3).
+    assert_eq!(program.chunks.len(), 1, "no RC-block should be allocated");
     assert_eq!(program.chunks[0].words.len(), 2); // program length
 
     // The potential bug we care about here is the situation in which
@@ -1027,39 +1029,55 @@ fn test_symbol_definition_loop_detection() {
     // Given a program in which two symbols are defined in terms of each other
     let input = concat!("SA = SB\n", "SB = SA\n", "SA\n",);
 
-    fn sa_and_sb(c1: &str, c2: &str) -> bool {
-        matches!((c1, c2), ("SA", "SB") | ("SB", "SA"))
+    fn mirror_image_loops(names1: &OneOrMore<SymbolName>, names2: &OneOrMore<SymbolName>) -> bool {
+        fn stringify(n: &OneOrMore<SymbolName>) -> String {
+            n.iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<String>>()
+                .join("->")
+        }
+        let s1 = stringify(names1);
+        let s2 = stringify(names2);
+        let a_first = "SA->SB->SA";
+        let b_first = "SB->SA->SB";
+        (s1 == a_first && s2 == b_first) || (s1 == b_first && s2 == a_first)
     }
 
     // When I assemble that program
     match assemble_source(input, Default::default()) {
         Err(AssemblerFailure::BadProgram(errors)) => {
-            // Then the error message that results should name both of
+            // Then the error messages that result should name both of
             // the problem symbols.
+            assert_eq!(
+                errors.len(),
+                2,
+                "expected 2 errors from the assembler, but got {}: {errors:#?}",
+                errors.len()
+            );
             match errors.as_slice() {
                 [WithLocation {
                     location: _,
                     inner:
-                        ProgramError::UnexpectedlyUndefinedSymbol {
-                            name:
-                                SymbolName {
-                                    canonical: canonical1,
-                                },
+                        ProgramError::SymbolDefinitionLoop {
+                            symbol_names: symbol_names_1,
                             span: _,
                         },
                 }, WithLocation {
                     location: _,
                     inner:
-                        ProgramError::UnexpectedlyUndefinedSymbol {
-                            name:
-                                SymbolName {
-                                    canonical: canonical2,
-                                },
+                        ProgramError::SymbolDefinitionLoop {
+                            symbol_names: symbol_names_2,
                             span: _,
                         },
-                }] if sa_and_sb(canonical1, canonical2) => (),
+                }] => {
+                    if mirror_image_loops(symbol_names_1, symbol_names_2) {
+                        // All good.
+                    } else {
+                        panic!("loop descriptions are incorrect:\n{symbol_names_1:?}\n{symbol_names_2:?}");
+                    }
+                }
                 otherwise => {
-                    panic!("expected an error from the assembler, but not : {otherwise:?}");
+                    panic!("expected an error from the assembler, but not: {otherwise:?}");
                 }
             }
         }

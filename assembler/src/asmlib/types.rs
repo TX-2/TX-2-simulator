@@ -4,6 +4,7 @@ use std::fmt::{self, Display, Formatter};
 use std::io::Error as IoError;
 use std::path::PathBuf;
 
+use super::collections::OneOrMore;
 use super::span::{Span, Spanned};
 use super::symbol::SymbolName;
 use base::prelude::{Address, Unsigned18Bit};
@@ -130,6 +131,12 @@ impl PartialEq for OrderableSpan {
 
 impl Eq for OrderableSpan {}
 
+impl OrderableSpan {
+    pub(super) fn as_span(&self) -> &Span {
+        &self.0
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord)]
 pub struct BlockIdentifier(usize);
 
@@ -206,6 +213,12 @@ pub struct InconsistentOrigin {
     pub(crate) msg: String,
 }
 
+impl Spanned for InconsistentOrigin {
+    fn span(&self) -> Span {
+        self.span
+    }
+}
+
 impl Display for InconsistentOrigin {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         write!(
@@ -213,12 +226,6 @@ impl Display for InconsistentOrigin {
             "inconsistent definitions for origin {}: {}",
             self.origin_name, self.msg,
         )
-    }
-}
-
-impl Spanned for InconsistentOrigin {
-    fn span(&self) -> Span {
-        self.span
     }
 }
 
@@ -232,6 +239,10 @@ pub enum ProgramError {
     },
     UnexpectedlyUndefinedSymbol {
         name: SymbolName,
+        span: Span,
+    },
+    SymbolDefinitionLoop {
+        symbol_names: OneOrMore<SymbolName>,
         span: Span,
     },
     SyntaxError {
@@ -258,6 +269,7 @@ impl Spanned for ProgramError {
             | BlockTooLong(span, _)
             | InconsistentTag { span, .. }
             | UnexpectedlyUndefinedSymbol { span, .. }
+            | SymbolDefinitionLoop { span, .. }
             | SyntaxError { span, .. } => *span,
         }
     }
@@ -288,6 +300,23 @@ impl Display for ProgramError {
             InconsistentOriginDefinitions(e) => write!(f, "{e}"),
             UnexpectedlyUndefinedSymbol { name, span: _ } => {
                 write!(f, "unexpected undefined symbol: {name}")
+            }
+            SymbolDefinitionLoop {
+                symbol_names,
+                span: _,
+            } => {
+                let (head, tail) = symbol_names.as_parts();
+                write!(
+                    f,
+                    "symbol {head} is undefined because its definition forms a loop"
+                )?;
+                if !tail.is_empty() {
+                    write!(f, ": {head}")?;
+                    for name in tail.iter() {
+                        write!(f, "->{name}")?;
+                    }
+                }
+                Ok(())
             }
             SyntaxError { span: _, msg } => {
                 write!(f, "{}", msg)

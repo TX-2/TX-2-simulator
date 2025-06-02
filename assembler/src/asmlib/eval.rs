@@ -14,18 +14,20 @@ use base::{
 };
 
 use super::ast::*;
+use super::collections::OneOrMore;
 use super::listing::{Listing, ListingLine};
 use super::span::*;
-use super::symbol::SymbolName;
+use super::symbol::{AddressUse, ConfigUse, IndexUse, OriginUse, SymbolName};
+
 use super::types::{
     offset_from_origin, AssemblerFailure, BlockIdentifier, InconsistentOrigin,
     MachineLimitExceededFailure, ProgramError, RcWordSource,
 };
 use crate::symbol::SymbolContext;
 use crate::symtab::{
-    BlockPosition, ExplicitDefinition, FinalSymbolDefinition, FinalSymbolTable, FinalSymbolType,
-    ImplicitDefinition, IndexRegisterAssigner, LookupOperation, MemoryMap, SymbolDefinition,
-    SymbolTable, TagDefinition,
+    BlockPosition, ExplicitDefinition, ExplicitSymbolTable, FinalSymbolDefinition,
+    FinalSymbolTable, FinalSymbolType, ImplicitDefinition, ImplicitSymbolTable,
+    IndexRegisterAssigner, LookupOperation, MemoryMap, TagDefinition,
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -99,15 +101,9 @@ pub(crate) enum SymbolValue {
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum SymbolLookupFailure {
     InconsistentOrigins(InconsistentOrigin),
-    Missing {
-        name: SymbolName,
-        span: Span,
-        uses: SymbolContext,
-    },
     Loop {
-        name: SymbolName,
         span: Span,
-        deps_in_order: Vec<SymbolName>,
+        deps_in_order: OneOrMore<SymbolName>,
     },
     BlockTooLarge(Span, MachineLimitExceededFailure),
     FailedToAssignIndexRegister(Span, SymbolName),
@@ -122,7 +118,6 @@ impl Spanned for SymbolLookupFailure {
             }
             SymbolLookupFailure::HereIsNotAllowedHere(span)
             | SymbolLookupFailure::FailedToAssignIndexRegister(span, _)
-            | SymbolLookupFailure::Missing { span, .. }
             | SymbolLookupFailure::Loop { span, .. }
             | SymbolLookupFailure::BlockTooLarge(span, _) => *span,
         }
@@ -133,19 +128,16 @@ impl Display for SymbolLookupFailure {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         use SymbolLookupFailure::*;
         match self {
-            Missing { name, .. } => {
-                write!(f, "no definition found for {name}")
-            }
             InconsistentOrigins(e) => write!(f, "{e}"),
             Loop {
-                name,
                 deps_in_order,
                 span: _,
             } => {
                 let names: Vec<String> = deps_in_order.iter().map(|dep| dep.to_string()).collect();
                 write!(
                     f,
-                    "definition of {name} has a dependency loop ({})",
+                    "definition of {} has a dependency loop ({})",
+                    deps_in_order.first(),
                     names.join("->")
                 )
             }
@@ -164,7 +156,6 @@ impl Display for SymbolLookupFailure {
 
 impl SymbolLookupFailure {
     pub(crate) fn into_program_error(self) -> ProgramError {
-        let span: Span = self.span();
         match self {
             SymbolLookupFailure::FailedToAssignIndexRegister(span, name) => {
                 ProgramError::FailedToAssignIndexRegister(span, name)
@@ -173,9 +164,13 @@ impl SymbolLookupFailure {
             SymbolLookupFailure::InconsistentOrigins(e) => {
                 ProgramError::InconsistentOriginDefinitions(e)
             }
-            SymbolLookupFailure::Missing { name, .. } | SymbolLookupFailure::Loop { name, .. } => {
-                ProgramError::UnexpectedlyUndefinedSymbol { name, span }
-            }
+            SymbolLookupFailure::Loop {
+                deps_in_order,
+                span,
+            } => ProgramError::SymbolDefinitionLoop {
+                symbol_names: deps_in_order,
+                span,
+            },
             SymbolLookupFailure::HereIsNotAllowedHere(span) => ProgramError::SyntaxError {
                 span,
                 msg: "# is not allowed in this context".to_string(),
@@ -205,10 +200,69 @@ impl HereValue {
     }
 }
 
+/// Assign a default value for a symbol, using the rules from
+/// section 6-2.2 of the Users Handbook ("SYMEX DEFINITON - TAGS -
+/// EQUALITIES - AUTOMATIC ASSIGNMENT").
+///
+/// Values which refer to addresses (and which therefore should
+/// point to a zero-initialised RC-word) should already have a
+/// default value assigned.
+fn assign_default_value(
+    index_register_assigner: &mut IndexRegisterAssigner,
+    name: &SymbolName,
+    contexts_used: &SymbolContext,
+) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+    // TODO: maybe make this a method of EvaluationContext instead.
+    event!(
+        Level::DEBUG,
+        "assigning default value for {name} used in contexts {contexts_used:?}"
+    );
+    let span: Span = *contexts_used.any_span();
+    use AddressUse::*;
+    use ConfigUse::*;
+    use IndexUse::*;
+    use OriginUse::*;
+    match contexts_used.parts() {
+        (NotConfig, NotIndex, _, IncludesOrigin) => {
+            // origin only or address and origin
+            unreachable!("get_default_value should not be called for origin speicifations; attempted to assign default value for {name} (used in contexts: {contexts_used:?}")
+        }
+        (IncludesConfig, _, _, IncludesOrigin) | (_, IncludesIndex, _, IncludesOrigin) => {
+            // origin and either config or index
+            //
+            // TODO: make this an error at the time the contexts are recorded.
+            Err(SymbolLookupFailure::InconsistentOrigins(
+                InconsistentOrigin {
+                    origin_name: name.clone(),
+                    span,
+                    msg: format!("symbol {name} was used in both origin and other contexts"),
+                },
+            ))
+        }
+        (NotConfig, NotIndex, NotAddress, NotOrigin) => unreachable!(), // apparently no usage at all
+        (IncludesConfig, _, _, NotOrigin) => Ok(Unsigned36Bit::ZERO), // configuration (perhaps in combo with others)
+        (NotConfig, IncludesIndex, _, NotOrigin) => {
+            // Index but not also configuration. Assign the next
+            // index register.
+            match index_register_assigner.assign_index_register() {
+                Some(n) => Ok(n.into()),
+                None => Err(SymbolLookupFailure::FailedToAssignIndexRegister(
+                    span,
+                    name.clone(),
+                )),
+            }
+        }
+        (NotConfig, NotIndex, IncludesAddress, NotOrigin) => {
+            unreachable!("default assignments for address-context symexes should be assigned before evaluation starts")
+        }
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct EvaluationContext<'s, R: RcUpdater> {
     pub(crate) here: HereValue,
-    pub(crate) symtab: &'s mut SymbolTable,
+    pub(crate) explicit_symtab: &'s mut ExplicitSymbolTable,
+    pub(crate) implicit_symtab: &'s mut ImplicitSymbolTable,
     pub(crate) index_register_assigner: &'s mut IndexRegisterAssigner,
     pub(crate) memory_map: &'s MemoryMap,
     pub(crate) rc_updater: &'s mut R,
@@ -216,54 +270,84 @@ pub(crate) struct EvaluationContext<'s, R: RcUpdater> {
 }
 
 impl<R: RcUpdater> EvaluationContext<'_, R> {
-    /// Assign a default value for a symbol, using the rules from
-    /// section 6-2.2 of the Users Handbook ("SYMEX DEFINITON - TAGS -
-    /// EQUALITIES - AUTOMATIC ASSIGNMENT").
-    ///
-    /// Values which refer to addresses (and which therefore should
-    /// point to a zero-initialised RC-word) should already have a
-    /// default value assigned.
-    pub(crate) fn get_default_value(
+    pub(super) fn fetch_or_assign_default(
         &mut self,
         name: &SymbolName,
-        span: &Span,
-        contexts_used: &SymbolContext,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-        // TODO: maybe make this a method of EvaluationContext instead.
-        event!(
-            Level::DEBUG,
-            "assigning default value for {name} used in contexts {contexts_used:?}"
-        );
-        match contexts_used.bits() {
-            [false, false, _, true] => {
-                // origin only or address and origin
-                unreachable!("get_default_value should not be called for origin speicifations; attempted to assign default value for {name} (used in contexts: {contexts_used:?}")
+        let existing_def: &mut ImplicitDefinition = match self.implicit_symtab.get_mut(name) {
+            Some(def) => def,
+            None => {
+                // In order to assign a default value for a symbol, we
+                // need to know the contexts in which it is used (see
+                // assign_default_value()) and so not having recorded
+                // that information is an internal error.
+                panic!("attempted to assign a default value for an entirely unknown symbol {name}");
             }
-            [true, _, _, true] | [_, true, _, true] => {
-                // origin and either config or index
-                Err(SymbolLookupFailure::InconsistentOrigins(
-                    InconsistentOrigin {
-                        origin_name: name.clone(),
-                        span: *span,
-                        msg: format!("symbol {name} was used in both origin and other contexts"),
-                    },
-                ))
-            }
-            [false, false, false, false] => unreachable!(), // apparently no usage at all
-            [true, _, _, false] => Ok(Unsigned36Bit::ZERO), // configuration (perhaps in combo with others)
-            [false, true, _, false] => {
-                // Index but not also configuration. Assign the next
-                // index register.
-                match self.index_register_assigner.assign_index_register() {
-                    Some(n) => Ok(n.into()),
-                    None => Err(SymbolLookupFailure::FailedToAssignIndexRegister(
-                        *span,
-                        name.clone(),
-                    )),
+        };
+
+        match existing_def {
+            ImplicitDefinition::DefaultAssigned(value, _) => Ok(*value),
+            ImplicitDefinition::Undefined(_) => {
+                let context: SymbolContext = existing_def.context().clone();
+                let span: Span = *context.any_span();
+
+                // Special case assigning origin addresses, because
+                // the resto of the work is carried out with
+                // index_register_assigner only.
+                if let SymbolContext {
+                    origin_of_block: Some(block_identifier),
+                    ..
+                } = &context
+                {
+                    if let Some(block_position) = self.memory_map.get(block_identifier).cloned() {
+                        // If we simply try to pass block_position to
+                        // evaluate() we will loop and diagnose this
+                        // as an undefined symbol.  While the symbol
+                        // has no definition via assignment, we can
+                        // determine the position of the block by
+                        // appending it to the previous block.  So we
+                        // evaluate the block's position as if it had
+                        // no origin specification.
+                        let pos_with_unspecified_origin: BlockPosition = BlockPosition {
+                            origin: None,
+                            ..block_position
+                        };
+                        let what: (&BlockIdentifier, &BlockPosition) =
+                            (block_identifier, &pos_with_unspecified_origin);
+                        match what.evaluate(self) {
+                            Ok(value) => {
+                                let address: Address = subword::right_half(value).into();
+                                match self.implicit_symtab.record_computed_origin_value(
+                                    name.clone(),
+                                    address,
+                                    *block_identifier,
+                                    span,
+                                ) {
+                                    Ok(()) => Ok(value),
+                                    Err(e) => {
+                                        panic!("got a bad symbol definition error ({e}) on a previously undefined origin symbol");
+                                    }
+                                }
+                            }
+                            Err(e) => Err(e),
+                        }
+                    } else {
+                        unreachable!("symbol {name} was used as an origin for block {block_identifier} but this is not a known block");
+                    }
+                } else {
+                    match assign_default_value(self.index_register_assigner, name, &context) {
+                        Ok(value) => {
+                            eprintln!("recording default value {value} for {name}");
+                            *existing_def = ImplicitDefinition::DefaultAssigned(value, context);
+                            Ok(value)
+                        }
+                        Err(e) => {
+                            // TODO: this should be an error at the time
+                            // the usage was recorded.
+                            Err(e)
+                        }
+                    }
                 }
-            }
-            [false, false, true, false] => {
-                unreachable!("default assignments for address-context symexes should be assigned before evaluation starts")
             }
         }
     }
@@ -504,80 +588,11 @@ fn final_lookup_helper_body<R: RcUpdater>(
     name: &SymbolName,
     span: Span,
 ) -> Result<SymbolValue, SymbolLookupFailure> {
-    if let Some(def) = ctx.symtab.get_clone(name) {
-        let what = (&span, name, &def);
-        match what.evaluate(ctx) {
-            Ok(value) => Ok(SymbolValue::Final(value)),
-            Err(SymbolLookupFailure::Missing {
-                uses:
-                    SymbolContext {
-                        origin_of_block: Some(block_identifier),
-                        ..
-                    },
-                ..
-            }) => {
-                if let Some(block_position) = ctx.memory_map.get(&block_identifier).cloned() {
-                    // If we simply try to pass block_position to
-                    // evaluate() we will loop and diagnose this as an
-                    // undefined symbol.  While the symbol has no
-                    // definition via assignment, we can determine the
-                    // position of the block by appending it to the
-                    // previous block.  So we evaluate the block's
-                    // position as if it had no origin specification.
-                    let pos_with_unspecified_origin: BlockPosition = BlockPosition {
-                        origin: None,
-                        ..block_position
-                    };
-                    let what: (&BlockIdentifier, &BlockPosition) =
-                        (&block_identifier, &pos_with_unspecified_origin);
-                    match what.evaluate(ctx) {
-                        Ok(value) => {
-                            let address: Address = subword::right_half(value).into();
-                            match ctx.symtab.define(
-                                span,
-                                name.clone(),
-                                SymbolDefinition::Explicit(ExplicitDefinition::Origin(
-                                    Origin::Deduced(span, name.clone(), address),
-                                    block_identifier,
-                                )),
-                            ) {
-                                Ok(()) => Ok(SymbolValue::Final(value)),
-                                Err(e) => {
-                                    panic!("got a bad symbol definition error ({e}) on a previously undefined origin symbol, which should be impossible");
-                                }
-                            }
-                        }
-                        Err(e) => Err(e),
-                    }
-                } else {
-                    unreachable!("symbol {name} was used as an origin for block {block_identifier} but this is not a known block");
-                }
-            }
-            Err(SymbolLookupFailure::Missing {
-                uses: context_union,
-                ..
-            }) => match ctx.get_default_value(name, &span, &context_union) {
-                Ok(value) => {
-                    match ctx.symtab.define(
-                        span,
-                        name.clone(),
-                        SymbolDefinition::Implicit(ImplicitDefinition::DefaultAssigned(
-                            value,
-                            context_union,
-                        )),
-                    ) {
-                        Err(e) => {
-                            panic!("got a bad symbol definition error ({e}) on a previously undefined symbol, which should be impossible");
-                        }
-                        Ok(()) => Ok(SymbolValue::Final(value)),
-                    }
-                }
-                Err(e) => Err(e),
-            },
-            Err(other) => Err(other),
-        }
+    if let Some(def) = ctx.explicit_symtab.get_clone(name) {
+        let what: (&Span, &SymbolName, &ExplicitDefinition) = (&span, name, &def);
+        what.evaluate(ctx).map(SymbolValue::Final)
     } else {
-        panic!("final symbol lookup of symbol '{name}' happened in an evaluation context which was not previously returned by SourceFile::global_symbol_references(): {:?}", &ctx.lookup_operation);
+        Ok(SymbolValue::Final(ctx.fetch_or_assign_default(name)?))
     }
 }
 
@@ -590,11 +605,17 @@ pub(super) fn lookup_with_op<R: RcUpdater>(
     if !ctx.lookup_operation.depends_on.insert(name.clone()) {
         // `name` was already in `depends_on`; in other words,
         // we have a loop.
-        return Err(SymbolLookupFailure::Loop {
-            name: name.clone(),
-            span,
-            deps_in_order: ctx.lookup_operation.deps_in_order.to_vec(),
-        });
+        match OneOrMore::try_from_vec(ctx.lookup_operation.deps_in_order.clone()) {
+            Ok(deps_in_order) => {
+                return Err(SymbolLookupFailure::Loop {
+                    span,
+                    deps_in_order,
+                });
+            }
+            Err(_) => {
+                panic!("we know deps_in_order is non-empty because we just appended an item to it");
+            }
+        }
     }
     let result = final_lookup_helper_body(ctx, name, span);
     ctx.lookup_operation.deps_in_order.pop();
@@ -736,13 +757,26 @@ impl Evaluate for CommaDelimitedFragment {
 fn record_undefined_symbol_or_return_failure(
     source_file_body: &str,
     e: SymbolLookupFailure,
-    undefined_symbols: &mut BTreeMap<SymbolName, Span>,
+    undefined_symbols: &mut BTreeMap<SymbolName, (Span, ProgramError)>,
 ) -> Result<(), AssemblerFailure> {
     use SymbolLookupFailure::*;
-    let span = e.span();
     match e {
-        Missing { name, .. } | Loop { name, .. } => {
-            undefined_symbols.entry(name).or_insert(span);
+        Loop {
+            span,
+            deps_in_order,
+            ..
+        } => {
+            undefined_symbols
+                .entry(deps_in_order.first().clone())
+                .or_insert_with(|| {
+                    (
+                        span,
+                        ProgramError::SymbolDefinitionLoop {
+                            symbol_names: deps_in_order,
+                            span,
+                        },
+                    )
+                });
             Ok(())
         }
         other => Err(other
@@ -755,16 +789,18 @@ fn record_undefined_symbol_or_return_failure(
 pub(super) fn extract_final_equalities<R: RcUpdater>(
     equalities: &[Equality],
     body: &str,
-    symtab: &mut SymbolTable,
+    explicit_symbols: &mut ExplicitSymbolTable,
+    implicit_symbols: &mut ImplicitSymbolTable,
     memory_map: &MemoryMap,
     index_register_assigner: &mut IndexRegisterAssigner,
     rc_allocator: &mut R,
     final_symbols: &mut FinalSymbolTable,
-    undefined_symbols: &mut BTreeMap<SymbolName, Span>,
+    bad_symbol_definitions: &mut BTreeMap<SymbolName, (Span, ProgramError)>,
 ) -> Result<(), AssemblerFailure> {
     for eq in equalities {
         let mut ctx = EvaluationContext {
-            symtab,
+            explicit_symtab: explicit_symbols,
+            implicit_symtab: implicit_symbols,
             memory_map,
             here: HereValue::NotAllowed,
             index_register_assigner,
@@ -793,7 +829,7 @@ pub(super) fn extract_final_equalities<R: RcUpdater>(
                 );
             }
             Err(e) => {
-                record_undefined_symbol_or_return_failure(body, e, undefined_symbols)?;
+                record_undefined_symbol_or_return_failure(body, e, bad_symbol_definitions)?;
             }
         }
     }
@@ -805,14 +841,15 @@ impl LocatedBlock {
     pub(super) fn build_binary_block<R: RcUpdater>(
         &self,
         location: Address,
-        symtab: &mut SymbolTable,
+        explicit_symtab: &mut ExplicitSymbolTable,
+        implicit_symtab: &mut ImplicitSymbolTable,
         memory_map: &MemoryMap,
         index_register_assigner: &mut IndexRegisterAssigner,
         rc_allocator: &mut R,
         final_symbols: &mut FinalSymbolTable,
         body: &str,
         listing: &mut Listing,
-        undefined_symbols: &mut BTreeMap<SymbolName, Span>,
+        undefined_symbols: &mut BTreeMap<SymbolName, (Span, ProgramError)>,
     ) -> Result<Vec<Unsigned36Bit>, AssemblerFailure> {
         let word_count: Unsigned18Bit = self
             .sequences
@@ -828,7 +865,8 @@ impl LocatedBlock {
             let mut words: Vec<Unsigned36Bit> = seq.build_binary_block(
                 location,
                 current_block_len,
-                symtab,
+                explicit_symtab,
+                implicit_symtab,
                 memory_map,
                 index_register_assigner,
                 rc_allocator,
@@ -849,14 +887,15 @@ impl InstructionSequence {
         &self,
         location: Address,
         start_offset: Unsigned18Bit,
-        symtab: &mut SymbolTable,
+        explicit_symtab: &mut ExplicitSymbolTable,
+        implicit_symtab: &mut ImplicitSymbolTable,
         memory_map: &MemoryMap,
         index_register_assigner: &mut IndexRegisterAssigner,
         rc_allocator: &mut R,
         final_symbols: &mut FinalSymbolTable,
         body: &str,
         listing: &mut Listing,
-        undefined_symbols: &mut BTreeMap<SymbolName, Span>,
+        bad_symbol_definitions: &mut BTreeMap<SymbolName, (Span, ProgramError)>,
     ) -> Result<Vec<Unsigned36Bit>, AssemblerFailure> {
         let mut words: Vec<Unsigned36Bit> = Vec::with_capacity(self.emitted_word_count().into());
         for (offset, instruction) in self.iter().enumerate() {
@@ -878,7 +917,8 @@ impl InstructionSequence {
                 panic!("InstructionSequence::build_binary_block: evaluation with local symbol tables is not yet implemented");
             }
             let mut ctx = EvaluationContext {
-                symtab,
+                explicit_symtab,
+                implicit_symtab,
                 memory_map,
                 here: HereValue::Address(address),
                 index_register_assigner,
@@ -895,7 +935,7 @@ impl InstructionSequence {
                     words.push(word);
                 }
                 Err(e) => {
-                    record_undefined_symbol_or_return_failure(body, e, undefined_symbols)?;
+                    record_undefined_symbol_or_return_failure(body, e, bad_symbol_definitions)?;
                 }
             }
         }
@@ -1007,9 +1047,7 @@ impl Evaluate for Origin {
         ctx: &mut EvaluationContext<R>,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         match self {
-            Origin::Deduced(_span, _, address) | Origin::Literal(_span, address) => {
-                Ok(address.into())
-            }
+            Origin::Literal(_span, address) => Ok(address.into()),
             Origin::Symbolic(span, symbol_name) => {
                 symbol_name_lookup(symbol_name, Script::Normal, *span, ctx)
             }
@@ -1087,11 +1125,12 @@ impl Evaluate for (&BlockIdentifier, &BlockPosition) {
 impl LocatedBlock {
     pub(super) fn assign_rc_words<R: RcAllocator>(
         &mut self,
-        symtab: &mut SymbolTable,
+        explicit_symtab: &mut ExplicitSymbolTable,
+        implicit_symtab: &mut ImplicitSymbolTable,
         rc_allocator: &mut R,
     ) -> Result<(), RcWordAllocationFailure> {
         for seq in self.sequences.iter_mut() {
-            seq.assign_rc_words(symtab, rc_allocator)?;
+            seq.assign_rc_words(explicit_symtab, implicit_symtab, rc_allocator)?;
         }
         Ok(())
     }
@@ -1100,21 +1139,24 @@ impl LocatedBlock {
 impl TaggedProgramInstruction {
     pub(super) fn assign_rc_words<R: RcAllocator>(
         &mut self,
-        symtab: &mut SymbolTable,
+        explicit_symtab: &mut ExplicitSymbolTable,
+        implicit_symtab: &mut ImplicitSymbolTable,
         rc_allocator: &mut R,
     ) -> Result<(), RcWordAllocationFailure> {
-        self.instruction.assign_rc_words(symtab, rc_allocator)
+        self.instruction
+            .assign_rc_words(explicit_symtab, implicit_symtab, rc_allocator)
     }
 }
 
 impl UntaggedProgramInstruction {
     pub(super) fn assign_rc_words<R: RcAllocator>(
         &mut self,
-        symtab: &mut SymbolTable,
+        explicit_symtab: &mut ExplicitSymbolTable,
+        implicit_symtab: &mut ImplicitSymbolTable,
         rc_allocator: &mut R,
     ) -> Result<(), RcWordAllocationFailure> {
         for inst in self.fragments.iter_mut() {
-            inst.assign_rc_words(symtab, rc_allocator)?;
+            inst.assign_rc_words(explicit_symtab, implicit_symtab, rc_allocator)?;
         }
         Ok(())
     }
@@ -1123,24 +1165,29 @@ impl UntaggedProgramInstruction {
 impl CommaDelimitedFragment {
     pub(super) fn assign_rc_words<R: RcAllocator>(
         &mut self,
-        symtab: &mut SymbolTable,
+        explicit_symtab: &mut ExplicitSymbolTable,
+        implicit_symtab: &mut ImplicitSymbolTable,
         rc_allocator: &mut R,
     ) -> Result<(), RcWordAllocationFailure> {
-        self.fragment.assign_rc_words(symtab, rc_allocator)
+        self.fragment
+            .assign_rc_words(explicit_symtab, implicit_symtab, rc_allocator)
     }
 }
 
 impl InstructionFragment {
     pub(super) fn assign_rc_words<R: RcAllocator>(
         &mut self,
-        symtab: &mut SymbolTable,
+        explicit_symtab: &mut ExplicitSymbolTable,
+        implicit_symtab: &mut ImplicitSymbolTable,
         rc_allocator: &mut R,
     ) -> Result<(), RcWordAllocationFailure> {
         use InstructionFragment::*;
         match self {
             Null(_) | DeferredAddressing(_) => Ok(()),
-            Arithmetic(expr) => expr.assign_rc_words(symtab, rc_allocator),
-            Config(cfg) => cfg.assign_rc_words(symtab, rc_allocator),
+            Arithmetic(expr) => {
+                expr.assign_rc_words(explicit_symtab, implicit_symtab, rc_allocator)
+            }
+            Config(cfg) => cfg.assign_rc_words(explicit_symtab, implicit_symtab, rc_allocator),
             PipeConstruct {
                 index: _,
                 rc_word_span,
@@ -1148,8 +1195,12 @@ impl InstructionFragment {
             } => {
                 let span: Span = *rc_word_span;
                 let w = rc_word_value.clone();
-                *rc_word_value =
-                    w.assign_rc_word(RcWordSource::PipeConstruct(span), symtab, rc_allocator)?;
+                *rc_word_value = w.assign_rc_word(
+                    RcWordSource::PipeConstruct(span),
+                    explicit_symtab,
+                    implicit_symtab,
+                    rc_allocator,
+                )?;
                 Ok(())
             }
         }
@@ -1160,27 +1211,30 @@ impl RegisterContaining {
     pub(crate) fn assign_rc_word<R: RcAllocator>(
         self,
         source: RcWordSource,
-        symtab: &mut SymbolTable,
+        explicit_symtab: &mut ExplicitSymbolTable,
+        implicit_symtab: &mut ImplicitSymbolTable,
         rc_allocator: &mut R,
     ) -> Result<RegisterContaining, RcWordAllocationFailure> {
         match self {
             RegisterContaining::Unallocated(mut tpibox) => {
                 let address: Address = rc_allocator.allocate(source, Unsigned36Bit::ZERO)?;
                 for tag in tpibox.tags.iter() {
-                    if let Err(e) = symtab.define(
-                        tag.span,
+                    eprintln!(
+                        "assigning RC-word at address {address} serves as defnition of tag {}",
+                        &tag.name
+                    );
+                    implicit_symtab.remove(&tag.name);
+                    if let Err(e) = explicit_symtab.define(
                         tag.name.clone(),
-                        SymbolDefinition::Explicit(ExplicitDefinition::Tag(
-                            TagDefinition::Resolved {
-                                span: tag.span,
-                                address,
-                            },
-                        )),
+                        ExplicitDefinition::Tag(TagDefinition::Resolved {
+                            span: tag.span,
+                            address,
+                        }),
                     ) {
                         return Err(RcWordAllocationFailure::InconsistentTag(e));
                     }
                 }
-                tpibox.assign_rc_words(symtab, rc_allocator)?;
+                tpibox.assign_rc_words(explicit_symtab, implicit_symtab, rc_allocator)?;
                 let tpi: Box<TaggedProgramInstruction> = tpibox;
                 Ok(RegisterContaining::Allocated(address, tpi))
             }
@@ -1193,14 +1247,18 @@ impl RegistersContaining {
     pub(crate) fn assign_rc_words<R: RcAllocator>(
         &mut self,
         span: Span,
-        symtab: &mut SymbolTable,
+        explicit_symtab: &mut ExplicitSymbolTable,
+        implicit_symtab: &mut ImplicitSymbolTable,
         rc_allocator: &mut R,
     ) -> Result<(), RcWordAllocationFailure> {
         let source = RcWordSource::Braces(span);
         for rc in self.words_mut() {
-            *rc = rc
-                .clone()
-                .assign_rc_word(source.clone(), symtab, rc_allocator)?;
+            *rc = rc.clone().assign_rc_word(
+                source.clone(),
+                explicit_symtab,
+                implicit_symtab,
+                rc_allocator,
+            )?;
         }
         Ok(())
     }
@@ -1209,12 +1267,14 @@ impl RegistersContaining {
 impl ArithmeticExpression {
     pub(super) fn assign_rc_words<R: RcAllocator>(
         &mut self,
-        symtab: &mut SymbolTable,
+        explicit_symtab: &mut ExplicitSymbolTable,
+        implicit_symtab: &mut ImplicitSymbolTable,
         rc_allocator: &mut R,
     ) -> Result<(), RcWordAllocationFailure> {
-        self.first.assign_rc_words(symtab, rc_allocator)?;
+        self.first
+            .assign_rc_words(explicit_symtab, implicit_symtab, rc_allocator)?;
         for (_op, atom) in self.tail.iter_mut() {
-            atom.assign_rc_words(symtab, rc_allocator)?;
+            atom.assign_rc_words(explicit_symtab, implicit_symtab, rc_allocator)?;
         }
         Ok(())
     }
@@ -1223,33 +1283,44 @@ impl ArithmeticExpression {
 impl ConfigValue {
     pub(super) fn assign_rc_words<R: RcAllocator>(
         &mut self,
-        symtab: &mut SymbolTable,
+        explicit_symtab: &mut ExplicitSymbolTable,
+        implicit_symtab: &mut ImplicitSymbolTable,
         rc_allocator: &mut R,
     ) -> Result<(), RcWordAllocationFailure> {
-        self.expr.assign_rc_words(symtab, rc_allocator)
+        self.expr
+            .assign_rc_words(explicit_symtab, implicit_symtab, rc_allocator)
     }
 }
 
 impl SignedAtom {
     pub(super) fn assign_rc_words<R: RcAllocator>(
         &mut self,
-        symtab: &mut SymbolTable,
+        explicit_symtab: &mut ExplicitSymbolTable,
+        implicit_symtab: &mut ImplicitSymbolTable,
         rc_allocator: &mut R,
     ) -> Result<(), RcWordAllocationFailure> {
-        self.magnitude.assign_rc_words(symtab, rc_allocator)
+        self.magnitude
+            .assign_rc_words(explicit_symtab, implicit_symtab, rc_allocator)
     }
 }
 
 impl Atom {
     pub(super) fn assign_rc_words<R: RcAllocator>(
         &mut self,
-        symtab: &mut SymbolTable,
+        explicit_symtab: &mut ExplicitSymbolTable,
+        implicit_symtab: &mut ImplicitSymbolTable,
         rc_allocator: &mut R,
     ) -> Result<(), RcWordAllocationFailure> {
         match self {
-            Atom::SymbolOrLiteral(thing) => thing.assign_rc_words(symtab, rc_allocator),
-            Atom::Parens(_, _, expr) => expr.assign_rc_words(symtab, rc_allocator),
-            Atom::RcRef(span, rc) => rc.assign_rc_words(*span, symtab, rc_allocator),
+            Atom::SymbolOrLiteral(thing) => {
+                thing.assign_rc_words(explicit_symtab, implicit_symtab, rc_allocator)
+            }
+            Atom::Parens(_, _, expr) => {
+                expr.assign_rc_words(explicit_symtab, implicit_symtab, rc_allocator)
+            }
+            Atom::RcRef(span, rc) => {
+                rc.assign_rc_words(*span, explicit_symtab, implicit_symtab, rc_allocator)
+            }
         }
     }
 }
@@ -1257,7 +1328,8 @@ impl Atom {
 impl SymbolOrLiteral {
     pub(super) fn assign_rc_words<R: RcAllocator>(
         &mut self,
-        _symtab: &mut SymbolTable,
+        _explicit_symtab: &mut ExplicitSymbolTable,
+        _implicit_symtab: &mut ImplicitSymbolTable,
         _rc_allocator: &mut R,
     ) -> Result<(), RcWordAllocationFailure> {
         Ok(())
