@@ -223,10 +223,6 @@ impl ExplicitSymbolTable {
         self.definitions.get(name)
     }
 
-    pub(crate) fn get_clone(&mut self, name: &SymbolName) -> Option<ExplicitDefinition> {
-        self.get(name).cloned()
-    }
-
     pub(crate) fn is_defined(&self, name: &SymbolName) -> bool {
         self.definitions.contains_key(name)
     }
@@ -529,7 +525,7 @@ impl ImplicitDefinition {
             ImplicitDefinition::Undefined(current) => current.merge(name, context),
             ImplicitDefinition::DefaultAssigned(value, existing_context) => {
                 if &context != existing_context {
-                    panic!("attempting to change the rescorded usage context for {name} after a default value {value:?} has been assigned; previous context was {existing_context:?}, new context is {context:?}");
+                    panic!("attempting to change the recorded usage context for {name} after a default value {value:?} has been assigned; previous context was {existing_context:?}, new context is {context:?}");
                 } else {
                     Ok(())
                 }

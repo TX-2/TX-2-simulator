@@ -258,10 +258,15 @@ fn assign_default_value(
     }
 }
 
+/// The word-value evaluation process does not modify the memory map
+/// or the symbol table (so those structs are shared references).  But
+/// it does modify the "implicit symbol table" which records
+/// default-assignments for symbols that don't have an explicit
+/// definition.  It can also update RC-words in-place.
 #[derive(Debug)]
 pub(crate) struct EvaluationContext<'s, R: RcUpdater> {
     pub(crate) here: HereValue,
-    pub(crate) explicit_symtab: &'s mut ExplicitSymbolTable,
+    pub(crate) explicit_symtab: &'s ExplicitSymbolTable,
     pub(crate) implicit_symtab: &'s mut ImplicitSymbolTable,
     pub(crate) index_register_assigner: &'s mut IndexRegisterAssigner,
     pub(crate) memory_map: &'s MemoryMap,
@@ -292,7 +297,7 @@ impl<R: RcUpdater> EvaluationContext<'_, R> {
                 let span: Span = *context.any_span();
 
                 // Special case assigning origin addresses, because
-                // the resto of the work is carried out with
+                // the rest of the work is carried out with
                 // index_register_assigner only.
                 if let SymbolContext {
                     origin_of_block: Some(block_identifier),
@@ -337,7 +342,6 @@ impl<R: RcUpdater> EvaluationContext<'_, R> {
                 } else {
                     match assign_default_value(self.index_register_assigner, name, &context) {
                         Ok(value) => {
-                            eprintln!("recording default value {value} for {name}");
                             *existing_def = ImplicitDefinition::DefaultAssigned(value, context);
                             Ok(value)
                         }
@@ -588,8 +592,8 @@ fn final_lookup_helper_body<R: RcUpdater>(
     name: &SymbolName,
     span: Span,
 ) -> Result<SymbolValue, SymbolLookupFailure> {
-    if let Some(def) = ctx.explicit_symtab.get_clone(name) {
-        let what: (&Span, &SymbolName, &ExplicitDefinition) = (&span, name, &def);
+    if let Some(def) = ctx.explicit_symtab.get(name) {
+        let what: (&Span, &SymbolName, &ExplicitDefinition) = (&span, name, def);
         what.evaluate(ctx).map(SymbolValue::Final)
     } else {
         Ok(SymbolValue::Final(ctx.fetch_or_assign_default(name)?))
@@ -789,7 +793,7 @@ fn record_undefined_symbol_or_return_failure(
 pub(super) fn extract_final_equalities<R: RcUpdater>(
     equalities: &[Equality],
     body: &str,
-    explicit_symbols: &mut ExplicitSymbolTable,
+    explicit_symbols: &ExplicitSymbolTable,
     implicit_symbols: &mut ImplicitSymbolTable,
     memory_map: &MemoryMap,
     index_register_assigner: &mut IndexRegisterAssigner,
@@ -841,7 +845,7 @@ impl LocatedBlock {
     pub(super) fn build_binary_block<R: RcUpdater>(
         &self,
         location: Address,
-        explicit_symtab: &mut ExplicitSymbolTable,
+        explicit_symtab: &ExplicitSymbolTable,
         implicit_symtab: &mut ImplicitSymbolTable,
         memory_map: &MemoryMap,
         index_register_assigner: &mut IndexRegisterAssigner,
@@ -887,7 +891,7 @@ impl InstructionSequence {
         &self,
         location: Address,
         start_offset: Unsigned18Bit,
-        explicit_symtab: &mut ExplicitSymbolTable,
+        explicit_symtab: &ExplicitSymbolTable,
         implicit_symtab: &mut ImplicitSymbolTable,
         memory_map: &MemoryMap,
         index_register_assigner: &mut IndexRegisterAssigner,
@@ -1328,7 +1332,7 @@ impl Atom {
 impl SymbolOrLiteral {
     pub(super) fn assign_rc_words<R: RcAllocator>(
         &mut self,
-        _explicit_symtab: &mut ExplicitSymbolTable,
+        _explicit_symtab: &ExplicitSymbolTable,
         _implicit_symtab: &mut ImplicitSymbolTable,
         _rc_allocator: &mut R,
     ) -> Result<(), RcWordAllocationFailure> {
