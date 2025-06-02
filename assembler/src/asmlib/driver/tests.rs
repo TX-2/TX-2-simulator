@@ -65,14 +65,20 @@ fn atom_to_fragment(atom: Atom) -> InstructionFragment {
 
 #[test]
 fn test_assemble_pass1() {
+    // Given a program containing a constant and a PUNCH metacommand
     let input = concat!("14\n", "☛☛PUNCH 26\n");
+
+    // When we assemble it
     let mut errors = Vec::new();
     let (source_file, _options) =
         assemble_pass1(input, &mut errors).expect("pass 1 should succeed");
+
+    // Then we should see that it assembles without error, and...
     assert_eq!(errors.as_slice(), &[]);
     assert_eq!(
         source_file,
         Some(SourceFile {
+            // .. that the punch directive was correctly recorded, and...
             punch: Some(PunchCommand(Some(Address::from(u18!(0o26))))),
             blocks: vec![ManuscriptBlock {
                 origin: None,
@@ -89,6 +95,7 @@ fn test_assemble_pass1() {
                                 fragment: atom_to_fragment(Atom::from(LiteralValue::from((
                                     Span::from(0..2),
                                     Script::Normal,
+                                    // ... that the constant was correctly assembled.
                                     u36!(0o14)
                                 )))),
                                 trailing_commas: None,
@@ -109,12 +116,17 @@ fn span(range: Range<usize>) -> Span {
 
 #[test]
 fn test_metacommand_dec_changes_default_base() {
+    // Given a program which uses the value 10 once in octal and then
+    // once in decimal
     const INPUT: &str = concat!("10\n", "☛☛DECIMAL\n", "10  ** Ten\n");
+
+    // When we assemble it
     let (directive, _, _, index_register_assigner) = assemble_nonempty_valid_input(INPUT);
     assert!(
         index_register_assigner.is_empty(),
         "no index register should have been default-assigned"
     );
+
     if let [LocatedBlock {
         origin: _,
         location: _,
@@ -147,6 +159,7 @@ fn test_metacommand_dec_changes_default_base() {
                 assert_eq!(second_fragment.leading_commas, None);
                 assert_eq!(second_fragment.trailing_commas, None);
 
+                // Then we should see that the first value is assembled as 10 octal...
                 assert_eq!(
                     &first_fragment.fragment,
                     &InstructionFragment::from((
@@ -155,6 +168,8 @@ fn test_metacommand_dec_changes_default_base() {
                         Unsigned36Bit::from(0o10_u32),
                     )),
                 );
+                // ... and that the first value is assembled as 12
+                // octal (10 decimal).
                 assert_eq!(
                     &second_fragment.fragment,
                     &InstructionFragment::from((
@@ -179,6 +194,8 @@ fn test_assignment_rhs_is_instruction() {
     // Users Handbook, section 6-2.2, page 156 = 6-6).  Here we verify
     // that it can be an instruction.
     assemble_check_symbols(
+        // Given a program using an instruction as an equality value,
+        // when we assemble it
         concat!(
             "FOO=²¹IOS₅₂ 30106  ** FROM PLUGBOARD A AT ADDRESS 377762\n",
             "** WE USE FOO TO MAKE SURE THE SYMBOL VALUE IS NEEDED\n",
@@ -186,24 +203,36 @@ fn test_assignment_rhs_is_instruction() {
             "FOO\n"
         ),
         Address::ZERO,
+        // Then we should see that the symbol was assigned the value
+        // corresponding to the assembled value of that instruction.
         &[("FOO", SymbolValue::Final(u36!(0o210452_030106)))],
     );
 }
 
 #[test]
 fn test_normal_hash_value() {
-    let program =
-        assemble_source(concat!("100| 2\n#\n",), Default::default()).expect("program is valid");
-    assert_eq!(program.chunks[0].address, Address::from(u18!(0o100)));
-    assert_eq!(program.chunks[0].words[0], u36!(2));
+    // Given a program which uses the value of # ("here") in the
+    // instruction at address 101, when we assemble it
+    let program = assemble_source("100| 2\n#\n", Default::default()).expect("program is valid");
+
+    // Then we should see that # was evaluated as the address (101) at
+    // which it was evaluated.
     assert_eq!(program.chunks[0].words[1], u36!(0o101));
 }
 
 #[test]
 fn test_super_hash_value() {
+    // Given a program which assembles at address 1 the value of # ("here")
     let input = "1| @sup_hash@\n";
+
+    // When we assemble it
     let program = assemble_source(input, Default::default()).expect("program is valid");
+
+    // Then we should see that the program is assembled at the correct address...
     assert_eq!(program.chunks[0].address, Address::from(u18!(0o1)));
+    // ... and that the resulting value has shifted the value of #
+    // (which should be 1) into the correct (i.e. configuration field)
+    // position in the resulting word.
     let got = program.chunks[0].words[0];
     let expected = u36!(1).shl(30);
     assert_eq!(
@@ -214,8 +243,12 @@ fn test_super_hash_value() {
 
 #[test]
 fn test_sub_hash_value() {
+    // Given a program which assembles at address 1 the value of # ("here"), when we assemble it
     let program =
         assemble_source(concat!("1| @sub_hash@\n",), Default::default()).expect("program is valid");
+
+    // Then we should see that # evaluates as 1, the address of the
+    // insruction containing it.
     assert_eq!(program.chunks[0].address, Address::from(u18!(0o1)));
     assert_eq!(program.chunks[0].words[0], u36!(1).shl(18));
 }
@@ -232,6 +265,9 @@ fn test_assign_hash_value() {
     // this, like so:
     //
     // SPLATTT=#-NLIST-MASBL,,#-NLIST+MASBL
+
+    // Given a program which uses # on the right-hand-side of an
+    // equality, when we assemble it
     let program = assemble_source(
         concat!(
             "         FOO = #\n",
@@ -243,6 +279,8 @@ fn test_assign_hash_value() {
     )
     .expect("program is valid");
     assert_eq!(program.chunks[0].address, Address::from(u18!(0o100)));
+    // Then we should see that the value of the assigned symbol
+    // depends on the address at which it is used.
     assert_eq!(program.chunks[0].words[0], u36!(0o10000000100));
     assert_eq!(program.chunks[0].words[1], u36!(0o20000000101));
 }
@@ -264,9 +302,15 @@ fn test_logical_or_on_constants() {
 
 #[test]
 fn test_logical_and_on_constants() {
+    // Given a program which contains the constant 6∧2 (in binary,
+    // 110∧10), when we assemble it (bearing in mind that ∧ is the
+    // logical-and operator)
     let program1 = assemble_source("100| 6 ∧ 2\n", Default::default()).expect("program is valid");
+    // Then we should get the result 2 (binary 10).
     assert_eq!(program1.chunks[0].words[0], u36!(0o2));
 
+    // This is the same test as above, but using @and@ instead of its
+    // synonym ∧.
     let program2 =
         assemble_source("100| 6 @and@ 4\n", Default::default()).expect("program is valid");
     assert_eq!(program2.chunks[0].words[0], u36!(0o4));
@@ -274,10 +318,14 @@ fn test_logical_and_on_constants() {
 
 #[test]
 fn test_addition_on_constants() {
+    // Given a program which contains the constant 6+2, when we assemble it
     let program1 = assemble_source("100| 6 + 2\n", Default::default()).expect("program is valid");
+    // Then we should obtain the result 8 (10 octal).
     assert_eq!(program1.chunks[0].words[0], u36!(0o10));
 
-    // Note that @plus@ is not a valid glyph.
+    // This case is identical to the above, but using @add@ instead of
+    // +.  These should be synonyms.  Note that @plus@ is not a valid
+    // glyph.
     let program2 =
         assemble_source("100| 6 @add@ 2\n", Default::default()).expect("program is valid");
     assert_eq!(program2.chunks[0].words[0], u36!(0o10));
@@ -285,16 +333,24 @@ fn test_addition_on_constants() {
 
 #[test]
 fn test_subtraction_on_constants() {
+    // Given a program which contains the constant 6-2, when we assemble it
     let program1 = assemble_source("100| 6 - 2\n", Default::default()).expect("program is valid");
+
+    // Then we should obtain the result 4
     assert_eq!(program1.chunks[0].words[0], u36!(0o4));
 }
 
 #[test]
 fn test_multiplication_on_constants() {
+    // Given a program containing a constant 6x2, when we assemble it
     let program1 =
         assemble_source("100| 6 @times@ 2\n", Default::default()).expect("program is valid");
+    // Then we should obtain the result 12 (14 octal).
     assert_eq!(program1.chunks[0].words[0], u36!(0o14));
+
+    // Given a program containing the constant 6x3, when we assemble it
     let program2 = assemble_source("100| 6×3\n", Default::default()).expect("program is valid");
+    // Then we should obtain the result 18 (22 octal).
     assert_eq!(program2.chunks[0].words[0], u36!(0o22));
 }
 
@@ -356,8 +412,16 @@ fn test_double_pipe_config_literal_correctly_shifted() {
     // The 6 here is not superscript but it should be shifted into the
     // configuration part of the assembled word, because the '‖'
     // symbol introduces a configuration syllable.
+
+    // Given a program which uses the double-pipe symbol to introduce
+    // a configuration value
     let input = "‖6\n";
+
+    // When we assemble it
     let program = assemble_source(input, Default::default()).expect("program is valid");
+
+    // Then we should see that the configuration value ends up in the
+    // correct place in the assembled word.
     assert_eq!(program.chunks[0].words[0], u36!(0o6).shl(30));
 }
 
@@ -370,8 +434,15 @@ fn test_double_pipe_config_symbolic_default_assignment() {
     //
     // In our example here, the 42 octal should go in the address part
     // of the word.
+
+    // Given a program which uses the double-pipe symbol to indicate a
+    // configuration value, using a symbol which is not defined
     let input = "‖X 42\n";
+
+    // When we assemble it
     let program = assemble_source(input, Default::default()).expect("program is valid");
+
+    // Then we should see that the symbol is default-assigned as zero.
     assert_eq!(program.chunks[0].words[0], u36!(0o42));
 }
 
@@ -380,18 +451,27 @@ fn test_undefined_address_only_symbols_get_rc_block_allocation() {
     // Our program contains only references to a symbol (in address
     // context) which is not defined.  Per the Users Handbook, section
     // 6-2.2 ("SYMEX DEFINITION - TAGS - EQUALITIES - AUTOMATIC
-    // ASSIGNMENT") the defautl value shoudl be the numerical location
+    // ASSIGNMENT") the default value should be the numerical location
     // of the next place in the RC words block.
     //
     // However, when we see the same symbol a second time we should
     // not assign a second RC-word.
+
+    // Given a program which refers twicve to a symbol having no
+    // definition
     let input = "100|X\nX\n";
+
+    // When we assemble it
+    let program = assemble_source(input, Default::default()).expect("program is valid");
+    dbg!(&program);
+
+    // Then we should see that the symbol was given a default
+    // definition exactly once.
+
     // The input should be assembled at locations 0o100 and 0o101.  So
     // the RC block should begin at location 0o102.  Hence addresses
     // 0o100 and 0o101 should both contain the value 0o102 (which is
     // the value of X).
-    let program = assemble_source(input, Default::default()).expect("program is valid");
-    dbg!(&program);
 
     // Check that the program was assembled at the right location
     // (otherwise, the remaining checks will not make sense).
@@ -420,9 +500,16 @@ fn test_200_200_200_200_with_no_commas() {
     // go into Q4 Q3 Q2 Q1) from inputs like "ADD X" where the values
     // generated from ADD and from X are assembled into the 36-bit
     // word as-is).
+
+    // Given a program containing a 36-bit constant word
     let input = "200200200200\n";
+
+    // When we assemble it
     let program = assemble_source(input, Default::default()).expect("program is valid");
     dbg!(&program);
+
+    // Then we should see the that the word is evaluated as the
+    // correct value.
     assert_eq!(program.chunks.len(), 1); // one chunk (no RC-block needed).
     assert_eq!(program.chunks[0].words[0], u36!(0o200200200200));
 }
@@ -439,18 +526,30 @@ fn test_200_200_200_200_with_commas() {
     // go into Q4 Q3 Q2 Q1) from inputs like "ADD X" where the values
     // generated from ADD and from X are assembled into the 36-bit
     // word as-is).
+
+    // Given a program which uses a comma expression
     let input = "200,200,,200,200\n";
+
+    // When we assemble it
     let program = assemble_source(input, Default::default()).expect("program is valid");
     dbg!(&program);
+
+    // Then we should see that the comma expression is correctly
+    // evaluated
     assert_eq!(program.chunks.len(), 1); // one chunk (no RC-block needed).
     assert_eq!(program.chunks[0].words[0], u36!(0o200200200200));
 }
 
 #[test]
 fn test_440_330_220_110_with_commas() {
+    // Given a program which uses a comma expression
     let input = "440,330,,220,110\n";
+
+    // When we assemble it
     let program = assemble_source(input, Default::default()).expect("program is valid");
     dbg!(&program);
+
+    // Then we should see that the comma expression was correctly evaluated
     assert_eq!(program.chunks.len(), 1); // one chunk (no RC-block needed).
     assert_eq!(program.chunks[0].words[0], u36!(0o440330220110));
 }
@@ -458,6 +557,7 @@ fn test_440_330_220_110_with_commas() {
 #[test]
 fn test_alternate_base_with_commas() {
     assert_eq!(
+        // Given a literal which uses both decimal and octal bases, when we assemble it
         assemble_source(
             "10·,11·,,12,13· ** Note that 12 is in the default, octal, base\n",
             Default::default(),
@@ -466,6 +566,8 @@ fn test_alternate_base_with_commas() {
             entry_point: None,
             chunks: vec![BinaryChunk {
                 address: Address::from(u18!(0o00200000)),
+                // Then the assembled value should show that the
+                // conversions were carried out in the correct bases.
                 words: vec![u36!(0o012_013_012_015)]
             }]
         })
@@ -474,9 +576,16 @@ fn test_alternate_base_with_commas() {
 
 #[test]
 fn test_440_330_220_110_with_commas_in_rc_word() {
+    // Given a program which assembles a comma-expression inside an RC-word
     let input = "{440,330,,220,110}\n";
+
+    // When we assemble it
     let program = assemble_source(input, Default::default()).expect("program is valid");
     dbg!(&program);
+
+    // Then we should see that the program code refers to the RC-word
+    // by its address, and the RC-word contains the literal value we
+    // put in the braces.
     assert_eq!(program.chunks.len(), 2); // one regular chunk plus RC-block
     assert_eq!(program.chunks[0].words[0], program.chunks[1].address); // point to first word in RC-block
     assert_eq!(program.chunks[1].words[0], u36!(0o440330220110));
@@ -484,9 +593,16 @@ fn test_440_330_220_110_with_commas_in_rc_word() {
 
 #[test]
 fn test_here_in_rc_word() {
+    // Given a program which uses # in an RC-word
     let input = "100|{#}\n";
+
+    // When we assemble it
     let program = assemble_source(input, Default::default()).expect("program is valid");
     dbg!(&program);
+
+    // Then the RC-word's value should show that # was evaluated as
+    // the address of the RC-word itself, not the address of the
+    // instruction whcih refers to the RC-word.
     assert_eq!(program.chunks.len(), 2); // one regular chunk plus RC-block
     assert_eq!(program.chunks[0].address, Address::from(u18!(0o100)));
     assert_eq!(program.chunks[0].words.len(), 1);
@@ -506,9 +622,17 @@ fn test_here_in_nested_rc_word_simplistic() {
     // See also test_here_in_nested_rc_word_careful() for a more
     // careful test which is on the other hand not so easy to diagnose
     // when it fails.
+
+    // Given a program which nests one RC-word inside another
     let input = "100|{{#+400}}\n";
+
+    // When we assemble it
     let program = assemble_source(input, Default::default()).expect("program is valid");
     dbg!(&program);
+
+    // Then we should obtain a program in which the program refers to
+    // the outer RC-word, and the outer RC-word gets allocated at a
+    // lower address than the inner RC-word.
     assert_eq!(program.chunks.len(), 2); // one regular chunk plus RC-block
     assert_eq!(program.chunks[0].address, Address::from(u18!(0o100)));
     assert_eq!(program.chunks[0].words.len(), 1);
@@ -533,6 +657,10 @@ fn test_here_in_nested_rc_word_careful() {
     // See also test_here_in_nested_rc_word_simplistic() which is a
     // version of this test which is easier to understand but might
     // reject some correct implementations.
+
+    // Given a program which contains an RC-word nested inside another
+    // RC-word, and in which the inner RC-word refers to its own
+    // address.
     let input = "100|{{#+400}}\n";
 
     fn rc_word_at_addr(addr: Unsigned36Bit, rcwords: &BinaryChunk) -> Option<&Unsigned36Bit> {
@@ -552,12 +680,17 @@ fn test_here_in_nested_rc_word_careful() {
         }
     }
 
+    // When we assemble that program
     let program = assemble_source(input, Default::default()).expect("program is valid");
     dbg!(&program);
 
-    // The program should contain a single program chunk containing
-    // one words, and a second chunk (the RC block) containing two
-    // words.
+    // Then the program should contain a program chunk containing one
+    // word, and a second chunk (the RC block) containing two words.
+    //
+    // Then also (and this is the key part of this test) the outer
+    // RC-block should refer to the inner RC-block, and the inner
+    // RC-block should show that # was evaluated to the address of the
+    // inner RC-word.
     assert_eq!(program.chunks.len(), 2); // one regular chunk plus RC-block
     assert_eq!(program.chunks[0].words.len(), 1);
     assert_eq!(program.chunks[1].words.len(), 2);
@@ -631,14 +764,21 @@ fn tag_definition_in_rc_word() {
     //
     // We cannot yet use the above example as our test case as macro
     // expansion is not yet supported.
+
+    // Given a program which defines a tag inside an RC-word (but not
+    // inside a macro body)
     let input = concat!(
         "100| {T->200}\n", // address 100=103 (address of the first RC-word)
         "     T\n",        // address 101=103 (global value of T)
         "     {T}\n"       // address 102=104 (address of second RC-word)
     );
 
+    // When we assemble it
     let program = assemble_source(input, Default::default()).expect("program is valid");
     dbg!(&program);
+
+    // Then we should see that the tag value is accessible in the main
+    // body of the program, and is also accessible in other RC-words.
     assert_eq!(
         program,
         Binary {
@@ -676,8 +816,14 @@ fn default_assigned_rc_word() {
     // The numerical memory location of the next place in the RC words
     // block. The contents of this RC word are set to zero.  This
     // provision is useful in assigning temporary storage.
+
+    // Given a program which uses two symbols TEMP1 and TEMP2 without defining them.
+    // When we assemble it...
     let program = assemble_source("100| STA TEMP1\n     STB TEMP2\n", Default::default())
         .expect("program is valid");
+
+    // Then we should find that these symbols were assigned as
+    // RC-words.
     assert_eq!(
         program,
         Binary {
@@ -692,6 +838,7 @@ fn default_assigned_rc_word() {
                             configuration: Unsigned5Bit::ZERO,
                             opcode: Opcode::Sta,
                             index: Unsigned6Bit::ZERO,
+                            // TEMP1 is assigned as the first RC-word
                             operand_address: OperandAddress::Direct(Address::from(u18!(0o102))),
                         })
                         .bits(),
@@ -701,6 +848,7 @@ fn default_assigned_rc_word() {
                             configuration: Unsigned5Bit::ZERO,
                             opcode: Opcode::Stb,
                             index: Unsigned6Bit::ZERO,
+                            // TEMP2 is assigned as the second RC-word
                             operand_address: OperandAddress::Direct(Address::from(u18!(0o103))),
                         })
                         .bits()
@@ -709,6 +857,7 @@ fn default_assigned_rc_word() {
                 BinaryChunk {
                     // The RC block
                     address: Address::from(u18!(0o102)),
+                    // Both RC-words should be initialised as zero.
                     words: vec![Unsigned36Bit::ZERO, Unsigned36Bit::ZERO,]
                 }
             ]
@@ -750,13 +899,19 @@ fn default_assigned_index_register_easy_case() {
     // any use of hardware-specific sequence 65 (LW input) would cause
     // the assembler to default-assign 66 (which is also a hardware
     // device, LW output).  That doesn't seem very useful.
+
+    // Given a program which uses symbolic index values j and k in
+    // that order, when we assemble it
     let program =
         assemble_source("100|STAⱼ 0\nSTAₖ 0\n", Default::default()).expect("program is valid");
     dbg!(&program);
+
+    // Then we should obtain a program which shows that j and k were
+    // default-assigned with values 1 and 2 respectively.
     assert_eq!(program.chunks.len(), 1, "wrong number of program chunks");
     assert_eq!(
         SymbolicInstruction::try_from(&Instruction::from(program.chunks[0].words[0]))
-            .expect("instruction 09 shoudl be valid"),
+            .expect("first instruction should be valid"),
         SymbolicInstruction {
             held: false,
             configuration: Unsigned5Bit::ZERO,
@@ -767,7 +922,7 @@ fn default_assigned_index_register_easy_case() {
     );
     assert_eq!(
         SymbolicInstruction::try_from(&Instruction::from(program.chunks[0].words[1]))
-            .expect("instruction 09 shoudl be valid"),
+            .expect("second instruction should be valid"),
         SymbolicInstruction {
             held: false,
             configuration: Unsigned5Bit::ZERO,
@@ -781,18 +936,24 @@ fn default_assigned_index_register_easy_case() {
 
 #[test]
 fn test_bit_designator_evaluation_result() {
+    // Given a program which uses a bit designator,
+    // when we assemble it:
     let program = assemble_source("100|SKM₂․₁ 0\n", Default::default()).expect("program is valid");
+
+    // Then we should obtain a program in which the index part of the
+    // instruction holds the correct value of the bit designator.
     dbg!(&program);
     assert_eq!(program.chunks.len(), 1);
     assert_eq!(program.chunks[0].words.len(), 1);
     // SKM is opcode 0o17.  bit designator 2·1 is 0o41.  The opcode
-    // gets shifted left 24 bit positions, the index valis is shiifted
+    // gets shifted left 24 bit positions, the index value is shifted
     // left by 18 bit positions.
     assert_eq!(program.chunks[0].words[0], u36!(0o001_741_000_000));
 }
 
 #[test]
 fn test_kleinrock_200016() {
+    // Given a program which uses the "pipe construct"
     let input = concat!(
         "t = 6\n",
         "MKN ₄․₁₀@sub_pipe@ₜ 022122\n",
@@ -801,8 +962,14 @@ fn test_kleinrock_200016() {
         // 206336.
         "206335|0\n",
     );
+
+    // When we assemble it
     let program = assemble_source(input, Default::default()).expect("program is valid");
     dbg!(&program);
+
+    // Then we should obtain a program in which the RC-word part of
+    // the pipe construct is allocated in the RC-block and contains
+    // the value specified in the pipe construct.
     assert_eq!(program.chunks.len(), 3);
     assert_eq!(
         program.chunks[0].words.len(),
@@ -824,6 +991,8 @@ fn test_kleinrock_200016() {
 
 #[test]
 fn test_undefined_symbol_in_calculation() {
+    // Given a program which defines a symbol (A) in terms of a symbol
+    // (B) which needs to be given a default definition.
     let input = concat!(
         "A = B + 2\n",
         // B is used only in an index context, so should be
@@ -834,9 +1003,13 @@ fn test_undefined_symbol_in_calculation() {
         // it should take the value 3.
         "A\n",
     );
+
+    // When we assemble the program
     let program = assemble_source(input, Default::default()).expect("program is valid");
     dbg!(&program);
 
+    // Then the symbol B is assigned the correct default definition
+    // and the value of A is consistent with that definition.
     assert_eq!(program.chunks.len(), 1);
     assert_eq!(program.chunks[0].words.len(), 2); // program length
 
@@ -851,39 +1024,45 @@ fn test_undefined_symbol_in_calculation() {
 fn test_symbol_definition_loop_detection() {
     use super::super::types::AssemblerFailure;
     use super::super::types::{ProgramError, WithLocation};
+    // Given a program in which two symbols are defined in terms of each other
     let input = concat!("SA = SB\n", "SB = SA\n", "SA\n",);
 
     fn sa_and_sb(c1: &str, c2: &str) -> bool {
         matches!((c1, c2), ("SA", "SB") | ("SB", "SA"))
     }
 
+    // When I assemble that program
     match assemble_source(input, Default::default()) {
-        Err(AssemblerFailure::BadProgram(errors)) => match errors.as_slice() {
-            [WithLocation {
-                location: _,
-                inner:
-                    ProgramError::UnexpectedlyUndefinedSymbol {
-                        name:
-                            SymbolName {
-                                canonical: canonical1,
-                            },
-                        span: _,
-                    },
-            }, WithLocation {
-                location: _,
-                inner:
-                    ProgramError::UnexpectedlyUndefinedSymbol {
-                        name:
-                            SymbolName {
-                                canonical: canonical2,
-                            },
-                        span: _,
-                    },
-            }] if sa_and_sb(canonical1, canonical2) => (),
-            otherwise => {
-                panic!("expected an error from the assembler, but not : {otherwise:?}");
+        Err(AssemblerFailure::BadProgram(errors)) => {
+            // Then the error message that results should name both of
+            // the problem symbols.
+            match errors.as_slice() {
+                [WithLocation {
+                    location: _,
+                    inner:
+                        ProgramError::UnexpectedlyUndefinedSymbol {
+                            name:
+                                SymbolName {
+                                    canonical: canonical1,
+                                },
+                            span: _,
+                        },
+                }, WithLocation {
+                    location: _,
+                    inner:
+                        ProgramError::UnexpectedlyUndefinedSymbol {
+                            name:
+                                SymbolName {
+                                    canonical: canonical2,
+                                },
+                            span: _,
+                        },
+                }] if sa_and_sb(canonical1, canonical2) => (),
+                otherwise => {
+                    panic!("expected an error from the assembler, but not : {otherwise:?}");
+                }
             }
-        },
+        }
         Err(e) => {
             panic!("expected an error from the assembler, but not this one: {e:?}");
         }
@@ -895,51 +1074,68 @@ fn test_symbol_definition_loop_detection() {
 
 #[test]
 fn test_hash_evaluation() {
-    let input_a = "1| 1\n";
-    let program_a =
-        assemble_source(input_a, Default::default()).expect("input_a should be a valid program");
-    dbg!(&program_a);
+    // Given a program which uses the value of 'hash' at absolute
+    // address 1
+    let input_hash = "1| @hash@\n";
+    let input_one = "1| 1\n";
 
-    let input_b = "1| @hash@\n";
-    let program_b =
-        assemble_source(input_b, Default::default()).expect("input_b should be a valid program");
-    dbg!(&program_b);
+    // When I assemble it
+    let program_hash =
+        assemble_source(input_hash, Default::default()).expect("input_b should be a valid program");
+    dbg!(&program_hash);
+    let program_one =
+        assemble_source(input_one, Default::default()).expect("input_a should be a valid program");
+    dbg!(&program_one);
 
-    assert_eq!(&program_a, &program_b);
+    // Then I should get the same result as if I had assembled the
+    // literal value 1 directly.
+    assert_eq!(&program_one, &program_hash);
 }
 
 #[test]
 fn test_minus_hash_evaluation() {
-    let input_a = "1| -1\n";
-    let program_a =
-        assemble_source(input_a, Default::default()).expect("input_a should be a valid program");
-    dbg!(&program_a);
+    // Given a program which negates the value of 'hash' at absolute
+    // address 1
+    let input_minus_hash = "1| -@hash@\n";
+    let input_minus_one = "1| -1\n";
 
-    let input_b = "1| -@hash@\n";
-    let program_b =
-        assemble_source(input_b, Default::default()).expect("input_b should be a valid program");
-    dbg!(&program_b);
+    // When I assemble it
+    let program_minus_hash = assemble_source(input_minus_hash, Default::default())
+        .expect("input_b should be a valid program");
+    dbg!(&program_minus_hash);
+    let program_minus_one = assemble_source(input_minus_one, Default::default())
+        .expect("input_a should be a valid program");
+    dbg!(&program_minus_one);
 
-    assert_eq!(&program_a, &program_b);
+    // Then I should get the same result as assembling -1 directly.
+    assert_eq!(&program_minus_one, &program_minus_hash);
 }
 
 #[test]
 fn test_minus_hash_config_evaluation() {
-    let input_a = "1| ⁻¹ 0\n";
-    let program_a =
-        assemble_source(input_a, Default::default()).expect("input_a should be a valid program");
-    dbg!(&program_a);
+    // Given a program which has an instruction at address 1 which
+    // uses a negated hash (whose value would therefore be -1)as a
+    // config value
+    let input = "1| @sup_minus@@sup_hash@ 0\n";
+    // And given a program which directly uses -1 as a configuration value
+    let comparison_input = "1| ⁻¹ 0\n";
 
-    let input_b = "1| @sup_minus@@sup_hash@ 0\n";
-    let program_b =
-        assemble_source(input_b, Default::default()).expect("input_b should be a valid program");
-    dbg!(&program_b);
+    // When I assemble them
+    let program =
+        assemble_source(input, Default::default()).expect("input_b should be a valid program");
+    dbg!(&program);
+    let comparison_program = assemble_source(comparison_input, Default::default())
+        .expect("input_a should be a valid program");
+    dbg!(&comparison_program);
 
-    assert_eq!(&program_a, &program_b);
+    // Then these programs should assemble to identical output.
+    assert_eq!(&comparison_program, &program);
 }
 
 #[test]
 fn test_diagnose_duplicate_tags_in_macro_body() {
+    // Given a macro that uses the same tag name for two different
+    // instructions:
     let input = concat!(
         "☛☛DEF MYMACRO≡\n",
         // First tag assignment
@@ -952,9 +1148,15 @@ fn test_diagnose_duplicate_tags_in_macro_body() {
         // Expand the macro just once.
         "MYMACRO≡\n",
     );
+
+    // When I assemble a program using the macro
     let mut errors = Default::default();
     let expected_msg = "T is defined more than once";
-    match dbg!(assemble_pass1(input, &mut errors)) {
+    let r = dbg!(assemble_pass1(input, &mut errors));
+
+    // Then the assembly should fail with a message about the
+    // duplicate tag.
+    match r {
         Ok((_source_file, _options)) => {
             dbg!(&errors);
             assert!(!errors.is_empty());
