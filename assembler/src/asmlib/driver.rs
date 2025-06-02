@@ -13,7 +13,6 @@ use chumsky::error::Rich;
 use tracing::{event, span, Level};
 
 use super::ast::*;
-#[cfg(test)]
 use super::collections::OneOrMore;
 use super::eval::Evaluate;
 use super::eval::HereValue;
@@ -164,7 +163,7 @@ fn assemble_pass1<'a>(
 
 #[derive(Debug, PartialEq, Eq)]
 enum AssemblerPass1Or2Output<'a> {
-    Pass1Failed(Result<Vec<Rich<'a, lexer::Token>>, AssemblerFailure>),
+    Pass1Failed(Result<OneOrMore<Rich<'a, lexer::Token>>, AssemblerFailure>),
     Pass2Failed(AssemblerFailure),
     Success(Vec<Rich<'a, lexer::Token>>, OutputOptions, Pass2Output<'a>),
 }
@@ -173,7 +172,12 @@ fn assemble_nonempty_input(input: &str) -> AssemblerPass1Or2Output {
     let mut errors: Vec<Rich<'_, lexer::Token>> = Vec::new();
     match assemble_pass1(input, &mut errors) {
         Err(e) => AssemblerPass1Or2Output::Pass1Failed(Err(e)),
-        Ok((None, _output_options)) => AssemblerPass1Or2Output::Pass1Failed(Ok(errors)),
+        Ok((None, _output_options)) => match OneOrMore::try_from_vec(errors) {
+            Ok(errors) => AssemblerPass1Or2Output::Pass1Failed(Ok(errors)),
+            Err(_) => {
+                unreachable!("assemble_pass1 returned no SourceFile instance but there were no output errors either");
+            }
+        },
         Ok((Some(source_file), output_options)) => match assemble_pass2(source_file, input) {
             Err(e) => AssemblerPass1Or2Output::Pass2Failed(e),
             Ok(p2output) => AssemblerPass1Or2Output::Success(errors, output_options, p2output),
@@ -316,7 +320,7 @@ struct Pass2Output<'a> {
 
 fn initial_symbol_table<'a>(
     source_file: &SourceFile,
-) -> Result<(ExplicitSymbolTable, ImplicitSymbolTable), Vec<Rich<'a, lexer::Token>>> {
+) -> Result<(ExplicitSymbolTable, ImplicitSymbolTable), OneOrMore<Rich<'a, lexer::Token>>> {
     let mut errors = Vec::new();
     // TODO: split these out into separate functions.
     let mut explicit_symbols = ExplicitSymbolTable::new();
@@ -352,10 +356,9 @@ fn initial_symbol_table<'a>(
             }
         }
     }
-    if errors.is_empty() {
-        Ok((explicit_symbols, implicit_symbols))
-    } else {
-        Err(errors)
+    match OneOrMore::try_from_vec(errors) {
+        Ok(errors) => Err(errors),
+        Err(_) => Ok((explicit_symbols, implicit_symbols)),
     }
 }
 
@@ -544,26 +547,26 @@ fn assemble_pass3(
             RcWordAllocationFailure::RcBlockTooBig { source, .. } => {
                 let span: Span = source.span();
                 let location: LineAndColumn = LineAndColumn::from((body, &span));
-                AssemblerFailure::BadProgram(vec![WithLocation {
+                AssemblerFailure::BadProgram(OneOrMore::new(WithLocation {
                     location,
                     inner: ProgramError::RcBlockTooLong {
                         rc_word_source: source,
                         rc_word_span: span,
                     },
-                }])
+                }))
             }
             RcWordAllocationFailure::InconsistentTag(
                 ref e @ BadSymbolDefinition::Incompatible(ref name, span, _, _),
             ) => {
                 let location: LineAndColumn = LineAndColumn::from((body, &span));
-                AssemblerFailure::BadProgram(vec![WithLocation {
+                AssemblerFailure::BadProgram(OneOrMore::new(WithLocation {
                     location,
                     inner: ProgramError::InconsistentTag {
                         name: name.clone(),
                         span,
                         msg: e.to_string(),
                     },
-                }])
+                }))
             }
         }
     };
@@ -671,16 +674,14 @@ fn assemble_pass3(
         binary.add_chunk(chunk);
     }
 
-    if !bad_symbol_definitions.is_empty() {
-        return Err(AssemblerFailure::BadProgram(
-            bad_symbol_definitions
-                .into_values()
-                .map(|error| (body, error).into())
-                .collect(),
-        ));
+    match OneOrMore::try_from_iter(
+        bad_symbol_definitions
+            .into_values()
+            .map(|error| (body, error).into()),
+    ) {
+        Ok(errors) => Err(AssemblerFailure::BadProgram(errors)),
+        Err(_) => Ok((binary, final_symbols)),
     }
-
-    Ok((binary, final_symbols))
 }
 
 fn cleanup_control_chars(input: String) -> String {
@@ -701,18 +702,15 @@ fn cleanup_control_chars(input: String) -> String {
 
 fn fail_with_diagnostics(
     source_file_body: &str,
-    errors: Vec<Rich<lexer::Token>>,
-) -> Vec<WithLocation<ProgramError>> {
-    errors
-        .into_iter()
-        .map(|e| {
-            let syntax_error = ProgramError::SyntaxError {
-                span: *e.span(),
-                msg: cleanup_control_chars(e.to_string()),
-            };
-            (source_file_body, syntax_error).into()
-        })
-        .collect()
+    errors: OneOrMore<Rich<lexer::Token>>,
+) -> OneOrMore<WithLocation<ProgramError>> {
+    errors.into_map(|e| {
+        let syntax_error = ProgramError::SyntaxError {
+            span: *e.span(),
+            msg: cleanup_control_chars(e.to_string()),
+        };
+        (source_file_body, syntax_error).into()
+    })
 }
 
 pub(crate) fn assemble_source(
@@ -742,14 +740,18 @@ pub(crate) fn assemble_source(
             panic!("assembly pass1 generated no errors, a directive should have been returned");
         }
         AssemblerPass1Or2Output::Success(errors, output_options, p2output) => {
-            if !errors.is_empty() {
-                return Err(AssemblerFailure::BadProgram(fail_with_diagnostics(
-                    source_file_body,
-                    errors,
-                )));
-            } else {
-                options = options.merge(output_options);
-                p2output
+            match OneOrMore::try_from_vec(errors) {
+                Ok(errors) => {
+                    return Err(AssemblerFailure::BadProgram(fail_with_diagnostics(
+                        source_file_body,
+                        errors,
+                    )));
+                }
+                Err(_) => {
+                    // No errors.
+                    options = options.merge(output_options);
+                    p2output
+                }
             }
         }
     };
@@ -895,11 +897,11 @@ fn test_duplicate_global_tag() {
     match assemble_nonempty_input(input) {
         AssemblerPass1Or2Output::Pass2Failed(AssemblerFailure::BadProgram(errors)) => {
             dbg!(&errors);
-            match errors.as_slice() {
-                [WithLocation {
+            match errors.first() {
+                WithLocation {
                     inner: ProgramError::SyntaxError { msg, span: _ },
                     ..
-                }] => {
+                } => {
                     assert!(msg
                         .contains("bad symbol definition for TGX: TGX is defined more than once"));
                 }

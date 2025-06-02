@@ -321,10 +321,10 @@ impl ProgramError {
     pub(crate) fn into_assembler_failure(self, source_file_body: &str) -> AssemblerFailure {
         let span: Span = self.span();
         let location: LineAndColumn = LineAndColumn::from((source_file_body, &span));
-        AssemblerFailure::BadProgram(vec![WithLocation {
+        AssemblerFailure::BadProgram(OneOrMore::new(WithLocation {
             location,
             inner: self,
-        }])
+        }))
     }
 }
 
@@ -424,7 +424,7 @@ pub enum AssemblerFailure {
         msg: String,
     },
     Io(IoFailed), // not cloneable
-    BadProgram(Vec<WithLocation<ProgramError>>),
+    BadProgram(OneOrMore<WithLocation<ProgramError>>),
     MachineLimitExceeded(MachineLimitExceededFailure),
 }
 

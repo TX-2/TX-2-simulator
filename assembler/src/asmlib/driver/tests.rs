@@ -1038,6 +1038,7 @@ fn test_symbol_definition_loop_detection() {
                 "expected 2 errors from the assembler, but got {}: {errors:#?}",
                 errors.len()
             );
+            let errors: Vec<WithLocation<ProgramError>> = errors.into_iter().collect();
             match errors.as_slice() {
                 [e1 @ WithLocation {
                     location: _,
