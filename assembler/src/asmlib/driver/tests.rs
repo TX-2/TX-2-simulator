@@ -1029,25 +1029,9 @@ fn test_symbol_definition_loop_detection() {
     // Given a program in which two symbols are defined in terms of each other
     let input = concat!("SA = SB\n", "SB = SA\n", "SA\n",);
 
-    fn mirror_image_loops(names1: &OneOrMore<SymbolName>, names2: &OneOrMore<SymbolName>) -> bool {
-        fn stringify(n: &OneOrMore<SymbolName>) -> String {
-            n.iter()
-                .map(|s| s.to_string())
-                .collect::<Vec<String>>()
-                .join("->")
-        }
-        let s1 = stringify(names1);
-        let s2 = stringify(names2);
-        let a_first = "SA->SB->SA";
-        let b_first = "SB->SA->SB";
-        (s1 == a_first && s2 == b_first) || (s1 == b_first && s2 == a_first)
-    }
-
     // When I assemble that program
     match assemble_source(input, Default::default()) {
         Err(AssemblerFailure::BadProgram(errors)) => {
-            // Then the error messages that result should name both of
-            // the problem symbols.
             assert_eq!(
                 errors.len(),
                 2,
@@ -1055,26 +1039,28 @@ fn test_symbol_definition_loop_detection() {
                 errors.len()
             );
             match errors.as_slice() {
-                [WithLocation {
+                [e1 @ WithLocation {
                     location: _,
-                    inner:
-                        ProgramError::SymbolDefinitionLoop {
-                            symbol_names: symbol_names_1,
-                            span: _,
-                        },
-                }, WithLocation {
+                    inner: ProgramError::SymbolDefinitionLoop { .. },
+                }, e2 @ WithLocation {
                     location: _,
-                    inner:
-                        ProgramError::SymbolDefinitionLoop {
-                            symbol_names: symbol_names_2,
-                            span: _,
-                        },
+                    inner: ProgramError::SymbolDefinitionLoop { .. },
                 }] => {
-                    if mirror_image_loops(symbol_names_1, symbol_names_2) {
-                        // All good.
-                    } else {
-                        panic!("loop descriptions are incorrect:\n{symbol_names_1:?}\n{symbol_names_2:?}");
-                    }
+                    // Then the error messages that result should name
+                    // both of the problem symbols, indicating the
+                    // dependency loop for each.
+                    let (msg1, msg2) = (e1.to_string(), e2.to_string());
+                    let sa_msg =
+                        "symbol SA is undefined because its definition forms a loop: SA->SB->SA";
+                    let sb_msg =
+                        "symbol SB is undefined because its definition forms a loop: SB->SA->SB";
+                    dbg!(&msg1);
+                    dbg!(&msg2);
+                    assert!(
+                        (msg1.contains(sa_msg) && msg2.contains(sb_msg))
+                            || (msg1.contains(sb_msg) && msg2.contains(sa_msg)),
+                        "error messages did not include the expected text:\n{msg1}\n{msg2}"
+                    );
                 }
                 otherwise => {
                     panic!("expected an error from the assembler, but not: {otherwise:?}");
