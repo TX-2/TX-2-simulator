@@ -1645,14 +1645,14 @@ impl InstructionSequence {
         self.instructions.first()
     }
 
-    pub(super) fn assign_rc_words<R: RcAllocator>(
+    pub(super) fn allocate_rc_words<R: RcAllocator>(
         &mut self,
         explicit_symtab: &mut ExplicitSymbolTable,
         implicit_symtab: &mut ImplicitSymbolTable,
         rc_allocator: &mut R,
     ) -> Result<(), RcWordAllocationFailure> {
         for ref mut statement in self.instructions.iter_mut() {
-            statement.assign_rc_words(explicit_symtab, implicit_symtab, rc_allocator)?;
+            statement.allocate_rc_words(explicit_symtab, implicit_symtab, rc_allocator)?;
         }
         Ok(())
     }

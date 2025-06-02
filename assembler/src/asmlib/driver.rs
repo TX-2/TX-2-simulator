@@ -570,7 +570,7 @@ fn assemble_pass3(
 
     for directive_block in blocks.values_mut() {
         if let Err(e) =
-            directive_block.assign_rc_words(explicit_symtab, implicit_symtab, &mut rcblock)
+            directive_block.allocate_rc_words(explicit_symtab, implicit_symtab, &mut rcblock)
         {
             return Err(convert_rc_failure(e));
         }

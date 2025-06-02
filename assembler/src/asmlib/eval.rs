@@ -1127,59 +1127,59 @@ impl Evaluate for (&BlockIdentifier, &BlockPosition) {
 }
 
 impl LocatedBlock {
-    pub(super) fn assign_rc_words<R: RcAllocator>(
+    pub(super) fn allocate_rc_words<R: RcAllocator>(
         &mut self,
         explicit_symtab: &mut ExplicitSymbolTable,
         implicit_symtab: &mut ImplicitSymbolTable,
         rc_allocator: &mut R,
     ) -> Result<(), RcWordAllocationFailure> {
         for seq in self.sequences.iter_mut() {
-            seq.assign_rc_words(explicit_symtab, implicit_symtab, rc_allocator)?;
+            seq.allocate_rc_words(explicit_symtab, implicit_symtab, rc_allocator)?;
         }
         Ok(())
     }
 }
 
 impl TaggedProgramInstruction {
-    pub(super) fn assign_rc_words<R: RcAllocator>(
+    pub(super) fn allocate_rc_words<R: RcAllocator>(
         &mut self,
         explicit_symtab: &mut ExplicitSymbolTable,
         implicit_symtab: &mut ImplicitSymbolTable,
         rc_allocator: &mut R,
     ) -> Result<(), RcWordAllocationFailure> {
         self.instruction
-            .assign_rc_words(explicit_symtab, implicit_symtab, rc_allocator)
+            .allocate_rc_words(explicit_symtab, implicit_symtab, rc_allocator)
     }
 }
 
 impl UntaggedProgramInstruction {
-    pub(super) fn assign_rc_words<R: RcAllocator>(
+    pub(super) fn allocate_rc_words<R: RcAllocator>(
         &mut self,
         explicit_symtab: &mut ExplicitSymbolTable,
         implicit_symtab: &mut ImplicitSymbolTable,
         rc_allocator: &mut R,
     ) -> Result<(), RcWordAllocationFailure> {
         for inst in self.fragments.iter_mut() {
-            inst.assign_rc_words(explicit_symtab, implicit_symtab, rc_allocator)?;
+            inst.allocate_rc_words(explicit_symtab, implicit_symtab, rc_allocator)?;
         }
         Ok(())
     }
 }
 
 impl CommaDelimitedFragment {
-    pub(super) fn assign_rc_words<R: RcAllocator>(
+    pub(super) fn allocate_rc_words<R: RcAllocator>(
         &mut self,
         explicit_symtab: &mut ExplicitSymbolTable,
         implicit_symtab: &mut ImplicitSymbolTable,
         rc_allocator: &mut R,
     ) -> Result<(), RcWordAllocationFailure> {
         self.fragment
-            .assign_rc_words(explicit_symtab, implicit_symtab, rc_allocator)
+            .allocate_rc_words(explicit_symtab, implicit_symtab, rc_allocator)
     }
 }
 
 impl InstructionFragment {
-    pub(super) fn assign_rc_words<R: RcAllocator>(
+    pub(super) fn allocate_rc_words<R: RcAllocator>(
         &mut self,
         explicit_symtab: &mut ExplicitSymbolTable,
         implicit_symtab: &mut ImplicitSymbolTable,
@@ -1189,9 +1189,9 @@ impl InstructionFragment {
         match self {
             Null(_) | DeferredAddressing(_) => Ok(()),
             Arithmetic(expr) => {
-                expr.assign_rc_words(explicit_symtab, implicit_symtab, rc_allocator)
+                expr.allocate_rc_words(explicit_symtab, implicit_symtab, rc_allocator)
             }
-            Config(cfg) => cfg.assign_rc_words(explicit_symtab, implicit_symtab, rc_allocator),
+            Config(cfg) => cfg.allocate_rc_words(explicit_symtab, implicit_symtab, rc_allocator),
             PipeConstruct {
                 index: _,
                 rc_word_span,
@@ -1238,7 +1238,7 @@ impl RegisterContaining {
                         return Err(RcWordAllocationFailure::InconsistentTag(e));
                     }
                 }
-                tpibox.assign_rc_words(explicit_symtab, implicit_symtab, rc_allocator)?;
+                tpibox.allocate_rc_words(explicit_symtab, implicit_symtab, rc_allocator)?;
                 let tpi: Box<TaggedProgramInstruction> = tpibox;
                 Ok(RegisterContaining::Allocated(address, tpi))
             }
@@ -1248,7 +1248,7 @@ impl RegisterContaining {
 }
 
 impl RegistersContaining {
-    pub(crate) fn assign_rc_words<R: RcAllocator>(
+    pub(crate) fn allocate_rc_words<R: RcAllocator>(
         &mut self,
         span: Span,
         explicit_symtab: &mut ExplicitSymbolTable,
@@ -1269,47 +1269,47 @@ impl RegistersContaining {
 }
 
 impl ArithmeticExpression {
-    pub(super) fn assign_rc_words<R: RcAllocator>(
+    pub(super) fn allocate_rc_words<R: RcAllocator>(
         &mut self,
         explicit_symtab: &mut ExplicitSymbolTable,
         implicit_symtab: &mut ImplicitSymbolTable,
         rc_allocator: &mut R,
     ) -> Result<(), RcWordAllocationFailure> {
         self.first
-            .assign_rc_words(explicit_symtab, implicit_symtab, rc_allocator)?;
+            .allocate_rc_words(explicit_symtab, implicit_symtab, rc_allocator)?;
         for (_op, atom) in self.tail.iter_mut() {
-            atom.assign_rc_words(explicit_symtab, implicit_symtab, rc_allocator)?;
+            atom.allocate_rc_words(explicit_symtab, implicit_symtab, rc_allocator)?;
         }
         Ok(())
     }
 }
 
 impl ConfigValue {
-    pub(super) fn assign_rc_words<R: RcAllocator>(
+    pub(super) fn allocate_rc_words<R: RcAllocator>(
         &mut self,
         explicit_symtab: &mut ExplicitSymbolTable,
         implicit_symtab: &mut ImplicitSymbolTable,
         rc_allocator: &mut R,
     ) -> Result<(), RcWordAllocationFailure> {
         self.expr
-            .assign_rc_words(explicit_symtab, implicit_symtab, rc_allocator)
+            .allocate_rc_words(explicit_symtab, implicit_symtab, rc_allocator)
     }
 }
 
 impl SignedAtom {
-    pub(super) fn assign_rc_words<R: RcAllocator>(
+    pub(super) fn allocate_rc_words<R: RcAllocator>(
         &mut self,
         explicit_symtab: &mut ExplicitSymbolTable,
         implicit_symtab: &mut ImplicitSymbolTable,
         rc_allocator: &mut R,
     ) -> Result<(), RcWordAllocationFailure> {
         self.magnitude
-            .assign_rc_words(explicit_symtab, implicit_symtab, rc_allocator)
+            .allocate_rc_words(explicit_symtab, implicit_symtab, rc_allocator)
     }
 }
 
 impl Atom {
-    pub(super) fn assign_rc_words<R: RcAllocator>(
+    pub(super) fn allocate_rc_words<R: RcAllocator>(
         &mut self,
         explicit_symtab: &mut ExplicitSymbolTable,
         implicit_symtab: &mut ImplicitSymbolTable,
@@ -1317,20 +1317,20 @@ impl Atom {
     ) -> Result<(), RcWordAllocationFailure> {
         match self {
             Atom::SymbolOrLiteral(thing) => {
-                thing.assign_rc_words(explicit_symtab, implicit_symtab, rc_allocator)
+                thing.allocate_rc_words(explicit_symtab, implicit_symtab, rc_allocator)
             }
             Atom::Parens(_, _, expr) => {
-                expr.assign_rc_words(explicit_symtab, implicit_symtab, rc_allocator)
+                expr.allocate_rc_words(explicit_symtab, implicit_symtab, rc_allocator)
             }
             Atom::RcRef(span, rc) => {
-                rc.assign_rc_words(*span, explicit_symtab, implicit_symtab, rc_allocator)
+                rc.allocate_rc_words(*span, explicit_symtab, implicit_symtab, rc_allocator)
             }
         }
     }
 }
 
 impl SymbolOrLiteral {
-    pub(super) fn assign_rc_words<R: RcAllocator>(
+    pub(super) fn allocate_rc_words<R: RcAllocator>(
         &mut self,
         _explicit_symtab: &ExplicitSymbolTable,
         _implicit_symtab: &mut ImplicitSymbolTable,
