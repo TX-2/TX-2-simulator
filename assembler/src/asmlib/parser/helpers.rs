@@ -53,6 +53,12 @@ fn test_make_u36() {
     assert_eq!(Ok(u36!(1)), make_u36("+1", 8));
     assert_eq!(Ok(u36!(1)), make_u36("+1", 8));
     assert!(make_u36("+1+1", 8).is_err());
+    assert!(make_u36("+-1", 8).is_err());
+    assert!(make_u36("-+1", 8).is_err());
+    assert!(make_u36("--1", 8).is_err());
+    assert!(make_u36("++1", 8).is_err());
+    assert!(make_u36("+ 1", 8).is_err());
+    assert!(make_u36("- 1", 8).is_err());
     assert!(make_u36("18", 8).is_err());
     assert!(make_u36("19", 8).is_err());
     assert_eq!(Ok(u36!(19)), make_u36("19", 10));
