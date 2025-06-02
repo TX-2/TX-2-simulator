@@ -761,7 +761,7 @@ impl Evaluate for CommaDelimitedFragment {
 fn record_undefined_symbol_or_return_failure(
     source_file_body: &str,
     e: SymbolLookupFailure,
-    undefined_symbols: &mut BTreeMap<SymbolName, (Span, ProgramError)>,
+    undefined_symbols: &mut BTreeMap<SymbolName, ProgramError>,
 ) -> Result<(), AssemblerFailure> {
     use SymbolLookupFailure::*;
     match e {
@@ -772,14 +772,9 @@ fn record_undefined_symbol_or_return_failure(
         } => {
             undefined_symbols
                 .entry(deps_in_order.first().clone())
-                .or_insert_with(|| {
-                    (
-                        span,
-                        ProgramError::SymbolDefinitionLoop {
-                            symbol_names: deps_in_order,
-                            span,
-                        },
-                    )
+                .or_insert_with(|| ProgramError::SymbolDefinitionLoop {
+                    symbol_names: deps_in_order,
+                    span,
                 });
             Ok(())
         }
@@ -799,7 +794,7 @@ pub(super) fn extract_final_equalities<R: RcUpdater>(
     index_register_assigner: &mut IndexRegisterAssigner,
     rc_allocator: &mut R,
     final_symbols: &mut FinalSymbolTable,
-    bad_symbol_definitions: &mut BTreeMap<SymbolName, (Span, ProgramError)>,
+    bad_symbol_definitions: &mut BTreeMap<SymbolName, ProgramError>,
 ) -> Result<(), AssemblerFailure> {
     for eq in equalities {
         let mut ctx = EvaluationContext {
@@ -853,7 +848,7 @@ impl LocatedBlock {
         final_symbols: &mut FinalSymbolTable,
         body: &str,
         listing: &mut Listing,
-        undefined_symbols: &mut BTreeMap<SymbolName, (Span, ProgramError)>,
+        undefined_symbols: &mut BTreeMap<SymbolName, ProgramError>,
     ) -> Result<Vec<Unsigned36Bit>, AssemblerFailure> {
         let word_count: Unsigned18Bit = self
             .sequences
@@ -899,7 +894,7 @@ impl InstructionSequence {
         final_symbols: &mut FinalSymbolTable,
         body: &str,
         listing: &mut Listing,
-        bad_symbol_definitions: &mut BTreeMap<SymbolName, (Span, ProgramError)>,
+        bad_symbol_definitions: &mut BTreeMap<SymbolName, ProgramError>,
     ) -> Result<Vec<Unsigned36Bit>, AssemblerFailure> {
         let mut words: Vec<Unsigned36Bit> = Vec::with_capacity(self.emitted_word_count().into());
         for (offset, instruction) in self.iter().enumerate() {

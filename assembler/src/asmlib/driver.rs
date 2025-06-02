@@ -508,7 +508,7 @@ fn assemble_pass3(
     // TODO: we should be able to convert implicit_symtab into
     // final_symbols (and drop implicit_symtab).
     let mut final_symbols = FinalSymbolTable::default();
-    let mut bad_symbol_definitions: BTreeMap<SymbolName, (Span, ProgramError)> = Default::default();
+    let mut bad_symbol_definitions: BTreeMap<SymbolName, ProgramError> = Default::default();
     // TODO: consider moving this into pass 2.
     for block in blocks.values() {
         if let Some(Origin::Symbolic(span, symbol_name)) = block.origin.as_ref() {
@@ -674,8 +674,8 @@ fn assemble_pass3(
     if !bad_symbol_definitions.is_empty() {
         return Err(AssemblerFailure::BadProgram(
             bad_symbol_definitions
-                .into_iter()
-                .map(|(_name, (_span, error))| (body, error).into())
+                .into_values()
+                .map(|error| (body, error).into())
                 .collect(),
         ));
     }
