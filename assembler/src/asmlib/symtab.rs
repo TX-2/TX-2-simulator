@@ -8,6 +8,7 @@ use base::prelude::*;
 use base::subword;
 
 use super::ast::{EqualityValue, Origin, RcAllocator, RcUpdater, RcWordAllocationFailure};
+use super::collections::OneOrMore;
 use super::eval::{Evaluate, EvaluationContext, SymbolLookupFailure};
 use super::span::*;
 use super::symbol::{SymbolContext, SymbolName};
@@ -259,6 +260,22 @@ impl SymbolTable {
                 span,
                 def: SymbolDefinition::Implicit(ImplicitDefinition::Undefined(context.clone())),
             });
+    }
+
+    pub(crate) fn merge(
+        &mut self,
+        other: SymbolTable,
+    ) -> Result<(), OneOrMore<BadSymbolDefinition>> {
+        let mut errors: Vec<BadSymbolDefinition> = Vec::new();
+        for (name, InternalSymbolDef { span, def }) in other.definitions.into_iter() {
+            if let Err(e) = self.define(span, name, def) {
+                errors.push(e);
+            }
+        }
+        match OneOrMore::try_from_vec(errors) {
+            Ok(errors) => Err(errors),
+            Err(_) => Ok(()), // errors was empty
+        }
     }
 }
 

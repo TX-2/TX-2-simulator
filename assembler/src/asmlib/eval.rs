@@ -874,6 +874,9 @@ impl InstructionSequence {
                 );
             }
 
+            if self.local_symbols.is_some() {
+                panic!("InstructionSequence::build_binary_block: evaluation with local symbol tables is not yet implemented");
+            }
             let mut ctx = EvaluationContext {
                 symtab,
                 memory_map,

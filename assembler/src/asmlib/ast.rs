@@ -2004,8 +2004,10 @@ impl ManuscriptBlock {
     ) -> Result<(), OneOrMore<BadSymbolDefinition>> {
         for seq in self.sequences.iter_mut() {
             if let Some(local_symbols) = seq.local_symbols.as_mut() {
-                *local_symbols =
-                    build_local_symbol_table(block_identifier, seq.instructions.iter())?;
+                local_symbols.merge(build_local_symbol_table(
+                    block_identifier,
+                    seq.instructions.iter(),
+                )?)?;
             }
         }
         Ok(())
