@@ -237,10 +237,6 @@ pub enum ProgramError {
         span: Span,
         msg: String,
     },
-    UnexpectedlyUndefinedSymbol {
-        name: SymbolName,
-        span: Span,
-    },
     SymbolDefinitionLoop {
         symbol_names: OneOrMore<SymbolName>,
         span: Span,
@@ -268,7 +264,6 @@ impl Spanned for ProgramError {
             | FailedToAssignIndexRegister(span, _)
             | BlockTooLong(span, _)
             | InconsistentTag { span, .. }
-            | UnexpectedlyUndefinedSymbol { span, .. }
             | SymbolDefinitionLoop { span, .. }
             | SyntaxError { span, .. } => *span,
         }
@@ -298,9 +293,6 @@ impl Display for ProgramError {
                 write!(f, "inconsistent definitions for tag {name}: {msg}")
             }
             InconsistentOriginDefinitions(e) => write!(f, "{e}"),
-            UnexpectedlyUndefinedSymbol { name, span: _ } => {
-                write!(f, "unexpected undefined symbol: {name}")
-            }
             SymbolDefinitionLoop {
                 symbol_names,
                 span: _,
