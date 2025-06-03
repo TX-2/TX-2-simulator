@@ -5,7 +5,9 @@ use std::hash::{Hash, Hasher};
 
 use base::charset::Script;
 
+use super::ast::Origin;
 use super::span::Span;
+use super::span::Spanned;
 use super::types::{BlockIdentifier, OrderableSpan};
 
 #[derive(Clone, Eq, PartialOrd, Ord)]
@@ -76,29 +78,55 @@ impl Display for SymbolOrHere {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub(crate) enum SymbolContextMergeError {
-    ConflictingOrigin(SymbolName, BlockIdentifier, BlockIdentifier),
-    MixingOrigin(SymbolName, String),
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub(crate) enum ConfigOrIndexUsage {
+    Configuration,
+    Index,
+    ConfigurationAndIndex,
 }
 
-impl Display for SymbolContextMergeError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub(crate) enum InconsistentSymbolUse {
+    ConflictingOrigin(
+        SymbolName,
+        Box<Origin>,
+        BlockIdentifier,
+        Box<Origin>,
+        BlockIdentifier,
+    ),
+    MixingOrigin(SymbolName, Box<Origin>, ConfigOrIndexUsage),
+}
+
+impl Spanned for InconsistentSymbolUse {
+    fn span(&self) -> Span {
         match self {
-            SymbolContextMergeError::ConflictingOrigin(
-                name,
-                block_identifier_1,
-                block_identifier_2,
-            ) => {
-                write!(f, "symbol {} cannot simultaneously be the origin for block {} and block {}; names must be unique",
-                               name, block_identifier_1, block_identifier_2)
-            }
-            SymbolContextMergeError::MixingOrigin(_name, msg) => f.write_str(msg.as_str()),
+            InconsistentSymbolUse::ConflictingOrigin(_, _origin1, _, origin2, _) => origin2.span(),
+            InconsistentSymbolUse::MixingOrigin(_, origin, _) => origin.span(),
         }
     }
 }
 
-impl Error for SymbolContextMergeError {}
+impl Display for InconsistentSymbolUse {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            InconsistentSymbolUse::ConflictingOrigin(
+                name,
+                _origin_1,
+                block_identifier_1,
+                _origin_2,
+                block_identifier_2,
+            ) => {
+                write!(f, "symbol {} cannot simultaneously be the origin for {} and {}; names must be unique",
+                               name, block_identifier_1, block_identifier_2)
+            }
+            InconsistentSymbolUse::MixingOrigin(name, _origin, _incompatibility) => {
+                write!(f, "symbols (in this case {name}) cannot be used as an origin name and a configuration or index value")
+            }
+        }
+    }
+}
+
+impl Error for InconsistentSymbolUse {}
 
 #[derive(Debug, Default, PartialEq, Eq, Clone, Copy)]
 pub(crate) enum ConfigUse {
@@ -108,7 +136,7 @@ pub(crate) enum ConfigUse {
 }
 
 impl ConfigUse {
-    fn or(&self, other: ConfigUse) -> ConfigUse {
+    fn or(&self, other: &ConfigUse) -> ConfigUse {
         match (self, other) {
             (ConfigUse::IncludesConfig, _) | (_, ConfigUse::IncludesConfig) => {
                 ConfigUse::IncludesConfig
@@ -126,7 +154,7 @@ pub(crate) enum IndexUse {
 }
 
 impl IndexUse {
-    fn or(&self, other: IndexUse) -> IndexUse {
+    fn or(&self, other: &IndexUse) -> IndexUse {
         match (self, other) {
             (IndexUse::IncludesIndex, _) | (_, IndexUse::IncludesIndex) => IndexUse::IncludesIndex,
             _ => IndexUse::NotIndex,
@@ -142,7 +170,7 @@ pub(crate) enum AddressUse {
 }
 
 impl AddressUse {
-    fn or(&self, other: AddressUse) -> AddressUse {
+    fn or(&self, other: &AddressUse) -> AddressUse {
         match (self, other) {
             (AddressUse::IncludesAddress, _) | (_, AddressUse::IncludesAddress) => {
                 AddressUse::IncludesAddress
@@ -152,22 +180,21 @@ impl AddressUse {
     }
 }
 
-#[derive(Debug, Default, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub(crate) enum OriginUse {
-    #[default]
-    NotOrigin,
-    IncludesOrigin,
+    /// Use of a symbol in configuration or index context prohibits
+    /// use in an origin context.
+    NotOrigin { config: ConfigUse, index: IndexUse },
+    /// Use of a symbol in origin context prohibits use in
+    /// configuration or index context.
+    IncludesOrigin(BlockIdentifier, Origin),
 }
 
-#[derive(Debug, Default, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub(crate) struct SymbolContext {
-    // The "All members are false" context is the one in which we list
-    // the values of symbols in the program listing.
-    configuration: ConfigUse,
-    index: IndexUse,
-    address: AddressUse,
-    pub(super) origin_of_block: Option<BlockIdentifier>,
-    uses: BTreeSet<OrderableSpan>, // Span does not implement Hash
+    pub(super) address: AddressUse,
+    pub(super) origin: OriginUse,
+    pub(super) uses: BTreeSet<OrderableSpan>, // Span does not implement Hash
 }
 
 impl SymbolContext {
@@ -180,46 +207,62 @@ impl SymbolContext {
         self
     }
 
-    pub(crate) fn parts(&self) -> (ConfigUse, IndexUse, AddressUse, OriginUse) {
-        use OriginUse::*;
-        (
-            self.configuration,
-            self.index,
-            self.address,
-            if self.origin_of_block.is_some() {
-                IncludesOrigin
-            } else {
-                NotOrigin
-            },
-        )
-    }
-
     pub(crate) fn configuration(span: Span) -> SymbolContext {
         SymbolContext {
-            configuration: ConfigUse::IncludesConfig,
+            address: AddressUse::NotAddress,
+            origin: OriginUse::NotOrigin {
+                config: ConfigUse::IncludesConfig,
+                index: IndexUse::NotIndex,
+            },
             uses: SymbolContext::uses(span),
-            ..Default::default()
         }
         .check_invariants_passthrough()
     }
 
-    pub(crate) fn also_set_index(&mut self) {
-        self.index = IndexUse::IncludesIndex;
+    pub(crate) fn also_set_index(
+        &mut self,
+        name: &SymbolName,
+        span: Span,
+    ) -> Result<(), InconsistentSymbolUse> {
+        match &mut self.origin {
+            OriginUse::IncludesOrigin(_block_identifier, origin) => {
+                Err(InconsistentSymbolUse::MixingOrigin(
+                    name.clone(),
+                    Box::new(origin.clone()),
+                    ConfigOrIndexUsage::Index,
+                ))
+            }
+            OriginUse::NotOrigin { ref mut index, .. } => {
+                *index = IndexUse::IncludesIndex;
+                self.uses.insert(OrderableSpan(span));
+                Ok(())
+            }
+        }
     }
 
     pub(crate) fn is_address(&self) -> bool {
         self.address == AddressUse::IncludesAddress
     }
 
+    pub(crate) fn get_origin(&self) -> Option<(&BlockIdentifier, &Origin)> {
+        match self.origin {
+            OriginUse::IncludesOrigin(ref block_identifier, ref origin) => {
+                Some((block_identifier, origin))
+            }
+            OriginUse::NotOrigin { .. } => None,
+        }
+    }
+
     fn uses(span: Span) -> BTreeSet<OrderableSpan> {
         [OrderableSpan(span)].into_iter().collect()
     }
 
-    pub(crate) fn origin(block_id: BlockIdentifier, span: Span) -> SymbolContext {
+    pub(crate) fn origin(block_id: BlockIdentifier, origin: Origin) -> SymbolContext {
+        let span = origin.span();
         SymbolContext {
-            origin_of_block: Some(block_id),
+            address: AddressUse::NotAddress,
+            origin: OriginUse::IncludesOrigin(block_id, origin),
             uses: SymbolContext::uses(span),
-            ..Default::default()
         }
         .check_invariants_passthrough()
     }
@@ -228,27 +271,93 @@ impl SymbolContext {
         &mut self,
         name: &SymbolName,
         mut other: SymbolContext,
-    ) -> Result<(), SymbolContextMergeError> {
-        let origin = match (self.origin_of_block, other.origin_of_block) {
-            (None, None) => None,
-            (Some(x), None) | (None, Some(x)) => Some(x),
-            (Some(x), Some(y)) => {
-                if x == y {
-                    Some(x)
+    ) -> Result<(), InconsistentSymbolUse> {
+        fn mix_err(
+            name: &SymbolName,
+            origin: Origin,
+            _block_id: BlockIdentifier,
+            configuration: ConfigUse,
+            index: IndexUse,
+        ) -> InconsistentSymbolUse {
+            let incompatiblity: ConfigOrIndexUsage = match (configuration, index) {
+                (ConfigUse::IncludesConfig, IndexUse::IncludesIndex) => {
+                    ConfigOrIndexUsage::ConfigurationAndIndex
+                }
+                (ConfigUse::IncludesConfig, IndexUse::NotIndex) => {
+                    ConfigOrIndexUsage::Configuration
+                }
+                (ConfigUse::NotConfig, IndexUse::IncludesIndex) => ConfigOrIndexUsage::Index,
+                (ConfigUse::NotConfig, IndexUse::NotIndex) => {
+                    unreachable!("enclosing match already eliminated this case")
+                }
+            };
+            InconsistentSymbolUse::MixingOrigin(name.clone(), Box::new(origin), incompatiblity)
+        }
+
+        let origin: OriginUse = match (&self.origin, &other.origin) {
+            (
+                OriginUse::NotOrigin {
+                    config: my_config_use,
+                    index: my_index_use,
+                },
+                OriginUse::NotOrigin {
+                    config: their_config_use,
+                    index: their_index_use,
+                },
+            ) => OriginUse::NotOrigin {
+                config: my_config_use.or(their_config_use),
+                index: my_index_use.or(their_index_use),
+            },
+            (
+                OriginUse::IncludesOrigin(my_block, my_origin),
+                OriginUse::IncludesOrigin(their_block, their_origin),
+            ) => {
+                if my_block == their_block && my_origin == their_origin {
+                    OriginUse::IncludesOrigin(*my_block, my_origin.clone())
                 } else {
-                    return Err(SymbolContextMergeError::ConflictingOrigin(
+                    return Err(InconsistentSymbolUse::ConflictingOrigin(
                         name.clone(),
-                        x,
-                        y,
+                        Box::new(my_origin.clone()),
+                        *my_block,
+                        Box::new(their_origin.clone()),
+                        *their_block,
                     ));
                 }
             }
+            (
+                OriginUse::IncludesOrigin(my_block, my_origin),
+                OriginUse::NotOrigin {
+                    config: their_config,
+                    index: their_index,
+                },
+            ) => {
+                return Err(mix_err(
+                    name,
+                    my_origin.clone(),
+                    *my_block,
+                    *their_config,
+                    *their_index,
+                ));
+            }
+            (
+                OriginUse::NotOrigin {
+                    config: my_config,
+                    index: my_index,
+                },
+                OriginUse::IncludesOrigin(their_block, their_origin),
+            ) => {
+                return Err(mix_err(
+                    name,
+                    their_origin.clone(),
+                    *their_block,
+                    *my_config,
+                    *my_index,
+                ));
+            }
         };
         let result = SymbolContext {
-            configuration: self.configuration.or(other.configuration),
-            index: self.index.or(other.index),
-            address: self.address.or(other.address),
-            origin_of_block: origin,
+            address: self.address.or(&other.address),
+            origin,
             uses: {
                 let mut u = BTreeSet::new();
                 u.append(&mut self.uses);
@@ -256,22 +365,6 @@ impl SymbolContext {
                 u
             },
         };
-        if result.origin_of_block.is_some()
-            && ((result.configuration == ConfigUse::IncludesConfig)
-                || (result.index == IndexUse::IncludesIndex))
-        {
-            use ConfigUse::*;
-            use IndexUse::*;
-            let msg: String = format!(
-                "symbol {name} was used in an origin context, so it is not allowed to use it also in {}",
-                match (self.configuration, self.index) {
-                    (IncludesConfig, IncludesIndex) => "configuration and index contexts",
-                    (IncludesConfig, NotIndex) => "configuration context",
-                    (NotConfig, IncludesIndex) => "index context",
-                    (NotConfig, NotIndex) => unreachable!("enclosing match already eliminated this case")
-                });
-            return Err(SymbolContextMergeError::MixingOrigin(name.clone(), msg));
-        }
         result.check_invariants();
         *self = result;
         Ok(())
@@ -293,7 +386,7 @@ impl SymbolContext {
 
 impl From<(&Script, Span)> for SymbolContext {
     fn from((elevation, span): (&Script, Span)) -> SymbolContext {
-        let (configuration, index, address) = match elevation {
+        let (config, index, address) = match elevation {
             Script::Super => (
                 ConfigUse::IncludesConfig,
                 IndexUse::NotIndex,
@@ -311,10 +404,8 @@ impl From<(&Script, Span)> for SymbolContext {
             ),
         };
         SymbolContext {
-            configuration,
-            index,
             address,
-            origin_of_block: None,
+            origin: OriginUse::NotOrigin { config, index },
             uses: SymbolContext::uses(span),
         }
         .check_invariants_passthrough()

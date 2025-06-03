@@ -22,11 +22,10 @@ use super::listing::*;
 use super::parser::parse_source_file;
 use super::span::*;
 use super::state::{NumeralMode, State};
-use super::symbol::{SymbolContextMergeError, SymbolName};
+use super::symbol::SymbolName;
 use super::symtab::{
-    assign_default_rc_word_tags, BadSymbolDefinition, BlockPosition, ExplicitSymbolTable,
-    FinalSymbolDefinition, FinalSymbolTable, FinalSymbolType, ImplicitSymbolTable,
-    IndexRegisterAssigner, MemoryMap,
+    assign_default_rc_word_tags, BlockPosition, ExplicitSymbolTable, FinalSymbolDefinition,
+    FinalSymbolTable, FinalSymbolType, ImplicitSymbolTable, IndexRegisterAssigner, MemoryMap,
 };
 use super::types::*;
 use base::prelude::{Address, IndexBy, Unsigned18Bit, Unsigned36Bit};
@@ -330,32 +329,38 @@ fn initial_symbol_table<'a>(
     // symbol references, we need to identidy which symbol references
     // are references to something defined in a local scope.  And so
     // we need to enumerate definitions before references.
-    for (symbol, span, definition) in source_file.global_symbol_definitions() {
-        match explicit_symbols.define(symbol.clone(), definition.clone()) {
-            Ok(_) => (),
+    for r in source_file.global_symbol_definitions() {
+        match r {
+            Ok((symbol, span, definition)) => {
+                match explicit_symbols.define(symbol.clone(), definition.clone()) {
+                    Ok(_) => (),
+                    Err(e) => {
+                        errors.push(Rich::custom(
+                            span,
+                            format!("bad symbol definition for {symbol}: {e}"),
+                        ));
+                    }
+                }
+            }
             Err(e) => {
-                errors.push(Rich::custom(
-                    span,
-                    format!("bad symbol definition for {symbol}: {e}"),
-                ));
+                let span: Span = e.span();
+                errors.push(Rich::custom(span, e.to_string()));
             }
         }
     }
     let mut implicit_symbols = ImplicitSymbolTable::default();
-    for (symbol, span, context) in source_file
-        .global_symbol_references()
-        .filter(|(symbol, _span, _context)| !explicit_symbols.is_defined(symbol))
-    {
-        match implicit_symbols.record_usage_context(symbol.clone(), context) {
-            Ok(()) => (),
-            Err(SymbolContextMergeError::ConflictingOrigin(name, _bid1, _bid2)) => {
-                errors.push(Rich::custom(
-                    span,
-                    format!("origin {name} is used for two different blocks"),
-                ));
+    for r in source_file.global_symbol_references() {
+        match r {
+            Ok((symbol, span, context)) => {
+                if !explicit_symbols.is_defined(&symbol) {
+                    if let Err(e) = implicit_symbols.record_usage_context(symbol.clone(), context) {
+                        errors.push(Rich::custom(span, e.to_string()));
+                    }
+                }
             }
-            Err(SymbolContextMergeError::MixingOrigin(_name, msg)) => {
-                errors.push(Rich::custom(span, msg));
+            Err(e) => {
+                let span: Span = e.span();
+                errors.push(Rich::custom(span, e.to_string()));
             }
         }
     }
@@ -558,14 +563,17 @@ fn assemble_pass3(
                     },
                 }))
             }
-            RcWordAllocationFailure::InconsistentTag(
-                ref e @ BadSymbolDefinition::Incompatible(ref name, span, _, _),
-            ) => {
+            ref e @ RcWordAllocationFailure::InconsistentTag {
+                ref tag_name,
+                span,
+                existing: _,
+                proposed: _,
+            } => {
                 let location: LineAndColumn = LineAndColumn::from((body, &span));
                 AssemblerFailure::BadProgram(OneOrMore::new(WithLocation {
                     location,
                     inner: ProgramError::InconsistentTag {
-                        name: name.clone(),
+                        name: tag_name.clone(),
                         span,
                         msg: e.to_string(),
                     },

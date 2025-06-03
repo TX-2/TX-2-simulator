@@ -26,7 +26,7 @@ use super::glyph;
 use super::lexer::Token;
 use super::span::*;
 use super::state::NumeralMode;
-use super::symbol::{SymbolContext, SymbolName};
+use super::symbol::{InconsistentSymbolUse, SymbolContext, SymbolName};
 use super::symtab::{
     BadSymbolDefinition, ExplicitDefinition, ExplicitSymbolTable, ImplicitSymbolTable,
     TagDefinition,
@@ -45,7 +45,12 @@ pub(crate) enum RcWordAllocationFailure {
         source: RcWordSource,
         rc_block_len: usize,
     },
-    InconsistentTag(BadSymbolDefinition),
+    InconsistentTag {
+        tag_name: SymbolName,
+        span: Span,
+        existing: Box<ExplicitDefinition>,
+        proposed: Box<TagDefinition>,
+    },
 }
 
 impl Display for RcWordAllocationFailure {
@@ -57,11 +62,15 @@ impl Display for RcWordAllocationFailure {
             } => {
                 write!(f, "failed to allocate RC word for {source}; RC block is already {rc_block_len} words long")
             }
-            RcWordAllocationFailure::InconsistentTag(e) => {
-                let name = e.symbol();
+            RcWordAllocationFailure::InconsistentTag {
+                tag_name,
+                span: _,
+                existing,
+                proposed,
+            } => {
                 write!(
                     f,
-                    "failed to define tag {name} because it already had a previous definition: {e}"
+                    "failed to define tag {tag_name} because it already had a previous definition: {existing} versus {proposed}"
                 )
             }
         }
@@ -220,7 +229,7 @@ impl SignedAtom {
         &self,
         block_id: BlockIdentifier,
         block_offset: Unsigned18Bit,
-    ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> {
         self.magnitude.symbol_uses(block_id, block_offset)
     }
 
@@ -317,7 +326,7 @@ impl ArithmeticExpression {
         &self,
         block_id: BlockIdentifier,
         block_offset: Unsigned18Bit,
-    ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> {
         let mut result = Vec::with_capacity(1 + self.tail.len());
         result.extend(self.first.symbol_uses(block_id, block_offset));
         result.extend(
@@ -435,15 +444,16 @@ impl ConfigValue {
         &self,
         block_id: BlockIdentifier,
         block_offset: Unsigned18Bit,
-    ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> {
         self.expr
             .symbol_uses(block_id, block_offset)
-            .map(|(name, span, _ignore_symbol_use)| {
-                (
+            .map(|r| match r {
+                Ok((name, span, _ignore_symbol_use)) => Ok((
                     name,
                     span,
                     SymbolUse::Reference(SymbolContext::configuration(span)),
-                )
+                )),
+                Err(e) => Err(e),
             })
     }
 
@@ -488,7 +498,8 @@ impl RegistersContaining {
         &self,
         block_id: BlockIdentifier,
         block_offset: Unsigned18Bit,
-    ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> + use<'_> {
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + use<'_>
+    {
         self.0
             .iter()
             .flat_map(move |rc| rc.symbol_uses(block_id, block_offset))
@@ -575,44 +586,51 @@ impl RegisterContaining {
         &self,
         block_id: BlockIdentifier,
         block_offset: Unsigned18Bit,
-    ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> + use<'_> {
-        let mut result = Vec::new();
-        for symbol_use in self.instruction().symbol_uses(block_id, block_offset) {
-            let (name, span, symbol_definition) = symbol_use;
-            match symbol_definition {
-                def @ SymbolUse::Reference(_) => {
-                    result.push((name, span, def));
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + use<'_>
+    {
+        let mut result: Vec<Result<_, _>> = Vec::new();
+        for r in self.instruction().symbol_uses(block_id, block_offset) {
+            match r {
+                Ok((name, span, symbol_definition)) => {
+                    match symbol_definition {
+                        def @ SymbolUse::Reference(_) => {
+                            result.push(Ok((name, span, def)));
+                        }
+                        SymbolUse::Definition(ExplicitDefinition::Tag { .. }) => {
+                            // Here we have a tag definition inside an
+                            // RC-word.  Therefore the passed-in value of
+                            // `block_id` is wrong (it refers to the block
+                            // containing the RC-word, not to the RC-block)
+                            // and the offset is similarly wrong.
+                            //
+                            // Therefore we will process these uses of symbols
+                            // at the time we allocate addresses for RC-block
+                            // words.
+                        }
+                        SymbolUse::Definition(ExplicitDefinition::Origin(_, _)) => {
+                            unreachable!("Found origin {name} inside an RC-word; the parser should have rejected this.");
+                        }
+                        SymbolUse::Definition(_) => {
+                            // e.g. we have an input like
+                            //
+                            // { X = 2 }
+                            //
+                            //
+                            // Ideally we would issue an error for
+                            // this, but since this function cannot
+                            // fail, it's better to do that at the
+                            // time we parse the RC-word reference
+                            // (thus eliminating this case).
+                            //
+                            // When working on this case we should
+                            // figure out if an equality is allowed
+                            // inside a macro expansion.
+                            panic!("Found unexpected definition of {name} inside RC-word reference at {span:?}");
+                        }
+                    }
                 }
-                SymbolUse::Definition(ExplicitDefinition::Tag { .. }) => {
-                    // Here we have a tag definition inside an
-                    // RC-word.  Therefore the passed-in value of
-                    // `block_id` is wrong (it refers to the block
-                    // containing the RC-word, not to the RC-block)
-                    // and the offset is similarly wrong.
-                    //
-                    // Therefore we will process these uses of symbols
-                    // at the time we allocate addresses for RC-block
-                    // words.
-                }
-                SymbolUse::Definition(ExplicitDefinition::Origin(_, _)) => {
-                    unreachable!("Found origin {name} inside an RC-word; the parser should have rejected this.");
-                }
-                SymbolUse::Definition(_) => {
-                    // e.g. we have an input like
-                    //
-                    // { X = 2 }
-                    //
-                    //
-                    // Ideally we would issue an error for
-                    // this, but since this function cannot
-                    // fail, it's better to do that at the
-                    // time we parse the RC-word reference
-                    // (thus eliminating this case).
-                    //
-                    // When working on this case we should
-                    // figure out if an equality is allowed
-                    // inside a macro expansion.
-                    panic!("Found unexpected definition of {name} inside RC-word reference at {span:?}");
+                Err(e) => {
+                    result.push(Err(e));
                 }
             }
         }
@@ -680,15 +698,15 @@ impl Atom {
         &self,
         block_id: BlockIdentifier,
         block_offset: Unsigned18Bit,
-    ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
-        let mut result = Vec::with_capacity(1);
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> {
+        let mut result: Vec<Result<_, _>> = Vec::with_capacity(1);
         match self {
             Atom::SymbolOrLiteral(SymbolOrLiteral::Symbol(script, name, span)) => {
-                result.push((
+                result.push(Ok((
                     name.clone(),
                     *span,
                     SymbolUse::Reference(SymbolContext::from((script, *span))),
-                ));
+                )));
             }
             Atom::SymbolOrLiteral(SymbolOrLiteral::Literal(_) | SymbolOrLiteral::Here(_, _)) => (),
             Atom::Parens(_span, _script, expr) => {
@@ -816,14 +834,16 @@ pub(crate) enum SymbolOrLiteral {
 }
 
 impl SymbolOrLiteral {
-    fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
-        let mut result: Vec<(SymbolName, Span, SymbolUse)> = Vec::with_capacity(1);
+    fn symbol_uses(
+        &self,
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> {
+        let mut result = Vec::with_capacity(1);
         match self {
             SymbolOrLiteral::Here(_, _) | SymbolOrLiteral::Literal(_) => (),
             SymbolOrLiteral::Symbol(script, name, span) => {
                 let context: SymbolContext = (script, *span).into();
                 let sym_use: SymbolUse = SymbolUse::Reference(context);
-                result.push((name.clone(), *span, sym_use));
+                result.push(Ok((name.clone(), *span, sym_use)));
             }
         }
         result.into_iter()
@@ -975,38 +995,46 @@ impl InstructionFragment {
         &self,
         block_id: BlockIdentifier,
         block_offset: Unsigned18Bit,
-    ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
-        let mut result: Vec<_> = Vec::new();
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> {
+        let mut uses: Vec<Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> =
+            Vec::new();
         match self {
             InstructionFragment::Null(_) => (),
             InstructionFragment::Arithmetic(expr) => {
-                result.extend(expr.symbol_uses(block_id, block_offset));
+                uses.extend(expr.symbol_uses(block_id, block_offset));
             }
             InstructionFragment::DeferredAddressing(_) => (),
             InstructionFragment::Config(value) => {
-                result.extend(value.symbol_uses(block_id, block_offset));
+                uses.extend(value.symbol_uses(block_id, block_offset));
             }
             InstructionFragment::PipeConstruct {
                 index,
                 rc_word_span: _,
                 rc_word_value,
             } => {
-                result.extend(
-                    index
-                        .item
-                        .symbol_uses()
-                        .map(|(name, span, mut symbol_use)| {
+                for r in index.item.symbol_uses() {
+                    match r {
+                        Ok((name, span, mut symbol_use)) => {
                             if let SymbolUse::Reference(context) = &mut symbol_use {
                                 assert!(!context.is_address());
-                                context.also_set_index();
-                            };
-                            (name, span, symbol_use)
-                        }),
-                );
-                result.extend(rc_word_value.symbol_uses(block_id, block_offset));
+                                if let Err(e) = context.also_set_index(&name, span) {
+                                    uses.push(Err(e));
+                                } else {
+                                    uses.push(Ok((name, span, symbol_use)));
+                                }
+                            } else {
+                                uses.push(Ok((name, span, symbol_use)));
+                            }
+                        }
+                        Err(e) => {
+                            uses.push(Err(e));
+                        }
+                    }
+                }
+                uses.extend(rc_word_value.symbol_uses(block_id, block_offset));
             }
         }
-        result.into_iter()
+        uses.into_iter()
     }
 
     pub(super) fn substitute_macro_parameters(
@@ -1068,6 +1096,8 @@ pub(crate) enum Origin {
     /// An origin specified by name (which would refer to e.g. an
     /// equality).
     Symbolic(Span, SymbolName),
+    /// An origin which was intiially symbolic only, but whose location we deduced.
+    Deduced(Span, SymbolName, Address),
 }
 
 impl Display for Origin {
@@ -1075,6 +1105,9 @@ impl Display for Origin {
         match self {
             Origin::Literal(_span, addr) => fmt::Display::fmt(&addr, f),
             Origin::Symbolic(_span, sym) => fmt::Display::fmt(&sym, f),
+            Origin::Deduced(_span, name, addr) => {
+                write!(f, "{name} (deduced to be at address {addr:o})")
+            }
         }
     }
 }
@@ -1092,7 +1125,9 @@ impl Origin {
 impl Spanned for Origin {
     fn span(&self) -> Span {
         match self {
-            Origin::Literal(span, _) | Origin::Symbolic(span, _) => *span,
+            Origin::Deduced(span, _, _) | Origin::Literal(span, _) | Origin::Symbolic(span, _) => {
+                *span
+            }
         }
     }
 }
@@ -1100,6 +1135,9 @@ impl Spanned for Origin {
 impl Octal for Origin {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            Origin::Deduced(_span, name, address) => {
+                write!(f, "{name} (deduced to be at {address:o})")
+            }
             Origin::Literal(_span, address) => fmt::Octal::fmt(&address, f),
             Origin::Symbolic(_span, name) => fmt::Display::fmt(&name, f),
         }
@@ -1110,15 +1148,27 @@ impl Origin {
     fn symbol_uses(
         &self,
         block_id: BlockIdentifier,
-    ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> {
         let mut result = Vec::with_capacity(1);
         match self {
             Origin::Literal(_span, _) => (),
-            org @ Origin::Symbolic(span, name) => result.push((
-                name.clone(),
-                *span,
-                SymbolUse::Definition(ExplicitDefinition::Origin(org.clone(), block_id)),
-            )),
+            org @ Origin::Deduced(span, name, _) => {
+                // We won't have any deduced origin values at this
+                // time the symbol uses are enumerate, but this case
+                // is just here for completeness.
+                result.push(Ok((
+                    name.clone(),
+                    *span,
+                    SymbolUse::Definition(ExplicitDefinition::Origin(org.clone(), block_id)),
+                )));
+            }
+            org @ Origin::Symbolic(span, name) => {
+                result.push(Ok((
+                    name.clone(),
+                    *span,
+                    SymbolUse::Definition(ExplicitDefinition::Origin(org.clone(), block_id)),
+                )));
+            }
         }
         result.into_iter()
     }
@@ -1203,7 +1253,8 @@ impl CommaDelimitedFragment {
         &self,
         block_id: BlockIdentifier,
         block_offset: Unsigned18Bit,
-    ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> + '_ {
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + '_
+    {
         self.fragment.symbol_uses(block_id, block_offset)
     }
 
@@ -1244,7 +1295,8 @@ impl UntaggedProgramInstruction {
         &self,
         block_id: BlockIdentifier,
         offset: Unsigned18Bit,
-    ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> + use<'_> {
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + use<'_>
+    {
         self.fragments
             .iter()
             .flat_map(move |fragment| fragment.symbol_uses(block_id, offset))
@@ -1349,8 +1401,8 @@ impl Tag {
         &self,
         block_id: BlockIdentifier,
         block_offset: Unsigned18Bit,
-    ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
-        [(
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> {
+        [Ok((
             self.name.clone(),
             self.span,
             SymbolUse::Definition(ExplicitDefinition::Tag(TagDefinition::Unresolved {
@@ -1358,7 +1410,7 @@ impl Tag {
                 block_offset,
                 span: self.span,
             })),
-        )]
+        ))]
         .into_iter()
     }
 }
@@ -1389,8 +1441,8 @@ impl TaggedProgramInstruction {
         &self,
         block_id: BlockIdentifier,
         offset: Unsigned18Bit,
-    ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
-        let mut result = Vec::new();
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> {
+        let mut result: Vec<Result<_, _>> = Vec::new();
         result.extend(
             self.tags
                 .iter()
@@ -1509,22 +1561,63 @@ where
     })
 }
 
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub(crate) enum SymbolTableBuildFailure {
+    InconsistentUsage(InconsistentSymbolUse),
+    BadDefinition(BadSymbolDefinition),
+}
+
+impl Spanned for SymbolTableBuildFailure {
+    fn span(&self) -> Span {
+        match self {
+            SymbolTableBuildFailure::InconsistentUsage(inconsistent_symbol_use) => {
+                inconsistent_symbol_use.span()
+            }
+            SymbolTableBuildFailure::BadDefinition(bad_symbol_definition) => {
+                bad_symbol_definition.span()
+            }
+        }
+    }
+}
+
+impl Display for SymbolTableBuildFailure {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            SymbolTableBuildFailure::InconsistentUsage(inconsistent_symbol_use) => {
+                write!(f, "{inconsistent_symbol_use}")
+            }
+            SymbolTableBuildFailure::BadDefinition(bad_symbol_definition) => {
+                write!(f, "{bad_symbol_definition}")
+            }
+        }
+    }
+}
+
+impl Error for SymbolTableBuildFailure {}
+
 fn build_local_symbol_table<'a, I>(
     block_identifier: BlockIdentifier,
     instructions: I,
-) -> Result<ExplicitSymbolTable, OneOrMore<BadSymbolDefinition>>
+) -> Result<ExplicitSymbolTable, OneOrMore<SymbolTableBuildFailure>>
 where
     I: Iterator<Item = &'a TaggedProgramInstruction>,
 {
-    let mut errors: Vec<BadSymbolDefinition> = Default::default();
+    let mut errors: Vec<SymbolTableBuildFailure> = Default::default();
     let mut local_symbols = ExplicitSymbolTable::default();
     for (offset, instruction) in block_items_with_offset(instructions) {
-        for (symbol_name, _span, definition) in instruction
+        for r in instruction
             .symbol_uses(block_identifier, offset)
             .filter_map(definitions_only)
         {
-            if let Err(e) = local_symbols.define(symbol_name.clone(), definition) {
-                errors.push(e);
+            match r {
+                Ok((symbol_name, _span, definition)) => {
+                    if let Err(e) = local_symbols.define(symbol_name.clone(), definition) {
+                        errors.push(SymbolTableBuildFailure::BadDefinition(e));
+                    }
+                }
+                Err(e) => {
+                    errors.push(SymbolTableBuildFailure::InconsistentUsage(e));
+                }
             }
         }
     }
@@ -1619,19 +1712,21 @@ fn test_build_local_symbol_table_detects_tag_conflict() {
 
     assert_eq!(
         build_local_symbol_table(BlockIdentifier::from(0), seq.iter()),
-        Err(OneOrMore::new(BadSymbolDefinition::Incompatible(
-            SymbolName::from("T"),
-            span(5..6),
-            Box::new(ExplicitDefinition::Tag(TagDefinition::Unresolved {
-                block_id: BlockIdentifier::from(0),
-                block_offset: u18!(0),
-                span: span(0..1),
-            })),
-            Box::new(ExplicitDefinition::Tag(TagDefinition::Unresolved {
-                block_id: BlockIdentifier::from(0),
-                block_offset: u18!(1),
+        Err(OneOrMore::new(SymbolTableBuildFailure::BadDefinition(
+            BadSymbolDefinition {
+                symbol_name: SymbolName::from("T"),
                 span: span(5..6),
-            }))
+                existing: Box::new(ExplicitDefinition::Tag(TagDefinition::Unresolved {
+                    block_id: BlockIdentifier::from(0),
+                    block_offset: u18!(0),
+                    span: span(0..1),
+                })),
+                proposed: Box::new(ExplicitDefinition::Tag(TagDefinition::Unresolved {
+                    block_id: BlockIdentifier::from(0),
+                    block_offset: u18!(1),
+                    span: span(5..6),
+                }))
+            }
         )))
     );
 }
@@ -1660,17 +1755,16 @@ impl InstructionSequence {
     fn symbol_uses(
         &self,
         block_id: BlockIdentifier,
-    ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> {
         let no_symbols = ExplicitSymbolTable::default();
         let local_scope: &ExplicitSymbolTable = self.local_symbols.as_ref().unwrap_or(&no_symbols);
-        let mut result: Vec<(SymbolName, Span, SymbolUse)> = Vec::new();
+        let mut result: Vec<Result<_, _>> = Vec::new();
 
         for (off, statement) in block_items_with_offset(self.instructions.iter()) {
-            result.extend(
-                statement
-                    .symbol_uses(block_id, off)
-                    .filter(|(symbol, _, _)| !local_scope.is_defined(symbol)),
-            );
+            result.extend(statement.symbol_uses(block_id, off).filter(|r| match r {
+                Ok((symbol, _, _)) => !local_scope.is_defined(symbol),
+                Err(_) => true,
+            }));
         }
         result.into_iter()
     }
@@ -1692,15 +1786,20 @@ pub(crate) struct SourceFile {
 }
 
 fn definitions_only(
-    (name, span, sym_use): (SymbolName, Span, SymbolUse),
-) -> Option<(SymbolName, Span, ExplicitDefinition)> {
-    match sym_use {
+    r: Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>,
+) -> Option<Result<(SymbolName, Span, ExplicitDefinition), InconsistentSymbolUse>> {
+    match r {
         // An origin specification is either a reference or a
-        // definition, depending on how it is used.  But we
-        // will cope with origin definitions when processing
-        // the blocks (as opposed to the blocks' contents).
-        SymbolUse::Definition(ExplicitDefinition::Origin(_, _)) | SymbolUse::Reference(_) => None,
-        SymbolUse::Definition(def) => Some((name, span, def)),
+        // definition, depending on how it is used.  But we will cope
+        // with origin definitions when processing the blocks (as
+        // opposed to the blocks' contents).
+        Ok((
+            _,
+            _,
+            SymbolUse::Definition(ExplicitDefinition::Origin(_, _)) | SymbolUse::Reference(_),
+        )) => None,
+        Ok((name, span, SymbolUse::Definition(def))) => Some(Ok((name, span, def))),
+        Err(e) => Some(Err(e)),
     }
 }
 
@@ -1709,7 +1808,10 @@ fn offset_to_block_id<T>((offset, item): (usize, T)) -> (BlockIdentifier, T) {
 }
 
 impl SourceFile {
-    fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> + use<'_> {
+    fn symbol_uses(
+        &self,
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + use<'_>
+    {
         let uses_in_instructions = self
             .blocks
             .iter()
@@ -1725,7 +1827,7 @@ impl SourceFile {
 
     pub(crate) fn build_local_symbol_tables(
         &mut self,
-    ) -> Result<(), OneOrMore<BadSymbolDefinition>> {
+    ) -> Result<(), OneOrMore<SymbolTableBuildFailure>> {
         let mut errors = Vec::default();
         for (block_identifier, block) in self.blocks.iter_mut().enumerate().map(offset_to_block_id)
         {
@@ -1741,27 +1843,35 @@ impl SourceFile {
 
     pub(crate) fn global_symbol_references(
         &self,
-    ) -> impl Iterator<Item = (SymbolName, Span, SymbolContext)> + '_ {
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolContext), InconsistentSymbolUse>> + '_
+    {
         fn accept_references_only(
-            (name, span, sym_use): (SymbolName, Span, SymbolUse),
-        ) -> Option<(SymbolName, Span, SymbolContext)> {
-            match sym_use {
-                SymbolUse::Reference(context) => Some((name, span, context)),
-                // An origin specification is either a reference or a definition, depending on how it is used.
-                SymbolUse::Definition(ExplicitDefinition::Origin(
-                    Origin::Symbolic(span, name),
-                    block_id,
-                )) => Some((name, span, SymbolContext::origin(block_id, span))),
-                SymbolUse::Definition(_) => None,
+            r: Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>,
+        ) -> Option<Result<(SymbolName, Span, SymbolContext), InconsistentSymbolUse>> {
+            match r {
+                Ok((name, span, sym_use)) => match sym_use {
+                    SymbolUse::Reference(context) => Some(Ok((name, span, context))),
+                    // An origin specification is either a reference or a definition, depending on how it is used.
+                    SymbolUse::Definition(ExplicitDefinition::Origin(
+                        ref origin @ Origin::Symbolic(span, ref name),
+                        block_id,
+                    )) => Some(Ok((
+                        name.clone(),
+                        span,
+                        SymbolContext::origin(block_id, origin.clone()),
+                    ))),
+                    SymbolUse::Definition(_) => None,
+                },
+                Err(e) => Some(Err(e)),
             }
         }
-
         self.symbol_uses().filter_map(accept_references_only)
     }
 
     pub(crate) fn global_symbol_definitions(
         &self,
-    ) -> impl Iterator<Item = (SymbolName, Span, ExplicitDefinition)> + '_ {
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, ExplicitDefinition), InconsistentSymbolUse>> + '_
+    {
         self.symbol_uses().filter_map(definitions_only)
     }
 }
@@ -1792,15 +1902,17 @@ pub(crate) struct Equality {
 }
 
 impl Equality {
-    fn symbol_uses(&self) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
-        [(
+    fn symbol_uses(
+        &self,
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> {
+        [Ok((
             self.name.clone(),
             self.span,
             SymbolUse::Definition(
                 // TODO: the expression.clone() on the next line is expensive.
                 ExplicitDefinition::Equality(self.value.clone()),
             ),
-        )]
+        ))]
         .into_iter()
     }
 }
@@ -1973,8 +2085,9 @@ impl ManuscriptBlock {
     fn symbol_uses(
         &self,
         block_id: BlockIdentifier,
-    ) -> impl Iterator<Item = (SymbolName, Span, SymbolUse)> {
-        let mut result: Vec<(SymbolName, Span, SymbolUse)> = Vec::new();
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> {
+        let mut result: Vec<Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> =
+            Vec::new();
         if let Some(origin) = self.origin.as_ref() {
             result.extend(origin.symbol_uses(block_id));
         }
@@ -1989,16 +2102,27 @@ impl ManuscriptBlock {
     fn build_local_symbol_tables(
         &mut self,
         block_identifier: BlockIdentifier,
-    ) -> Result<(), OneOrMore<BadSymbolDefinition>> {
+    ) -> Result<(), OneOrMore<SymbolTableBuildFailure>> {
+        let mut errors: Vec<SymbolTableBuildFailure> = Vec::new();
         for seq in self.sequences.iter_mut() {
             if let Some(local_symbols) = seq.local_symbols.as_mut() {
-                local_symbols.merge(build_local_symbol_table(
-                    block_identifier,
-                    seq.instructions.iter(),
-                )?)?;
+                match build_local_symbol_table(block_identifier, seq.instructions.iter()) {
+                    Ok(more_symbols) => match local_symbols.merge(more_symbols) {
+                        Ok(()) => (),
+                        Err(e) => {
+                            errors.extend(e.into_iter().map(SymbolTableBuildFailure::BadDefinition))
+                        }
+                    },
+                    Err(e) => {
+                        errors.extend(e.into_iter());
+                    }
+                }
             }
         }
-        Ok(())
+        match OneOrMore::try_from_vec(errors) {
+            Ok(errors) => Err(errors),
+            Err(_) => Ok(()),
+        }
     }
 
     pub(crate) fn instruction_count(&self) -> Unsigned18Bit {

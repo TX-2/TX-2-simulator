@@ -17,7 +17,7 @@ use super::ast::*;
 use super::collections::OneOrMore;
 use super::listing::{Listing, ListingLine};
 use super::span::*;
-use super::symbol::{AddressUse, ConfigUse, IndexUse, OriginUse, SymbolName};
+use super::symbol::{ConfigUse, IndexUse, OriginUse, SymbolName};
 
 use super::types::{
     offset_from_origin, AssemblerFailure, BlockIdentifier, MachineLimitExceededFailure,
@@ -25,9 +25,9 @@ use super::types::{
 };
 use crate::symbol::SymbolContext;
 use crate::symtab::{
-    BlockPosition, ExplicitDefinition, ExplicitSymbolTable, FinalSymbolDefinition,
-    FinalSymbolTable, FinalSymbolType, ImplicitDefinition, ImplicitSymbolTable,
-    IndexRegisterAssigner, LookupOperation, MemoryMap, TagDefinition,
+    BadSymbolDefinition, BlockPosition, ExplicitDefinition, ExplicitSymbolTable,
+    FinalSymbolDefinition, FinalSymbolTable, FinalSymbolType, ImplicitDefinition,
+    ImplicitSymbolTable, IndexRegisterAssigner, LookupOperation, MemoryMap, TagDefinition,
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -205,39 +205,37 @@ fn assign_default_value(
         "assigning default value for {name} used in contexts {contexts_used:?}"
     );
     let span: Span = *contexts_used.any_span();
-    let parts = contexts_used.parts();
-    use AddressUse::*;
     use ConfigUse::*;
     use IndexUse::*;
-    use OriginUse::*;
-    match parts {
-        (NotConfig, NotIndex, _, IncludesOrigin) => {
+    match &contexts_used.origin {
+        OriginUse::IncludesOrigin(_block, _origin) => {
             unreachable!("assign_default_value should not be called for origin speicifations; attempted to assign default value for {name} (used in contexts: {contexts_used:?}")
         }
-        (IncludesConfig, _, _, IncludesOrigin) | (_, IncludesIndex, _, IncludesOrigin) => {
-            unreachable!("{name} was used in an origin context and also configuration and/or index contexts, and this should have been rejected by SymbolContext::merge()");
-        }
-        (NotConfig, NotIndex, NotAddress, NotOrigin) => {
-            unreachable!("attempted to assign a default value for a symbol {name} which appears not to be used in any context at all")
-        }
-        (IncludesConfig, _, _, NotOrigin) => Ok(Unsigned36Bit::ZERO),
-        (NotConfig, IncludesIndex, _, NotOrigin) => {
-            // Index but not also configuration. Assign the next
-            // index register.
-            match index_register_assigner.assign_index_register() {
-                Some(n) => Ok(n.into()),
-                None => Err(SymbolLookupFailure::FailedToAssignIndexRegister(
-                    span,
-                    name.clone(),
-                )),
+        OriginUse::NotOrigin { config, index } => match (config, index) {
+            (NotConfig, NotIndex) => {
+                if contexts_used.is_address() {
+                    // Values which refer to addresses (and which
+                    // therefore should point to a zero-initialised
+                    // RC-word) should already have a default value
+                    // assigned.
+                    unreachable!("default assignments for address-context symexes should be assigned before evaluation starts")
+                } else {
+                    unreachable!("attempted to assign a default value for a symbol {name} which appears not to be used in any context at all")
+                }
             }
-        }
-        (NotConfig, NotIndex, IncludesAddress, NotOrigin) => {
-            // Values which refer to addresses (and which therefore
-            // should point to a zero-initialised RC-word) should
-            // already have a default value assigned.
-            unreachable!("default assignments for address-context symexes should be assigned before evaluation starts")
-        }
+            (IncludesConfig, _) => Ok(Unsigned36Bit::ZERO),
+            (NotConfig, IncludesIndex) => {
+                // Index but not also configuration. Assign the next
+                // index register.
+                match index_register_assigner.assign_index_register() {
+                    Some(n) => Ok(n.into()),
+                    None => Err(SymbolLookupFailure::FailedToAssignIndexRegister(
+                        span,
+                        name.clone(),
+                    )),
+                }
+            }
+        },
     }
 }
 
@@ -282,11 +280,7 @@ impl<R: RcUpdater> EvaluationContext<'_, R> {
                 // Special case assigning origin addresses, because
                 // the rest of the work is carried out with
                 // index_register_assigner only.
-                if let SymbolContext {
-                    origin_of_block: Some(block_identifier),
-                    ..
-                } = &context
-                {
+                if let Some((block_identifier, _origin)) = context.get_origin() {
                     if let Some(block_position) = self.memory_map.get(block_identifier).cloned() {
                         // If we simply try to pass block_position to
                         // evaluate() we will loop and diagnose this
@@ -305,7 +299,7 @@ impl<R: RcUpdater> EvaluationContext<'_, R> {
                         match what.evaluate(self) {
                             Ok(value) => {
                                 let address: Address = subword::right_half(value).into();
-                                match self.implicit_symtab.record_computed_origin_value(
+                                match self.implicit_symtab.record_deduced_origin_value(
                                     name.clone(),
                                     address,
                                     *block_identifier,
@@ -1029,7 +1023,9 @@ impl Evaluate for Origin {
         ctx: &mut EvaluationContext<R>,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         match self {
-            Origin::Literal(_span, address) => Ok(address.into()),
+            Origin::Deduced(_span, _, address) | Origin::Literal(_span, address) => {
+                Ok(address.into())
+            }
             Origin::Symbolic(span, symbol_name) => {
                 symbol_name_lookup(symbol_name, Script::Normal, *span, ctx)
             }
@@ -1206,14 +1202,28 @@ impl RegisterContaining {
                         &tag.name
                     );
                     implicit_symtab.remove(&tag.name);
-                    if let Err(e) = explicit_symtab.define(
+                    let new_tag_definition = TagDefinition::Resolved {
+                        span: tag.span,
+                        address,
+                    };
+                    match explicit_symtab.define(
                         tag.name.clone(),
-                        ExplicitDefinition::Tag(TagDefinition::Resolved {
-                            span: tag.span,
-                            address,
-                        }),
+                        ExplicitDefinition::Tag(new_tag_definition.clone()),
                     ) {
-                        return Err(RcWordAllocationFailure::InconsistentTag(e));
+                        Ok(()) => (),
+                        Err(BadSymbolDefinition {
+                            symbol_name,
+                            span,
+                            existing,
+                            proposed: _,
+                        }) => {
+                            return Err(RcWordAllocationFailure::InconsistentTag {
+                                tag_name: symbol_name,
+                                span,
+                                existing,
+                                proposed: Box::new(new_tag_definition),
+                            });
+                        }
                     }
                 }
                 tpibox.allocate_rc_words(explicit_symtab, implicit_symtab, rc_allocator)?;

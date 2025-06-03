@@ -9,7 +9,7 @@ use super::ast::{EqualityValue, Origin, RcAllocator, RcUpdater, RcWordAllocation
 use super::collections::OneOrMore;
 use super::eval::{Evaluate, EvaluationContext, SymbolLookupFailure};
 use super::span::*;
-use super::symbol::{SymbolContext, SymbolContextMergeError, SymbolName};
+use super::symbol::{InconsistentSymbolUse, SymbolContext, SymbolName};
 use super::types::{
     offset_from_origin, BlockIdentifier, MachineLimitExceededFailure, RcWordSource,
 };
@@ -123,21 +123,21 @@ impl ImplicitSymbolTable {
         &mut self,
         name: SymbolName,
         context: SymbolContext,
-    ) -> Result<(), SymbolContextMergeError> {
+    ) -> Result<(), InconsistentSymbolUse> {
         self.definitions
             .entry(name.clone())
             .or_insert_with(|| ImplicitDefinition::Undefined(context.clone()))
             .merge_context(&name, context.clone())
     }
 
-    pub(super) fn record_computed_origin_value(
+    pub(super) fn record_deduced_origin_value(
         &mut self,
         name: SymbolName,
         value: Address,
         block_id: BlockIdentifier,
         span: Span,
-    ) -> Result<(), SymbolContextMergeError> {
-        let context = SymbolContext::origin(block_id, span);
+    ) -> Result<(), InconsistentSymbolUse> {
+        let context = SymbolContext::origin(block_id, Origin::Deduced(span, name.clone(), value));
         self.definitions
             .entry(name.clone())
             .or_insert_with(|| ImplicitDefinition::DefaultAssigned(value.into(), context.clone()))
@@ -175,6 +175,9 @@ impl Evaluate for (&Span, &SymbolName, &ExplicitDefinition) {
         match def {
             ExplicitDefinition::Origin(Origin::Symbolic(_span, name), _block_id) => {
                 unreachable!("symbolic origin {name} should already have been deduced")
+            }
+            ExplicitDefinition::Origin(Origin::Deduced(_span, _name, address), _block_id) => {
+                Ok((*address).into())
             }
             ExplicitDefinition::Origin(Origin::Literal(_span, address), _block_id) => {
                 Ok((*address).into())
@@ -426,12 +429,12 @@ impl ExplicitDefinition {
                 if current == &new {
                     Ok(()) // nothing to do.
                 } else {
-                    Err(BadSymbolDefinition::Incompatible(
-                        name,
-                        new.span(),
-                        Box::new(current.clone()),
-                        Box::new(new),
-                    ))
+                    Err(BadSymbolDefinition {
+                        symbol_name: name,
+                        span: new.span(),
+                        existing: Box::new(current.clone()),
+                        proposed: Box::new(new),
+                    })
                 }
             }
         }
@@ -466,48 +469,40 @@ impl Display for ImplicitDefinition {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub(crate) enum BadSymbolDefinition {
-    Incompatible(
-        SymbolName,
-        Span,
-        // We box the two definitions here to reduce the (direct) size
-        // of the BadSymbolDefinition object itself.  Otherwise, this
-        // will give rise to large disparities between the Ok() and
-        // Err() variants of results that directly or indirectly
-        // include BadSymbolDefinition instances.
-        Box<ExplicitDefinition>,
-        Box<ExplicitDefinition>,
-    ),
-}
-
-impl BadSymbolDefinition {
-    pub(crate) fn symbol(&self) -> &SymbolName {
-        match self {
-            BadSymbolDefinition::Incompatible(name, _, _, _) => name,
-        }
-    }
+pub(crate) struct BadSymbolDefinition {
+    /// Signals that an origin has been inconsistently defined, or a
+    /// tag has been defined in more than once place.
+    pub(crate) symbol_name: SymbolName,
+    pub(crate) span: Span,
+    // We box the two definitions here to reduce the (direct) size
+    // of the BadSymbolDefinition object itself.  Otherwise, this
+    // will give rise to large disparities between the Ok() and
+    // Err() variants of results that directly or indirectly
+    // include BadSymbolDefinition instances.
+    pub(crate) existing: Box<ExplicitDefinition>,
+    pub(crate) proposed: Box<ExplicitDefinition>,
 }
 
 impl Spanned for BadSymbolDefinition {
     fn span(&self) -> Span {
-        match self {
-            BadSymbolDefinition::Incompatible(_, span, _, _) => *span,
-        }
+        self.span
     }
 }
 
 impl Display for BadSymbolDefinition {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let BadSymbolDefinition::Incompatible(name, _, def1, def2) = self;
-        match (&**def1, &**def2) {
+        match (&*self.existing, &*self.proposed) {
             (ExplicitDefinition::Tag(td1), ExplicitDefinition::Tag(td2)) => {
                 write!(
                     f,
-                    "{name} is defined more than once, but this is not allowed for tags (tag defitions are {td1} and {td2})"
+                    "{0} is defined more than once, but this is not allowed for tags (tag defitions are {1} and {2})",
+                    &self.symbol_name, td1, td2
+
                 )
             }
-            (previous, new) => {
-                write!(f, "it is not allowed to override the symbol definition of {name} as {previous} with a new definition {new}")
+            _ => {
+                write!(f, "it is not allowed to override the symbol definition of {0} as {1} with a new definition {2}",
+                       &self.symbol_name, &self.existing, &self.proposed)
             }
         }
     }
@@ -520,7 +515,7 @@ impl ImplicitDefinition {
         &mut self,
         name: &SymbolName,
         context: SymbolContext,
-    ) -> Result<(), SymbolContextMergeError> {
+    ) -> Result<(), InconsistentSymbolUse> {
         match self {
             ImplicitDefinition::Undefined(current) => current.merge(name, context),
             ImplicitDefinition::DefaultAssigned(value, existing_context) => {
