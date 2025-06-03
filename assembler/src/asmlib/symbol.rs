@@ -79,6 +79,7 @@ impl Display for SymbolOrHere {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub(crate) enum SymbolContextMergeError {
     ConflictingOrigin(SymbolName, BlockIdentifier, BlockIdentifier),
+    MixingOrigin(SymbolName, String),
 }
 
 impl Display for SymbolContextMergeError {
@@ -90,8 +91,9 @@ impl Display for SymbolContextMergeError {
                 block_identifier_2,
             ) => {
                 write!(f, "symbol {} cannot simultaneously be the origin for block {} and block {}; names must be unique",
-                       name, block_identifier_1, block_identifier_2)
+                               name, block_identifier_1, block_identifier_2)
             }
+            SymbolContextMergeError::MixingOrigin(_name, msg) => f.write_str(msg.as_str()),
         }
     }
 }
@@ -254,8 +256,24 @@ impl SymbolContext {
                 u
             },
         };
+        if result.origin_of_block.is_some()
+            && ((result.configuration == ConfigUse::IncludesConfig)
+                || (result.index == IndexUse::IncludesIndex))
+        {
+            use ConfigUse::*;
+            use IndexUse::*;
+            let msg: String = format!(
+                "symbol {name} was used in an origin context, so it is not allowed to use it also in {}",
+                match (self.configuration, self.index) {
+                    (IncludesConfig, IncludesIndex) => "configuration and index contexts",
+                    (IncludesConfig, NotIndex) => "configuration context",
+                    (NotConfig, IncludesIndex) => "index context",
+                    (NotConfig, NotIndex) => unreachable!("enclosing match already eliminated this case")
+                });
+            return Err(SymbolContextMergeError::MixingOrigin(name.clone(), msg));
+        }
+        result.check_invariants();
         *self = result;
-        self.check_invariants();
         Ok(())
     }
 

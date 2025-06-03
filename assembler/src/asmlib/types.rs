@@ -207,31 +207,7 @@ impl Display for MachineLimitExceededFailure {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct InconsistentOrigin {
-    pub(crate) origin_name: SymbolName,
-    pub(crate) span: Span,
-    pub(crate) msg: String,
-}
-
-impl Spanned for InconsistentOrigin {
-    fn span(&self) -> Span {
-        self.span
-    }
-}
-
-impl Display for InconsistentOrigin {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(
-            f,
-            "inconsistent definitions for origin {}: {}",
-            self.origin_name, self.msg,
-        )
-    }
-}
-
-#[derive(Debug, PartialEq, Eq)]
 pub enum ProgramError {
-    InconsistentOriginDefinitions(InconsistentOrigin),
     InconsistentTag {
         name: SymbolName,
         span: Span,
@@ -257,7 +233,6 @@ impl Spanned for ProgramError {
     fn span(&self) -> Span {
         use ProgramError::*;
         match self {
-            InconsistentOriginDefinitions(e) => e.span(),
             RcBlockTooLong {
                 rc_word_span: span, ..
             }
@@ -292,7 +267,6 @@ impl Display for ProgramError {
             InconsistentTag { name, span: _, msg } => {
                 write!(f, "inconsistent definitions for tag {name}: {msg}")
             }
-            InconsistentOriginDefinitions(e) => write!(f, "{e}"),
             SymbolDefinitionLoop {
                 symbol_names,
                 span: _,

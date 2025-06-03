@@ -354,6 +354,9 @@ fn initial_symbol_table<'a>(
                     format!("origin {name} is used for two different blocks"),
                 ));
             }
+            Err(SymbolContextMergeError::MixingOrigin(_name, msg)) => {
+                errors.push(Rich::custom(span, msg));
+            }
         }
     }
     match OneOrMore::try_from_vec(errors) {

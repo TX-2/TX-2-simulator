@@ -20,8 +20,8 @@ use super::span::*;
 use super::symbol::{AddressUse, ConfigUse, IndexUse, OriginUse, SymbolName};
 
 use super::types::{
-    offset_from_origin, AssemblerFailure, BlockIdentifier, InconsistentOrigin,
-    MachineLimitExceededFailure, ProgramError, RcWordSource,
+    offset_from_origin, AssemblerFailure, BlockIdentifier, MachineLimitExceededFailure,
+    ProgramError, RcWordSource,
 };
 use crate::symbol::SymbolContext;
 use crate::symtab::{
@@ -100,7 +100,6 @@ pub(crate) enum SymbolValue {
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum SymbolLookupFailure {
-    InconsistentOrigins(InconsistentOrigin),
     Loop {
         span: Span,
         deps_in_order: OneOrMore<SymbolName>,
@@ -113,9 +112,6 @@ pub(crate) enum SymbolLookupFailure {
 impl Spanned for SymbolLookupFailure {
     fn span(&self) -> Span {
         match self {
-            SymbolLookupFailure::InconsistentOrigins(inconsistent_origin) => {
-                inconsistent_origin.span()
-            }
             SymbolLookupFailure::HereIsNotAllowedHere(span)
             | SymbolLookupFailure::FailedToAssignIndexRegister(span, _)
             | SymbolLookupFailure::Loop { span, .. }
@@ -128,7 +124,6 @@ impl Display for SymbolLookupFailure {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         use SymbolLookupFailure::*;
         match self {
-            InconsistentOrigins(e) => write!(f, "{e}"),
             Loop {
                 deps_in_order,
                 span: _,
@@ -161,9 +156,6 @@ impl SymbolLookupFailure {
                 ProgramError::FailedToAssignIndexRegister(span, name)
             }
             SymbolLookupFailure::BlockTooLarge(span, mle) => ProgramError::BlockTooLong(span, mle),
-            SymbolLookupFailure::InconsistentOrigins(e) => {
-                ProgramError::InconsistentOriginDefinitions(e)
-            }
             SymbolLookupFailure::Loop {
                 deps_in_order,
                 span,
@@ -223,22 +215,7 @@ fn assign_default_value(
             unreachable!("assign_default_value should not be called for origin speicifations; attempted to assign default value for {name} (used in contexts: {contexts_used:?}")
         }
         (IncludesConfig, _, _, IncludesOrigin) | (_, IncludesIndex, _, IncludesOrigin) => {
-            // TODO: make this an error at the time the contexts are recorded.
-            let msg: String = format!(
-            "symbol {name} was used in an origin context, so it is not allowed to use it also in {}",
-                match (parts.0, parts.1) {
-                    (IncludesConfig, IncludesIndex) => "configuration and index contexts",
-                    (IncludesConfig, NotIndex) => "configuration context",
-                    (NotConfig, IncludesIndex) => "index context",
-                    (NotConfig, NotIndex) => unreachable!("enclosing match already eliminated this case")
-                });
-            Err(SymbolLookupFailure::InconsistentOrigins(
-                InconsistentOrigin {
-                    origin_name: name.clone(),
-                    span,
-                    msg,
-                },
-            ))
+            unreachable!("{name} was used in an origin context and also configuration and/or index contexts, and this should have been rejected by SymbolContext::merge()");
         }
         (NotConfig, NotIndex, NotAddress, NotOrigin) => {
             unreachable!("attempted to assign a default value for a symbol {name} which appears not to be used in any context at all")
