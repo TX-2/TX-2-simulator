@@ -28,12 +28,14 @@ use super::eval::{
 };
 use super::glyph;
 use super::lexer::Token;
+use super::listing::{Listing, ListingLine};
 use super::span::*;
 use super::state::NumeralMode;
 use super::symbol::{InconsistentSymbolUse, SymbolContext, SymbolName};
 use super::symtab::{
-    BadSymbolDefinition, ExplicitDefinition, ExplicitSymbolTable, ImplicitSymbolTable,
-    TagDefinition,
+    record_undefined_symbol_or_return_failure, BadSymbolDefinition, ExplicitDefinition,
+    ExplicitSymbolTable, FinalSymbolDefinition, FinalSymbolTable, FinalSymbolType,
+    ImplicitSymbolTable, IndexRegisterAssigner, MemoryMap, TagDefinition,
 };
 use super::types::*;
 
@@ -2331,6 +2333,66 @@ impl InstructionSequence {
     pub(crate) fn emitted_word_count(&self) -> Unsigned18Bit {
         self.iter().map(|st| st.emitted_word_count()).sum()
     }
+
+    #[allow(clippy::too_many_arguments)]
+    fn build_binary_block<R: RcUpdater>(
+        &self,
+        location: Address,
+        start_offset: Unsigned18Bit,
+        explicit_symtab: &ExplicitSymbolTable,
+        implicit_symtab: &mut ImplicitSymbolTable,
+        memory_map: &MemoryMap,
+        index_register_assigner: &mut IndexRegisterAssigner,
+        rc_allocator: &mut R,
+        final_symbols: &mut FinalSymbolTable,
+        body: &str,
+        listing: &mut Listing,
+        bad_symbol_definitions: &mut BTreeMap<SymbolName, ProgramError>,
+    ) -> Result<Vec<Unsigned36Bit>, AssemblerFailure> {
+        let mut words: Vec<Unsigned36Bit> = Vec::with_capacity(self.emitted_word_count().into());
+        for (offset, instruction) in self.iter().enumerate() {
+            let offset: Unsigned18Bit = Unsigned18Bit::try_from(offset)
+                .ok()
+                .and_then(|offset| offset.checked_add(start_offset))
+                .expect("assembled code block should fit within physical memory");
+            let address: Address = location.index_by(offset);
+            for tag in instruction.tags.iter() {
+                final_symbols.define(
+                    tag.name.clone(),
+                    FinalSymbolType::Tag,
+                    extract_span(body, &tag.span).trim().to_string(),
+                    FinalSymbolDefinition::PositionIndependent(address.into()),
+                );
+            }
+
+            if self.local_symbols.is_some() {
+                panic!("InstructionSequence::build_binary_block: evaluation with local symbol tables is not yet implemented");
+            }
+            let mut ctx = EvaluationContext {
+                explicit_symtab,
+                implicit_symtab,
+                memory_map,
+                here: HereValue::Address(address),
+                index_register_assigner,
+                rc_updater: rc_allocator,
+                lookup_operation: Default::default(),
+            };
+            match instruction.evaluate(&mut ctx) {
+                Ok(word) => {
+                    listing.push_line(ListingLine {
+                        span: Some(instruction.span),
+                        rc_source: None,
+                        content: Some((address, word)),
+                    });
+                    words.push(word);
+                }
+                Err(e) => {
+                    record_undefined_symbol_or_return_failure(body, e, bad_symbol_definitions)?;
+                }
+            }
+        }
+        Ok(words)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2786,5 +2848,48 @@ impl LocatedBlock {
             seq.allocate_rc_words(explicit_symtab, implicit_symtab, rc_allocator)?;
         }
         Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn build_binary_block<R: RcUpdater>(
+        &self,
+        location: Address,
+        explicit_symtab: &ExplicitSymbolTable,
+        implicit_symtab: &mut ImplicitSymbolTable,
+        memory_map: &MemoryMap,
+        index_register_assigner: &mut IndexRegisterAssigner,
+        rc_allocator: &mut R,
+        final_symbols: &mut FinalSymbolTable,
+        body: &str,
+        listing: &mut Listing,
+        undefined_symbols: &mut BTreeMap<SymbolName, ProgramError>,
+    ) -> Result<Vec<Unsigned36Bit>, AssemblerFailure> {
+        let word_count: usize = self
+            .sequences
+            .iter()
+            .map(|seq| usize::from(seq.emitted_word_count()))
+            .sum();
+        let mut result: Vec<Unsigned36Bit> = Vec::with_capacity(word_count);
+        for seq in self.sequences.iter() {
+            let current_block_len: Unsigned18Bit = result
+                .len()
+                .try_into()
+                .expect("assembled code block should fit within physical memory");
+            let mut words: Vec<Unsigned36Bit> = seq.build_binary_block(
+                location,
+                current_block_len,
+                explicit_symtab,
+                implicit_symtab,
+                memory_map,
+                index_register_assigner,
+                rc_allocator,
+                final_symbols,
+                body,
+                listing,
+                undefined_symbols,
+            )?;
+            result.append(&mut words);
+        }
+        Ok(result)
     }
 }

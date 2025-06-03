@@ -11,7 +11,8 @@ use super::eval::{Evaluate, EvaluationContext, SymbolLookupFailure};
 use super::span::*;
 use super::symbol::{InconsistentSymbolUse, SymbolContext, SymbolName};
 use super::types::{
-    offset_from_origin, BlockIdentifier, MachineLimitExceededFailure, RcWordSource,
+    offset_from_origin, AssemblerFailure, BlockIdentifier, MachineLimitExceededFailure,
+    ProgramError, RcWordSource,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -552,4 +553,30 @@ pub(super) fn assign_default_rc_word_tags<R: RcAllocator>(
         }
     }
     Ok(())
+}
+
+pub(super) fn record_undefined_symbol_or_return_failure(
+    source_file_body: &str,
+    e: SymbolLookupFailure,
+    undefined_symbols: &mut BTreeMap<SymbolName, ProgramError>,
+) -> Result<(), AssemblerFailure> {
+    use SymbolLookupFailure::*;
+    match e {
+        Loop {
+            span,
+            deps_in_order,
+            ..
+        } => {
+            undefined_symbols
+                .entry(deps_in_order.first().clone())
+                .or_insert_with(|| ProgramError::SymbolDefinitionLoop {
+                    symbol_names: deps_in_order,
+                    span,
+                });
+            Ok(())
+        }
+        other => Err(other
+            .into_program_error()
+            .into_assembler_failure(source_file_body)),
+    }
 }

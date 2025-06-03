@@ -12,7 +12,6 @@ use base::{
 
 use super::ast::*;
 use super::collections::OneOrMore;
-use super::listing::{Listing, ListingLine};
 use super::span::*;
 use super::symbol::{ConfigUse, IndexUse, OriginUse, SymbolName};
 
@@ -22,9 +21,9 @@ use super::types::{
 };
 use crate::symbol::SymbolContext;
 use crate::symtab::{
-    BlockPosition, ExplicitDefinition, ExplicitSymbolTable, FinalSymbolDefinition,
-    FinalSymbolTable, FinalSymbolType, ImplicitDefinition, ImplicitSymbolTable,
-    IndexRegisterAssigner, LookupOperation, MemoryMap,
+    record_undefined_symbol_or_return_failure, BlockPosition, ExplicitDefinition,
+    ExplicitSymbolTable, FinalSymbolDefinition, FinalSymbolTable, FinalSymbolType,
+    ImplicitDefinition, ImplicitSymbolTable, IndexRegisterAssigner, LookupOperation, MemoryMap,
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -478,32 +477,6 @@ pub(crate) fn symbol_name_lookup<R: RcUpdater>(
     .map(|value| value.shl(elevation.shift()))
 }
 
-fn record_undefined_symbol_or_return_failure(
-    source_file_body: &str,
-    e: SymbolLookupFailure,
-    undefined_symbols: &mut BTreeMap<SymbolName, ProgramError>,
-) -> Result<(), AssemblerFailure> {
-    use SymbolLookupFailure::*;
-    match e {
-        Loop {
-            span,
-            deps_in_order,
-            ..
-        } => {
-            undefined_symbols
-                .entry(deps_in_order.first().clone())
-                .or_insert_with(|| ProgramError::SymbolDefinitionLoop {
-                    symbol_names: deps_in_order,
-                    span,
-                });
-            Ok(())
-        }
-        other => Err(other
-            .into_program_error()
-            .into_assembler_failure(source_file_body)),
-    }
-}
-
 #[allow(clippy::too_many_arguments)]
 pub(super) fn extract_final_equalities<R: RcUpdater>(
     equalities: &[Equality],
@@ -553,113 +526,6 @@ pub(super) fn extract_final_equalities<R: RcUpdater>(
         }
     }
     Ok(())
-}
-
-impl LocatedBlock {
-    #[allow(clippy::too_many_arguments)]
-    pub(super) fn build_binary_block<R: RcUpdater>(
-        &self,
-        location: Address,
-        explicit_symtab: &ExplicitSymbolTable,
-        implicit_symtab: &mut ImplicitSymbolTable,
-        memory_map: &MemoryMap,
-        index_register_assigner: &mut IndexRegisterAssigner,
-        rc_allocator: &mut R,
-        final_symbols: &mut FinalSymbolTable,
-        body: &str,
-        listing: &mut Listing,
-        undefined_symbols: &mut BTreeMap<SymbolName, ProgramError>,
-    ) -> Result<Vec<Unsigned36Bit>, AssemblerFailure> {
-        let word_count: usize = self
-            .sequences
-            .iter()
-            .map(|seq| usize::from(seq.emitted_word_count()))
-            .sum();
-        let mut result: Vec<Unsigned36Bit> = Vec::with_capacity(word_count);
-        for seq in self.sequences.iter() {
-            let current_block_len: Unsigned18Bit = result
-                .len()
-                .try_into()
-                .expect("assembled code block should fit within physical memory");
-            let mut words: Vec<Unsigned36Bit> = seq.build_binary_block(
-                location,
-                current_block_len,
-                explicit_symtab,
-                implicit_symtab,
-                memory_map,
-                index_register_assigner,
-                rc_allocator,
-                final_symbols,
-                body,
-                listing,
-                undefined_symbols,
-            )?;
-            result.append(&mut words);
-        }
-        Ok(result)
-    }
-}
-
-impl InstructionSequence {
-    #[allow(clippy::too_many_arguments)]
-    pub(super) fn build_binary_block<R: RcUpdater>(
-        &self,
-        location: Address,
-        start_offset: Unsigned18Bit,
-        explicit_symtab: &ExplicitSymbolTable,
-        implicit_symtab: &mut ImplicitSymbolTable,
-        memory_map: &MemoryMap,
-        index_register_assigner: &mut IndexRegisterAssigner,
-        rc_allocator: &mut R,
-        final_symbols: &mut FinalSymbolTable,
-        body: &str,
-        listing: &mut Listing,
-        bad_symbol_definitions: &mut BTreeMap<SymbolName, ProgramError>,
-    ) -> Result<Vec<Unsigned36Bit>, AssemblerFailure> {
-        let mut words: Vec<Unsigned36Bit> = Vec::with_capacity(self.emitted_word_count().into());
-        for (offset, instruction) in self.iter().enumerate() {
-            let offset: Unsigned18Bit = Unsigned18Bit::try_from(offset)
-                .ok()
-                .and_then(|offset| offset.checked_add(start_offset))
-                .expect("assembled code block should fit within physical memory");
-            let address: Address = location.index_by(offset);
-            for tag in instruction.tags.iter() {
-                final_symbols.define(
-                    tag.name.clone(),
-                    FinalSymbolType::Tag,
-                    extract_span(body, &tag.span).trim().to_string(),
-                    FinalSymbolDefinition::PositionIndependent(address.into()),
-                );
-            }
-
-            if self.local_symbols.is_some() {
-                panic!("InstructionSequence::build_binary_block: evaluation with local symbol tables is not yet implemented");
-            }
-            let mut ctx = EvaluationContext {
-                explicit_symtab,
-                implicit_symtab,
-                memory_map,
-                here: HereValue::Address(address),
-                index_register_assigner,
-                rc_updater: rc_allocator,
-                lookup_operation: Default::default(),
-            };
-            match instruction.evaluate(&mut ctx) {
-                Ok(word) => {
-                    listing.push_line(ListingLine {
-                        span: Some(instruction.span),
-                        rc_source: None,
-                        content: Some((address, word)),
-                    });
-                    words.push(word);
-                }
-                Err(e) => {
-                    record_undefined_symbol_or_return_failure(body, e, bad_symbol_definitions)?;
-                }
-            }
-        }
-        Ok(words)
-    }
 }
 
 impl Spanned for (&BlockIdentifier, &BlockPosition) {
