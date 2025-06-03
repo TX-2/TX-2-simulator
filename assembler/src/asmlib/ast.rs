@@ -107,12 +107,12 @@ pub(crate) struct LiteralValue {
 }
 
 impl LiteralValue {
-    pub(crate) fn value(&self) -> Unsigned36Bit {
+    pub(super) fn value(&self) -> Unsigned36Bit {
         self.value << self.elevation.shift()
     }
 
     #[cfg(test)]
-    pub(crate) fn unshifted_value(&self) -> Unsigned36Bit {
+    pub(super) fn unshifted_value(&self) -> Unsigned36Bit {
         self.value
     }
 }
@@ -249,7 +249,7 @@ impl SignedAtom {
         self.magnitude.symbol_uses(block_id, block_offset)
     }
 
-    pub(super) fn substitute_macro_parameters(
+    fn substitute_macro_parameters(
         &self,
         param_values: &MacroParameterBindings,
         on_missing: OnUnboundMacroParameter,
@@ -262,7 +262,8 @@ impl SignedAtom {
                 ..self.clone()
             })
     }
-    pub(super) fn allocate_rc_words<R: RcAllocator>(
+
+    fn allocate_rc_words<R: RcAllocator>(
         &mut self,
         explicit_symtab: &mut ExplicitSymbolTable,
         implicit_symtab: &mut ImplicitSymbolTable,
@@ -357,7 +358,7 @@ impl Spanned for ArithmeticExpression {
 }
 
 impl ArithmeticExpression {
-    pub(crate) fn with_tail(
+    pub(super) fn with_tail(
         first: SignedAtom,
         tail: Vec<(Operator, SignedAtom)>,
     ) -> ArithmeticExpression {
@@ -379,11 +380,7 @@ impl ArithmeticExpression {
         result.into_iter()
     }
 
-    pub(crate) fn eval_binop(
-        left: Unsigned36Bit,
-        binop: &Operator,
-        right: Unsigned36Bit,
-    ) -> Unsigned36Bit {
+    fn eval_binop(left: Unsigned36Bit, binop: &Operator, right: Unsigned36Bit) -> Unsigned36Bit {
         match binop {
             Operator::Add => match left.checked_add(right) {
                 Some(result) => result,
@@ -433,7 +430,7 @@ impl ArithmeticExpression {
         }
     }
 
-    pub(super) fn substitute_macro_parameters(
+    fn substitute_macro_parameters(
         &self,
         param_values: &MacroParameterBindings,
         on_missing: OnUnboundMacroParameter,
@@ -461,7 +458,7 @@ impl ArithmeticExpression {
         }
     }
 
-    pub(super) fn allocate_rc_words<R: RcAllocator>(
+    fn allocate_rc_words<R: RcAllocator>(
         &mut self,
         explicit_symtab: &mut ExplicitSymbolTable,
         implicit_symtab: &mut ImplicitSymbolTable,
@@ -536,7 +533,7 @@ impl ConfigValue {
             })
     }
 
-    pub(super) fn substitute_macro_parameters(
+    fn substitute_macro_parameters(
         &self,
         param_values: &MacroParameterBindings,
         on_missing: OnUnboundMacroParameter,
@@ -550,7 +547,7 @@ impl ConfigValue {
             })
     }
 
-    pub(super) fn allocate_rc_words<R: RcAllocator>(
+    fn allocate_rc_words<R: RcAllocator>(
         &mut self,
         explicit_symtab: &mut ExplicitSymbolTable,
         implicit_symtab: &mut ImplicitSymbolTable,
@@ -585,11 +582,11 @@ impl Evaluate for ConfigValue {
 pub(crate) struct RegistersContaining(OneOrMore<RegisterContaining>);
 
 impl RegistersContaining {
-    pub(crate) fn from_words(words: OneOrMore<RegisterContaining>) -> RegistersContaining {
+    pub(super) fn from_words(words: OneOrMore<RegisterContaining>) -> RegistersContaining {
         Self(words)
     }
 
-    pub(crate) fn words(&self) -> impl Iterator<Item = &RegisterContaining> {
+    pub(super) fn words(&self) -> impl Iterator<Item = &RegisterContaining> {
         self.0.iter()
     }
 
@@ -608,7 +605,7 @@ impl RegistersContaining {
             .flat_map(move |rc| rc.symbol_uses(block_id, block_offset))
     }
 
-    pub(super) fn substitute_macro_parameters(
+    fn substitute_macro_parameters(
         &self,
         param_values: &MacroParameterBindings,
         on_missing: OnUnboundMacroParameter,
@@ -643,7 +640,7 @@ impl RegistersContaining {
         }
     }
 
-    pub(crate) fn allocate_rc_words<R: RcAllocator>(
+    fn allocate_rc_words<R: RcAllocator>(
         &mut self,
         span: Span,
         explicit_symtab: &mut ExplicitSymbolTable,
@@ -724,7 +721,7 @@ impl Spanned for RegisterContaining {
 }
 
 impl RegisterContaining {
-    pub(crate) fn instruction(&self) -> &TaggedProgramInstruction {
+    fn instruction(&self) -> &TaggedProgramInstruction {
         match self {
             RegisterContaining::Unallocated(tpi) => tpi,
             RegisterContaining::Allocated(_, tpi) => tpi,
@@ -786,7 +783,7 @@ impl RegisterContaining {
         result.into_iter()
     }
 
-    pub(super) fn substitute_macro_parameters(
+    fn substitute_macro_parameters(
         &self,
         param_values: &MacroParameterBindings,
         on_missing: OnUnboundMacroParameter,
@@ -819,7 +816,7 @@ impl RegisterContaining {
         }
     }
 
-    pub(crate) fn assign_rc_word<R: RcAllocator>(
+    fn assign_rc_word<R: RcAllocator>(
         self,
         source: RcWordSource,
         explicit_symtab: &mut ExplicitSymbolTable,
@@ -987,7 +984,7 @@ impl Atom {
         result.into_iter()
     }
 
-    pub(super) fn substitute_macro_parameters(
+    fn substitute_macro_parameters(
         &self,
         param_values: &MacroParameterBindings,
         on_missing: OnUnboundMacroParameter,
@@ -1033,7 +1030,7 @@ impl Atom {
         }
     }
 
-    pub(super) fn allocate_rc_words<R: RcAllocator>(
+    fn allocate_rc_words<R: RcAllocator>(
         &mut self,
         explicit_symtab: &mut ExplicitSymbolTable,
         implicit_symtab: &mut ImplicitSymbolTable,
@@ -1149,7 +1146,7 @@ impl SymbolOrLiteral {
         result.into_iter()
     }
 
-    pub(super) fn substitute_macro_parameters(
+    fn substitute_macro_parameters(
         &self,
         param_values: &MacroParameterBindings,
         on_missing: OnUnboundMacroParameter,
@@ -1193,7 +1190,7 @@ impl SymbolOrLiteral {
         }
     }
 
-    pub(super) fn allocate_rc_words<R: RcAllocator>(
+    fn allocate_rc_words<R: RcAllocator>(
         &mut self,
         _explicit_symtab: &ExplicitSymbolTable,
         _implicit_symtab: &mut ImplicitSymbolTable,
@@ -1255,7 +1252,7 @@ pub(crate) struct SpannedSymbolOrLiteral {
 }
 
 impl SpannedSymbolOrLiteral {
-    pub(super) fn substitute_macro_parameters(
+    fn substitute_macro_parameters(
         &self,
         param_values: &MacroParameterBindings,
         on_missing: OnUnboundMacroParameter,
@@ -1365,7 +1362,7 @@ impl InstructionFragment {
         uses.into_iter()
     }
 
-    pub(super) fn substitute_macro_parameters(
+    fn substitute_macro_parameters(
         &self,
         param_values: &MacroParameterBindings,
         on_missing: OnUnboundMacroParameter,
@@ -1402,7 +1399,8 @@ impl InstructionFragment {
             InstructionFragment::Null(span) => Some(InstructionFragment::Null(*span)),
         }
     }
-    pub(super) fn allocate_rc_words<R: RcAllocator>(
+
+    fn allocate_rc_words<R: RcAllocator>(
         &mut self,
         explicit_symtab: &mut ExplicitSymbolTable,
         implicit_symtab: &mut ImplicitSymbolTable,
@@ -1507,7 +1505,7 @@ impl Display for Origin {
 }
 
 impl Origin {
-    pub(crate) fn default_address() -> Address {
+    pub(super) fn default_address() -> Address {
         // Section 6-2.5 of the User Manual states that if the
         // manuscript contains no origin specification (no vertical
         // bar) the whole program is located (correctly) at 200_000
@@ -1618,16 +1616,16 @@ pub(crate) enum CommasOrInstruction {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct CommaDelimitedFragment {
-    pub(crate) span: Span,
-    pub(crate) leading_commas: Option<Commas>,
-    pub(crate) holdbit: HoldBit,
-    pub(crate) fragment: InstructionFragment,
-    pub(crate) trailing_commas: Option<Commas>,
+pub(super) struct CommaDelimitedFragment {
+    pub(super) span: Span,
+    pub(super) leading_commas: Option<Commas>,
+    pub(super) holdbit: HoldBit,
+    pub(super) fragment: InstructionFragment,
+    pub(super) trailing_commas: Option<Commas>,
 }
 
 impl CommaDelimitedFragment {
-    pub(crate) fn new(
+    pub(super) fn new(
         leading_commas: Option<Commas>,
         instruction: FragmentWithHold,
         trailing_commas: Option<Commas>,
@@ -1666,7 +1664,7 @@ impl CommaDelimitedFragment {
         self.fragment.symbol_uses(block_id, block_offset)
     }
 
-    pub(super) fn substitute_macro_parameters(
+    fn substitute_macro_parameters(
         &self,
         param_values: &MacroParameterBindings,
         on_missing: OnUnboundMacroParameter,
@@ -1679,7 +1677,8 @@ impl CommaDelimitedFragment {
                 ..self.clone()
             })
     }
-    pub(super) fn allocate_rc_words<R: RcAllocator>(
+
+    fn allocate_rc_words<R: RcAllocator>(
         &mut self,
         explicit_symtab: &mut ExplicitSymbolTable,
         implicit_symtab: &mut ImplicitSymbolTable,
@@ -1788,7 +1787,7 @@ impl UntaggedProgramInstruction {
             .flat_map(move |fragment| fragment.symbol_uses(block_id, offset))
     }
 
-    pub(super) fn allocate_rc_words<R: RcAllocator>(
+    fn allocate_rc_words<R: RcAllocator>(
         &mut self,
         explicit_symtab: &mut ExplicitSymbolTable,
         implicit_symtab: &mut ImplicitSymbolTable,
@@ -1799,10 +1798,8 @@ impl UntaggedProgramInstruction {
         }
         Ok(())
     }
-}
 
-impl UntaggedProgramInstruction {
-    pub(super) fn substitute_macro_parameters(
+    fn substitute_macro_parameters(
         &self,
         param_values: &MacroParameterBindings,
         on_missing: OnUnboundMacroParameter,
@@ -1886,7 +1883,7 @@ impl From<(Span, UntaggedProgramInstruction)> for EqualityValue {
 }
 
 impl EqualityValue {
-    pub(super) fn substitute_macro_parameters(
+    fn substitute_macro_parameters(
         &self,
         param_values: &MacroParameterBindings,
         macros: &BTreeMap<SymbolName, MacroDefinition>,
@@ -2038,7 +2035,7 @@ impl TaggedProgramInstruction {
         Unsigned18Bit::ONE
     }
 
-    pub(super) fn substitute_macro_parameters(
+    fn substitute_macro_parameters(
         &self,
         param_values: &MacroParameterBindings,
         on_missing: OnUnboundMacroParameter,
@@ -2053,7 +2050,7 @@ impl TaggedProgramInstruction {
             })
     }
 
-    pub(super) fn allocate_rc_words<R: RcAllocator>(
+    fn allocate_rc_words<R: RcAllocator>(
         &mut self,
         explicit_symtab: &mut ExplicitSymbolTable,
         implicit_symtab: &mut ImplicitSymbolTable,
@@ -2298,11 +2295,11 @@ impl InstructionSequence {
         self.instructions.iter()
     }
 
-    pub(crate) fn first(&self) -> Option<&TaggedProgramInstruction> {
+    fn first(&self) -> Option<&TaggedProgramInstruction> {
         self.instructions.first()
     }
 
-    pub(super) fn allocate_rc_words<R: RcAllocator>(
+    fn allocate_rc_words<R: RcAllocator>(
         &mut self,
         explicit_symtab: &mut ExplicitSymbolTable,
         implicit_symtab: &mut ImplicitSymbolTable,
@@ -2387,7 +2384,7 @@ impl SourceFile {
         uses_in_instructions.chain(uses_in_global_assignments)
     }
 
-    pub(crate) fn build_local_symbol_tables(
+    pub(super) fn build_local_symbol_tables(
         &mut self,
     ) -> Result<(), OneOrMore<SymbolTableBuildFailure>> {
         let mut errors = Vec::default();
@@ -2524,7 +2521,7 @@ pub(crate) enum MacroBodyLine {
 }
 
 impl MacroDefinition {
-    pub(super) fn substitute_macro_parameters(
+    fn substitute_macro_parameters(
         &self,
         bindings: &MacroParameterBindings,
         macros: &BTreeMap<SymbolName, MacroDefinition>,
@@ -2694,7 +2691,7 @@ impl ManuscriptBlock {
             .sum()
     }
 
-    pub(crate) fn origin_span(&self) -> Span {
+    pub(super) fn origin_span(&self) -> Span {
         if let Some(origin) = self.origin.as_ref() {
             origin.span()
         } else {
@@ -2747,7 +2744,7 @@ impl Directive {
         }
     }
 
-    pub(crate) fn position_rc_block(&mut self) -> Address {
+    pub(super) fn position_rc_block(&mut self) -> Address {
         self.blocks
             .values()
             .map(|block| block.following_addr())
@@ -2768,14 +2765,14 @@ pub(crate) struct LocatedBlock {
 }
 
 impl LocatedBlock {
-    pub(crate) fn emitted_word_count(&self) -> Unsigned18Bit {
+    pub(super) fn emitted_word_count(&self) -> Unsigned18Bit {
         self.sequences
             .iter()
             .map(|seq| seq.emitted_word_count())
             .sum()
     }
 
-    pub(crate) fn following_addr(&self) -> Address {
+    pub(super) fn following_addr(&self) -> Address {
         self.location.index_by(self.emitted_word_count())
     }
 
