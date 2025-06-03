@@ -6,9 +6,7 @@ use super::super::ast::{
     TaggedProgramInstruction, UntaggedProgramInstruction,
 };
 use super::super::collections::OneOrMore;
-use super::super::eval::{
-    lookup_with_op, make_empty_rc_block_for_test, EvaluationContext, SymbolValue,
-};
+use super::super::eval::{lookup_with_op, make_empty_rc_block_for_test, EvaluationContext};
 use super::super::span::*;
 use super::super::symbol::SymbolName;
 use super::super::symtab::IndexRegisterAssigner;
@@ -23,7 +21,11 @@ use base::{
 };
 
 #[cfg(test)]
-fn assemble_check_symbols(input: &str, target_address: Address, expected: &[(&str, SymbolValue)]) {
+fn assemble_check_symbols(
+    input: &str,
+    target_address: Address,
+    expected: &[(&str, Unsigned36Bit)],
+) {
     use crate::eval::HereValue;
 
     let (_directive, mut explicit_symbols, mut implicit_symbols, mut memory_map, _) =
@@ -207,7 +209,7 @@ fn test_assignment_rhs_is_instruction() {
         Address::ZERO,
         // Then we should see that the symbol was assigned the value
         // corresponding to the assembled value of that instruction.
-        &[("FOO", SymbolValue::Final(u36!(0o210452_030106)))],
+        &[("FOO", u36!(0o210452_030106))],
     );
 }
 

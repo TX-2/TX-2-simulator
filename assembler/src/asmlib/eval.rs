@@ -24,6 +24,7 @@ use crate::symtab::{
     record_undefined_symbol_or_return_failure, BlockPosition, ExplicitDefinition,
     ExplicitSymbolTable, FinalSymbolDefinition, FinalSymbolTable, FinalSymbolType,
     ImplicitDefinition, ImplicitSymbolTable, IndexRegisterAssigner, LookupOperation, MemoryMap,
+    TagDefinition,
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -81,17 +82,6 @@ impl Spanned for MemoryReference {
     fn span(&self) -> Span {
         self.span
     }
-}
-
-// SymbolValue is the result of a symbol table lookup.
-//
-// TODO: in some places we want to do further processing of the
-// looked-up result in ways that require us to specify a span.  The
-// span of interest will usually be the span at which the symbol was
-// actually defined, so we should also return that in SymbolValue.
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub(crate) enum SymbolValue {
-    Final(Unsigned36Bit),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -428,12 +418,12 @@ fn final_lookup_helper_body<R: RcUpdater>(
     ctx: &mut EvaluationContext<R>,
     name: &SymbolName,
     span: Span,
-) -> Result<SymbolValue, SymbolLookupFailure> {
+) -> Result<Unsigned36Bit, SymbolLookupFailure> {
     if let Some(def) = ctx.explicit_symtab.get(name) {
         let what: (&Span, &SymbolName, &ExplicitDefinition) = (&span, name, def);
-        what.evaluate(ctx).map(SymbolValue::Final)
+        what.evaluate(ctx)
     } else {
-        Ok(SymbolValue::Final(ctx.fetch_or_assign_default(name)?))
+        ctx.fetch_or_assign_default(name)
     }
 }
 
@@ -441,7 +431,7 @@ pub(super) fn lookup_with_op<R: RcUpdater>(
     ctx: &mut EvaluationContext<R>,
     name: &SymbolName,
     span: Span,
-) -> Result<SymbolValue, SymbolLookupFailure> {
+) -> Result<Unsigned36Bit, SymbolLookupFailure> {
     ctx.lookup_operation.deps_in_order.push(name.clone());
     if !ctx.lookup_operation.depends_on.insert(name.clone()) {
         // `name` was already in `depends_on`; in other words,
@@ -470,11 +460,7 @@ pub(crate) fn symbol_name_lookup<R: RcUpdater>(
     span: Span,
     ctx: &mut EvaluationContext<R>,
 ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-    match lookup_with_op(ctx, name, span) {
-        Ok(SymbolValue::Final(value)) => Ok(value),
-        Err(e) => Err(e),
-    }
-    .map(|value| value.shl(elevation.shift()))
+    lookup_with_op(ctx, name, span).map(|value| value.shl(elevation.shift()))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -592,5 +578,54 @@ impl Evaluate for (&BlockIdentifier, &BlockPosition) {
             }
         }?;
         Ok(Unsigned36Bit::from(addr))
+    }
+}
+
+impl Evaluate for (&Span, &SymbolName, &ExplicitDefinition) {
+    fn evaluate<R: RcUpdater>(
+        &self,
+        ctx: &mut EvaluationContext<R>,
+    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+        let (_span, name, def): (&Span, &SymbolName, &ExplicitDefinition) = *self;
+        match def {
+            ExplicitDefinition::Origin(Origin::Symbolic(_span, name), _block_id) => {
+                unreachable!("symbolic origin {name} should already have been deduced")
+            }
+            ExplicitDefinition::Origin(Origin::Deduced(_span, _name, address), _block_id) => {
+                Ok((*address).into())
+            }
+            ExplicitDefinition::Origin(Origin::Literal(_span, address), _block_id) => {
+                Ok((*address).into())
+            }
+            ExplicitDefinition::Tag(TagDefinition::Resolved { span: _, address }) => {
+                Ok(address.into())
+            }
+            ExplicitDefinition::Tag(TagDefinition::Unresolved {
+                block_id,
+                block_offset,
+                span,
+            }) => {
+                if let Some(block_position) = ctx.memory_map.get(block_id).cloned() {
+                    let what: (&BlockIdentifier, &BlockPosition) = (block_id, &block_position);
+                    let block_origin: Address = subword::right_half(what.evaluate(ctx)?).into();
+                    match offset_from_origin(&block_origin, *block_offset) {
+                        Ok(computed_address) => Ok(computed_address.into()),
+                        Err(_overflow_error) => Err(SymbolLookupFailure::BlockTooLarge(
+                            *span,
+                            MachineLimitExceededFailure::BlockTooLarge {
+                                span: *span,
+                                block_id: *block_id,
+                                offset: (*block_offset).into(),
+                            },
+                        )),
+                    }
+                } else {
+                    panic!(
+                        "Tag named {name} at {span:?} refers to unknown block {block_id}: {def:?}"
+                    );
+                }
+            }
+            ExplicitDefinition::Equality(expression) => expression.evaluate(ctx),
+        }
     }
 }

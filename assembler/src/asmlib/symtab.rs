@@ -3,17 +3,13 @@ use std::collections::HashSet;
 use std::fmt::{self, Debug, Display, Formatter};
 
 use base::prelude::*;
-use base::subword;
 
-use super::ast::{EqualityValue, Origin, RcAllocator, RcUpdater, RcWordAllocationFailure};
+use super::ast::{EqualityValue, Origin, RcAllocator, RcWordAllocationFailure};
 use super::collections::OneOrMore;
-use super::eval::{Evaluate, EvaluationContext, SymbolLookupFailure};
+use super::eval::SymbolLookupFailure;
 use super::span::*;
 use super::symbol::{InconsistentSymbolUse, SymbolContext, SymbolName};
-use super::types::{
-    offset_from_origin, AssemblerFailure, BlockIdentifier, MachineLimitExceededFailure,
-    ProgramError, RcWordSource,
-};
+use super::types::{AssemblerFailure, BlockIdentifier, ProgramError, RcWordSource};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct BlockPosition {
@@ -164,55 +160,6 @@ impl Spanned for (&Span, &SymbolName, &ExplicitDefinition) {
         let r2: Span = self.2.span();
         assert_eq!(r1, &r2);
         r2
-    }
-}
-
-impl Evaluate for (&Span, &SymbolName, &ExplicitDefinition) {
-    fn evaluate<R: RcUpdater>(
-        &self,
-        ctx: &mut EvaluationContext<R>,
-    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-        let (_span, name, def): (&Span, &SymbolName, &ExplicitDefinition) = *self;
-        match def {
-            ExplicitDefinition::Origin(Origin::Symbolic(_span, name), _block_id) => {
-                unreachable!("symbolic origin {name} should already have been deduced")
-            }
-            ExplicitDefinition::Origin(Origin::Deduced(_span, _name, address), _block_id) => {
-                Ok((*address).into())
-            }
-            ExplicitDefinition::Origin(Origin::Literal(_span, address), _block_id) => {
-                Ok((*address).into())
-            }
-            ExplicitDefinition::Tag(TagDefinition::Resolved { span: _, address }) => {
-                Ok(address.into())
-            }
-            ExplicitDefinition::Tag(TagDefinition::Unresolved {
-                block_id,
-                block_offset,
-                span,
-            }) => {
-                if let Some(block_position) = ctx.memory_map.get(block_id).cloned() {
-                    let what: (&BlockIdentifier, &BlockPosition) = (block_id, &block_position);
-                    let block_origin: Address = subword::right_half(what.evaluate(ctx)?).into();
-                    match offset_from_origin(&block_origin, *block_offset) {
-                        Ok(computed_address) => Ok(computed_address.into()),
-                        Err(_overflow_error) => Err(SymbolLookupFailure::BlockTooLarge(
-                            *span,
-                            MachineLimitExceededFailure::BlockTooLarge {
-                                span: *span,
-                                block_id: *block_id,
-                                offset: (*block_offset).into(),
-                            },
-                        )),
-                    }
-                } else {
-                    panic!(
-                        "Tag named {name} at {span:?} refers to unknown block {block_id}: {def:?}"
-                    );
-                }
-            }
-            ExplicitDefinition::Equality(expression) => expression.evaluate(ctx),
-        }
     }
 }
 
