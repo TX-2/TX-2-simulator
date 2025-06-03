@@ -203,44 +203,47 @@ impl HereValue {
 /// Assign a default value for a symbol, using the rules from
 /// section 6-2.2 of the Users Handbook ("SYMEX DEFINITON - TAGS -
 /// EQUALITIES - AUTOMATIC ASSIGNMENT").
-///
-/// Values which refer to addresses (and which therefore should
-/// point to a zero-initialised RC-word) should already have a
-/// default value assigned.
 fn assign_default_value(
     index_register_assigner: &mut IndexRegisterAssigner,
     name: &SymbolName,
     contexts_used: &SymbolContext,
 ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-    // TODO: maybe make this a method of EvaluationContext instead.
     event!(
         Level::DEBUG,
         "assigning default value for {name} used in contexts {contexts_used:?}"
     );
     let span: Span = *contexts_used.any_span();
+    let parts = contexts_used.parts();
     use AddressUse::*;
     use ConfigUse::*;
     use IndexUse::*;
     use OriginUse::*;
-    match contexts_used.parts() {
+    match parts {
         (NotConfig, NotIndex, _, IncludesOrigin) => {
-            // origin only or address and origin
-            unreachable!("get_default_value should not be called for origin speicifations; attempted to assign default value for {name} (used in contexts: {contexts_used:?}")
+            unreachable!("assign_default_value should not be called for origin speicifations; attempted to assign default value for {name} (used in contexts: {contexts_used:?}")
         }
         (IncludesConfig, _, _, IncludesOrigin) | (_, IncludesIndex, _, IncludesOrigin) => {
-            // origin and either config or index
-            //
             // TODO: make this an error at the time the contexts are recorded.
+            let msg: String = format!(
+            "symbol {name} was used in an origin context, so it is not allowed to use it also in {}",
+                match (parts.0, parts.1) {
+                    (IncludesConfig, IncludesIndex) => "configuration and index contexts",
+                    (IncludesConfig, NotIndex) => "configuration context",
+                    (NotConfig, IncludesIndex) => "index context",
+                    (NotConfig, NotIndex) => unreachable!("enclosing match already eliminated this case")
+                });
             Err(SymbolLookupFailure::InconsistentOrigins(
                 InconsistentOrigin {
                     origin_name: name.clone(),
                     span,
-                    msg: format!("symbol {name} was used in both origin and other contexts"),
+                    msg,
                 },
             ))
         }
-        (NotConfig, NotIndex, NotAddress, NotOrigin) => unreachable!(), // apparently no usage at all
-        (IncludesConfig, _, _, NotOrigin) => Ok(Unsigned36Bit::ZERO), // configuration (perhaps in combo with others)
+        (NotConfig, NotIndex, NotAddress, NotOrigin) => {
+            unreachable!("attempted to assign a default value for a symbol {name} which appears not to be used in any context at all")
+        }
+        (IncludesConfig, _, _, NotOrigin) => Ok(Unsigned36Bit::ZERO),
         (NotConfig, IncludesIndex, _, NotOrigin) => {
             // Index but not also configuration. Assign the next
             // index register.
@@ -253,6 +256,9 @@ fn assign_default_value(
             }
         }
         (NotConfig, NotIndex, IncludesAddress, NotOrigin) => {
+            // Values which refer to addresses (and which therefore
+            // should point to a zero-initialised RC-word) should
+            // already have a default value assigned.
             unreachable!("default assignments for address-context symexes should be assigned before evaluation starts")
         }
     }
@@ -850,12 +856,12 @@ impl LocatedBlock {
         listing: &mut Listing,
         undefined_symbols: &mut BTreeMap<SymbolName, ProgramError>,
     ) -> Result<Vec<Unsigned36Bit>, AssemblerFailure> {
-        let word_count: Unsigned18Bit = self
+        let word_count: usize = self
             .sequences
             .iter()
-            .map(|seq| seq.emitted_word_count())
+            .map(|seq| usize::from(seq.emitted_word_count()))
             .sum();
-        let mut result: Vec<Unsigned36Bit> = Vec::with_capacity(word_count.into());
+        let mut result: Vec<Unsigned36Bit> = Vec::with_capacity(word_count);
         for seq in self.sequences.iter() {
             let current_block_len: Unsigned18Bit = result
                 .len()
@@ -900,7 +906,7 @@ impl InstructionSequence {
         for (offset, instruction) in self.iter().enumerate() {
             let offset: Unsigned18Bit = Unsigned18Bit::try_from(offset)
                 .ok()
-                .and_then(|off| off.checked_add(start_offset))
+                .and_then(|offset| offset.checked_add(start_offset))
                 .expect("assembled code block should fit within physical memory");
             let address: Address = location.index_by(offset);
             for tag in instruction.tags.iter() {
