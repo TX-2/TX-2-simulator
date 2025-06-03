@@ -485,9 +485,3 @@ pub(crate) fn offset_from_origin(
         None => Err(AddressOverflow(*origin, offset)),
     }
 }
-
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
-pub(crate) enum OnUnboundMacroParameter {
-    ElideReference,
-    SubstituteZero,
-}

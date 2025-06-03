@@ -1383,7 +1383,7 @@ where
         .try_map_with(|lines: Vec<Option<(Span, ManuscriptLine)>>, extra| {
             // Filter out empty lines.
             let lines: Vec<(Span, ManuscriptLine)> = lines.into_iter().flatten().collect();
-            let source_file: SourceFile = helpers::manuscript_lines_to_source_file(lines)?;
+            let source_file: SourceFile = manuscript_lines_to_source_file(lines)?;
             let state_macros: BTreeMap<SymbolName, MacroDefinition> =
                 extra.state().macros().clone();
             fn inconsistency_error<'src>(

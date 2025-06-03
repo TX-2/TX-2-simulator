@@ -21,16 +21,15 @@ use std::ops::{Shl, Shr};
 
 use base::charset::{subscript_char, superscript_char, Script};
 use base::prelude::*;
+use base::u18;
 
 use super::collections::OneOrMore;
 use super::eval::{
     symbol_name_lookup, Evaluate, EvaluationContext, HereValue, SymbolLookupFailure,
 };
 use super::glyph;
-use super::lexer::Token;
 use super::listing::{Listing, ListingLine};
 use super::span::*;
-use super::state::NumeralMode;
 use super::symbol::{InconsistentSymbolUse, SymbolContext, SymbolName};
 use super::symtab::{
     record_undefined_symbol_or_return_failure, BadSymbolDefinition, ExplicitDefinition,
@@ -38,8 +37,21 @@ use super::symtab::{
     ImplicitSymbolTable, IndexRegisterAssigner, MemoryMap, TagDefinition,
 };
 use super::types::*;
-
+#[cfg(test)]
+pub(crate) use manuscript::ManuscriptBlock;
+pub(crate) use manuscript::{
+    manuscript_lines_to_source_file, MacroBodyLine, MacroDefinition, MacroDummyParameters,
+    MacroInvocation, MacroParameter, MacroParameterBindings, MacroParameterValue, ManuscriptLine,
+    ManuscriptMetaCommand, PunchCommand, SourceFile,
+};
 mod eval;
+mod manuscript;
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub(crate) enum OnUnboundMacroParameter {
+    ElideReference,
+    SubstituteZero,
+}
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 enum SymbolUse {
@@ -1796,142 +1808,6 @@ impl Display for SymbolTableBuildFailure {
 
 impl Error for SymbolTableBuildFailure {}
 
-fn build_local_symbol_table<'a, I>(
-    block_identifier: BlockIdentifier,
-    instructions: I,
-) -> Result<ExplicitSymbolTable, OneOrMore<SymbolTableBuildFailure>>
-where
-    I: Iterator<Item = &'a TaggedProgramInstruction>,
-{
-    let mut errors: Vec<SymbolTableBuildFailure> = Default::default();
-    let mut local_symbols = ExplicitSymbolTable::default();
-    for (offset, instruction) in block_items_with_offset(instructions) {
-        for r in instruction
-            .symbol_uses(block_identifier, offset)
-            .filter_map(definitions_only)
-        {
-            match r {
-                Ok((symbol_name, _span, definition)) => {
-                    if let Err(e) = local_symbols.define(symbol_name.clone(), definition) {
-                        errors.push(SymbolTableBuildFailure::BadDefinition(e));
-                    }
-                }
-                Err(e) => {
-                    errors.push(SymbolTableBuildFailure::InconsistentUsage(e));
-                }
-            }
-        }
-    }
-    match OneOrMore::try_from_vec(errors) {
-        Err(_) => Ok(local_symbols), // error vector is empty
-        Ok(errors) => Err(errors),
-    }
-}
-
-#[test]
-fn test_build_local_symbol_table_happy_case() {
-    let instruction_tagged_with = |name: &str, beginpos: usize| {
-        let tag_span = span(beginpos..(beginpos + 1));
-        let literal_span = span((beginpos + 3)..(beginpos + 4));
-        TaggedProgramInstruction::single(
-            vec![Tag {
-                name: SymbolName::from(name),
-                span: tag_span,
-            }],
-            HoldBit::Unspecified,
-            literal_span,
-            literal_span,
-            InstructionFragment::from((literal_span, Script::Normal, Unsigned36Bit::ZERO)),
-        )
-    };
-
-    let seq = InstructionSequence {
-        local_symbols: Some(ExplicitSymbolTable::default()),
-        instructions: vec![
-            // Two lines which are identical (hence with the same tag)
-            // apart from their spans.
-            instruction_tagged_with("T", 0),
-            instruction_tagged_with("U", 5),
-        ],
-    };
-
-    let mut expected: ExplicitSymbolTable = ExplicitSymbolTable::default();
-    expected
-        .define(
-            SymbolName::from("T"),
-            ExplicitDefinition::Tag(TagDefinition::Unresolved {
-                block_id: BlockIdentifier::from(0),
-                block_offset: u18!(0),
-                span: span(0..1),
-            }),
-        )
-        .expect("symbol definition should be OK since there is no other defintion for that symbol");
-    expected
-        .define(
-            SymbolName::from("U"),
-            ExplicitDefinition::Tag(TagDefinition::Unresolved {
-                block_id: BlockIdentifier::from(0),
-                block_offset: u18!(1),
-                span: span(5..6),
-            }),
-        )
-        .expect("symbol definition should be OK since there is no other defintion for that symbol");
-    assert_eq!(
-        build_local_symbol_table(BlockIdentifier::from(0), seq.iter()),
-        Ok(expected)
-    );
-}
-
-#[test]
-fn test_build_local_symbol_table_detects_tag_conflict() {
-    let instruction_tagged_with_t = |beginpos: usize| {
-        // This is the result of parsing a line "T->0\n" at some
-        // position `beginpos`.
-        let tag_span = span(beginpos..(beginpos + 1));
-        let literal_span = span((beginpos + 3)..(beginpos + 4));
-        TaggedProgramInstruction::single(
-            vec![Tag {
-                name: SymbolName::from("T"),
-                span: tag_span,
-            }],
-            HoldBit::Unspecified,
-            literal_span,
-            literal_span,
-            InstructionFragment::from((literal_span, Script::Normal, Unsigned36Bit::ZERO)),
-        )
-    };
-
-    let seq = InstructionSequence {
-        local_symbols: Some(ExplicitSymbolTable::default()),
-        instructions: vec![
-            // Two lines which are identical (hence with the same tag)
-            // apart from their spans.
-            instruction_tagged_with_t(0),
-            instruction_tagged_with_t(5),
-        ],
-    };
-
-    assert_eq!(
-        build_local_symbol_table(BlockIdentifier::from(0), seq.iter()),
-        Err(OneOrMore::new(SymbolTableBuildFailure::BadDefinition(
-            BadSymbolDefinition {
-                symbol_name: SymbolName::from("T"),
-                span: span(5..6),
-                existing: Box::new(ExplicitDefinition::Tag(TagDefinition::Unresolved {
-                    block_id: BlockIdentifier::from(0),
-                    block_offset: u18!(0),
-                    span: span(0..1),
-                })),
-                proposed: Box::new(ExplicitDefinition::Tag(TagDefinition::Unresolved {
-                    block_id: BlockIdentifier::from(0),
-                    block_offset: u18!(1),
-                    span: span(5..6),
-                }))
-            }
-        )))
-    );
-}
-
 impl InstructionSequence {
     pub(super) fn iter(&self) -> impl Iterator<Item = &TaggedProgramInstruction> {
         self.instructions.iter()
@@ -2035,17 +1911,6 @@ impl InstructionSequence {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SourceFile {
-    pub(crate) punch: Option<PunchCommand>,
-    /// Each block is an optional origin followed by some
-    /// instructions.  A block is not a scoping artifact (see the
-    /// module documentation).
-    pub(crate) blocks: Vec<ManuscriptBlock>,
-    pub(crate) global_equalities: Vec<Equality>,
-    pub(crate) macros: BTreeMap<SymbolName, MacroDefinition>,
-}
-
 fn definitions_only(
     r: Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>,
 ) -> Option<Result<(SymbolName, Span, ExplicitDefinition), InconsistentSymbolUse>> {
@@ -2062,92 +1927,6 @@ fn definitions_only(
         Ok((name, span, SymbolUse::Definition(def))) => Some(Ok((name, span, def))),
         Err(e) => Some(Err(e)),
     }
-}
-
-fn offset_to_block_id<T>((offset, item): (usize, T)) -> (BlockIdentifier, T) {
-    (BlockIdentifier::from(offset), item)
-}
-
-impl SourceFile {
-    fn symbol_uses(
-        &self,
-    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + use<'_>
-    {
-        let uses_in_instructions = self
-            .blocks
-            .iter()
-            .enumerate()
-            .map(offset_to_block_id)
-            .flat_map(move |(block_id, block)| block.symbol_uses(block_id));
-        let uses_in_global_assignments = self
-            .global_equalities
-            .iter()
-            .flat_map(|eq| eq.symbol_uses());
-        uses_in_instructions.chain(uses_in_global_assignments)
-    }
-
-    pub(super) fn build_local_symbol_tables(
-        &mut self,
-    ) -> Result<(), OneOrMore<SymbolTableBuildFailure>> {
-        let mut errors = Vec::default();
-        for (block_identifier, block) in self.blocks.iter_mut().enumerate().map(offset_to_block_id)
-        {
-            if let Err(e) = block.build_local_symbol_tables(block_identifier) {
-                errors.extend(e.into_iter());
-            }
-        }
-        match OneOrMore::try_from_vec(errors) {
-            Err(_) => Ok(()), // error vector is empty
-            Ok(errors) => Err(errors),
-        }
-    }
-
-    pub(crate) fn global_symbol_references(
-        &self,
-    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolContext), InconsistentSymbolUse>> + '_
-    {
-        fn accept_references_only(
-            r: Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>,
-        ) -> Option<Result<(SymbolName, Span, SymbolContext), InconsistentSymbolUse>> {
-            match r {
-                Ok((name, span, sym_use)) => match sym_use {
-                    SymbolUse::Reference(context) => Some(Ok((name, span, context))),
-                    // An origin specification is either a reference or a definition, depending on how it is used.
-                    SymbolUse::Definition(ExplicitDefinition::Origin(
-                        ref origin @ Origin::Symbolic(span, ref name),
-                        block_id,
-                    )) => Some(Ok((
-                        name.clone(),
-                        span,
-                        SymbolContext::origin(block_id, origin.clone()),
-                    ))),
-                    SymbolUse::Definition(_) => None,
-                },
-                Err(e) => Some(Err(e)),
-            }
-        }
-        self.symbol_uses().filter_map(accept_references_only)
-    }
-
-    pub(crate) fn global_symbol_definitions(
-        &self,
-    ) -> impl Iterator<Item = Result<(SymbolName, Span, ExplicitDefinition), InconsistentSymbolUse>> + '_
-    {
-        self.symbol_uses().filter_map(definitions_only)
-    }
-}
-
-/// Represents the ☛☛PUNCH metacommand.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct PunchCommand(pub(crate) Option<Address>);
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ManuscriptMetaCommand {
-    // TODO: implement the T= metacommand.
-    // TODO: implement the RC metacommand.
-    BaseChange(NumeralMode),
-    Punch(PunchCommand),
-    Macro(MacroDefinition),
 }
 
 // The RHS of an assignment can be "any 36-bit value" (see TX-2
@@ -2175,250 +1954,6 @@ impl Equality {
             ),
         ))]
         .into_iter()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ManuscriptLine {
-    Meta(ManuscriptMetaCommand),
-    Macro(MacroInvocation),
-    Eq(Equality),
-    OriginOnly(Origin),
-    TagsOnly(Vec<Tag>),
-    StatementOnly(TaggedProgramInstruction),
-    OriginAndStatement(Origin, TaggedProgramInstruction),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct MacroParameter {
-    pub(crate) name: SymbolName,
-    pub(crate) span: Span,
-    pub(crate) preceding_terminator: Token,
-}
-
-/// As defined with ☛☛DEF, a macro's name is followed by a terminator,
-/// or by a terminator and some arguments.  We model each argument as
-/// being introduced by its preceding terminator.  If there are no
-/// arguments, MacroArguments::Zero(token) represents that uses of the
-/// macro's name are followed by the indicated token (which terminates
-/// the macro name, not a dummy parameter).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum MacroDummyParameters {
-    Zero(Token),
-    OneOrMore(Vec<MacroParameter>),
-}
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct MacroDefinition {
-    pub(crate) name: SymbolName, // composite character macros are not yet supported
-    pub(crate) params: MacroDummyParameters,
-    pub(crate) body: Vec<MacroBodyLine>,
-    pub(crate) span: Span,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum MacroBodyLine {
-    Expansion(MacroInvocation),
-    Instruction(TaggedProgramInstruction),
-    Equality(Equality),
-}
-
-impl MacroDefinition {
-    fn substitute_macro_parameters(
-        &self,
-        bindings: &MacroParameterBindings,
-        macros: &BTreeMap<SymbolName, MacroDefinition>,
-    ) -> InstructionSequence {
-        let mut local_symbols = ExplicitSymbolTable::default();
-        let mut instructions: Vec<TaggedProgramInstruction> = Vec::with_capacity(self.body.len());
-        for body_line in self.body.iter() {
-            match body_line {
-                MacroBodyLine::Expansion(_macro_invocation) => {
-                    unimplemented!("recursive macros are not yet supported")
-                }
-                MacroBodyLine::Instruction(tagged_program_instruction) => {
-                    if let Some(tagged_program_instruction) = tagged_program_instruction
-                        .substitute_macro_parameters(
-                            bindings,
-                            OnUnboundMacroParameter::ElideReference,
-                            macros,
-                        )
-                    {
-                        instructions.push(tagged_program_instruction);
-                    } else {
-                        // The instruction referred to an unbound
-                        // macro parameter, and therefore the
-                        // instruction is omitted.
-                        //
-                        // This is required by the text of the first
-                        // paragraph of section 6-4 "MACRO
-                        // INSTRUCTIONS" of the TX-2 User's Handbook.
-                        // Also item (4) in section 6-4.6 ("The
-                        // Defining Subprogram").
-                    }
-                }
-                // Equalities and tags which occur inside the body of
-                // a macro are not visible outside it.
-                MacroBodyLine::Equality(Equality {
-                    span: _,
-                    name,
-                    value,
-                }) => {
-                    let value: EqualityValue = value.substitute_macro_parameters(bindings, macros);
-                    if let Err(e) =
-                        local_symbols.define(name.clone(), ExplicitDefinition::Equality(value))
-                    {
-                        // We do not expect this to fail because only
-                        // tag definitions can be invalid, equalities
-                        // cannot (as long as the right-hand-side can
-                        // be parsed, which has already happened).
-                        panic!("unexpected failure when defining equality for {name} inside a macro body: {e}");
-                    }
-                }
-            }
-        }
-        InstructionSequence {
-            // build_local_symbol_tables extracts tags and propagates
-            // them into the local symbol table, so this is not the
-            // final version of the local symbol table.
-            local_symbols: Some(local_symbols),
-            instructions,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum MacroParameterValue {
-    Value(Script, ArithmeticExpression),
-    // TODO: bindings representing sequences of instructions (see for
-    // example the SQ/NSQ example in the Users Handbook).
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub(crate) struct MacroParameterBindings {
-    // TODO: all bindings should have a span, even if the parameter is
-    // unset (in which case the span should correspond to the location
-    // where the parameter would have been supplied.
-    inner: BTreeMap<SymbolName, (Span, Option<MacroParameterValue>)>,
-}
-
-impl MacroParameterBindings {
-    pub(super) fn insert(
-        &mut self,
-        name: SymbolName,
-        span: Span,
-        value: Option<MacroParameterValue>,
-    ) {
-        self.inner.insert(name, (span, value));
-    }
-
-    pub(super) fn get(&self, name: &SymbolName) -> Option<&(Span, Option<MacroParameterValue>)> {
-        self.inner.get(name)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct MacroInvocation {
-    pub(crate) macro_def: MacroDefinition,
-    pub(crate) param_values: MacroParameterBindings,
-}
-
-impl MacroInvocation {
-    pub(super) fn substitute_macro_parameters(
-        &self,
-        macros: &BTreeMap<SymbolName, MacroDefinition>,
-    ) -> InstructionSequence {
-        self.macro_def
-            .substitute_macro_parameters(&self.param_values, macros)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ManuscriptBlock {
-    pub(crate) origin: Option<Origin>,
-    // Macro invocations generate an InstructionSequence::Scoped(),
-    // and since a single block may contain more than one macro
-    // invocation, a block must comprise a sequence of
-    // InstructionSequence instances.
-    pub(crate) sequences: Vec<InstructionSequence>,
-}
-
-impl ManuscriptBlock {
-    fn symbol_uses(
-        &self,
-        block_id: BlockIdentifier,
-    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> {
-        let mut result: Vec<Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> =
-            Vec::new();
-        if let Some(origin) = self.origin.as_ref() {
-            result.extend(origin.symbol_uses(block_id));
-        }
-        result.extend(
-            self.sequences
-                .iter()
-                .flat_map(|seq| seq.symbol_uses(block_id)),
-        );
-        result.into_iter()
-    }
-
-    fn build_local_symbol_tables(
-        &mut self,
-        block_identifier: BlockIdentifier,
-    ) -> Result<(), OneOrMore<SymbolTableBuildFailure>> {
-        let mut errors: Vec<SymbolTableBuildFailure> = Vec::new();
-        for seq in self.sequences.iter_mut() {
-            if let Some(local_symbols) = seq.local_symbols.as_mut() {
-                match build_local_symbol_table(block_identifier, seq.instructions.iter()) {
-                    Ok(more_symbols) => match local_symbols.merge(more_symbols) {
-                        Ok(()) => (),
-                        Err(e) => {
-                            errors.extend(e.into_iter().map(SymbolTableBuildFailure::BadDefinition))
-                        }
-                    },
-                    Err(e) => {
-                        errors.extend(e.into_iter());
-                    }
-                }
-            }
-        }
-        match OneOrMore::try_from_vec(errors) {
-            Ok(errors) => Err(errors),
-            Err(_) => Ok(()),
-        }
-    }
-
-    pub(crate) fn instruction_count(&self) -> Unsigned18Bit {
-        self.sequences
-            .iter()
-            .map(|seq| seq.emitted_word_count())
-            .sum()
-    }
-
-    pub(super) fn origin_span(&self) -> Span {
-        if let Some(origin) = self.origin.as_ref() {
-            origin.span()
-        } else {
-            if let Some(s) = self.sequences.first() {
-                if let Some(first) = s.first() {
-                    return first.span();
-                }
-            }
-            Span::from(0..0)
-        }
-    }
-
-    pub(super) fn push_unscoped_instruction(&mut self, inst: TaggedProgramInstruction) {
-        if let Some(InstructionSequence {
-            local_symbols: None,
-            instructions,
-        }) = self.sequences.last_mut()
-        {
-            instructions.push(inst);
-        } else {
-            self.sequences.push(InstructionSequence {
-                local_symbols: None,
-                instructions: vec![inst],
-            });
-        }
     }
 }
 
