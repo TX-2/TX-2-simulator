@@ -15,6 +15,7 @@ use super::collections::OneOrMore;
 use super::memorymap::{
     BlockPosition, MemoryMap, RcAllocator, RcWordAllocationFailure, RcWordSource,
 };
+use super::source::Source;
 use super::span::*;
 use super::symbol::{ConfigUse, IndexUse, OriginUse, SymbolName};
 
@@ -465,7 +466,7 @@ pub(crate) fn symbol_name_lookup<R: RcUpdater>(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn extract_final_equalities<R: RcUpdater>(
     equalities: &[Equality],
-    body: &str,
+    body: &Source,
     explicit_symbols: &ExplicitSymbolTable,
     implicit_symbols: &mut ImplicitSymbolTable,
     memory_map: &MemoryMap,
@@ -490,7 +491,7 @@ pub(super) fn extract_final_equalities<R: RcUpdater>(
                 final_symbols.define(
                     eq.name.clone(),
                     FinalSymbolType::Equality,
-                    extract_span(body, &eq.span).trim().to_string(),
+                    body.extract(eq.span.start..eq.span.end).to_string(),
                     FinalSymbolDefinition::PositionIndependent(value),
                 );
             }
@@ -501,7 +502,7 @@ pub(super) fn extract_final_equalities<R: RcUpdater>(
                 final_symbols.define(
                     eq.name.clone(),
                     FinalSymbolType::Equality,
-                    extract_span(body, &eq.span).trim().to_string(),
+                    body.extract(eq.span.start..eq.span.end).to_string(),
                     FinalSymbolDefinition::PositionDependent,
                 );
             }

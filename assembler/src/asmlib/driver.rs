@@ -29,6 +29,8 @@ use super::memorymap::{
     BlockPosition, MemoryMap, RcAllocator, RcWordAllocationFailure, RcWordSource,
 };
 use super::parser::parse_source_file;
+use super::source::Source;
+use super::source::{LineAndColumn, WithLocation};
 use super::span::*;
 use super::state::{NumeralMode, State};
 use super::symbol::SymbolName;
@@ -70,8 +72,8 @@ impl OutputOptions {
 }
 
 /// Pass 1 converts the program source into an abstract syntax representation.
-fn assemble_pass1<'a>(
-    source_file_body: &'a str,
+fn assemble_pass1<'a, 'b: 'a>(
+    source_file_body: &'b Source<'a>,
     errors: &mut Vec<Rich<'a, lexer::Token>>,
 ) -> Result<(Option<SourceFile>, OutputOptions), AssemblerFailure> {
     let span = span!(Level::ERROR, "assembly pass 1");
@@ -86,7 +88,7 @@ fn assemble_pass1<'a>(
         state.numeral_mode.set_numeral_mode(NumeralMode::Octal);
     }
 
-    let (mut sf, mut new_errors) = parse_source_file(source_file_body, setup);
+    let (mut sf, mut new_errors) = parse_source_file(source_file_body.as_str(), setup);
     errors.append(&mut new_errors);
 
     if let Some(source_file) = sf.as_mut() {
@@ -108,7 +110,7 @@ enum AssemblerPass1Or2Output<'a> {
     Success(Vec<Rich<'a, lexer::Token>>, OutputOptions, Pass2Output<'a>),
 }
 
-fn assemble_nonempty_input(input: &str) -> AssemblerPass1Or2Output {
+fn assemble_nonempty_input<'a, 'b: 'a>(input: &'b Source<'a>) -> AssemblerPass1Or2Output<'a> {
     let mut errors: Vec<Rich<'_, lexer::Token>> = Vec::new();
     match assemble_pass1(input, &mut errors) {
         Err(e) => AssemblerPass1Or2Output::Pass1Failed(Err(e)),
@@ -137,7 +139,8 @@ pub(crate) fn assemble_nonempty_valid_input(
     MemoryMap,
     IndexRegisterAssigner,
 ) {
-    match assemble_nonempty_input(input) {
+    let input_source = Source::new(input);
+    match assemble_nonempty_input(&input_source) {
         AssemblerPass1Or2Output::Pass1Failed(Err(e)) => {
             panic!("pass 1 failed with an error result: {e}");
         }
@@ -318,10 +321,10 @@ fn initial_symbol_table<'a>(
 /// representation.  The output is a symbol table and a "directive"
 /// which is a sequence of blocks of code of known size (but not, at
 /// this stage, necessarily of known position).
-fn assemble_pass2(
+fn assemble_pass2<'s>(
     source_file: SourceFile,
-    source_file_body: &str,
-) -> Result<Pass2Output<'_>, AssemblerFailure> {
+    source_file_body: &Source<'s>,
+) -> Result<Pass2Output<'s>, AssemblerFailure> {
     let span = span!(Level::ERROR, "assembly pass 2");
     let _enter = span.enter();
 
@@ -436,7 +439,7 @@ fn assemble_pass3(
     implicit_symtab: &mut ImplicitSymbolTable,
     memory_map: &mut MemoryMap,
     index_register_assigner: &mut IndexRegisterAssigner,
-    body: &str,
+    body: &Source,
     listing: &mut Listing,
 ) -> Result<(Binary, FinalSymbolTable), AssemblerFailure> {
     let span = span!(Level::ERROR, "assembly pass 3");
@@ -468,7 +471,7 @@ fn assemble_pass3(
                 final_symbols.define_if_undefined(
                     symbol_name.clone(),
                     FinalSymbolType::Tag, // actually origin
-                    extract_span(body, span).trim().to_string(),
+                    body.extract(span.start..span.end).to_string(),
                     FinalSymbolDefinition::PositionIndependent(block.location.into()),
                 );
             }
@@ -495,7 +498,7 @@ fn assemble_pass3(
         match e {
             RcWordAllocationFailure::RcBlockTooBig { source, .. } => {
                 let span: Span = source.span();
-                let location: LineAndColumn = LineAndColumn::from((body, &span));
+                let location: LineAndColumn = body.location_of(span.start);
                 AssemblerFailure::BadProgram(OneOrMore::new(WithLocation {
                     location,
                     inner: ProgramError::RcBlockTooLong {
@@ -510,7 +513,7 @@ fn assemble_pass3(
                 existing: _,
                 proposed: _,
             } => {
-                let location: LineAndColumn = LineAndColumn::from((body, &span));
+                let location: LineAndColumn = body.location_of(span.start);
                 AssemblerFailure::BadProgram(OneOrMore::new(WithLocation {
                     location,
                     inner: ProgramError::InconsistentTag {
@@ -626,11 +629,14 @@ fn assemble_pass3(
         binary.add_chunk(chunk);
     }
 
-    match OneOrMore::try_from_iter(
-        bad_symbol_definitions
-            .into_values()
-            .map(|error| (body, error).into()),
-    ) {
+    match OneOrMore::try_from_iter(bad_symbol_definitions.into_values().map(|program_error| {
+        let span = program_error.span();
+        let location = body.location_of(span.start);
+        WithLocation {
+            location,
+            inner: program_error,
+        }
+    })) {
         Ok(errors) => Err(AssemblerFailure::BadProgram(errors)),
         Err(_) => Ok((binary, final_symbols)),
     }
@@ -653,15 +659,18 @@ fn cleanup_control_chars(input: String) -> String {
 }
 
 fn fail_with_diagnostics(
-    source_file_body: &str,
+    source_file_body: &Source,
     errors: OneOrMore<Rich<lexer::Token>>,
 ) -> OneOrMore<WithLocation<ProgramError>> {
     errors.into_map(|e| {
-        let syntax_error = ProgramError::SyntaxError {
-            span: *e.span(),
-            msg: cleanup_control_chars(e.to_string()),
-        };
-        (source_file_body, syntax_error).into()
+        let span: Span = *e.span();
+        WithLocation {
+            location: source_file_body.location_of(span.start),
+            inner: ProgramError::SyntaxError {
+                span,
+                msg: cleanup_control_chars(e.to_string()),
+            },
+        }
     })
 }
 
@@ -669,13 +678,14 @@ pub(crate) fn assemble_source(
     source_file_body: &str,
     mut options: OutputOptions,
 ) -> Result<Binary, AssemblerFailure> {
-    let mut p2output = match assemble_nonempty_input(source_file_body) {
+    let source_file_body = Source::new(source_file_body);
+    let mut p2output = match assemble_nonempty_input(&source_file_body) {
         AssemblerPass1Or2Output::Pass1Failed(Err(e)) => {
             return Err(e);
         }
         AssemblerPass1Or2Output::Pass1Failed(Ok(errors)) => {
             return Err(AssemblerFailure::BadProgram(fail_with_diagnostics(
-                source_file_body,
+                &source_file_body,
                 errors,
             )));
         }
@@ -695,7 +705,7 @@ pub(crate) fn assemble_source(
             match OneOrMore::try_from_vec(errors) {
                 Ok(errors) => {
                     return Err(AssemblerFailure::BadProgram(fail_with_diagnostics(
-                        source_file_body,
+                        &source_file_body,
                         errors,
                     )));
                 }
@@ -719,7 +729,7 @@ pub(crate) fn assemble_source(
             &mut p2output.implicit_symbols,
             &mut p2output.memory_map,
             &mut p2output.index_register_assigner,
-            source_file_body,
+            &source_file_body,
             &mut listing,
         )?;
 
@@ -729,7 +739,7 @@ pub(crate) fn assemble_source(
                 "{0}",
                 ListingWithBody {
                     listing: &listing,
-                    body: source_file_body,
+                    body: &source_file_body,
                 }
             );
         }
@@ -778,8 +788,9 @@ fn test_assemble_pass1() {
     };
 
     let mut errors = Vec::new();
+    let input_source = Source::new(input);
     assert_eq!(
-        assemble_pass1(input, &mut errors).expect("assembly should succeed"),
+        assemble_pass1(&input_source, &mut errors).expect("assembly should succeed"),
         (
             Some(SourceFile {
                 punch: Some(PunchCommand(expected_directive_entry_point)),
@@ -846,7 +857,8 @@ pub fn assemble_file(
 #[test]
 fn test_duplicate_global_tag() {
     let input = concat!("TGX->0\n", "TGX->0\n");
-    match assemble_nonempty_input(input) {
+    let input_source = Source::new(input);
+    match assemble_nonempty_input(&input_source) {
         AssemblerPass1Or2Output::Pass2Failed(AssemblerFailure::BadProgram(errors)) => {
             dbg!(&errors);
             match errors.first() {

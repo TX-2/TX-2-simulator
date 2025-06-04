@@ -8,6 +8,7 @@ use super::ast::{EqualityValue, Origin};
 use super::collections::OneOrMore;
 use super::eval::SymbolLookupFailure;
 use super::memorymap::{RcAllocator, RcWordAllocationFailure, RcWordSource};
+use super::source::Source;
 use super::span::*;
 use super::symbol::{InconsistentSymbolUse, SymbolContext, SymbolName};
 use super::types::{AssemblerFailure, BlockIdentifier, ProgramError};
@@ -446,8 +447,8 @@ pub(super) fn assign_default_rc_word_tags<R: RcAllocator>(
     Ok(())
 }
 
-pub(super) fn record_undefined_symbol_or_return_failure(
-    source_file_body: &str,
+pub(super) fn record_undefined_symbol_or_return_failure<'s>(
+    source_file_body: &Source<'s>,
     e: SymbolLookupFailure,
     undefined_symbols: &mut BTreeMap<SymbolName, ProgramError>,
 ) -> Result<(), AssemblerFailure> {

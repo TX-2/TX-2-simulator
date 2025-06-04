@@ -13,6 +13,7 @@ mod manuscript;
 mod memorymap;
 mod parser;
 mod readerleader;
+mod source;
 mod span;
 mod state;
 mod symbol;

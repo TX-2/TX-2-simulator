@@ -1,8 +1,8 @@
 use std::fmt::Display;
 
 use super::memorymap::RcWordSource;
+use super::source::Source;
 use super::span::Span;
-use super::span::{extract_prefix, extract_span};
 use super::symtab::FinalSymbolTable;
 use base::prelude::*;
 
@@ -38,9 +38,9 @@ pub(super) struct ListingLine {
     pub(super) content: Option<(Address, Unsigned36Bit)>,
 }
 
-struct ListingLineWithBody<'a> {
+struct ListingLineWithBody<'a, 'b> {
     line: &'a ListingLine,
-    body: &'a str,
+    body: &'b Source<'a>,
 }
 
 fn write_address(f: &mut std::fmt::Formatter<'_>, addr: &Address) -> std::fmt::Result {
@@ -52,7 +52,7 @@ fn write_address(f: &mut std::fmt::Formatter<'_>, addr: &Address) -> std::fmt::R
     }
 }
 
-impl Display for ListingLineWithBody<'_> {
+impl Display for ListingLineWithBody<'_, '_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.line.rc_source.as_ref() {
             Some(RcWordSource::DefaultAssignment(_, name)) => {
@@ -74,8 +74,8 @@ impl Display for ListingLineWithBody<'_> {
         };
 
         if let Some(span) = source_span_to_print {
-            let s = extract_span(self.body, &span).trim();
-            let prefix = extract_prefix(self.body, span.start);
+            let s = self.body.extract(span.start..span.end).trim();
+            let prefix = self.body.extract_prefix(span.start);
             write!(f, "{prefix}{s:54}")?;
         } else if matches!(
             &self.line.rc_source,
@@ -93,16 +93,16 @@ impl Display for ListingLineWithBody<'_> {
     }
 }
 
-pub(super) struct ListingWithBody<'a> {
+pub(super) struct ListingWithBody<'a, 'b> {
     pub(super) listing: &'a Listing,
-    pub(super) body: &'a str,
+    pub(super) body: &'b Source<'a>,
 }
 
-impl Display for ListingWithBody<'_> {
+impl Display for ListingWithBody<'_, '_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         fn write_listing_line(
             f: &mut std::fmt::Formatter<'_>,
-            body: &str,
+            body: &Source,
             line: &ListingLine,
         ) -> std::fmt::Result {
             writeln!(f, "{}", &ListingLineWithBody { line, body })

@@ -34,6 +34,7 @@ use super::memorymap::MemoryMap;
 use super::memorymap::RcAllocator;
 use super::memorymap::RcWordAllocationFailure;
 use super::memorymap::RcWordSource;
+use super::source::Source;
 use super::span::*;
 use super::symbol::{InconsistentSymbolUse, SymbolContext, SymbolName};
 use super::symtab::{
@@ -1800,7 +1801,7 @@ impl InstructionSequence {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn build_binary_block<R: RcUpdater>(
+    pub(crate) fn build_binary_block<'s, R: RcUpdater>(
         &self,
         location: Address,
         start_offset: Unsigned18Bit,
@@ -1810,7 +1811,7 @@ impl InstructionSequence {
         index_register_assigner: &mut IndexRegisterAssigner,
         rc_allocator: &mut R,
         final_symbols: &mut FinalSymbolTable,
-        body: &str,
+        body: &Source<'s>,
         listing: &mut Listing,
         bad_symbol_definitions: &mut BTreeMap<SymbolName, ProgramError>,
     ) -> Result<Vec<Unsigned36Bit>, AssemblerFailure> {
@@ -1825,7 +1826,7 @@ impl InstructionSequence {
                 final_symbols.define(
                     tag.name.clone(),
                     FinalSymbolType::Tag,
-                    extract_span(body, &tag.span).trim().to_string(),
+                    body.extract(tag.span.start..tag.span.end).to_string(),
                     FinalSymbolDefinition::PositionIndependent(address.into()),
                 );
             }

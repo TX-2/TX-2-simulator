@@ -8,6 +8,7 @@ use super::super::collections::OneOrMore;
 use super::super::eval::{lookup_with_op, make_empty_rc_block_for_test, EvaluationContext};
 use super::super::manuscript::{ManuscriptBlock, PunchCommand, SourceFile};
 use super::super::memorymap::LocatedBlock;
+use super::super::source::Source;
 use super::super::span::*;
 use super::super::symbol::SymbolName;
 use super::super::symtab::IndexRegisterAssigner;
@@ -72,11 +73,12 @@ fn atom_to_fragment(atom: Atom) -> InstructionFragment {
 fn test_assemble_pass1() {
     // Given a program containing a constant and a PUNCH metacommand
     let input = concat!("14\n", "☛☛PUNCH 26\n");
+    let input_source = Source::new(input);
 
     // When we assemble it
     let mut errors = Vec::new();
     let (source_file, _options) =
-        assemble_pass1(input, &mut errors).expect("pass 1 should succeed");
+        assemble_pass1(&input_source, &mut errors).expect("pass 1 should succeed");
 
     // Then we should see that it assembles without error, and...
     assert_eq!(errors.as_slice(), &[]);
@@ -1027,8 +1029,9 @@ fn test_undefined_symbol_in_calculation() {
 
 #[test]
 fn test_symbol_definition_loop_detection() {
+    use super::super::source::WithLocation;
     use super::super::types::AssemblerFailure;
-    use super::super::types::{ProgramError, WithLocation};
+    use super::super::types::ProgramError;
     // Given a program in which two symbols are defined in terms of each other
     let input = concat!("SA = SB\n", "SB = SA\n", "SA\n",);
 
@@ -1160,7 +1163,8 @@ fn test_diagnose_duplicate_tags_in_macro_body() {
     // When I assemble a program using the macro
     let mut errors = Default::default();
     let expected_msg = "T is defined more than once";
-    let r = dbg!(assemble_pass1(input, &mut errors));
+    let input_source = Source::new(input);
+    let r = dbg!(assemble_pass1(&input_source, &mut errors));
 
     // Then the assembly should fail with a message about the
     // duplicate tag.

@@ -4,104 +4,14 @@ use std::fmt::{self, Display, Formatter};
 use std::io::Error as IoError;
 use std::path::PathBuf;
 
-use super::collections::OneOrMore;
-use super::memorymap::RcWordSource;
-use super::span::{Span, Spanned};
-use super::symbol::SymbolName;
 use base::prelude::Address;
 
-/// LineNumber values are usually derived from
-/// LocatedSpan::line_location() which returns a u32.
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
-pub struct LineAndColumn {
-    line: u32,
-    column: u32,
-    span: Span,
-}
-
-impl Display for LineAndColumn {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "line {}, column {}", self.line, self.column)
-    }
-}
-
-impl From<(&str, &Span)> for LineAndColumn {
-    fn from((body, span): (&str, &Span)) -> Self {
-        const START_COL: u32 = 1;
-        const START_LINE: u32 = 1;
-
-        let mut line = START_LINE;
-        let mut column = START_COL;
-        let pos = span.start;
-        for (i, ch) in body.char_indices() {
-            if i == pos {
-                break;
-            }
-            match ch {
-                '\n' => {
-                    column = START_COL;
-                    line += 1;
-                }
-                _ => {
-                    column += 1;
-                }
-            }
-        }
-        LineAndColumn {
-            span: *span,
-            line,
-            column,
-        }
-    }
-}
-
-pub trait Located {
-    fn location(&self) -> LineAndColumn;
-}
-
-#[derive(Debug, PartialEq, Eq, Hash)]
-pub struct WithLocation<T> {
-    pub(crate) inner: T,
-    pub(crate) location: LineAndColumn,
-}
-
-impl<T> Located for WithLocation<T> {
-    fn location(&self) -> LineAndColumn {
-        self.location.clone()
-    }
-}
-
-impl<T: Spanned> From<(&str, T)> for WithLocation<T> {
-    fn from((body, item): (&str, T)) -> WithLocation<T> {
-        let span: Span = item.span();
-        let location = LineAndColumn::from((body, &span));
-        WithLocation {
-            inner: item,
-            location,
-        }
-    }
-}
-
-impl<T: Located> From<T> for WithLocation<T> {
-    fn from(inner: T) -> WithLocation<T> {
-        WithLocation {
-            location: inner.location().clone(),
-            inner,
-        }
-    }
-}
-
-impl<T> WithLocation<T> {
-    pub fn location(&self) -> &LineAndColumn {
-        &self.location
-    }
-}
-
-impl<T: Display> Display for WithLocation<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}", &self.location, &self.inner)
-    }
-}
+use super::collections::OneOrMore;
+use super::memorymap::RcWordSource;
+use super::source::Source;
+use super::source::{LineAndColumn, WithLocation};
+use super::span::{Span, Spanned};
+use super::symbol::SymbolName;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord)]
 pub struct BlockIdentifier(usize);
@@ -258,9 +168,9 @@ impl Display for ProgramError {
 }
 
 impl ProgramError {
-    pub(crate) fn into_assembler_failure(self, source_file_body: &str) -> AssemblerFailure {
+    pub(crate) fn into_assembler_failure(self, source_file_body: &Source<'_>) -> AssemblerFailure {
         let span: Span = self.span();
-        let location: LineAndColumn = LineAndColumn::from((source_file_body, &span));
+        let location: LineAndColumn = source_file_body.location_of(span.start);
         AssemblerFailure::BadProgram(OneOrMore::new(WithLocation {
             location,
             inner: self,

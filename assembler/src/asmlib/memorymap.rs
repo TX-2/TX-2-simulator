@@ -11,6 +11,7 @@ use super::ast::InstructionSequence;
 use super::ast::Origin;
 use super::ast::RcUpdater;
 use super::listing::Listing;
+use super::source::Source;
 use super::span::{Span, Spanned};
 use super::symbol::SymbolName;
 use super::symtab::{
@@ -184,7 +185,7 @@ impl LocatedBlock {
         index_register_assigner: &mut IndexRegisterAssigner,
         rc_allocator: &mut R,
         final_symbols: &mut FinalSymbolTable,
-        body: &str,
+        body: &Source,
         listing: &mut Listing,
         undefined_symbols: &mut BTreeMap<SymbolName, ProgramError>,
     ) -> Result<Vec<Unsigned36Bit>, AssemblerFailure> {
