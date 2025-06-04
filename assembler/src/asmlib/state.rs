@@ -3,7 +3,7 @@ use std::fmt::Debug;
 
 use chumsky::{inspector::Inspector, prelude::Input};
 
-use super::ast::MacroDefinition;
+use super::manuscript::MacroDefinition;
 use super::symbol::SymbolName;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

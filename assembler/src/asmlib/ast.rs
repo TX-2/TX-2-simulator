@@ -29,23 +29,20 @@ use super::eval::{
 };
 use super::glyph;
 use super::listing::{Listing, ListingLine};
+use super::manuscript::{MacroDefinition, MacroParameterBindings, MacroParameterValue};
+use super::memorymap::MemoryMap;
+use super::memorymap::RcAllocator;
+use super::memorymap::RcWordAllocationFailure;
+use super::memorymap::RcWordSource;
 use super::span::*;
 use super::symbol::{InconsistentSymbolUse, SymbolContext, SymbolName};
 use super::symtab::{
     record_undefined_symbol_or_return_failure, BadSymbolDefinition, ExplicitDefinition,
     ExplicitSymbolTable, FinalSymbolDefinition, FinalSymbolTable, FinalSymbolType,
-    ImplicitSymbolTable, IndexRegisterAssigner, MemoryMap, TagDefinition,
+    ImplicitSymbolTable, IndexRegisterAssigner, TagDefinition,
 };
 use super::types::*;
-#[cfg(test)]
-pub(crate) use manuscript::ManuscriptBlock;
-pub(crate) use manuscript::{
-    manuscript_lines_to_source_file, MacroBodyLine, MacroDefinition, MacroDummyParameters,
-    MacroInvocation, MacroParameter, MacroParameterBindings, MacroParameterValue, ManuscriptLine,
-    ManuscriptMetaCommand, PunchCommand, SourceFile,
-};
 mod eval;
-mod manuscript;
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub(crate) enum OnUnboundMacroParameter {
@@ -54,57 +51,9 @@ pub(crate) enum OnUnboundMacroParameter {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-enum SymbolUse {
+pub(crate) enum SymbolUse {
     Reference(SymbolContext),
     Definition(ExplicitDefinition),
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub(crate) enum RcWordAllocationFailure {
-    RcBlockTooBig {
-        source: RcWordSource,
-        rc_block_len: usize,
-    },
-    InconsistentTag {
-        tag_name: SymbolName,
-        span: Span,
-        existing: Box<ExplicitDefinition>,
-        proposed: Box<TagDefinition>,
-    },
-}
-
-impl Display for RcWordAllocationFailure {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            RcWordAllocationFailure::RcBlockTooBig {
-                source,
-                rc_block_len,
-            } => {
-                write!(f, "failed to allocate RC word for {source}; RC block is already {rc_block_len} words long")
-            }
-            RcWordAllocationFailure::InconsistentTag {
-                tag_name,
-                span: _,
-                existing,
-                proposed,
-            } => {
-                write!(
-                    f,
-                    "failed to define tag {tag_name} because it already had a previous definition: {existing} versus {proposed}"
-                )
-            }
-        }
-    }
-}
-
-impl Error for RcWordAllocationFailure {}
-
-pub(crate) trait RcAllocator {
-    fn allocate(
-        &mut self,
-        source: RcWordSource,
-        value: Unsigned36Bit,
-    ) -> Result<Address, RcWordAllocationFailure>;
 }
 
 pub(crate) trait RcUpdater {
@@ -1306,7 +1255,7 @@ impl Origin {
         Address::new(u18!(0o200_000))
     }
 
-    fn symbol_uses(
+    pub(super) fn symbol_uses(
         &self,
         block_id: BlockIdentifier,
     ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> {
@@ -1555,7 +1504,7 @@ impl From<(Span, UntaggedProgramInstruction)> for EqualityValue {
 }
 
 impl EqualityValue {
-    fn substitute_macro_parameters(
+    pub(super) fn substitute_macro_parameters(
         &self,
         param_values: &MacroParameterBindings,
         macros: &BTreeMap<SymbolName, MacroDefinition>,
@@ -1640,7 +1589,7 @@ pub(crate) struct TaggedProgramInstruction {
 }
 
 impl TaggedProgramInstruction {
-    fn symbol_uses(
+    pub(crate) fn symbol_uses(
         &self,
         block_id: BlockIdentifier,
         offset: Unsigned18Bit,
@@ -1698,7 +1647,7 @@ impl TaggedProgramInstruction {
         Unsigned18Bit::ONE
     }
 
-    fn substitute_macro_parameters(
+    pub(super) fn substitute_macro_parameters(
         &self,
         param_values: &MacroParameterBindings,
         on_missing: OnUnboundMacroParameter,
@@ -1763,7 +1712,7 @@ impl FromIterator<TaggedProgramInstruction> for InstructionSequence {
     }
 }
 
-fn block_items_with_offset<T, I>(items: I) -> impl Iterator<Item = (Unsigned18Bit, T)>
+pub(crate) fn block_items_with_offset<T, I>(items: I) -> impl Iterator<Item = (Unsigned18Bit, T)>
 where
     I: Iterator<Item = T>,
 {
@@ -1813,11 +1762,11 @@ impl InstructionSequence {
         self.instructions.iter()
     }
 
-    fn first(&self) -> Option<&TaggedProgramInstruction> {
+    pub(super) fn first(&self) -> Option<&TaggedProgramInstruction> {
         self.instructions.first()
     }
 
-    fn allocate_rc_words<R: RcAllocator>(
+    pub(crate) fn allocate_rc_words<R: RcAllocator>(
         &mut self,
         explicit_symtab: &mut ExplicitSymbolTable,
         implicit_symtab: &mut ImplicitSymbolTable,
@@ -1829,7 +1778,7 @@ impl InstructionSequence {
         Ok(())
     }
 
-    fn symbol_uses(
+    pub(crate) fn symbol_uses(
         &self,
         block_id: BlockIdentifier,
     ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> {
@@ -1851,7 +1800,7 @@ impl InstructionSequence {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn build_binary_block<R: RcUpdater>(
+    pub(crate) fn build_binary_block<R: RcUpdater>(
         &self,
         location: Address,
         start_offset: Unsigned18Bit,
@@ -1911,24 +1860,6 @@ impl InstructionSequence {
     }
 }
 
-fn definitions_only(
-    r: Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>,
-) -> Option<Result<(SymbolName, Span, ExplicitDefinition), InconsistentSymbolUse>> {
-    match r {
-        // An origin specification is either a reference or a
-        // definition, depending on how it is used.  But we will cope
-        // with origin definitions when processing the blocks (as
-        // opposed to the blocks' contents).
-        Ok((
-            _,
-            _,
-            SymbolUse::Definition(ExplicitDefinition::Origin(_, _)) | SymbolUse::Reference(_),
-        )) => None,
-        Ok((name, span, SymbolUse::Definition(def))) => Some(Ok((name, span, def))),
-        Err(e) => Some(Err(e)),
-    }
-}
-
 // The RHS of an assignment can be "any 36-bit value" (see TX-2
 // Users Handbook, section 6-2.2, page 156 = 6-6).  Hence if the
 // RHS of the assignment is symbolic the user needs to be able to
@@ -1942,7 +1873,7 @@ pub(crate) struct Equality {
 }
 
 impl Equality {
-    fn symbol_uses(
+    pub(super) fn symbol_uses(
         &self,
     ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> {
         [Ok((
@@ -1954,117 +1885,5 @@ impl Equality {
             ),
         ))]
         .into_iter()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Directive {
-    // items must be in manuscript order, because RC block addresses
-    // are assigned in the order they appear in the code, and
-    // similarly for undefined origins (e.g. "FOO| JMP ..." where FOO
-    // has no definition).
-    pub(crate) blocks: BTreeMap<BlockIdentifier, LocatedBlock>,
-    pub(crate) equalities: Vec<Equality>,
-    pub(crate) entry_point: Option<Address>,
-}
-
-impl Directive {
-    pub(crate) fn new(
-        blocks: BTreeMap<BlockIdentifier, LocatedBlock>,
-        equalities: Vec<Equality>,
-        entry_point: Option<Address>,
-    ) -> Self {
-        Self {
-            blocks,
-            equalities,
-            entry_point,
-        }
-    }
-
-    pub(super) fn position_rc_block(&mut self) -> Address {
-        self.blocks
-            .values()
-            .map(|block| block.following_addr())
-            .max()
-            .unwrap_or_else(Origin::default_address)
-    }
-
-    pub(crate) fn entry_point(&self) -> Option<Address> {
-        self.entry_point
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct LocatedBlock {
-    pub(crate) origin: Option<Origin>,
-    pub(crate) location: Address,
-    pub(crate) sequences: Vec<InstructionSequence>,
-}
-
-impl LocatedBlock {
-    pub(super) fn emitted_word_count(&self) -> Unsigned18Bit {
-        self.sequences
-            .iter()
-            .map(|seq| seq.emitted_word_count())
-            .sum()
-    }
-
-    pub(super) fn following_addr(&self) -> Address {
-        self.location.index_by(self.emitted_word_count())
-    }
-
-    pub(super) fn allocate_rc_words<R: RcAllocator>(
-        &mut self,
-        explicit_symtab: &mut ExplicitSymbolTable,
-        implicit_symtab: &mut ImplicitSymbolTable,
-        rc_allocator: &mut R,
-    ) -> Result<(), RcWordAllocationFailure> {
-        for seq in self.sequences.iter_mut() {
-            seq.allocate_rc_words(explicit_symtab, implicit_symtab, rc_allocator)?;
-        }
-        Ok(())
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub(super) fn build_binary_block<R: RcUpdater>(
-        &self,
-        location: Address,
-        explicit_symtab: &ExplicitSymbolTable,
-        implicit_symtab: &mut ImplicitSymbolTable,
-        memory_map: &MemoryMap,
-        index_register_assigner: &mut IndexRegisterAssigner,
-        rc_allocator: &mut R,
-        final_symbols: &mut FinalSymbolTable,
-        body: &str,
-        listing: &mut Listing,
-        undefined_symbols: &mut BTreeMap<SymbolName, ProgramError>,
-    ) -> Result<Vec<Unsigned36Bit>, AssemblerFailure> {
-        let word_count: usize = self
-            .sequences
-            .iter()
-            .map(|seq| usize::from(seq.emitted_word_count()))
-            .sum();
-        let mut result: Vec<Unsigned36Bit> = Vec::with_capacity(word_count);
-        for seq in self.sequences.iter() {
-            let current_block_len: Unsigned18Bit = result
-                .len()
-                .try_into()
-                .expect("assembled code block should fit within physical memory");
-            let mut words: Vec<Unsigned36Bit> = seq.build_binary_block(
-                location,
-                current_block_len,
-                explicit_symtab,
-                implicit_symtab,
-                memory_map,
-                index_register_assigner,
-                rc_allocator,
-                final_symbols,
-                body,
-                listing,
-                undefined_symbols,
-            )?;
-            result.append(&mut words);
-        }
-        Ok(result)
     }
 }

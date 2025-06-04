@@ -4,69 +4,13 @@ use std::fmt::{self, Debug, Display, Formatter};
 
 use base::prelude::*;
 
-use super::ast::{EqualityValue, Origin, RcAllocator, RcWordAllocationFailure};
+use super::ast::{EqualityValue, Origin};
 use super::collections::OneOrMore;
 use super::eval::SymbolLookupFailure;
+use super::memorymap::{RcAllocator, RcWordAllocationFailure, RcWordSource};
 use super::span::*;
 use super::symbol::{InconsistentSymbolUse, SymbolContext, SymbolName};
-use super::types::{AssemblerFailure, BlockIdentifier, ProgramError, RcWordSource};
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct BlockPosition {
-    // span is either the span of the origin specification if there is
-    // one, or otherwise the span of the first thing in the block.
-    pub(super) span: Span,
-    pub(super) origin: Option<Origin>,
-    pub(super) block_address: Option<Address>,
-    pub(super) block_size: Unsigned18Bit,
-}
-
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub(crate) struct MemoryMap {
-    blocks: BTreeMap<BlockIdentifier, BlockPosition>,
-}
-
-impl MemoryMap {
-    pub(crate) fn get(&self, block: &BlockIdentifier) -> Option<&BlockPosition> {
-        self.blocks.get(block)
-    }
-
-    pub(crate) fn set_block_position(&mut self, block: BlockIdentifier, location: Address) {
-        match self.blocks.get_mut(&block) {
-            Some(pos) => pos.block_address = Some(location),
-            None => {
-                unreachable!("attempted to set location of nonexistent block");
-            }
-        }
-    }
-
-    pub(crate) fn iter(&self) -> impl Iterator<Item = (&BlockIdentifier, &BlockPosition)> {
-        self.blocks.iter()
-    }
-
-    pub(crate) fn new<I>(block_sizes: I) -> MemoryMap
-    where
-        I: IntoIterator<Item = (Span, Option<Origin>, Unsigned18Bit)>,
-    {
-        let blocks = block_sizes
-            .into_iter()
-            .enumerate()
-            .map(|(i, (span, maybe_origin, block_size))| {
-                let block_id = BlockIdentifier::from(i);
-                (
-                    block_id,
-                    BlockPosition {
-                        span,
-                        origin: maybe_origin,
-                        block_address: None,
-                        block_size,
-                    },
-                )
-            })
-            .collect();
-        MemoryMap { blocks }
-    }
-}
+use super::types::{AssemblerFailure, BlockIdentifier, ProgramError};
 
 #[derive(Debug, Default, PartialEq, Eq)]
 pub(crate) struct IndexRegisterAssigner {

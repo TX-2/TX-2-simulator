@@ -27,6 +27,11 @@ use crate::collections::OneOrMore;
 use super::ast::*;
 use super::glyph::Unrecognised;
 use super::lexer::{self};
+use super::manuscript::{
+    manuscript_lines_to_source_file, MacroBodyLine, MacroDefinition, MacroDummyParameters,
+    MacroInvocation, MacroParameter, MacroParameterBindings, MacroParameterValue, ManuscriptLine,
+    ManuscriptMetaCommand, SourceFile,
+};
 use super::span::*;
 use super::state::{NumeralMode, State};
 use super::symbol::SymbolName;

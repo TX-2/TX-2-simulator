@@ -7,16 +7,15 @@ use std::ops::Range;
 use chumsky::Parser;
 
 use super::super::{
-    ast::{
-        Atom, HoldBit, InstructionFragment, LiteralValue, ManuscriptBlock, ManuscriptMetaCommand,
-        Origin, SourceFile, TaggedProgramInstruction,
-    },
+    ast::{Atom, HoldBit, InstructionFragment, LiteralValue, Origin, TaggedProgramInstruction},
     eval::{make_empty_rc_block_for_test, Evaluate, EvaluationContext, HereValue},
     lexer::Token,
+    manuscript::{ManuscriptBlock, ManuscriptMetaCommand, SourceFile},
+    memorymap::MemoryMap,
     parser::symex::{parse_multi_syllable_symex, parse_symex},
     state::NumeralMode,
     symbol::SymbolName,
-    symtab::{ExplicitSymbolTable, ImplicitSymbolTable, IndexRegisterAssigner, MemoryMap},
+    symtab::{ExplicitSymbolTable, ImplicitSymbolTable, IndexRegisterAssigner},
 };
 use super::*;
 
@@ -2665,8 +2664,9 @@ fn test_make_bit_designator_literal() {
 
 mod macro_tests {
     use super::super::super::{
-        ast::{Atom, HoldBit, InstructionFragment, SourceFile, TaggedProgramInstruction},
+        ast::{Atom, HoldBit, InstructionFragment, TaggedProgramInstruction},
         lexer::Token,
+        manuscript::ManuscriptBlock,
         symbol::SymbolName,
         symtab::{ExplicitDefinition, ExplicitSymbolTable},
     };

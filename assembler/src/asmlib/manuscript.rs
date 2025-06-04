@@ -10,46 +10,63 @@ use base::Unsigned18Bit;
 #[cfg(test)]
 use base::Unsigned36Bit;
 
-use super::super::collections::OneOrMore;
-use super::super::lexer::Token;
+use super::ast::block_items_with_offset;
+use super::ast::ArithmeticExpression;
+use super::ast::Equality;
+use super::ast::EqualityValue;
 #[cfg(test)]
-use super::super::span::span;
-use super::super::span::Span;
-use super::super::span::Spanned;
-use super::super::state::NumeralMode;
-use super::super::symbol::InconsistentSymbolUse;
-use super::super::symbol::SymbolContext;
-use super::super::symbol::SymbolName;
+use super::ast::HoldBit;
 #[cfg(test)]
-use super::super::symtab::BadSymbolDefinition;
-use super::super::symtab::ExplicitDefinition;
-use super::super::symtab::ExplicitSymbolTable;
-use super::super::symtab::MemoryMap;
+use super::ast::InstructionFragment;
+use super::ast::InstructionSequence;
+use super::ast::OnUnboundMacroParameter;
+use super::ast::Origin;
+use super::ast::SymbolTableBuildFailure;
+use super::ast::SymbolUse;
+use super::ast::Tag;
+use super::ast::TaggedProgramInstruction;
+use super::collections::OneOrMore;
+use super::directive::Directive;
+use super::lexer::Token;
+use super::memorymap::LocatedBlock;
+use super::memorymap::MemoryMap;
 #[cfg(test)]
-use super::super::symtab::TagDefinition;
-use super::super::types::AssemblerFailure;
-use super::super::types::BlockIdentifier;
-use super::block_items_with_offset;
-use super::definitions_only;
-use super::ArithmeticExpression;
-use super::Directive;
-use super::Equality;
-use super::EqualityValue;
+use super::span::span;
+use super::span::Span;
+use super::span::Spanned;
+use super::state::NumeralMode;
+use super::symbol::InconsistentSymbolUse;
+use super::symbol::SymbolContext;
+use super::symbol::SymbolName;
 #[cfg(test)]
-use super::HoldBit;
+use super::symtab::BadSymbolDefinition;
+use super::symtab::ExplicitDefinition;
+use super::symtab::ExplicitSymbolTable;
 #[cfg(test)]
-use super::InstructionFragment;
-use super::InstructionSequence;
-use super::LocatedBlock;
-use super::OnUnboundMacroParameter;
-use super::Origin;
-use super::SymbolTableBuildFailure;
-use super::SymbolUse;
-use super::Tag;
-use super::TaggedProgramInstruction;
+use super::symtab::TagDefinition;
+use super::types::AssemblerFailure;
+use super::types::BlockIdentifier;
 
 fn offset_to_block_id<T>((offset, item): (usize, T)) -> (BlockIdentifier, T) {
     (BlockIdentifier::from(offset), item)
+}
+
+fn definitions_only(
+    r: Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>,
+) -> Option<Result<(SymbolName, Span, ExplicitDefinition), InconsistentSymbolUse>> {
+    match r {
+        // An origin specification is either a reference or a
+        // definition, depending on how it is used.  But we will cope
+        // with origin definitions when processing the blocks (as
+        // opposed to the blocks' contents).
+        Ok((
+            _,
+            _,
+            SymbolUse::Definition(ExplicitDefinition::Origin(_, _)) | SymbolUse::Reference(_),
+        )) => None,
+        Ok((name, span, SymbolUse::Definition(def))) => Some(Ok((name, span, def))),
+        Err(e) => Some(Err(e)),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -345,7 +362,7 @@ pub(crate) struct ManuscriptBlock {
 }
 
 impl ManuscriptBlock {
-    fn symbol_uses(
+    pub(super) fn symbol_uses(
         &self,
         block_id: BlockIdentifier,
     ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> {
@@ -602,7 +619,7 @@ fn expand_macro(
 
 pub(crate) fn manuscript_lines_to_source_file<'a>(
     lines: Vec<(Span, ManuscriptLine)>,
-) -> Result<SourceFile, chumsky::error::Rich<'a, super::super::lexer::Token>> {
+) -> Result<SourceFile, chumsky::error::Rich<'a, super::lexer::Token>> {
     let mut blocks: Vec<ManuscriptBlock> = Vec::new();
     let mut equalities: Vec<Equality> = Vec::new();
     let mut macros: BTreeMap<SymbolName, MacroDefinition> = Default::default();

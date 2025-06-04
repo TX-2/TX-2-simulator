@@ -14,18 +14,27 @@ use tracing::{event, span, Level};
 
 use super::ast::*;
 use super::collections::OneOrMore;
+use super::directive::Directive;
 use super::eval::Evaluate;
 use super::eval::HereValue;
 use super::eval::{extract_final_equalities, EvaluationContext, RcBlock};
 use super::lexer;
 use super::listing::*;
+#[cfg(test)]
+use super::manuscript::ManuscriptBlock;
+#[cfg(test)]
+use super::manuscript::PunchCommand;
+use super::manuscript::SourceFile;
+use super::memorymap::{
+    BlockPosition, MemoryMap, RcAllocator, RcWordAllocationFailure, RcWordSource,
+};
 use super::parser::parse_source_file;
 use super::span::*;
 use super::state::{NumeralMode, State};
 use super::symbol::SymbolName;
 use super::symtab::{
-    assign_default_rc_word_tags, BlockPosition, ExplicitSymbolTable, FinalSymbolDefinition,
-    FinalSymbolTable, FinalSymbolType, ImplicitSymbolTable, IndexRegisterAssigner, MemoryMap,
+    assign_default_rc_word_tags, ExplicitSymbolTable, FinalSymbolDefinition, FinalSymbolTable,
+    FinalSymbolType, ImplicitSymbolTable, IndexRegisterAssigner,
 };
 use super::types::*;
 use base::prelude::{Address, IndexBy, Unsigned18Bit, Unsigned36Bit};

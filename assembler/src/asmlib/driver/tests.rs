@@ -2,11 +2,12 @@ use std::ops::{Range, Shl};
 
 use super::super::ast::{
     ArithmeticExpression, Atom, CommaDelimitedFragment, HoldBit, InstructionFragment,
-    InstructionSequence, LiteralValue, LocatedBlock, ManuscriptBlock, PunchCommand, SourceFile,
-    TaggedProgramInstruction, UntaggedProgramInstruction,
+    InstructionSequence, LiteralValue, TaggedProgramInstruction, UntaggedProgramInstruction,
 };
 use super::super::collections::OneOrMore;
 use super::super::eval::{lookup_with_op, make_empty_rc_block_for_test, EvaluationContext};
+use super::super::manuscript::{ManuscriptBlock, PunchCommand, SourceFile};
+use super::super::memorymap::LocatedBlock;
 use super::super::span::*;
 use super::super::symbol::SymbolName;
 use super::super::symtab::IndexRegisterAssigner;

@@ -5,6 +5,7 @@ use std::io::Error as IoError;
 use std::path::PathBuf;
 
 use super::collections::OneOrMore;
+use super::memorymap::RcWordSource;
 use super::span::{Span, Spanned};
 use super::symbol::SymbolName;
 use base::prelude::{Address, Unsigned18Bit};
@@ -361,33 +362,6 @@ impl PartialEq<IoFailed> for IoFailed {
 }
 
 impl Eq for IoFailed {}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub enum RcWordSource {
-    PipeConstruct(Span),
-    Braces(Span),
-    DefaultAssignment(Span, SymbolName),
-}
-
-impl Spanned for RcWordSource {
-    fn span(&self) -> Span {
-        match self {
-            RcWordSource::PipeConstruct(span)
-            | RcWordSource::Braces(span)
-            | RcWordSource::DefaultAssignment(span, _) => *span,
-        }
-    }
-}
-
-impl Display for RcWordSource {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            RcWordSource::PipeConstruct(_) => write!(f, "pipe construct"),
-            RcWordSource::Braces(_) => write!(f, "RC-word"),
-            RcWordSource::DefaultAssignment(_, name) => write!(f, "default-assignment of {name}"),
-        }
-    }
-}
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum AssemblerFailure {

@@ -12,19 +12,21 @@ use base::{
 
 use super::ast::*;
 use super::collections::OneOrMore;
+use super::memorymap::{
+    BlockPosition, MemoryMap, RcAllocator, RcWordAllocationFailure, RcWordSource,
+};
 use super::span::*;
 use super::symbol::{ConfigUse, IndexUse, OriginUse, SymbolName};
 
 use super::types::{
     offset_from_origin, AssemblerFailure, BlockIdentifier, MachineLimitExceededFailure,
-    ProgramError, RcWordSource,
+    ProgramError,
 };
 use crate::symbol::SymbolContext;
 use crate::symtab::{
-    record_undefined_symbol_or_return_failure, BlockPosition, ExplicitDefinition,
-    ExplicitSymbolTable, FinalSymbolDefinition, FinalSymbolTable, FinalSymbolType,
-    ImplicitDefinition, ImplicitSymbolTable, IndexRegisterAssigner, LookupOperation, MemoryMap,
-    TagDefinition,
+    record_undefined_symbol_or_return_failure, ExplicitDefinition, ExplicitSymbolTable,
+    FinalSymbolDefinition, FinalSymbolTable, FinalSymbolType, ImplicitDefinition,
+    ImplicitSymbolTable, IndexRegisterAssigner, LookupOperation, TagDefinition,
 };
 
 #[derive(Debug, PartialEq, Eq)]

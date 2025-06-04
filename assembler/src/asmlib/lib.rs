@@ -3,11 +3,14 @@
 
 mod ast;
 mod collections;
+mod directive;
 mod driver;
 mod eval;
 mod glyph;
 mod lexer;
 mod listing;
+mod manuscript;
+mod memorymap;
 mod parser;
 mod readerleader;
 mod span;
