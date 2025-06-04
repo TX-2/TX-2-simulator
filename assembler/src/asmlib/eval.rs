@@ -28,63 +28,6 @@ use crate::symtab::{
 };
 
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) enum LookupTarget {
-    Symbol(SymbolName, Span),
-    MemRef(MemoryReference),
-}
-
-impl From<(SymbolName, Span)> for LookupTarget {
-    fn from((sym, span): (SymbolName, Span)) -> LookupTarget {
-        LookupTarget::Symbol(sym, span)
-    }
-}
-
-impl From<MemoryReference> for LookupTarget {
-    fn from(r: MemoryReference) -> LookupTarget {
-        LookupTarget::MemRef(r)
-    }
-}
-
-impl Spanned for LookupTarget {
-    fn span(&self) -> Span {
-        match self {
-            LookupTarget::MemRef(r) => r.span(),
-            LookupTarget::Symbol(_, span) => *span,
-        }
-    }
-}
-
-impl Display for LookupTarget {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        match self {
-            LookupTarget::Symbol(name, _) => {
-                write!(f, "symbol {name}")
-            }
-            LookupTarget::MemRef(MemoryReference {
-                block_id,
-                block_offset: _,
-                span: _,
-            }) => {
-                write!(f, "{block_id}")
-            }
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub(crate) struct MemoryReference {
-    pub(crate) block_id: BlockIdentifier,
-    pub(crate) block_offset: usize,
-    pub(crate) span: Span,
-}
-
-impl Spanned for MemoryReference {
-    fn span(&self) -> Span {
-        self.span
-    }
-}
-
-#[derive(Debug, PartialEq, Eq)]
 pub(crate) enum SymbolLookupFailure {
     Loop {
         span: Span,
