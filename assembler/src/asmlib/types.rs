@@ -8,7 +8,7 @@ use super::collections::OneOrMore;
 use super::memorymap::RcWordSource;
 use super::span::{Span, Spanned};
 use super::symbol::SymbolName;
-use base::prelude::{Address, Unsigned18Bit};
+use base::prelude::Address;
 
 /// LineNumber values are usually derived from
 /// LocatedSpan::line_location() which returns a u32.
@@ -100,41 +100,6 @@ impl<T> WithLocation<T> {
 impl<T: Display> Display for WithLocation<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}: {}", &self.location, &self.inner)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct OrderableSpan(pub(crate) Span);
-
-impl From<Span> for OrderableSpan {
-    fn from(span: Span) -> OrderableSpan {
-        OrderableSpan(span)
-    }
-}
-
-impl Ord for OrderableSpan {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.0.start.cmp(&other.0.start)
-    }
-}
-
-impl PartialOrd for OrderableSpan {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.0.start.cmp(&other.0.start))
-    }
-}
-
-impl PartialEq for OrderableSpan {
-    fn eq(&self, other: &Self) -> bool {
-        self.0.start.cmp(&other.0.start).is_eq()
-    }
-}
-
-impl Eq for OrderableSpan {}
-
-impl OrderableSpan {
-    pub(super) fn as_span(&self) -> &Span {
-        &self.0
     }
 }
 
@@ -433,29 +398,3 @@ impl Display for Fail {
 }
 
 impl Error for Fail {}
-
-#[derive(Debug)]
-pub(crate) struct AddressOverflow(pub(crate) Address, pub(crate) Unsigned18Bit);
-
-impl std::error::Error for AddressOverflow {}
-
-impl Display for AddressOverflow {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(
-            f,
-            "Adding {:o} to {:o} would generate a result which doesn't fit into an 18-bit address",
-            self.0, self.1
-        )
-    }
-}
-
-pub(crate) fn offset_from_origin(
-    origin: &Address,
-    offset: Unsigned18Bit,
-) -> Result<Address, AddressOverflow> {
-    let (physical, _mark) = origin.split();
-    match physical.checked_add(offset) {
-        Some(total) => Ok(Address::from(total)),
-        None => Err(AddressOverflow(*origin, offset)),
-    }
-}

@@ -6,9 +6,9 @@ use std::hash::{Hash, Hasher};
 use base::charset::Script;
 
 use super::ast::Origin;
-use super::span::Span;
 use super::span::Spanned;
-use super::types::{BlockIdentifier, OrderableSpan};
+use super::span::{OrderableSpan, Span};
+use super::types::BlockIdentifier;
 
 #[derive(Clone, Eq, PartialOrd, Ord)]
 pub struct SymbolName {

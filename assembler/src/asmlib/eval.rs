@@ -18,10 +18,7 @@ use super::memorymap::{
 use super::span::*;
 use super::symbol::{ConfigUse, IndexUse, OriginUse, SymbolName};
 
-use super::types::{
-    offset_from_origin, AssemblerFailure, BlockIdentifier, MachineLimitExceededFailure,
-    ProgramError,
-};
+use super::types::{AssemblerFailure, BlockIdentifier, MachineLimitExceededFailure, ProgramError};
 use crate::symbol::SymbolContext;
 use crate::symtab::{
     record_undefined_symbol_or_return_failure, ExplicitDefinition, ExplicitSymbolTable,
@@ -519,6 +516,29 @@ pub(super) fn extract_final_equalities<R: RcUpdater>(
 impl Spanned for (&BlockIdentifier, &BlockPosition) {
     fn span(&self) -> Span {
         self.1.span
+    }
+}
+
+#[derive(Debug)]
+struct AddressOverflow(pub(crate) Address, pub(crate) Unsigned18Bit);
+
+impl std::error::Error for AddressOverflow {}
+
+impl Display for AddressOverflow {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(
+            f,
+            "Adding {:o} to {:o} would generate a result which doesn't fit into an 18-bit address",
+            self.0, self.1
+        )
+    }
+}
+
+fn offset_from_origin(origin: &Address, offset: Unsigned18Bit) -> Result<Address, AddressOverflow> {
+    let (physical, _mark) = origin.split();
+    match physical.checked_add(offset) {
+        Some(total) => Ok(Address::from(total)),
+        None => Err(AddressOverflow(*origin, offset)),
     }
 }
 
