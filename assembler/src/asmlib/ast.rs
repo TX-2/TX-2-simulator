@@ -19,6 +19,8 @@ use std::fmt::{self, Display, Formatter, Octal, Write};
 use std::hash::Hash;
 use std::ops::{Shl, Shr};
 
+use tracing::{event, Level};
+
 use base::charset::{subscript_char, superscript_char, Script};
 use base::prelude::*;
 use base::u18;
@@ -1256,6 +1258,27 @@ impl Origin {
         Address::new(u18!(0o200_000))
     }
 
+    pub(crate) fn has_same_specification(&self, that: &Origin) -> bool {
+        use Origin::*;
+        if self.span() == that.span() {
+            match (self, that) {
+                (Literal(_, a1), Literal(_, a2)) if a1 == a2 => true,
+                (Symbolic(_, n1), Symbolic(_, n2)) if n1 == n2 => true,
+                (Deduced(_, n1, a1), Deduced(_, n2, a2)) if n1 == n2 && a1 == a2 => true,
+                (Deduced(_, n1, _), Symbolic(_, n2)) | (Symbolic(_, n1), Deduced(_, n2, _))
+                    if n1 == n2 =>
+                {
+                    // Only one of the two origins has an address, so
+                    // that does not feature in the comparison.
+                    true
+                }
+                _ => false,
+            }
+        } else {
+            false
+        }
+    }
+
     pub(super) fn symbol_uses(
         &self,
         block_id: BlockIdentifier,
@@ -1267,6 +1290,10 @@ impl Origin {
                 // We won't have any deduced origin values at this
                 // time the symbol uses are enumerate, but this case
                 // is just here for completeness.
+                event!(
+                    Level::WARN,
+                    "unexpectedly saw a deduced value for origin {name} in symbol_uses"
+                );
                 result.push(Ok((
                     name.clone(),
                     *span,

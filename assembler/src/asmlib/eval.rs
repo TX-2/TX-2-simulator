@@ -293,7 +293,7 @@ impl<R: RcUpdater> EvaluationContext<'_, R> {
                                 ) {
                                     Ok(()) => Ok(value),
                                     Err(e) => {
-                                        panic!("got a bad symbol definition error ({e}) on a previously undefined origin symbol");
+                                        panic!("got a bad symbol definition error ({e:?}) on a previously undefined origin symbol");
                                     }
                                 }
                             }

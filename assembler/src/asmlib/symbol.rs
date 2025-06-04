@@ -312,8 +312,20 @@ impl SymbolContext {
                 OriginUse::IncludesOrigin(my_block, my_origin),
                 OriginUse::IncludesOrigin(their_block, their_origin),
             ) => {
-                if my_block == their_block && my_origin == their_origin {
-                    OriginUse::IncludesOrigin(*my_block, my_origin.clone())
+                if my_block == their_block && my_origin.has_same_specification(their_origin) {
+                    // If one of the origins is a deduced origin, that
+                    // has more information, so retain that one.
+                    //
+                    // We merge symbol usage information from deduced
+                    // origins because we specifically call
+                    // record_deduced_origin_value() in order to do
+                    // this.
+                    let chosen: &Origin = match (&my_origin, &their_origin) {
+                        (deduced @ Origin::Deduced(_, _, _), _)
+                        | (_, deduced @ Origin::Deduced(_, _, _)) => deduced,
+                        _ => my_origin,
+                    };
+                    OriginUse::IncludesOrigin(*my_block, chosen.clone())
                 } else {
                     return Err(InconsistentSymbolUse::ConflictingOrigin(
                         name.clone(),
@@ -382,6 +394,21 @@ impl SymbolContext {
             }
         }
     }
+}
+
+#[test]
+fn test_deduced_origin_merge() {
+    use super::span::span;
+    use base::prelude::Address;
+    use base::u18;
+    let span = span(0..4);
+    let block = BlockIdentifier::from(0);
+    let name = SymbolName::from("OGN");
+    let address = Address::from(u18!(0o200_000));
+    let mut current = SymbolContext::origin(block, Origin::Symbolic(span, name.clone()));
+    let new_use = SymbolContext::origin(block, Origin::Deduced(span, name.clone(), address));
+    assert_eq!(current.merge(&name, new_use.clone()), Ok(()));
+    assert_eq!(current, new_use);
 }
 
 impl From<(&Script, Span)> for SymbolContext {
