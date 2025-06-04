@@ -815,8 +815,8 @@ impl Atom {
                     SymbolSubstitution::Omit => {
                         // The parameter was not set, and this atom is
                         // being used in a context where omitted
-                        // parameters cause the affected instructin to
-                        // be omitted.  That is, this expression is
+                        // parameters cause the affected instruction
+                        // to be omitted.  That is, this expression is
                         // not on the right-hand-side of an equality.
                         None
                     }
