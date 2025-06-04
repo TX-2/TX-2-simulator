@@ -23,15 +23,6 @@ impl From<usize> for BlockIdentifier {
 }
 
 impl BlockIdentifier {
-    pub fn next_block(&self) -> Option<BlockIdentifier> {
-        Some(
-            self.0
-                .checked_add(1)
-                .map(BlockIdentifier)
-                .expect("block count should not overflow"),
-        )
-    }
-
     pub fn previous_block(&self) -> Option<BlockIdentifier> {
         self.0.checked_sub(1).map(BlockIdentifier)
     }
