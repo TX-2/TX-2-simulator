@@ -152,13 +152,6 @@ impl ExplicitSymbolTable {
     }
 }
 
-// TODO: do we still need this?
-impl Spanned for (&Span, &SymbolName, &ImplicitDefinition) {
-    fn span(&self) -> Span {
-        *self.0
-    }
-}
-
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum FinalSymbolType {
     Tag,
