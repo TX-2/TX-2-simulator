@@ -1193,3 +1193,203 @@ fn test_diagnose_duplicate_tags_in_macro_body() {
         }
     }
 }
+
+#[test]
+fn test_macro_expansion_no_params() {
+    let input = concat!(
+        "** DEFINE A MACRO TAKING NO PARAMETERS\n",
+        "☛☛DEF MYMAC≡\n",
+        "    2\n",
+        "☛☛EMD\n",
+        "\n",
+        // We invoke the macro terminating its name with the macro
+        // terminator.  This follows the example of the QFIX macro in
+        // the Kleinrock network similator (see for example the
+        // invocation at output address 201466 (page 35 of the PDF).
+        "MYMAC≡ ** INVOKE THE MACRO\n"
+    );
+    let program = assemble_source(input, Default::default()).expect("program is valid");
+    dbg!(&program);
+
+    assert_eq!(program.chunks.len(), 1);
+    assert_eq!(program.chunks[0].words.len(), 1, "wrong program length");
+    assert_eq!(program.chunks[0].words[0], u36!(0o2));
+}
+
+#[test]
+fn test_macro_parameter_substitution() {
+    // Given a two-parameter macro which expands those parameters as
+    // its body, and a macro invocation which specifies both
+    // parameters.
+    let input = concat!(
+        "☛☛DEF MYMACRO≡X~Y\n",
+        "    X\n",
+        "    Y\n",
+        "☛☛EMD\n",
+        "\n",
+        "MYMACRO≡1~2\n" // Specify X=1, Y=2
+    );
+
+    // When I assemble a program which uses it
+    let program =
+        assemble_source(input, Default::default()).expect("input should be a valid program");
+    dbg!(&program);
+
+    // Then we should see that the resutling binary contains an
+    // expanded value of the macro's body, with both parameters
+    // correctly substituted.
+    assert_eq!(program.chunks.len(), 1);
+    assert_eq!(
+        program.chunks[0].words,
+        vec![
+            u36!(1), // X
+            u36!(2)  // Y
+        ]
+    );
+}
+
+#[test]
+fn test_macro_parameter_elision_of_first_param() {
+    // Given a two-parameter macro which expands those parameters as
+    // its body, and a macro invocation which omits the first
+    // parameter
+    let input = concat!(
+        "☛☛DEF MYMACRO≡X~Y\n",
+        "    X+10\n",
+        "    Y+20\n",
+        "☛☛EMD\n",
+        "\n",
+        "MYMACRO≡~2\n" // specify Y but not X
+    );
+
+    // When I assemble the program
+    let program =
+        assemble_source(input, Default::default()).expect("input should be a valid program");
+    dbg!(&program);
+
+    // Then we should see that the resutling binary contains an
+    // expanded value of the macro's body, and that instructions
+    // referring to the specified parameter (Y) are included, while
+    // instructions referring to the unspecified parameter (X)have
+    // been omitted.
+    assert_eq!(program.chunks.len(), 1);
+    assert_eq!(
+        program.chunks[0].words,
+        vec![
+            // X does not appear as it was not specified in the macro invocation
+            u36!(0o22) // Y+20 (octal)
+        ]
+    );
+}
+
+#[test]
+fn test_macro_parameter_elision_of_second_param() {
+    // Given a two-parameter macro which expands those parameters as
+    // its body, and a macro invocation which omits the second
+    // parameter
+    let input = concat!(
+        "☛☛DEF MYMACRO≡X~Y\n",
+        "    X+10\n",
+        "    Y+20\n",
+        "☛☛EMD\n",
+        "\n",
+        "MYMACRO≡4~\n" // specify X but not Y
+    );
+
+    // When I assemble a program which uses it
+    let program =
+        assemble_source(input, Default::default()).expect("input should be a valid program");
+    dbg!(&program);
+
+    // Then we should see that the resutling binary contains an
+    // expanded value of the macro's body, with the parameters
+    // correctly omitted or substituted, depending on whether or not
+    // they are defined.
+    assert_eq!(program.chunks.len(), 1);
+    assert_eq!(
+        program.chunks[0].words,
+        vec![
+            // X does not appear as it was not specified in the macro invocation
+            u36!(0o14) // X+10
+        ]
+    );
+}
+
+#[test]
+fn test_macro_parameter_elision_of_all_params() {
+    // Given a two-parameter macro which expands those parameters as
+    // its body, and a macro invocation which omits the second
+    // parameter
+    let input = concat!(
+        "☛☛DEF MYMACRO≡X~Y\n",
+        "    X+10\n",
+        "    Y+20\n",
+        "☛☛EMD\n",
+        "\n",
+        "MYMACRO≡~\n", // specify neither X nor Y
+        "7\n",         // make the output program non-empty
+    );
+
+    // When I assemble a program which uses it
+    let program =
+        assemble_source(input, Default::default()).expect("input should be a valid program");
+    dbg!(&program);
+
+    // Then we should see that the resutling binary contains an
+    // expanded value of the macro's body, with the parameters
+    // correctly omitted or substituted, depending on whether or not
+    // they are defined.
+    assert_eq!(program.chunks.len(), 1);
+    assert_eq!(
+        program.chunks[0].words,
+        vec![
+            // The X and Y lines are not emitted, so we are left with
+            // only the value generated by the constant which appears
+            // after the macro call.
+            u36!(7)
+        ]
+    );
+}
+
+#[test]
+fn test_macro_parameter_use_in_equality() {
+    // Given a two-parameter macro which uses those parameters
+    // in both equalities and directly
+    let input = concat!(
+        "☛☛DEF MYMACRO≡X~Y\n",
+        "    X+10\n",
+        "    XX\n",
+        "\n",
+        "    Y+20\n",
+        "    YY\n",
+        "\n",
+        "    XX = X+11\n",
+        "    YY = Y+22\n",
+        "☛☛EMD\n",
+        "\n",
+        "MYMACRO≡~\n", // specify neither X nor Y
+    );
+
+    // When I assemble a program which uses it
+    let program =
+        assemble_source(input, Default::default()).expect("input should be a valid program");
+    dbg!(&program);
+
+    // Then we should see that the direct uses of the missing
+    // parameters have resulted in the relevant instructions being
+    // omitted, but that references to the missing parameters which
+    // occur on the right-hand-side of equalities result in the
+    // parameter being evaluated as zero.
+
+    assert_eq!(program.chunks.len(), 2);
+    assert_eq!(
+        program.chunks[0].words,
+        vec![
+            // The X+10 and Y+20 lines are not emitted.  But the XX
+            // and YY lines are, since they refer to the missing
+            // parameters indirectly through equalities.
+            u36!(0o11),
+            u36!(0o22)
+        ]
+    );
+}
