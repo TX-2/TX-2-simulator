@@ -1091,8 +1091,8 @@ fn test_hash_evaluation() {
     let input_one = "1| 1\n";
 
     // When I assemble it
-    let program_hash =
-        assemble_source(input_hash, Default::default()).expect("input_b should be a valid program");
+    let program_hash = assemble_source(input_hash, Default::default())
+        .expect("input_hash should be a valid program");
     dbg!(&program_hash);
     let program_one =
         assemble_source(input_one, Default::default()).expect("input_a should be a valid program");
@@ -1112,7 +1112,7 @@ fn test_minus_hash_evaluation() {
 
     // When I assemble it
     let program_minus_hash = assemble_source(input_minus_hash, Default::default())
-        .expect("input_b should be a valid program");
+        .expect("input_minus_hash should be a valid program");
     dbg!(&program_minus_hash);
     let program_minus_one = assemble_source(input_minus_one, Default::default())
         .expect("input_a should be a valid program");
@@ -1133,7 +1133,7 @@ fn test_minus_hash_config_evaluation() {
 
     // When I assemble them
     let program =
-        assemble_source(input, Default::default()).expect("input_b should be a valid program");
+        assemble_source(input, Default::default()).expect("input should be a valid program");
     dbg!(&program);
     let comparison_program = assemble_source(comparison_input, Default::default())
         .expect("input_a should be a valid program");
