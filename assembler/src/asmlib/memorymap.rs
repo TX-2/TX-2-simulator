@@ -139,11 +139,21 @@ impl MemoryMap {
     {
         let blocks = block_sizes
             .into_iter()
-            .map(|(span, maybe_origin, block_size)| BlockPosition {
-                span,
-                origin: maybe_origin,
-                block_address: None,
-                block_size,
+            .enumerate()
+            .map(|(i, (span, maybe_origin, block_size))| {
+                if i > 0 {
+                    // The presence of an origin specification is what
+                    // prompts the creation of a second or later
+                    // block, so only the first block is allowed not
+                    // to have an origin.
+                    assert!(maybe_origin.is_some());
+                }
+                BlockPosition {
+                    span,
+                    origin: maybe_origin,
+                    block_address: None,
+                    block_size,
+                }
             })
             .collect();
         MemoryMap { blocks }
