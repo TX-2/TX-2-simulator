@@ -102,25 +102,29 @@ pub(super) struct BlockPosition {
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub(crate) struct MemoryMap {
-    blocks: BTreeMap<BlockIdentifier, BlockPosition>,
+    blocks: Vec<BlockPosition>,
 }
 
 impl MemoryMap {
     pub(crate) fn get(&self, block: &BlockIdentifier) -> Option<&BlockPosition> {
-        self.blocks.get(block)
+        let pos = usize::from(*block);
+        self.blocks.get(pos)
     }
 
     pub(crate) fn set_block_position(&mut self, block: BlockIdentifier, location: Address) {
-        match self.blocks.get_mut(&block) {
+        match self.blocks.get_mut(usize::from(block)) {
             Some(pos) => pos.block_address = Some(location),
             None => {
-                unreachable!("attempted to set location of nonexistent block");
+                unreachable!("attempted to set location of nonexistent block {block}");
             }
         }
     }
 
-    pub(crate) fn iter(&self) -> impl Iterator<Item = (&BlockIdentifier, &BlockPosition)> {
-        self.blocks.iter()
+    pub(crate) fn iter(&self) -> impl Iterator<Item = (BlockIdentifier, &BlockPosition)> {
+        self.blocks
+            .iter()
+            .enumerate()
+            .map(|(i, block)| (i.into(), block))
     }
 
     pub(crate) fn new<I>(block_sizes: I) -> MemoryMap
@@ -129,18 +133,11 @@ impl MemoryMap {
     {
         let blocks = block_sizes
             .into_iter()
-            .enumerate()
-            .map(|(i, (span, maybe_origin, block_size))| {
-                let block_id = BlockIdentifier::from(i);
-                (
-                    block_id,
-                    BlockPosition {
-                        span,
-                        origin: maybe_origin,
-                        block_address: None,
-                        block_size,
-                    },
-                )
+            .map(|(span, maybe_origin, block_size)| BlockPosition {
+                span,
+                origin: maybe_origin,
+                block_address: None,
+                block_size,
             })
             .collect();
         MemoryMap { blocks }

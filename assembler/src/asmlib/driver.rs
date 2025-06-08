@@ -321,8 +321,8 @@ fn initial_symbol_table<'a>(
 ///
 /// The source_file input is essentially an abstract syntax
 /// representation.  The output is a symbol table and a "directive"
-/// which is a sequence of blocks of code of known size (but not, at
-/// this stage, necessarily of known position).
+/// which is a sequence of blocks of code of known position and size
+/// (but the contents of which are not yet populated).
 fn assemble_pass2<'s>(
     source_file: SourceFile,
     source_file_body: &Source<'s>,
@@ -334,6 +334,7 @@ fn assemble_pass2<'s>(
         let span: Span = block.origin_span();
         (span, block.origin.clone(), block.instruction_count())
     }));
+
     let (mut explicit_symbols, mut implicit_symbols) = match initial_symbol_table(&source_file) {
         Ok(syms) => syms,
         Err(errors) => {
@@ -347,10 +348,9 @@ fn assemble_pass2<'s>(
     let mut no_rc_allocation = NoRcBlock {
         why_blocked: "we don't expect origin computation to require RC-word allocation",
     };
-    let mut assigned_block_addresses: BTreeMap<BlockIdentifier, Address> = Default::default();
     let tmp_blocks: Vec<(BlockIdentifier, BlockPosition)> = memory_map
         .iter()
-        .map(|(block_identifier, block_position)| (*block_identifier, block_position.clone()))
+        .map(|(block_identifier, block_position)| (block_identifier, block_position.clone()))
         .collect();
 
     for (block_identifier, block_position) in tmp_blocks.into_iter() {
@@ -372,17 +372,13 @@ fn assemble_pass2<'s>(
                 }
 
                 let address: Address = subword::right_half(value).into();
-                assigned_block_addresses.insert(block_identifier, address);
+                memory_map.set_block_position(block_identifier, address);
             }
             Err(e) => {
                 let prog_error: ProgramError = e.into_program_error();
                 return Err(prog_error.into_assembler_failure(source_file_body));
             }
         }
-    }
-
-    for (block_id, address) in assigned_block_addresses.into_iter() {
-        memory_map.set_block_position(block_id, address);
     }
 
     let directive = source_file.into_directive(&memory_map)?;

@@ -22,6 +22,12 @@ impl From<usize> for BlockIdentifier {
     }
 }
 
+impl From<BlockIdentifier> for usize {
+    fn from(value: BlockIdentifier) -> usize {
+        value.0
+    }
+}
+
 impl BlockIdentifier {
     pub fn previous_block(&self) -> Option<BlockIdentifier> {
         self.0.checked_sub(1).map(BlockIdentifier)
