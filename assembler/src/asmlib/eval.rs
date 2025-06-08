@@ -498,54 +498,63 @@ impl Evaluate for (&BlockIdentifier, &Option<Origin>, &Span) {
         &self,
         ctx: &mut EvaluationContext<R>,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-        fn address_from_lower_half(x: Unsigned36Bit) -> Address {
-            subword::right_half(x).into()
-        }
         let (block_id, maybe_origin, _) = self;
+
+        // Resolve the address of this block by evaluating its origin
+        // specification if it has one.
         if let Some(origin) = maybe_origin {
-            origin.evaluate(ctx)
-        } else {
-            if let Some(previous_block_id) = block_id.previous_block() {
-                let (prev_addr, prev_size, prev_span): (Address, Unsigned18Bit, Span) =
-                    if let Some(previous_block) = ctx.memory_map.get(&previous_block_id).cloned() {
-                        let prev_addr: Address =
-                            if let Some(prev_addr) = previous_block.block_address {
-                                prev_addr
-                            } else {
-                                // Previous block was not assigned an address yet.  Make a recursive call.
-                                (
-                                    &previous_block_id,
-                                    &previous_block.origin,
-                                    &previous_block.span,
-                                )
-                                    .evaluate(ctx)
-                                    .map(address_from_lower_half)?
-                            };
-                        (prev_addr, previous_block.block_size, previous_block.span)
-                    } else {
-                        unreachable!("unknown block {previous_block_id}")
-                    };
-                match offset_from_origin(&prev_addr, prev_size) {
-                    Ok(addr) => Ok(addr.into()),
-                    Err(_) => {
-                        // The address of this block would be outside
-                        // physical memory, so it is the combination
-                        // of the address of the previous block and
-                        // the size of the previous block which is the
-                        // problem.
-                        Err(SymbolLookupFailure::BlockTooLarge(
-                            prev_span,
-                            MachineLimitExceededFailure::BlockTooLarge {
-                                span: prev_span,
-                                block_id: previous_block_id,
-                                offset: prev_size.into(),
-                            },
-                        ))
-                    }
-                }
-            } else {
+            return origin.evaluate(ctx);
+        }
+
+        // If it has no origin specification, we can deduce the
+        // address of this block by placing it immediately after the
+        // previous block, or (for the first block) using the default
+        // block address.
+        let previous_block_id: BlockIdentifier = match block_id.previous_block() {
+            None => {
                 // This is the first block.
-                Ok(Origin::default_address().into())
+                return Ok(Origin::default_address().into());
+            }
+            Some(id) => id,
+        };
+
+        // Get the location of the previous block and place this block after it.
+        let (prev_addr, prev_size, prev_span): (Address, Unsigned18Bit, Span) =
+            if let Some(previous_block) = ctx.memory_map.get(&previous_block_id).cloned() {
+                // The previous block should have already been
+                // assigned an address, because we assign them
+                // in block-number order, ascending.
+                let address_of_previous_block: Address = previous_block
+                    .block_address
+                    .expect("blocks should be assigned addresses in ascending block order");
+                (
+                    address_of_previous_block,
+                    previous_block.block_size,
+                    previous_block.span,
+                )
+            } else {
+                unreachable!("unknown block {previous_block_id}")
+            };
+
+        // Add the size of the previous block to its address, yielding
+        // the address of the location following it; this is the
+        // address at which we will locate the current block.
+        match offset_from_origin(&prev_addr, prev_size) {
+            Ok(addr) => Ok(addr.into()),
+            Err(_) => {
+                // The address of this block would be outside
+                // physical memory, so it is the combination
+                // of the address of the previous block and
+                // the size of the previous block which is the
+                // problem.
+                Err(SymbolLookupFailure::BlockTooLarge(
+                    prev_span,
+                    MachineLimitExceededFailure::BlockTooLarge {
+                        span: prev_span,
+                        block_id: previous_block_id,
+                        offset: prev_size.into(),
+                    },
+                ))
             }
         }
     }
