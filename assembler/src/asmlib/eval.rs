@@ -12,9 +12,7 @@ use base::{
 
 use super::ast::*;
 use super::collections::OneOrMore;
-use super::memorymap::{
-    BlockPosition, MemoryMap, RcAllocator, RcWordAllocationFailure, RcWordSource,
-};
+use super::memorymap::{MemoryMap, RcAllocator, RcWordAllocationFailure, RcWordSource};
 use super::source::Source;
 use super::span::*;
 use super::symbol::{ConfigUse, IndexUse, OriginUse, SymbolName};
@@ -220,20 +218,16 @@ impl<R: RcUpdater> EvaluationContext<'_, R> {
                 // index_register_assigner only.
                 if let Some((block_identifier, _origin)) = context.get_origin() {
                     if let Some(block_position) = self.memory_map.get(block_identifier).cloned() {
-                        // If we simply try to pass block_position to
-                        // evaluate() we will loop and diagnose this
-                        // as an undefined symbol.  While the symbol
-                        // has no definition via assignment, we can
-                        // determine the position of the block by
+                        // If we simply try to pass the block's origin
+                        // to evaluate() we will loop and diagnose
+                        // this as an undefined symbol.  While the
+                        // symbol has no definition via assignment, we
+                        // can determine the position of the block by
                         // appending it to the previous block.  So we
                         // evaluate the block's position as if it had
                         // no origin specification.
-                        let pos_with_unspecified_origin: BlockPosition = BlockPosition {
-                            origin: None,
-                            ..block_position
-                        };
-                        let what: (&BlockIdentifier, &BlockPosition) =
-                            (block_identifier, &pos_with_unspecified_origin);
+                        let what: (&BlockIdentifier, &Option<Origin>, &Span) =
+                            (block_identifier, &None, &block_position.span());
                         match what.evaluate(self) {
                             Ok(value) => {
                                 let address: Address = subword::right_half(value).into();
@@ -470,9 +464,9 @@ pub(super) fn extract_final_equalities<R: RcUpdater>(
     Ok(())
 }
 
-impl Spanned for (&BlockIdentifier, &BlockPosition) {
+impl Spanned for (&BlockIdentifier, &Option<Origin>, &Span) {
     fn span(&self) -> Span {
-        self.1.span
+        *self.2
     }
 }
 
@@ -499,7 +493,7 @@ fn offset_from_origin(origin: &Address, offset: Unsigned18Bit) -> Result<Address
     }
 }
 
-impl Evaluate for (&BlockIdentifier, &BlockPosition) {
+impl Evaluate for (&BlockIdentifier, &Option<Origin>, &Span) {
     fn evaluate<R: RcUpdater>(
         &self,
         ctx: &mut EvaluationContext<R>,
@@ -507,56 +501,53 @@ impl Evaluate for (&BlockIdentifier, &BlockPosition) {
         fn address_from_lower_half(x: Unsigned36Bit) -> Address {
             subword::right_half(x).into()
         }
-        let (block_id, block_position) = self;
-        let addr: Address = match block_position {
-            BlockPosition {
-                block_address: Some(address),
-                ..
-            } => Ok(*address),
-            BlockPosition {
-                block_address: None,
-                origin: Some(origin),
-                ..
-            } => origin.evaluate(ctx).map(address_from_lower_half),
-            BlockPosition {
-                block_address: None,
-                origin: None,
-                span: block_span,
-                ..
-            } => {
-                match block_id.previous_block() {
-                    None => {
-                        // This is the first block.
-                        Ok(Origin::default_address())
-                    }
-                    Some(previous_block_id) => {
-                        match ctx.memory_map.get(&previous_block_id).cloned() {
-                            Some(previous_block) => {
-                                let prev_addr_w: Unsigned36Bit =
-                                    (&previous_block_id, &previous_block).evaluate(ctx)?;
-                                let prev_addr: Address =
-                                    Address::from(subword::right_half(prev_addr_w));
-                                match offset_from_origin(&prev_addr, previous_block.block_size) {
-                                    Ok(addr) => Ok(addr),
-                                    Err(_) => Err(SymbolLookupFailure::BlockTooLarge(
-                                        *block_span,
-                                        MachineLimitExceededFailure::BlockTooLarge {
-                                            span: *block_span,
-                                            block_id: previous_block_id,
-                                            offset: previous_block.block_size.into(),
-                                        },
-                                    )),
-                                }
-                            }
-                            None => {
-                                panic!("{previous_block_id} is missing from the block layout");
-                            }
-                        }
+        let (block_id, maybe_origin, _) = self;
+        if let Some(origin) = maybe_origin {
+            origin.evaluate(ctx)
+        } else {
+            if let Some(previous_block_id) = block_id.previous_block() {
+                let (prev_addr, prev_size, prev_span): (Address, Unsigned18Bit, Span) =
+                    if let Some(previous_block) = ctx.memory_map.get(&previous_block_id).cloned() {
+                        let prev_addr: Address =
+                            if let Some(prev_addr) = previous_block.block_address {
+                                prev_addr
+                            } else {
+                                // Previous block was not assigned an address yet.  Make a recursive call.
+                                (
+                                    &previous_block_id,
+                                    &previous_block.origin,
+                                    &previous_block.span,
+                                )
+                                    .evaluate(ctx)
+                                    .map(address_from_lower_half)?
+                            };
+                        (prev_addr, previous_block.block_size, previous_block.span)
+                    } else {
+                        unreachable!("unknown block {previous_block_id}")
+                    };
+                match offset_from_origin(&prev_addr, prev_size) {
+                    Ok(addr) => Ok(addr.into()),
+                    Err(_) => {
+                        // The address of this block would be outside
+                        // physical memory, so it is the combination
+                        // of the address of the previous block and
+                        // the size of the previous block which is the
+                        // problem.
+                        Err(SymbolLookupFailure::BlockTooLarge(
+                            prev_span,
+                            MachineLimitExceededFailure::BlockTooLarge {
+                                span: prev_span,
+                                block_id: previous_block_id,
+                                offset: prev_size.into(),
+                            },
+                        ))
                     }
                 }
+            } else {
+                // This is the first block.
+                Ok(Origin::default_address().into())
             }
-        }?;
-        Ok(Unsigned36Bit::from(addr))
+        }
     }
 }
 
@@ -585,7 +576,8 @@ impl Evaluate for (&Span, &SymbolName, &ExplicitDefinition) {
                 span,
             }) => {
                 if let Some(block_position) = ctx.memory_map.get(block_id).cloned() {
-                    let what: (&BlockIdentifier, &BlockPosition) = (block_id, &block_position);
+                    let what: (&BlockIdentifier, &Option<Origin>, &Span) =
+                        (block_id, &block_position.origin, &block_position.span);
                     let block_origin: Address = subword::right_half(what.evaluate(ctx)?).into();
                     match offset_from_origin(&block_origin, *block_offset) {
                         Ok(computed_address) => Ok(computed_address.into()),

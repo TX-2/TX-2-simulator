@@ -100,6 +100,12 @@ pub(super) struct BlockPosition {
     pub(super) block_size: Unsigned18Bit,
 }
 
+impl Spanned for BlockPosition {
+    fn span(&self) -> Span {
+        self.span
+    }
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub(crate) struct MemoryMap {
     blocks: Vec<BlockPosition>,

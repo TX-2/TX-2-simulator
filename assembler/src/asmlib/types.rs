@@ -43,6 +43,10 @@ impl Display for BlockIdentifier {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum MachineLimitExceededFailure {
     RanOutOfIndexRegisters(Span, SymbolName),
+    /// BlockTooLarge is used to report blocks whose length is not
+    /// representable in an 18-bit halfword, or whose length is
+    /// representable but whose start address wouild put the end of
+    /// the block outside physical memory.
     BlockTooLarge {
         span: Span,
         block_id: BlockIdentifier,

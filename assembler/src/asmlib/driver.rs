@@ -25,9 +25,7 @@ use super::manuscript::ManuscriptBlock;
 #[cfg(test)]
 use super::manuscript::PunchCommand;
 use super::manuscript::SourceFile;
-use super::memorymap::{
-    BlockPosition, MemoryMap, RcAllocator, RcWordAllocationFailure, RcWordSource,
-};
+use super::memorymap::{MemoryMap, RcAllocator, RcWordAllocationFailure, RcWordSource};
 use super::parser::parse_source_file;
 use super::source::Source;
 use super::source::{LineAndColumn, WithLocation};
@@ -348,12 +346,18 @@ fn assemble_pass2<'s>(
     let mut no_rc_allocation = NoRcBlock {
         why_blocked: "we don't expect origin computation to require RC-word allocation",
     };
-    let tmp_blocks: Vec<(BlockIdentifier, BlockPosition)> = memory_map
+    let tmp_blocks: Vec<(BlockIdentifier, Option<Origin>, Span)> = memory_map
         .iter()
-        .map(|(block_identifier, block_position)| (block_identifier, block_position.clone()))
+        .map(|(block_identifier, block_position)| {
+            (
+                block_identifier,
+                block_position.origin.clone(),
+                block_position.span(),
+            )
+        })
         .collect();
 
-    for (block_identifier, block_position) in tmp_blocks.into_iter() {
+    for (block_identifier, maybe_origin, span) in tmp_blocks.into_iter() {
         let mut ctx = EvaluationContext {
             explicit_symtab: &mut explicit_symbols,
             implicit_symtab: &mut implicit_symbols,
@@ -363,7 +367,7 @@ fn assemble_pass2<'s>(
             rc_updater: &mut no_rc_allocation,
             lookup_operation: Default::default(),
         };
-        match (&block_identifier, &block_position).evaluate(&mut ctx) {
+        match (&block_identifier, &maybe_origin, &span).evaluate(&mut ctx) {
             Ok(value) => {
                 if !ctx.index_register_assigner.is_empty() {
                     return Err(AssemblerFailure::InternalError(format!(
