@@ -5,7 +5,7 @@ use super::super::ast::{
     InstructionSequence, LiteralValue, TaggedProgramInstruction, UntaggedProgramInstruction,
 };
 use super::super::collections::OneOrMore;
-use super::super::eval::{lookup_with_op, make_empty_rc_block_for_test, EvaluationContext};
+use super::super::eval::{make_empty_rc_block_for_test, symbol_name_lookup, EvaluationContext};
 use super::super::manuscript::{ManuscriptBlock, PunchCommand, SourceFile};
 use super::super::memorymap::LocatedBlock;
 use super::super::source::Source;
@@ -52,7 +52,7 @@ fn assemble_check_symbols(
             lookup_operation: Default::default(),
         };
 
-        match lookup_with_op(&mut ctx, &sym, span) {
+        match symbol_name_lookup(&sym, Script::Normal, span, &mut ctx) {
             Ok(got) => {
                 if got != *expected_value {
                     panic!(

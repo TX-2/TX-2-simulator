@@ -368,23 +368,11 @@ pub(crate) fn make_empty_rc_block_for_test(location: Address) -> RcBlock {
     }
 }
 
-fn final_lookup_helper_body<R: RcUpdater>(
-    ctx: &mut EvaluationContext<R>,
+pub(crate) fn symbol_name_lookup<R: RcUpdater>(
     name: &SymbolName,
+    elevation: Script,
     span: Span,
-) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-    if let Some(def) = ctx.explicit_symtab.get(name) {
-        let what: (&Span, &SymbolName, &ExplicitDefinition) = (&span, name, def);
-        what.evaluate(ctx)
-    } else {
-        ctx.fetch_or_assign_default(name)
-    }
-}
-
-pub(super) fn lookup_with_op<R: RcUpdater>(
     ctx: &mut EvaluationContext<R>,
-    name: &SymbolName,
-    span: Span,
 ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
     ctx.lookup_operation.deps_in_order.push(name.clone());
     if !ctx.lookup_operation.depends_on.insert(name.clone()) {
@@ -402,19 +390,18 @@ pub(super) fn lookup_with_op<R: RcUpdater>(
             }
         }
     }
-    let result = final_lookup_helper_body(ctx, name, span);
+
+    let result = if let Some(def) = ctx.explicit_symtab.get(name) {
+        let what: (&Span, &SymbolName, &ExplicitDefinition) = (&span, name, def);
+        what.evaluate(ctx)
+    } else {
+        ctx.fetch_or_assign_default(name)
+    }
+    .map(|value| value.shl(elevation.shift()));
+
     ctx.lookup_operation.deps_in_order.pop();
     ctx.lookup_operation.depends_on.remove(name);
     result
-}
-
-pub(crate) fn symbol_name_lookup<R: RcUpdater>(
-    name: &SymbolName,
-    elevation: Script,
-    span: Span,
-    ctx: &mut EvaluationContext<R>,
-) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-    lookup_with_op(ctx, name, span).map(|value| value.shl(elevation.shift()))
 }
 
 #[allow(clippy::too_many_arguments)]
