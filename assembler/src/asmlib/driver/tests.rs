@@ -5,20 +5,20 @@ use super::super::ast::{
     InstructionSequence, LiteralValue, TaggedProgramInstruction, UntaggedProgramInstruction,
 };
 use super::super::collections::OneOrMore;
-use super::super::eval::{EvaluationContext, lookup_with_op, make_empty_rc_block_for_test};
+use super::super::eval::{lookup_with_op, make_empty_rc_block_for_test, EvaluationContext};
 use super::super::manuscript::{ManuscriptBlock, PunchCommand, SourceFile};
 use super::super::memorymap::LocatedBlock;
 use super::super::source::Source;
 use super::super::span::*;
 use super::super::symbol::SymbolName;
 use super::super::symtab::IndexRegisterAssigner;
-use super::{Binary, BinaryChunk, assemble_pass1};
 use super::{assemble_nonempty_valid_input, assemble_source};
+use super::{assemble_pass1, Binary, BinaryChunk};
 use base::{
     charset::Script,
     prelude::{
-        Address, Instruction, Opcode, OperandAddress, SymbolicInstruction, Unsigned5Bit,
-        Unsigned6Bit, Unsigned18Bit, Unsigned36Bit, u6, u18, u36,
+        u18, u36, u6, Address, Instruction, Opcode, OperandAddress, SymbolicInstruction,
+        Unsigned18Bit, Unsigned36Bit, Unsigned5Bit, Unsigned6Bit,
     },
 };
 
@@ -136,33 +136,26 @@ fn test_metacommand_dec_changes_default_base() {
         "no index register should have been default-assigned"
     );
 
-    if let [
-        LocatedBlock {
-            origin: _,
-            location: _,
-            sequences,
-        },
-    ] = directive.blocks.values().collect::<Vec<_>>().as_slice()
+    if let [LocatedBlock {
+        origin: _,
+        location: _,
+        sequences,
+    }] = directive.blocks.values().collect::<Vec<_>>().as_slice()
     {
-        if let [
-            InstructionSequence {
-                local_symbols: None,
-                instructions,
-            },
-        ] = sequences.as_slice()
+        if let [InstructionSequence {
+            local_symbols: None,
+            instructions,
+        }] = sequences.as_slice()
         {
-            if let [
-                TaggedProgramInstruction {
-                    span: _,
-                    tags: tags1,
-                    instruction: first_instruction,
-                },
-                TaggedProgramInstruction {
-                    span: _,
-                    tags: tags2,
-                    instruction: second_instruction,
-                },
-            ] = instructions.as_slice()
+            if let [TaggedProgramInstruction {
+                span: _,
+                tags: tags1,
+                instruction: first_instruction,
+            }, TaggedProgramInstruction {
+                span: _,
+                tags: tags2,
+                instruction: second_instruction,
+            }] = instructions.as_slice()
             {
                 assert!(tags1.is_empty());
                 assert!(tags2.is_empty());
@@ -1055,16 +1048,13 @@ fn test_symbol_definition_loop_detection() {
             );
             let errors = Vec::from(errors);
             match errors.as_slice() {
-                [
-                    e1 @ WithLocation {
-                        location: _,
-                        inner: ProgramError::SymbolDefinitionLoop { .. },
-                    },
-                    e2 @ WithLocation {
-                        location: _,
-                        inner: ProgramError::SymbolDefinitionLoop { .. },
-                    },
-                ] => {
+                [e1 @ WithLocation {
+                    location: _,
+                    inner: ProgramError::SymbolDefinitionLoop { .. },
+                }, e2 @ WithLocation {
+                    location: _,
+                    inner: ProgramError::SymbolDefinitionLoop { .. },
+                }] => {
                     // Then the error messages that result should name
                     // both of the problem symbols, indicating the
                     // dependency loop for each.

@@ -12,7 +12,9 @@ use base::{
 
 use super::ast::*;
 use super::collections::OneOrMore;
-use super::memorymap::{MemoryMap, RcAllocator, RcWordAllocationFailure, RcWordSource};
+use super::memorymap::{
+    BlockPosition, MemoryMap, RcAllocator, RcWordAllocationFailure, RcWordSource,
+};
 use super::source::Source;
 use super::span::*;
 use super::symbol::{ConfigUse, IndexUse, OriginUse, SymbolName};
@@ -226,9 +228,11 @@ impl<R: RcUpdater> EvaluationContext<'_, R> {
                         // appending it to the previous block.  So we
                         // evaluate the block's position as if it had
                         // no origin specification.
-                        let what: (&BlockIdentifier, &Option<Origin>, &Span) =
-                            (block_identifier, &None, &block_position.span());
-                        match what.evaluate(self) {
+                        let position_without_origin = BlockPosition {
+                            origin: None,
+                            ..block_position
+                        };
+                        match position_without_origin.evaluate(self) {
                             Ok(value) => {
                                 let address: Address = subword::right_half(value).into();
                                 match self.implicit_symtab.record_deduced_origin_value(
@@ -493,16 +497,14 @@ fn offset_from_origin(origin: &Address, offset: Unsigned18Bit) -> Result<Address
     }
 }
 
-impl Evaluate for (&BlockIdentifier, &Option<Origin>, &Span) {
+impl Evaluate for BlockPosition {
     fn evaluate<R: RcUpdater>(
         &self,
         ctx: &mut EvaluationContext<R>,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-        let (block_id, maybe_origin, _) = self;
-
         // Resolve the address of this block by evaluating its origin
         // specification if it has one.
-        if let Some(origin) = maybe_origin {
+        if let Some(origin) = self.origin.as_ref() {
             return origin.evaluate(ctx);
         }
 
@@ -510,7 +512,7 @@ impl Evaluate for (&BlockIdentifier, &Option<Origin>, &Span) {
         // address of this block by placing it immediately after the
         // previous block, or (for the first block) using the default
         // block address.
-        let previous_block_id: BlockIdentifier = match block_id.previous_block() {
+        let previous_block_id: BlockIdentifier = match self.block_identifier.previous_block() {
             None => {
                 // This is the first block.
                 return Ok(Origin::default_address().into());
@@ -585,9 +587,8 @@ impl Evaluate for (&Span, &SymbolName, &ExplicitDefinition) {
                 span,
             }) => {
                 if let Some(block_position) = ctx.memory_map.get(block_id).cloned() {
-                    let what: (&BlockIdentifier, &Option<Origin>, &Span) =
-                        (block_id, &block_position.origin, &block_position.span);
-                    let block_origin: Address = subword::right_half(what.evaluate(ctx)?).into();
+                    let block_origin: Address =
+                        subword::right_half(block_position.evaluate(ctx)?).into();
                     match offset_from_origin(&block_origin, *block_offset) {
                         Ok(computed_address) => Ok(computed_address.into()),
                         Err(_overflow_error) => Err(SymbolLookupFailure::BlockTooLarge(

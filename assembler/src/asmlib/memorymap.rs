@@ -92,6 +92,7 @@ impl Display for RcWordAllocationFailure {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct BlockPosition {
+    pub(super) block_identifier: BlockIdentifier,
     // span is either the span of the origin specification if there is
     // one, or otherwise the span of the first thing in the block.
     pub(super) span: Span,
@@ -126,11 +127,8 @@ impl MemoryMap {
         }
     }
 
-    pub(crate) fn iter(&self) -> impl Iterator<Item = (BlockIdentifier, &BlockPosition)> {
-        self.blocks
-            .iter()
-            .enumerate()
-            .map(|(i, block)| (i.into(), block))
+    pub(crate) fn iter(&self) -> impl Iterator<Item = &BlockPosition> {
+        self.blocks.iter()
     }
 
     pub(crate) fn new<I>(block_sizes: I) -> MemoryMap
@@ -149,6 +147,7 @@ impl MemoryMap {
                     assert!(maybe_origin.is_some());
                 }
                 BlockPosition {
+                    block_identifier: BlockIdentifier::from(i),
                     span,
                     origin: maybe_origin,
                     block_address: None,

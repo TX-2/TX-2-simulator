@@ -10,14 +10,14 @@ use std::io::{BufReader, BufWriter, Read};
 use std::path::{Path, PathBuf};
 
 use chumsky::error::Rich;
-use tracing::{Level, event, span};
+use tracing::{event, span, Level};
 
 use super::ast::*;
 use super::collections::OneOrMore;
 use super::directive::Directive;
 use super::eval::Evaluate;
 use super::eval::HereValue;
-use super::eval::{EvaluationContext, RcBlock, extract_final_equalities};
+use super::eval::{extract_final_equalities, EvaluationContext, RcBlock};
 use super::lexer;
 use super::listing::*;
 #[cfg(test)]
@@ -25,7 +25,9 @@ use super::manuscript::ManuscriptBlock;
 #[cfg(test)]
 use super::manuscript::PunchCommand;
 use super::manuscript::SourceFile;
-use super::memorymap::{MemoryMap, RcAllocator, RcWordAllocationFailure, RcWordSource};
+use super::memorymap::{
+    BlockPosition, MemoryMap, RcAllocator, RcWordAllocationFailure, RcWordSource,
+};
 use super::parser::parse_source_file;
 use super::source::Source;
 use super::source::{LineAndColumn, WithLocation};
@@ -33,8 +35,8 @@ use super::span::*;
 use super::state::{NumeralMode, State};
 use super::symbol::SymbolName;
 use super::symtab::{
-    ExplicitSymbolTable, FinalSymbolDefinition, FinalSymbolTable, FinalSymbolType,
-    ImplicitSymbolTable, IndexRegisterAssigner, assign_default_rc_word_tags,
+    assign_default_rc_word_tags, ExplicitSymbolTable, FinalSymbolDefinition, FinalSymbolTable,
+    FinalSymbolType, ImplicitSymbolTable, IndexRegisterAssigner,
 };
 use super::types::*;
 use base::prelude::{Address, IndexBy, Unsigned18Bit, Unsigned36Bit};
@@ -346,18 +348,8 @@ fn assemble_pass2<'s>(
     let mut no_rc_allocation = NoRcBlock {
         why_blocked: "we don't expect origin computation to require RC-word allocation",
     };
-    let tmp_blocks: Vec<(BlockIdentifier, Option<Origin>, Span)> = memory_map
-        .iter()
-        .map(|(block_identifier, block_position)| {
-            (
-                block_identifier,
-                block_position.origin.clone(),
-                block_position.span(),
-            )
-        })
-        .collect();
-
-    for (block_identifier, maybe_origin, span) in tmp_blocks.into_iter() {
+    let tmp_blocks: Vec<BlockPosition> = memory_map.iter().cloned().collect();
+    for block_position in tmp_blocks.into_iter() {
         let mut ctx = EvaluationContext {
             explicit_symtab: &mut explicit_symbols,
             implicit_symtab: &mut implicit_symbols,
@@ -367,16 +359,17 @@ fn assemble_pass2<'s>(
             rc_updater: &mut no_rc_allocation,
             lookup_operation: Default::default(),
         };
-        match (&block_identifier, &maybe_origin, &span).evaluate(&mut ctx) {
+        match block_position.evaluate(&mut ctx) {
             Ok(value) => {
                 if !ctx.index_register_assigner.is_empty() {
-                    return Err(AssemblerFailure::InternalError(format!(
-                        "While determining the addresses of {block_identifier}, we assigned an index register.  Block origins should not depend on index registers"
-                    )));
+                    return Err(AssemblerFailure::InternalError(
+                        format!(
+                            "While determining the addresses of {0}, we assigned an index register.  Block origins should not depend on index registers",
+                        &block_position.block_identifier)));
                 }
 
                 let address: Address = subword::right_half(value).into();
-                memory_map.set_block_position(block_identifier, address);
+                memory_map.set_block_position(block_position.block_identifier, address);
             }
             Err(e) => {
                 let prog_error: ProgramError = e.into_program_error();
@@ -872,11 +865,8 @@ fn test_duplicate_global_tag() {
                     inner: ProgramError::SyntaxError { msg, span: _ },
                     ..
                 } => {
-                    assert!(
-                        msg.contains(
-                            "bad symbol definition for TGX: TGX is defined more than once"
-                        )
-                    );
+                    assert!(msg
+                        .contains("bad symbol definition for TGX: TGX is defined more than once"));
                 }
                 other => {
                     panic!("expected a syntax error report, got {other:?}");

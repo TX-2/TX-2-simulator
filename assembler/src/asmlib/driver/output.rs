@@ -1,11 +1,11 @@
 use std::io::Write;
 use std::path::Path;
 
-use tracing::{Level, event, span};
+use tracing::{event, span, Level};
 
 use base::prelude::{
-    Address, Instruction, Opcode, OperandAddress, Signed18Bit, SymbolicInstruction, Unsigned6Bit,
-    Unsigned18Bit, Unsigned36Bit, join_halves, split_halves, u5, u6, u18, unsplay,
+    join_halves, split_halves, u18, u5, u6, unsplay, Address, Instruction, Opcode, OperandAddress,
+    Signed18Bit, SymbolicInstruction, Unsigned18Bit, Unsigned36Bit, Unsigned6Bit,
 };
 
 use super::super::readerleader::reader_leader;
