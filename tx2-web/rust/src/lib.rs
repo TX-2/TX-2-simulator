@@ -125,7 +125,7 @@ pub fn tx2_codabo(tx2: &mut Tx2, simulated_time: f64, elapsed_time_secs: f64) {
     event!(Level::INFO, "codabo");
     let context = make_context(simulated_time, elapsed_time_secs);
     if let Err(e) = tx2.codabo(&context, &ResetMode::ResetTSP) {
-        panic!("codabo failed: {}", e);
+        panic!("codabo failed: {e}");
     }
     tx2.set_next_execution_due(context.simulated_time, Some(context.simulated_time));
     tx2.set_run_mode(RunMode::Running);

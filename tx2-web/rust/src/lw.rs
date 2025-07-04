@@ -26,7 +26,7 @@ pub(crate) fn display_lw_unit_output_event(unit: Unsigned6Bit, ch: DescribedChar
         Level::INFO,
         "display_lw_unit_output_event: handling output event for LW unit {unit:?}"
     );
-    let current_line_element_id = format!("lw{:o}-current-line", unit);
+    let current_line_element_id = format!("lw{unit:o}-current-line");
     let current_line_el = doc
         .get_element_by_id(&current_line_element_id)
         .expect("LW current line element is missing from HTML document");
@@ -37,7 +37,7 @@ pub(crate) fn display_lw_unit_output_event(unit: Unsigned6Bit, ch: DescribedChar
             ..
         } => {
             event!(Level::INFO, "LW: processing a carriage return");
-            let history_element_id = format!("lw{:o}-history", unit);
+            let history_element_id = format!("lw{unit:o}-history");
             let history_el = doc
                 .get_element_by_id(&history_element_id)
                 .expect("LW history element is missing from HTML document");

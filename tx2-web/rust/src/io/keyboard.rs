@@ -304,8 +304,7 @@ fn hit_detection_colour_does_not_map_to_a_key_code() {
         return;
     }
     panic!(
-        "Colour {} should map to 'no key' (that is, {:?}) but it actually mapped to {:?}",
-        HIT_DETECTION_BACKGROUND, expected, got
+        "Colour {HIT_DETECTION_BACKGROUND} should map to 'no key' (that is, {expected:?}) but it actually mapped to {got:?}",
     );
 }
 
@@ -1922,8 +1921,7 @@ fn codes_used_in_both_near_and_far_keyboards() {
         let expected_count: usize = if once_keys.contains(code) { 1 } else { 2 };
         if *actual_count != expected_count {
             panic!(
-                "expected to see code code {:o} with frequency of {} but got frequency of {}",
-                code, expected_count, actual_count
+                "expected to see code code {code:o} with frequency of {expected_count} but got frequency of {actual_count}",
             );
         }
     }
@@ -1947,7 +1945,7 @@ fn all_input_codes_used() {
             }
             n => {
                 if !key_code_counts.contains_key(&n) {
-                    panic!("No key generates code {:o}", n);
+                    panic!("No key generates code {n:o}");
                 }
             }
         }

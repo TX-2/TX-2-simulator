@@ -211,7 +211,7 @@ pub fn get_builtin_sample_tape(sample_name: &str) -> Result<Vec<u8>, String> {
     match sample_name {
         "echo" => Ok(sample_binary_echo()),
         "hello" => Ok(sample_binary_hello()),
-        _ => Err(format!("unknown sample file '{}'", sample_name)),
+        _ => Err(format!("unknown sample file '{sample_name}'")),
     }
     .map(|data| data.to_vec())
 }
@@ -258,7 +258,7 @@ pub fn tx2_device_statuses(
     let context = make_context(simulated_system_time_secs, elapsed_time_secs);
     match tx2.sequence_statuses(&context) {
         Err(e) => {
-            panic!("tx2_device_statuses: failed: {}", e);
+            panic!("tx2_device_statuses: failed: {e}");
         }
         Ok(statuses) => statuses
             .into_iter()
