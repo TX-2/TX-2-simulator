@@ -41,7 +41,7 @@ impl QuarterActivity {
     }
 
     pub(crate) fn is_active(&self, q: &u8) -> bool {
-        assert!(*q < 4, "invalid quarter {}", q);
+        assert!(*q < 4, "invalid quarter {q}");
         let mask = 1 << *q;
         self.0 & mask != 0
     }

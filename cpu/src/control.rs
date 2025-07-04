@@ -429,7 +429,7 @@ impl ResetMode {
                         Some(physical_address)
                     }
                     Err(e) => {
-                        panic!("failed to fetch reset {:?}: {}", self, e);
+                        panic!("failed to fetch reset {self:?}: {e}");
                     }
                 }
             }
@@ -1117,8 +1117,7 @@ impl ControlUnit {
                 _ => Err(Alarm {
                     sequence: control.regs.k,
                     details: AlarmDetails::ROUNDTUITAL(format!(
-                        "The emulator does not yet implement opcode {}",
-                        opcode,
+                        "The emulator does not yet implement opcode {opcode}",
                     )),
                 }),
             }
@@ -1126,7 +1125,7 @@ impl ControlUnit {
 
         let seq_desc = match self.regs.k {
             None => "none".to_string(),
-            Some(n) => format!("{:02o}", n),
+            Some(n) => format!("{n:02o}"),
         };
 
         // Fetch the current instruction into the N register.
@@ -1288,10 +1287,7 @@ impl ControlUnit {
                     details: AlarmDetails::QSAL(
                         self.regs.n,
                         BadMemOp::Read(Unsigned36Bit::from(addr)),
-                        format!(
-                            "memory unit indicated address {:o} is not mapped",
-                            operand_address
-                        ),
+                        format!("memory unit indicated address {operand_address:o} is not mapped",),
                     ),
                 })?;
                 // QSAL is masked to we have to return some value, but
@@ -1299,8 +1295,7 @@ impl ControlUnit {
                 Err(self.alarm_unit.always_fire(Alarm {
                     sequence: self.regs.k,
                     details: AlarmDetails::ROUNDTUITAL(format!(
-                        "memory unit indicated address {:o} is not mapped and we don't know what to do when QSAL is masked",
-                        operand_address
+                        "memory unit indicated address {operand_address:o} is not mapped and we don't know what to do when QSAL is masked",
                     ))
                 }))
             }
@@ -1335,7 +1330,7 @@ impl ControlUnit {
                 details: AlarmDetails::QSAL(
                     self.regs.n,
                     BadMemOp::Write(Unsigned36Bit::from(*target)),
-                    format!("memory store to address {:#o} failed: {}", target, e,),
+                    format!("memory store to address {target:#o} failed: {e}",),
                 ),
             })?;
             Ok(()) // QSAL is masked, so just carry on.

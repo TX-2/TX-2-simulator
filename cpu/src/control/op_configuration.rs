@@ -124,7 +124,7 @@ mod tests {
             .update_n_register(Instruction::from(&inst).bits())
             .expect(COMPLAIN);
         if let Err(e) = control.op_spg(ctx, &mut mem) {
-            panic!("SPG instruction failed: {}", e);
+            panic!("SPG instruction failed: {e}");
         }
 
         (

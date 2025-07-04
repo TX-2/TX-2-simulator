@@ -114,8 +114,7 @@ impl ControlUnit {
                 Err(self.alarm_unit.always_fire(Alarm {
                     sequence: self.regs.k,
                     details: AlarmDetails::ROUNDTUITAL(format!(
-                        "IOS operand {:o}: Select Unit command is not yet implemented.",
-                        operand
+                        "IOS operand {operand:o}: Select Unit command is not yet implemented.",
                     )),
                 }))
             }
@@ -127,8 +126,7 @@ impl ControlUnit {
                         unit: j,
                         operand: Some(operand),
                         message: format!(
-                            "IOS operand {:o} has unrecognised leading command digit {:o}",
-                            operand, command,
+                            "IOS operand {operand:o} has unrecognised leading command digit {command:o}",
                         ),
                     },
                 })?;

@@ -411,7 +411,7 @@ mod tests {
                 .update_n_register(Instruction::from(&inst).bits())
                 .expect(COMPLAIN);
             if let Err(e) = control.op_aux(ctx, &mut mem) {
-                panic!("AUX instruction failed: {}", e);
+                panic!("AUX instruction failed: {e}");
             }
         }
         (control.regs.get_index_register(j), mem.get_e_register())
@@ -659,7 +659,7 @@ mod tests {
             .update_n_register(Instruction::from(&inst).bits())
             .expect(COMPLAIN);
         if let Err(e) = control.op_rsx(ctx, &mut mem) {
-            panic!("RSX instruction failed: {}", e);
+            panic!("RSX instruction failed: {e}");
         }
         (control.regs.get_index_register(j), mem.get_e_register())
     }

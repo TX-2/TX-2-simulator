@@ -378,7 +378,7 @@ impl Tx2 {
             flag: self.control.current_flag_state(&seq),
             connected: false,
             in_maintenance: false,
-            name: format!("Sequence {:>02o}", seq),
+            name: format!("Sequence {seq:>02o}"),
             status: None,
             text_info: "(software only)".to_string(),
         }

@@ -16,8 +16,8 @@ pub enum BadMemOp {
 impl Display for BadMemOp {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         match self {
-            BadMemOp::Read(addr) => write!(f, "memory read from {:>013o} failed", addr),
-            BadMemOp::Write(addr) => write!(f, "memory write to {:>013o} failed", addr),
+            BadMemOp::Read(addr) => write!(f, "memory read from {addr:>013o} failed"),
+            BadMemOp::Write(addr) => write!(f, "memory write to {addr:>013o} failed"),
         }
     }
 }
@@ -252,15 +252,13 @@ impl Display for AlarmDetails {
             QSAL(instruction, op, msg) => {
                 write!(
                     f,
-                    "QSAL: during execution of instruction {:?}, {}: {}",
-                    instruction, op, msg,
+                    "QSAL: during execution of instruction {instruction:?}, {op}: {msg}",
                 )
             }
             PSAL(address, msg) => {
                 write!(
                     f,
-                    "PSAL: P register set to illegal address {:>06o}: {}",
-                    address, msg
+                    "PSAL: P register set to illegal address {address:>06o}: {msg}",
                 )
             }
             OCSAL(inst, msg) => {
@@ -274,8 +272,7 @@ impl Display for AlarmDetails {
             ROUNDTUITAL(msg) => {
                 write!(
                     f,
-                    "ROUNDTUITAL: the program used a feature not supported in the emulator: {}",
-                    msg
+                    "ROUNDTUITAL: the program used a feature not supported in the emulator: {msg}",
                 )
             }
 
@@ -284,11 +281,11 @@ impl Display for AlarmDetails {
                 operand,
                 message,
             } => {
-                write!(f, "IOSAL: I/O alarm during operation on unit {:o}", unit,)?;
+                write!(f, "IOSAL: I/O alarm during operation on unit {unit:o}")?;
                 if let Some(oper) = operand {
-                    write!(f, " with operand {}", oper)?;
+                    write!(f, " with operand {oper}")?;
                 }
-                write!(f, ": {}", message)
+                write!(f, ": {message}")
             }
 
             MISAL { affected_unit } => write!(
@@ -317,8 +314,7 @@ impl Display for AlarmDetails {
             DEFERLOOPAL { address } => {
                 write!(
                     f,
-                    "DEFERLOOPAL: infinite loop in deferred address at {:>012o}",
-                    address,
+                    "DEFERLOOPAL: infinite loop in deferred address at {address:>012o}",
                 )
             }
         }
@@ -338,7 +334,7 @@ impl Display for UnmaskedAlarm {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         write!(f, "unmasked alarm {}", self.alarm)?;
         if let Some(address) = self.address {
-            write!(f, "at address {}", address)
+            write!(f, "at address {address}")
         } else {
             Ok(())
         }

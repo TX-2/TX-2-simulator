@@ -91,7 +91,7 @@ impl Display for TransferFailed {
             TransferFailed::BufferNotFree => {
                 f.write_str("Unit buffer not available for use by the CPU")
             }
-            TransferFailed::Alarm(alarm) => write!(f, "{}", alarm),
+            TransferFailed::Alarm(alarm) => write!(f, "{alarm}"),
         }
     }
 }
@@ -571,7 +571,7 @@ impl DeviceManager {
                     details: AlarmDetails::IOSAL {
                         unit,
                         operand: None,
-                        message: format!("unit {:o} is not known", unit),
+                        message: format!("unit {unit:o} is not known"),
                     },
                 })?;
                 // IOSAL is masked.
@@ -668,7 +668,7 @@ impl DeviceManager {
                                 details: AlarmDetails::IOSAL {
                                     unit: devno,
                                     operand: None,
-                                    message: format!("unit {} reports inability (EIA)", devno),
+                                    message: format!("unit {devno:o} reports inability (EIA)"),
                                 },
                             });
                         } else if unit_status.missed_data {
@@ -734,7 +734,7 @@ impl DeviceManager {
                     details: AlarmDetails::IOSAL {
                         unit: *device,
                         operand: None,
-                        message: format!("Attempt to disconnect missing unit {}", device),
+                        message: format!("Attempt to disconnect missing unit {device:o}"),
                     },
                 })?;
                 Ok(()) // IOSAL is masked, carry on.
@@ -763,7 +763,7 @@ impl DeviceManager {
                         details: AlarmDetails::IOSAL {
                             unit: *device,
                             operand: None,
-                            message: format!("Attempt to connect in-maint unit {}", device),
+                            message: format!("Attempt to connect in-maint unit {device:o}"),
                         },
                     })
                 } else {
@@ -783,7 +783,7 @@ impl DeviceManager {
                     details: AlarmDetails::IOSAL {
                         unit: *device,
                         operand: None,
-                        message: format!("Attempt to connect missing unit {}", device),
+                        message: format!("Attempt to connect missing unit {device:o}"),
                     },
                 })?;
                 Ok(None) // IOSAL is masked, carry on

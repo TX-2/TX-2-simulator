@@ -137,8 +137,7 @@ impl ControlUnit {
                         self.regs.n,
                         BadMemOp::Write(target.into()),
                         format!(
-                            "SKM instruction attempted to access address {:o} but it is not mapped",
-                            addr,
+                            "SKM instruction attempted to access address {addr:o} but it is not mapped",
                         ),
                     ),
                 })?;
@@ -153,9 +152,7 @@ impl ControlUnit {
                             self.regs.n,
                             BadMemOp::Write(target.into()),
                             format!(
-                                "SKM instruction attempted to modify (instruction configuration={:o}) a read-only location {:o}",
-                                cf,
-                                target,
+                                "SKM instruction attempted to modify (instruction configuration={cf:o}) a read-only location {target:o}",
                             ),
                         )
                     })?;
@@ -311,7 +308,7 @@ mod tests {
         let result = control.op_jmp(ctx, &mut mem);
         match result {
             Err(e) => {
-                panic!("JMP instruction failed: {}", e);
+                panic!("JMP instruction failed: {e}");
             }
             Ok(OpcodeResult {
                 program_counter_change: Some(ProgramCounterChange::Jump(to)),
@@ -857,14 +854,14 @@ mod tests {
             &UpdateE::No,
             &MetaBitChange::None,
         ) {
-            return Err(format!("failed to set up memory contents: {}", e));
+            return Err(format!("failed to set up memory contents: {e}"));
         }
         control
             .update_n_register(Instruction::from(inst).bits())
             .expect(COMPLAIN);
         let result = match control.op_sed(ctx, &mut mem) {
             Err(e) => {
-                return Err(format!("Execution of SED instruction failed: {}", e));
+                return Err(format!("Execution of SED instruction failed: {e}"));
             }
             Ok(result) => result,
         };
@@ -897,8 +894,7 @@ mod tests {
                 "SED instruction should not cause the current sequence's flag to drop".to_string(),
             ),
             Some(ProgramCounterChange::Stop(addr)) => Err(format!(
-                "SED instruction execution stopped at address {:?}",
-                addr
+                "SED instruction execution stopped at address {addr:?}",
             )),
         }
     }
@@ -917,7 +913,7 @@ mod tests {
                 panic!("{}", err);
             }
             Ok((Some(alarm), _)) => {
-                panic!("SED instruction unexpectedly raised an alarm {}", alarm);
+                panic!("SED instruction unexpectedly raised an alarm {alarm}");
             }
             Ok((None, skip)) => skip,
         }

@@ -334,7 +334,7 @@ mod tests {
             ArithmeticUnitRegister::E => control.op_lde(ctx, &mut mem),
         };
         if let Err(e) = result {
-            panic!("{:?} instruction failed: {}", opcode, e);
+            panic!("{opcode:?} instruction failed: {e}");
         }
         (
             get_register_value(&mem, target_register),
@@ -386,7 +386,7 @@ mod tests {
         defer: bool,
         configuration: SystemConfiguration,
     ) -> (Unsigned36Bit, Unsigned36Bit) {
-        let complain = format!("failed to execute store instruction {:?}", opcode);
+        let complain = format!("failed to execute store instruction {opcode:?}");
         control.regs.f_memory[1] = configuration;
         let inst = SymbolicInstruction {
             held: false,
@@ -405,16 +405,16 @@ mod tests {
         let f = match opcode {
             Opcode::Ste => ControlUnit::op_ste,
             _ => {
-                panic!("opcode {:?} is not yet supported", opcode);
+                panic!("opcode {opcode:?} is not yet supported");
             }
         };
         if let Err(e) = f(control, ctx, mem) {
-            panic!("{:?} instruction failed: {}", opcode, e);
+            panic!("{opcode:?} instruction failed: {e}");
         }
         match mem.fetch(ctx, working_address, &MetaBitChange::None) {
             Ok((stored, _)) => (stored, mem.get_e_register()),
             Err(e) => {
-                panic!("unable to retrieve the stored word: {}", e);
+                panic!("unable to retrieve the stored word: {e}");
             }
         }
     }

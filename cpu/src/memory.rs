@@ -64,10 +64,10 @@ impl Display for MemoryOpFailure {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         match self {
             MemoryOpFailure::NotMapped(addr) => {
-                write!(f, "address {:o} is not mapped to functioning memory", addr)
+                write!(f, "address {addr:o} is not mapped to functioning memory")
             }
             MemoryOpFailure::ReadOnly(addr, _extra) => {
-                write!(f, "address {:o}is mapped to read-only memory", addr)
+                write!(f, "address {addr:o}is mapped to read-only memory")
             }
         }
     }
@@ -1159,7 +1159,7 @@ fn test_write_all_mem() {
             }
             Err(MemoryOpFailure::NotMapped(_)) => (),
             Err(e) => {
-                panic!("Failure {:?} during write of memory address {:o}", e, addr);
+                panic!("Failure {e:?} during write of memory address {addr:o}");
             }
         }
     }
@@ -1184,7 +1184,7 @@ fn test_read_all_mem() {
             Ok(_) => (),
             Err(MemoryOpFailure::NotMapped(_)) => (),
             Err(e) => {
-                panic!("Failure {:?} during read of memory address {:o}", e, addr);
+                panic!("Failure {e:?} during read of memory address {addr:o}");
             }
         }
     }
