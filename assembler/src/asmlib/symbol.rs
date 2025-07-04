@@ -116,8 +116,7 @@ impl Display for InconsistentSymbolUse {
                 _origin_2,
                 block_identifier_2,
             ) => {
-                write!(f, "symbol {} cannot simultaneously be the origin for {} and {}; names must be unique",
-                               name, block_identifier_1, block_identifier_2)
+                write!(f, "symbol {name} cannot simultaneously be the origin for {block_identifier_1} and {block_identifier_2}; names must be unique")
             }
             InconsistentSymbolUse::MixingOrigin(name, _origin, _incompatibility) => {
                 write!(f, "symbols (in this case {name}) cannot be used as an origin name and a configuration or index value")

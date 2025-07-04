@@ -99,7 +99,7 @@ fn disassemble_block(mut pos: Unsigned18Bit, block: &[Unsigned36Bit]) {
 
 fn disassemble_word(loc: Unsigned18Bit, w: Unsigned36Bit, is_origin: bool) {
     if is_origin {
-        print!("{:>06o}|", loc);
+        print!("{loc:>06o}|");
     } else {
         print!("{:7}", "");
     }
@@ -113,7 +113,7 @@ fn disassemble_word(loc: Unsigned18Bit, w: Unsigned36Bit, is_origin: bool) {
         }
     }
     let (left, right) = split_halves(w);
-    println!("|{:>06o} {:>06o}|{:>6o}", left, right, loc);
+    println!("|{left:>06o} {right:>06o}|{loc:>6o}");
 }
 
 fn disassemble_chunk<R: Read>(input: &mut R, checksum: &mut Signed18Bit) -> Result<bool, Fail> {
@@ -134,7 +134,7 @@ fn disassemble_chunk<R: Read>(input: &mut R, checksum: &mut Signed18Bit) -> Resu
                 None => None,
             }
             .expect("overflow in block length");
-            println!("** {}-word chunk ending at {}", len, end);
+            println!("** {len}-word chunk ending at {end}");
             let u_origin = end
                 .checked_sub(len)
                 .and_then(|n| n.checked_add(Unsigned18Bit::ONE))
@@ -155,11 +155,10 @@ fn disassemble_chunk<R: Read>(input: &mut R, checksum: &mut Signed18Bit) -> Resu
     {
         let unsigned_checksum = checksum.reinterpret_as_unsigned();
         if unsigned_checksum.is_zero() {
-            println!("** Checksum is valid: {:>06o}", unsigned_checksum);
+            println!("** Checksum is valid: {unsigned_checksum:>06o}");
         } else {
             println!(
-                "** Checksum is not valid: {:>06o}, this tape cannot be loaded as-is",
-                unsigned_checksum
+                "** Checksum is not valid: {unsigned_checksum:>06o}, this tape cannot be loaded as-is",
             );
         }
     }
@@ -169,7 +168,7 @@ fn disassemble_chunk<R: Read>(input: &mut R, checksum: &mut Signed18Bit) -> Resu
         println!("** This is the final block");
         Ok(false)
     } else {
-        eprintln!("warning: block has unexpected next-address {:o}", next);
+        eprintln!("warning: block has unexpected next-address {next:o}");
         Ok(false)
     }
 }
@@ -181,8 +180,7 @@ fn check_header<R: Read>(input: &mut R) -> Result<(), Fail> {
         if want != got {
             return Err(Fail::Generic(
                 format!(
-                    "File does not begin with the expected header; at position {} we expected {:>012o} but got {:>012o}",
-                    pos, want, got)));
+                    "File does not begin with the expected header; at position {pos} we expected {want:>012o} but got {got:>012o}")));
         }
     }
     println!("** reader leader is valid:");
@@ -195,7 +193,7 @@ fn disassemble_file(input_file_name: &OsStr) -> Result<(), Fail> {
     let input_file = OpenOptions::new()
         .read(true)
         .open(input_file_name)
-        .map_err(|e| Fail::Generic(format!("failed to open input file: {}", e)))?;
+        .map_err(|e| Fail::Generic(format!("failed to open input file: {e}")))?;
     let mut reader = BufReader::new(input_file);
     check_header(&mut reader)?;
     let mut checksum: Signed18Bit = Signed18Bit::ZERO;
@@ -249,7 +247,7 @@ fn disassemble() -> Result<(), Fail> {
     {
         Err(e) => {
             return Err(Fail::Generic(
-                format!("failed to initialise tracing filter (perhaps there is a problem with environment variables): {}", e)));
+                format!("failed to initialise tracing filter (perhaps there is a problem with environment variables): {e}")));
         }
         Ok(layer) => layer,
     };
@@ -267,7 +265,7 @@ fn disassemble() -> Result<(), Fail> {
 fn main() {
     match disassemble() {
         Err(e) => {
-            eprintln!("error: {}", e);
+            eprintln!("error: {e}");
             std::process::exit(1);
         }
         Ok(()) => {

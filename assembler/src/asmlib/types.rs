@@ -152,7 +152,7 @@ impl Display for ProgramError {
                 Ok(())
             }
             SyntaxError { span: _, msg } => {
-                write!(f, "{}", msg)
+                write!(f, "{msg}")
             }
         }
     }

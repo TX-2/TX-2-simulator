@@ -44,7 +44,7 @@ fn run_asembler() -> Result<(), Fail> {
     {
         Err(e) => {
             return Err(Fail::InitialisationFailure(
-                format!("failed to initialise tracing filter (perhaps there is a problem with environment variables): {}", e)));
+                format!("failed to initialise tracing filter (perhaps there is a problem with environment variables): {e}")));
         }
         Ok(layer) => layer,
     };
@@ -72,7 +72,7 @@ fn main() {
 
     match run_asembler() {
         Err(e) => {
-            eprintln!("{}", e);
+            eprintln!("{e}");
             std::process::exit(1);
         }
         Ok(()) => {

@@ -76,15 +76,13 @@ pub(super) fn punch_address(a: Option<LiteralValue>) -> Result<PunchCommand, Str
             let value = literal.value();
             match Unsigned18Bit::try_from(value) {
                 Err(e) => Err(format!(
-                    "PUNCH address value {:o} is not a valid address: {}",
-                    value, e
+                    "PUNCH address value {value:o} is not a valid address: {e}",
                 )),
                 Ok(halfword) => {
                     let addr: Address = Address::from(halfword);
                     if addr.mark_bit() != Unsigned18Bit::ZERO {
                         Err(format!(
-                            "PUNCH address value {:o} must not be a deferred address",
-                            addr
+                            "PUNCH address value {addr:o} must not be a deferred address",
                         ))
                     } else {
                         Ok(PunchCommand(Some(addr)))

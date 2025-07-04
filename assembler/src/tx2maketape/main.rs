@@ -171,7 +171,7 @@ fn run_utility() -> Result<(), Fail> {
     let input_file = OpenOptions::new()
         .read(true)
         .open(cli.input)
-        .map_err(|e| Fail(format!("failed to open input file: {}", e)))?;
+        .map_err(|e| Fail(format!("failed to open input file: {e}")))?;
     let binary = read_binary(input_file)?;
 
     let output_path = PathBuf::from(cli.output);
@@ -192,7 +192,7 @@ fn run_utility() -> Result<(), Fail> {
 fn main() {
     match run_utility() {
         Err(e) => {
-            eprintln!("{}", e);
+            eprintln!("{e}");
             std::process::exit(1);
         }
         Ok(()) => {

@@ -39,8 +39,7 @@ fn files_are_identical(expected: &OsStr, got: &OsStr) -> Result<(), String> {
     let got_file_len = got_file.metadata().expect(COMPLAIN).len();
     if expected_file_len != got_file_len {
         return Err(format!(
-            "wrong file length: {:?} is {} bytes but {:?} is {} bytes",
-            expected, expected_file_len, got, got_file_len
+            "wrong file length: {expected:?} is {expected_file_len} bytes but {got:?} is {got_file_len} bytes",
         ));
     }
 
