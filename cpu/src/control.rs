@@ -1053,13 +1053,13 @@ impl ControlUnit {
     fn estimate_execute_time_ns(&self, orig_inst: &Instruction) -> u64 {
         let inst_from: Address = self.regs.p; // this is now P+1 but likely in the same memory type.
         let defer_from = match orig_inst.operand_address().split() {
-            (true, physical) => Some(Address::from(physical)),
+            (true, physical) => Some(physical),
             (false, _) => None,
         };
 
         // TODO: handle chains of deferred loads
         let operand_from: Option<Address> = match self.regs.n.operand_address().split() {
-            (true, physical) => Some(Address::from(physical)),
+            (true, physical) => Some(physical),
             (false, _) => None,
         };
 
