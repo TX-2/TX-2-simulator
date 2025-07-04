@@ -82,7 +82,7 @@ impl LincolnStreamWriter {
         };
         let stdout = stdout();
         let mut handle = stdout.lock();
-        write!(handle, "{}", to_emit).and_then(|()| handle.flush())
+        write!(handle, "{to_emit}").and_then(|()| handle.flush())
     }
 
     pub fn disconnect(&mut self) {

@@ -164,8 +164,7 @@ impl FromStr for PanicOnUnmaskedAlarm {
             "true" | "yes" => Ok(PanicOnUnmaskedAlarm::Yes),
             "false" | "no" => Ok(PanicOnUnmaskedAlarm::No),
             _ => Err(format!(
-                "unexpected value '{}': expected 'true', 'false', 'yes' or 'no'",
-                s
+                "unexpected value '{s}': expected 'true', 'false', 'yes' or 'no'",
             )),
         }
     }
@@ -324,7 +323,7 @@ fn run_simulator() -> Result<(), Box<dyn std::error::Error>> {
 fn main() {
     match run_simulator() {
         Err(e) => {
-            eprintln!("{}", e);
+            eprintln!("{e}");
             std::process::exit(1);
         }
         Ok(()) => {
