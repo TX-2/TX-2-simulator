@@ -186,7 +186,7 @@ pub fn reader_leader() -> Vec<Unsigned36Bit> {
             configuration: u5!(1),
             opcode: Opcode::Rsx,
             index: u6!(0o54),
-            operand_address: OperandAddress::Direct(Address::new(u18!(0o05))),
+            operand_address: OperandAddress::direct(Address::from(u18!(0o05))),
         },
         SymbolicInstruction {
             // 004: ³⁶JMP₅₄ 20
@@ -209,7 +209,7 @@ pub fn reader_leader() -> Vec<Unsigned36Bit> {
             configuration: u5!(0o36), // binary 011110
             opcode: Opcode::Jmp,
             index: u6!(0o54),
-            operand_address: OperandAddress::Direct(Address::new(u18!(0o20))),
+            operand_address: OperandAddress::direct(Address::from(u18!(0o20))),
         },
         SymbolicInstruction {
             // 005: h²RSX₅₃ 0      ** Set X₅₃ = L([0])  ([0] is saved in E)
@@ -222,7 +222,7 @@ pub fn reader_leader() -> Vec<Unsigned36Bit> {
             configuration: u5!(2),
             opcode: Opcode::Rsx,
             index: u6!(0o53),
-            operand_address: OperandAddress::Direct(Address::new(u18!(0))),
+            operand_address: OperandAddress::direct(Address::ZERO),
         },
         SymbolicInstruction {
             // 006: ¹STE 11        ** Set R([11]) to the right half of the word we read from tape.
@@ -231,7 +231,7 @@ pub fn reader_leader() -> Vec<Unsigned36Bit> {
             configuration: u5!(1),
             opcode: Opcode::Ste,
             index: u6!(0),
-            operand_address: OperandAddress::Direct(Address::new(u18!(0o11))),
+            operand_address: OperandAddress::direct(Address::from(u18!(0o11))),
         },
         SymbolicInstruction {
             // 007: : ³⁶JMP₅₄ 17  ** Call procedure at 17
@@ -248,7 +248,7 @@ pub fn reader_leader() -> Vec<Unsigned36Bit> {
             configuration: u5!(0o36),
             opcode: Opcode::Jmp,
             index: u6!(0o54),
-            operand_address: OperandAddress::Direct(Address::new(u18!(0o17))),
+            operand_address: OperandAddress::direct(Address::from(u18!(0o17))),
         },
         /* On return from the procedure at 0o17, [0] contains the
          * word we read. */
@@ -258,7 +258,7 @@ pub fn reader_leader() -> Vec<Unsigned36Bit> {
             configuration: u5!(0),
             opcode: Opcode::Lde,
             index: u6!(0),
-            operand_address: OperandAddress::Direct(Address::new(u18!(0o00))),
+            operand_address: OperandAddress::direct(Address::ZERO),
         },
         SymbolicInstruction {
             // 011: STE₅₃ 34       ** Store new word at [X₅₃+34]
@@ -273,7 +273,7 @@ pub fn reader_leader() -> Vec<Unsigned36Bit> {
             configuration: u5!(0),
             opcode: Opcode::Ste,
             index: u6!(0o53),
-            operand_address: OperandAddress::Direct(Address::new(u18!(0o34))),
+            operand_address: OperandAddress::direct(Address::from(u18!(0o34))),
         },
         SymbolicInstruction {
             // 012: h¹JNX₅₃ 7     ** Loop to 7 when X₅₃<0. Postincrement X₅₃.
@@ -281,7 +281,7 @@ pub fn reader_leader() -> Vec<Unsigned36Bit> {
             configuration: u5!(1),
             opcode: Opcode::Jnx,
             index: u6!(0o53),
-            operand_address: OperandAddress::Direct(Address::new(u18!(0o07))),
+            operand_address: OperandAddress::direct(Address::from(u18!(0o07))),
         },
         SymbolicInstruction {
             // 013: ³⁶JMP₅₄ 20     ** Call procedure to read another word into [0]
@@ -289,7 +289,7 @@ pub fn reader_leader() -> Vec<Unsigned36Bit> {
             configuration: u5!(0o36),
             opcode: Opcode::Jmp,
             index: u6!(0o54),
-            operand_address: OperandAddress::Direct(Address::new(u18!(0o20))),
+            operand_address: OperandAddress::direct(Address::from(u18!(0o20))),
         },
         SymbolicInstruction {
             // 014: hJPX₅₆ 377760 ** if X₅₆ > 0, restart tape loading
@@ -297,7 +297,7 @@ pub fn reader_leader() -> Vec<Unsigned36Bit> {
             configuration: u5!(0),
             opcode: Opcode::Jpx,
             index: u6!(0o56),
-            operand_address: OperandAddress::Direct(Address::new(u18!(0o377_760))),
+            operand_address: OperandAddress::direct(Address::from(u18!(0o377_760))),
         },
         SymbolicInstruction {
             // 015: hJNX₅₆ 377760 ** if X₅₆ < 0, restart tape loading
@@ -305,7 +305,7 @@ pub fn reader_leader() -> Vec<Unsigned36Bit> {
             configuration: u5!(0),
             opcode: Opcode::Jnx,
             index: u6!(0o56),
-            operand_address: OperandAddress::Direct(Address::new(u18!(0o377760))),
+            operand_address: OperandAddress::direct(Address::from(u18!(0o377760))),
         },
         SymbolicInstruction {
             // 016: ¹⁴JPQ 27
@@ -321,7 +321,7 @@ pub fn reader_leader() -> Vec<Unsigned36Bit> {
             // ¹⁴JMP = JPQ, see page 3-31 of Users Handbook
             opcode: Opcode::Jmp,
             index: u6!(0o0),
-            operand_address: OperandAddress::Direct(Address::new(u18!(0o27))),
+            operand_address: OperandAddress::direct(Address::from(u18!(0o27))),
         },
         SymbolicInstruction {
             // 017: ²MKZ₄.₁₂ 400011     ** Reset meta bit of [11]
@@ -329,7 +329,7 @@ pub fn reader_leader() -> Vec<Unsigned36Bit> {
             configuration: u5!(0o2),
             opcode: Opcode::Skm,       // ²SKM is Mkz (p 3-34) "make zero"
             index: bit_index(4, 0o12), // 4.12
-            operand_address: OperandAddress::Deferred(Address::new(u18!(0o11))),
+            operand_address: OperandAddress::deferred(Address::from(u18!(0o011))),
         },
         /* At 0o20 we have a procedure which loads a word from
          * tape, adds it to our running checksum and leaves the
@@ -340,7 +340,7 @@ pub fn reader_leader() -> Vec<Unsigned36Bit> {
             configuration: u5!(0o1),
             opcode: Opcode::Rsx,
             index: u6!(0o57),
-            operand_address: OperandAddress::Direct(Address::new(u18!(3))),
+            operand_address: OperandAddress::direct(Address::from(u18!(3))),
         },
         SymbolicInstruction {
             // 021: hTSD 0        ** Read tape bits into [0].
@@ -348,7 +348,7 @@ pub fn reader_leader() -> Vec<Unsigned36Bit> {
             configuration: u5!(0), // ignored anyway in ASSEMBLY mode
             opcode: Opcode::Tsd,
             index: u6!(0),
-            operand_address: OperandAddress::Direct(Address::new(u18!(0))),
+            operand_address: OperandAddress::direct(Address::ZERO),
         },
         SymbolicInstruction {
             // 022: ³⁶JPX₅₇ 21     ** Loop (to TSD) when X₅₇>0 (i.e. do whole word)
@@ -356,7 +356,7 @@ pub fn reader_leader() -> Vec<Unsigned36Bit> {
             configuration: u5!(0o36),
             opcode: Opcode::Jpx,
             index: u6!(0o57),
-            operand_address: OperandAddress::Direct(Address::new(u18!(0o21))),
+            operand_address: OperandAddress::direct(Address::from(u18!(0o21))),
         },
         SymbolicInstruction {
             // 023: ¹AUX₅₆ 0        ** Add R[0] to X₅₆
@@ -364,7 +364,7 @@ pub fn reader_leader() -> Vec<Unsigned36Bit> {
             configuration: u5!(1),
             opcode: Opcode::Aux,
             index: u6!(0o56),
-            operand_address: OperandAddress::Direct(Address::new(u18!(0))),
+            operand_address: OperandAddress::direct(Address::ZERO),
         },
         SymbolicInstruction {
             // 024: h²AUX₅₆ 0        ** Add L[0] to X₅₆
@@ -373,7 +373,7 @@ pub fn reader_leader() -> Vec<Unsigned36Bit> {
             configuration: u5!(2),
             opcode: Opcode::Aux,
             index: u6!(0o56),
-            operand_address: OperandAddress::Direct(Address::new(u18!(0))),
+            operand_address: OperandAddress::direct(Address::ZERO),
         },
         SymbolicInstruction {
             // 025: ¹STE 16         ** Set R[16] to E (which we loaded from [0]).
@@ -381,7 +381,7 @@ pub fn reader_leader() -> Vec<Unsigned36Bit> {
             configuration: u5!(1),
             opcode: Opcode::Ste,
             index: u6!(0),
-            operand_address: OperandAddress::Direct(Address::new(u18!(0o16))),
+            operand_address: OperandAddress::direct(Address::from(u18!(0o16))),
         },
         SymbolicInstruction {
             // 026: ¹⁵BPQ₅₄ 0       ** Branch to X₅₄ (no offset)
@@ -392,7 +392,7 @@ pub fn reader_leader() -> Vec<Unsigned36Bit> {
             configuration: u5!(0o15),
             opcode: Opcode::Jmp, // 0o05 is JMP (p 3-30); ¹⁵JMP = BPQ
             index: u6!(0o54),
-            operand_address: OperandAddress::Direct(Address::new(u18!(0))),
+            operand_address: OperandAddress::direct(Address::ZERO),
         },
         // Binaries have two insructions following this.  The first is
         // `¹IOS₅₂ 20000` which therefore gets loaded at location 27.

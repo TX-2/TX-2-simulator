@@ -1350,7 +1350,7 @@ fn test_opcode() {
         configuration: Unsigned5Bit::ZERO,
         opcode: Opcode::Aux,
         index: Unsigned6Bit::ZERO,
-        operand_address: OperandAddress::Direct(Address::ZERO),
+        operand_address: OperandAddress::direct(Address::ZERO),
     });
     assert_eq!(
         parse_single_instruction_fragment("AUX"),

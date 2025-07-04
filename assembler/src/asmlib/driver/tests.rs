@@ -846,7 +846,7 @@ fn default_assigned_rc_word() {
                             opcode: Opcode::Sta,
                             index: Unsigned6Bit::ZERO,
                             // TEMP1 is assigned as the first RC-word
-                            operand_address: OperandAddress::Direct(Address::from(u18!(0o102))),
+                            operand_address: OperandAddress::direct(Address::from(u18!(0o102))),
                         })
                         .bits(),
                         // The STB instruction
@@ -856,7 +856,7 @@ fn default_assigned_rc_word() {
                             opcode: Opcode::Stb,
                             index: Unsigned6Bit::ZERO,
                             // TEMP2 is assigned as the second RC-word
-                            operand_address: OperandAddress::Direct(Address::from(u18!(0o103))),
+                            operand_address: OperandAddress::direct(Address::from(u18!(0o103))),
                         })
                         .bits()
                     ]
@@ -924,7 +924,7 @@ fn default_assigned_index_register_easy_case() {
             configuration: Unsigned5Bit::ZERO,
             opcode: Opcode::Sta,
             index: u6!(1), // j
-            operand_address: OperandAddress::Direct(Address::from(Unsigned18Bit::ZERO)),
+            operand_address: OperandAddress::direct(Address::ZERO),
         }
     );
     assert_eq!(
@@ -935,7 +935,7 @@ fn default_assigned_index_register_easy_case() {
             configuration: Unsigned5Bit::ZERO,
             opcode: Opcode::Sta,
             index: u6!(2), // k
-            operand_address: OperandAddress::Direct(Address::from(Unsigned18Bit::ZERO)),
+            operand_address: OperandAddress::direct(Address::ZERO),
         }
     );
     assert_eq!(program.chunks[0].words.len(), 2);

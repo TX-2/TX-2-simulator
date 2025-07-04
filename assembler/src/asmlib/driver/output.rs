@@ -136,9 +136,18 @@ fn create_begin_block(
         configuration: u5!(1), // signals that PETR report word should be loaded into E
         opcode: Opcode::Ios,
         index: u6!(0o52),
-        operand_address: OperandAddress::Direct(Address::new(u18!(0o020_000))),
+        operand_address: OperandAddress::direct(Address::from(u18!(0o020_000))),
     };
     let jump: SymbolicInstruction = if let Some(start) = program_start {
+        let (physical, deferred) = start.split();
+        if deferred {
+            // If we simply passed though the defer bit, everything
+            // would likely work.  It's just that for this case we
+            // should closely examine what appear to be the original
+            // (TX-2 assembly language) programmer's assumptions about
+            // what will happen.
+            panic!("PUNCH directive specifies deferred start address {start:o}; this is (deliberately) not yet supported - check carefully!");
+        }
         // When there is a known start address `start` we emit a `JPQ
         // start` instruction into memory register 0o27.
         SymbolicInstruction {
@@ -146,7 +155,7 @@ fn create_begin_block(
             configuration: u5!(0o14), // JPQ
             opcode: Opcode::Jmp,
             index: Unsigned6Bit::ZERO,
-            operand_address: OperandAddress::Direct(start),
+            operand_address: OperandAddress::direct(Address::from(physical)),
         }
     } else {
         // Emit a JPD (jump, dismiss) instruction which loops back to
@@ -156,7 +165,7 @@ fn create_begin_block(
             configuration: u5!(0o20), // JPD
             opcode: Opcode::Jmp,
             index: Unsigned6Bit::ZERO,
-            operand_address: OperandAddress::Direct(Address::from(u18!(0o27))),
+            operand_address: OperandAddress::direct(Address::from(u18!(0o27))),
         }
     };
     let location = Address::from(Unsigned18Bit::from(0o27_u8));

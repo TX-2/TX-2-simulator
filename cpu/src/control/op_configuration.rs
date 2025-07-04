@@ -118,7 +118,7 @@ mod tests {
             configuration: Unsigned5Bit::try_from(cfg).expect(COMPLAIN),
             opcode: Opcode::Spg,
             index: Unsigned6Bit::ZERO,
-            operand_address: OperandAddress::Direct(configdata_address),
+            operand_address: OperandAddress::direct(configdata_address),
         };
         control
             .update_n_register(Instruction::from(&inst).bits())

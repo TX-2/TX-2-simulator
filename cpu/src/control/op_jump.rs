@@ -47,33 +47,32 @@ impl ControlUnit {
         };
         mem.set_e_register(subword::join_halves(left, right));
 
-        let physical: Address = match self.regs.n.operand_address() {
-            OperandAddress::Deferred(_) => {
-                // TODO: I don't know whether this is allowed or
-                // not, but if we disallow this for now, we can
-                // use any resulting error to identify cases where
-                // this is in fact used.
-                self.alarm_unit.fire_if_not_masked(Alarm {
-                    sequence: self.regs.k,
-                    details: AlarmDetails::PSAL(
-                        u32::from(self.regs.n.operand_address_and_defer_bit()),
-                        format!(
-                            "JMP target has deferred address {:#o}",
-                            self.regs.n.operand_address()
-                        ),
+        let (deferred, physical) = self.regs.n.operand_address().split();
+        if deferred {
+            // TODO: I don't know whether this is allowed or
+            // not, but if we disallow this for now, we can
+            // use any resulting error to identify cases where
+            // this is in fact used.
+            self.alarm_unit.fire_if_not_masked(Alarm {
+                sequence: self.regs.k,
+                details: AlarmDetails::PSAL(
+                    u32::from(self.regs.n.operand_address_and_defer_bit()),
+                    format!(
+                        "JMP target has deferred address {:#o}",
+                        self.regs.n.operand_address()
                     ),
-                })?;
-                // If deferred addressing is allowed for JMP, we will
-                // need to implement it.  It's not yet implemented.
-                return Err(self.alarm_unit.always_fire(Alarm {
-                    sequence: self.regs.k,
-                    details: AlarmDetails::ROUNDTUITAL(
-                        "deferred JMP is not yet implemented".to_string(),
-                    ),
-                }));
-            }
-            OperandAddress::Direct(phys) => phys,
-        };
+                ),
+            })?;
+            // If deferred addressing is allowed for JMP, we will
+            // need to implement it.  It's not yet implemented.
+            return Err(self.alarm_unit.always_fire(Alarm {
+                sequence: self.regs.k,
+                details: AlarmDetails::ROUNDTUITAL(
+                    "deferred JMP is not yet implemented".to_string(),
+                ),
+            }));
+        }
+
         let new_pc: Address = if indexed {
             physical.index_by(self.regs.get_index_register(j))
         } else {
@@ -345,7 +344,7 @@ mod tests {
                 configuration: Unsigned5Bit::ZERO, // plain JMP
                 opcode: Opcode::Jmp,
                 index: u6!(1),
-                operand_address: OperandAddress::Direct(expected_target),
+                operand_address: OperandAddress::direct(expected_target),
             },
         );
         // ⁰JMP₁ ignores the index bits (as the least significant bit
@@ -376,7 +375,7 @@ mod tests {
                 configuration: u5!(1), // BRC
                 opcode: Opcode::Jmp,
                 index: u6!(1),
-                operand_address: OperandAddress::Direct(target_base),
+                operand_address: OperandAddress::direct(target_base),
             },
         );
         // ¹JMP₁ is an indexed jump.
@@ -406,7 +405,7 @@ mod tests {
                 configuration: u5!(2), // JPS ("jump and save")
                 opcode: Opcode::Jmp,
                 index: u6!(1),
-                operand_address: OperandAddress::Direct(target_base),
+                operand_address: OperandAddress::direct(target_base),
             },
         );
         // ²JMP₁ saves #+1 in X₁.
@@ -436,7 +435,7 @@ mod tests {
                 configuration: u5!(3), // BRS ("branch and save")
                 opcode: Opcode::Jmp,
                 index: u6!(1),
-                operand_address: OperandAddress::Direct(target_base),
+                operand_address: OperandAddress::direct(target_base),
             },
         );
         // ³JMP₁ saves #+1 in X₁ and is an indexed (by X₁) jump.
@@ -467,7 +466,7 @@ mod tests {
                 configuration: u5!(4),
                 opcode: Opcode::Jmp,
                 index: u6!(1),
-                operand_address: OperandAddress::Direct(target_base),
+                operand_address: OperandAddress::direct(target_base),
             },
         );
         // ⁴JMP₁ saves P in R(E).
@@ -497,7 +496,7 @@ mod tests {
                 configuration: u5!(5), // BRC
                 opcode: Opcode::Jmp,
                 index: u6!(1),
-                operand_address: OperandAddress::Direct(target_base),
+                operand_address: OperandAddress::direct(target_base),
             },
         );
         // ⁵JMP₁ saves P in R(E) and is an indexed jump
@@ -527,7 +526,7 @@ mod tests {
                 configuration: u5!(6), // JPS ("jump and save")
                 opcode: Opcode::Jmp,
                 index: u6!(1),
-                operand_address: OperandAddress::Direct(target_base),
+                operand_address: OperandAddress::direct(target_base),
             },
         );
         // ⁶JMP₁ saves P (=#+1) in both R(E) and in X₁.
@@ -557,7 +556,7 @@ mod tests {
                 configuration: u5!(7), // BRS ("branch and save")
                 opcode: Opcode::Jmp,
                 index: u6!(1),
-                operand_address: OperandAddress::Direct(target_base),
+                operand_address: OperandAddress::direct(target_base),
             },
         );
         // ⁷JMP₁ is an indexed jump and saves P (=#+1) in both R(E)
@@ -590,7 +589,7 @@ mod tests {
                 configuration: u5!(0o10),
                 opcode: Opcode::Jmp,
                 index: u6!(1),
-                operand_address: OperandAddress::Direct(target_base),
+                operand_address: OperandAddress::direct(target_base),
             },
         );
         // ¹⁰JMP₁ saves the location of the last memory reference
@@ -623,7 +622,7 @@ mod tests {
                 configuration: u5!(0o14), // JPQ
                 opcode: Opcode::Jmp,
                 index: u6!(1),
-                operand_address: OperandAddress::Direct(target_base),
+                operand_address: OperandAddress::direct(target_base),
             },
         );
         // ¹⁴JMP₁ saves the location of the last memory reference
@@ -657,7 +656,7 @@ mod tests {
                 configuration: u5!(0o15), // BPQ
                 opcode: Opcode::Jmp,
                 index: u6!(1),
-                operand_address: OperandAddress::Direct(target_base),
+                operand_address: OperandAddress::direct(target_base),
             },
         );
         // ¹⁵JMP₁ saves the location of the last memory reference
@@ -691,7 +690,7 @@ mod tests {
                 configuration: u5!(0o16),
                 opcode: Opcode::Jmp,
                 index: u6!(1),
-                operand_address: OperandAddress::Direct(target_base),
+                operand_address: OperandAddress::direct(target_base),
             },
         );
         // ¹⁶JMP₁ saves P in R(E) and Xj, and saves Q in L(E).
@@ -723,7 +722,7 @@ mod tests {
                 configuration: u5!(0o20),
                 opcode: Opcode::Jmp,
                 index: u6!(1),
-                operand_address: OperandAddress::Direct(target_base),
+                operand_address: OperandAddress::direct(target_base),
             },
         );
         // ²⁰JMP₁ is jump, dismiss (no saves, not indexed).
@@ -755,7 +754,7 @@ mod tests {
                 configuration: u5!(0o21),
                 opcode: Opcode::Jmp,
                 index: u6!(1),
-                operand_address: OperandAddress::Direct(target_base),
+                operand_address: OperandAddress::direct(target_base),
             },
         );
         // ²¹JMP₁ is indexed jump, dismiss (no saves).
@@ -787,7 +786,7 @@ mod tests {
                 configuration: u5!(0o22),
                 opcode: Opcode::Jmp,
                 index: u6!(1),
-                operand_address: OperandAddress::Direct(target_base),
+                operand_address: OperandAddress::direct(target_base),
             },
         );
         // ²²JMP₁ is jump, save P in Xⱼ, dismiss (not indexed).
@@ -819,7 +818,7 @@ mod tests {
                 configuration: u5!(0o23),
                 opcode: Opcode::Jmp,
                 index: u6!(1),
-                operand_address: OperandAddress::Direct(target_base),
+                operand_address: OperandAddress::direct(target_base),
             },
         );
         // ²³JMP₁ is indexed jump, save P in Xⱼ, dismiss.
@@ -840,11 +839,13 @@ mod tests {
         inst: &SymbolicInstruction,
     ) -> Result<(Option<Alarm>, bool), String> {
         const COMPLAIN: &str = "failed to set up SED test data";
-        let data_address = if let OperandAddress::Direct(a) = inst.operand_address {
-            a.index_by(xj)
-        } else {
-            panic!("simulate_sed doesn't support deferred addressing yet");
+        let data_address: Address = match inst.operand_address.split() {
+            (true, _) => {
+                panic!("simulate_sed doesn't support deferred addressing yet")
+            }
+            (false, a) => a.index_by(xj),
         };
+
         let (mut control, mut mem) = setup(ctx, j, xj, e, p, Address::ZERO);
         if let Err(e) = control.memory_store_without_exchange(
             ctx,
@@ -938,7 +939,7 @@ mod tests {
                 configuration: Unsigned5Bit::ZERO,
                 opcode: Opcode::Sed,
                 index: j,
-                operand_address: OperandAddress::Direct(Address::from(u18!(0o100))),
+                operand_address: OperandAddress::direct(Address::from(u18!(0o100))),
             },
         );
         assert!(
@@ -966,7 +967,7 @@ mod tests {
                 configuration: Unsigned5Bit::ZERO,
                 opcode: Opcode::Sed,
                 index: j,
-                operand_address: OperandAddress::Direct(Address::from(u18!(0o100))),
+                operand_address: OperandAddress::direct(Address::from(u18!(0o100))),
             },
         );
         assert!(!skipped, "SED instruction skipped when it should not have");
@@ -994,7 +995,7 @@ mod tests {
                 configuration: u5!(2),
                 opcode: Opcode::Sed,
                 index: j,
-                operand_address: OperandAddress::Direct(Address::from(u18!(0o100))),
+                operand_address: OperandAddress::direct(Address::from(u18!(0o100))),
             },
         );
         // L(0o555_555_444_444) != R(0o555_555_444_444), so a skip should occur.
@@ -1023,7 +1024,7 @@ mod tests {
                 configuration: u5!(2),
                 opcode: Opcode::Sed,
                 index: j,
-                operand_address: OperandAddress::Direct(Address::from(u18!(0o100))),
+                operand_address: OperandAddress::direct(Address::from(u18!(0o100))),
             },
         );
         // L(Tj) == R(E), so there should be a skip.

@@ -376,9 +376,9 @@ mod tests {
         let (mut control, mut mem) = setup(ctx, j, initial, &mem_setup, f_memory_setup);
 
         // When... we perform a sequence of AUX instructions
-        let defer_address = Address::from(u18!(0o100));
+        let defer_address_bits = u18!(0o100);
         for offset in 0..(addends.len()) {
-            let operand_address = if defer {
+            let operand_address: OperandAddress = if defer {
                 let pos: u32 = ADDEND_BASE + u32::try_from(offset).expect(COMPLAIN);
                 let deferred = Unsigned18Bit::try_from(pos).expect(COMPLAIN);
                 let ignored_lhs = u18!(0o500);
@@ -393,9 +393,9 @@ mod tests {
                         &MetaBitChange::None,
                     )
                     .expect(COMPLAIN);
-                OperandAddress::Deferred(defer_address)
+                OperandAddress::deferred(Address::from(defer_address_bits))
             } else {
-                OperandAddress::Direct(Address::from(
+                OperandAddress::direct(Address::from(
                     Unsigned18Bit::try_from(ADDEND_BASE + u32::try_from(offset).expect(COMPLAIN))
                         .expect(COMPLAIN),
                 ))
@@ -643,11 +643,14 @@ mod tests {
         ];
         let (mut control, mut mem) = setup(ctx, j, initial, &mem_setup, f_memory_setup);
 
-        let operand_address = if defer {
-            OperandAddress::Deferred(Address::from(u18!(0o200)))
-        } else {
-            OperandAddress::Direct(Address::from(u18!(0o100)))
+        let operand_address: OperandAddress = {
+            if defer {
+                OperandAddress::deferred(Address::from(u18!(0o200)))
+            } else {
+                OperandAddress::direct(Address::from(u18!(0o100)))
+            }
         };
+
         let inst = SymbolicInstruction {
             held: false,
             configuration: Unsigned5Bit::try_from(config_num).expect(COMPLAIN),

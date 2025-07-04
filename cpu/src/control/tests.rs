@@ -47,7 +47,7 @@ fn test_roundtuital_not_maskable() {
         configuration: Unsigned5Bit::ZERO,
         opcode: Opcode::Sca,
         index: u6!(1),
-        operand_address: OperandAddress::Direct(Address::ZERO),
+        operand_address: OperandAddress::direct(Address::ZERO),
     };
     let instruction = Instruction::from(&sym);
     let instruction_bits = instruction.bits();

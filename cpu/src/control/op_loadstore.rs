@@ -317,9 +317,9 @@ mod tests {
             opcode,
             index: j,
             operand_address: if defer_index.is_some() {
-                OperandAddress::Deferred(Address::from(u18!(0o200)))
+                OperandAddress::deferred(Address::from(u18!(0o200)))
             } else {
-                OperandAddress::Direct(Address::from(final_operand_address))
+                OperandAddress::direct(Address::from(final_operand_address))
             },
         };
         control
@@ -396,7 +396,7 @@ mod tests {
             operand_address: if defer {
                 todo!("defer is not yet implemented");
             } else {
-                OperandAddress::Direct(*working_address)
+                OperandAddress::direct(*working_address)
             },
         };
         control

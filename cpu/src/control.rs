@@ -28,7 +28,7 @@ mod tests;
 mod timing;
 mod trap;
 
-use base::instruction::{Inst, Instruction, Opcode, OperandAddress, SymbolicInstruction};
+use base::instruction::{Inst, Instruction, Opcode, SymbolicInstruction};
 use base::prelude::*;
 use base::subword;
 
@@ -1052,15 +1052,17 @@ impl ControlUnit {
 
     fn estimate_execute_time_ns(&self, orig_inst: &Instruction) -> u64 {
         let inst_from: Address = self.regs.p; // this is now P+1 but likely in the same memory type.
-        let defer_from: Option<Address> = match orig_inst.operand_address() {
-            OperandAddress::Deferred(phys) => Some(phys),
-            OperandAddress::Direct(_) => None,
+        let defer_from = match orig_inst.operand_address().split() {
+            (true, physical) => Some(Address::from(physical)),
+            (false, _) => None,
         };
-        let operand_from = match self.regs.n.operand_address() {
-            // TODO: handle chains of deferred loads
-            OperandAddress::Deferred(phys) => Some(phys),
-            OperandAddress::Direct(_) => None,
+
+        // TODO: handle chains of deferred loads
+        let operand_from: Option<Address> = match self.regs.n.operand_address().split() {
+            (true, physical) => Some(Address::from(physical)),
+            (false, _) => None,
         };
+
         timing::estimate_instruction_ns(
             inst_from,
             orig_inst.opcode_number(),
@@ -1401,7 +1403,12 @@ impl ControlUnit {
         // February 1959, available from the UMN collection (BCI61 Box
         // 8).
         let mut seen_deferred_addresses: HashSet<Address> = HashSet::new();
-        while let OperandAddress::Deferred(physical) = self.regs.n.operand_address() {
+        let physical_address: Address = loop {
+            let (defer, physical) = self.regs.n.operand_address().split();
+            if !defer {
+                break physical;
+            }
+
             // In effect, this loop emulates a non-ultimate deferred
             // address cycle.
             //
@@ -1513,13 +1520,8 @@ impl ControlUnit {
                 unchanged_left,
                 Unsigned18Bit::from(fetched),
             ))?;
-        }
-        let physical_address = match self.regs.n.operand_address() {
-            // Cannot be a deferred address any more, as loop above
-            // loops until the address is not deferred.
-            OperandAddress::Deferred(_) => unreachable!(),
-            OperandAddress::Direct(physical_address) => physical_address,
         };
+
         // The defer bit in N is (now) not set.  Emulate a regular or
         // ultimate address cycle.  That is, add the index value to
         // the operand address.  While the index_address field in the

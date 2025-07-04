@@ -1,5 +1,5 @@
 /// Human-oriented formatting for instructions (or parts of instructions).
-use std::fmt::{self, Display, Formatter, Octal};
+use std::fmt::{self, Display, Formatter, Octal, Write};
 
 use super::super::charset::{
     subscript_char, superscript_char, NoSubscriptKnown, NoSuperscriptKnown,
@@ -107,14 +107,15 @@ impl Display for Opcode {
 /// with `[...]` or `*`.  We use `[...]`.
 impl Octal for OperandAddress {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        match self {
-            OperandAddress::Direct(addr) => {
-                write!(f, "{addr:o}")
-            }
-            OperandAddress::Deferred(addr) => {
-                write!(f, "[{addr:o}]")
-            }
+        let (defer, physical_address) = self.split();
+        if defer {
+            f.write_char('[')?;
         }
+        write!(f, "{physical_address:o}")?;
+        if defer {
+            f.write_char(']')?;
+        }
+        Ok(())
     }
 }
 
@@ -306,10 +307,6 @@ mod tests {
         Unsigned5Bit::try_from(n).expect("valid test data")
     }
 
-    fn addr(a: u32) -> Address {
-        Address::from(Unsigned18Bit::try_from(a).expect("valid test data"))
-    }
-
     #[test]
     fn test_octal_superscript_u8() {
         assert_eq!(
@@ -342,9 +339,7 @@ mod tests {
     #[test]
     fn test_display_jmp() {
         let sinst = SymbolicInstruction {
-            operand_address: OperandAddress::Direct(Address::from(
-                Unsigned18Bit::try_from(0o0377750).expect("valid test data"),
-            )),
+            operand_address: OperandAddress::direct(Address::from(u18!(0o0377750))),
             index: Unsigned6Bit::ZERO,
             opcode: Opcode::Jmp,
             configuration: Unsigned5Bit::ZERO,
@@ -387,7 +382,7 @@ mod tests {
         // makes the system behave as if the hold bit were set on all
         // instructions; see User Guide, page 5-17.
         let sinst = SymbolicInstruction {
-            operand_address: OperandAddress::Direct(addr(0o0200156_u32)),
+            operand_address: OperandAddress::direct(Address::from(u18!(0o200_156_u32))),
             index: Unsigned6Bit::try_from(0o34_u8).unwrap(),
             opcode: Opcode::Jpx,
             configuration: config_value(0o36), // 036 octal = 30 decimal = 0b11110
@@ -403,7 +398,7 @@ mod tests {
 
         // Example from Program I, address 377 765, instruction word 36 06 01 377 751.
         let sinst1 = SymbolicInstruction {
-            operand_address: OperandAddress::Direct(addr(0o0377751)),
+            operand_address: OperandAddress::direct(Address::from(u18!(0o0377751))),
             index: Unsigned6Bit::ONE,
             opcode: Opcode::Jpx,
             // 036 = 30 decimal = 0b11110, which is one's complement -1.
@@ -429,7 +424,7 @@ mod tests {
 
         // Example from Program II ("Inchworm"), address 15, instruction word not stated,
         let sinst2 = SymbolicInstruction {
-            operand_address: OperandAddress::Direct(addr(0o0377752)),
+            operand_address: OperandAddress::direct(Address::from(u18!(0o0377752))),
             index: Unsigned6Bit::try_from(3_u8).unwrap(),
             opcode: Opcode::Jpx,
             // In the Program II example, the configuration value is
@@ -449,7 +444,7 @@ mod tests {
         // indicating the hold bit.  We use 'h' instead since ':' is
         // not actually part of the Lincoln Writer character set.
         let sinst = SymbolicInstruction {
-            operand_address: OperandAddress::Direct(addr(0o377762)),
+            operand_address: OperandAddress::direct(Address::from(u18!(0o377762))),
             index: Unsigned6Bit::try_from(0o71_u8).unwrap(),
             opcode: Opcode::Rsx,
             configuration: config_value(0o34),

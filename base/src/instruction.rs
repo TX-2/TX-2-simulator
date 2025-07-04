@@ -175,12 +175,11 @@ pub trait Inst {
     /// The value of the defer bit from the operand address field.
     fn is_deferred_addressing(&self) -> bool;
 
-    /// The operand address field (including the defer bit)
-    fn operand_address(&self) -> OperandAddress;
-
     /// Fetches the operand address with the defer bit (if set) in bit
     /// position 17.
     fn operand_address_and_defer_bit(&self) -> Unsigned18Bit;
+
+    fn operand_address(&self) -> OperandAddress;
 }
 
 impl Inst for Instruction {
@@ -207,13 +206,8 @@ impl Inst for Instruction {
     }
 
     fn operand_address(&self) -> OperandAddress {
-        const PHYSICAL_ADDRESS_BITS: u32 = 0o377_777;
-        let physical_address = Address::from(subword::right_half(self.0) & PHYSICAL_ADDRESS_BITS);
-        if self.0 & 0o400_000 != 0 {
-            OperandAddress::Deferred(physical_address)
-        } else {
-            OperandAddress::Direct(physical_address)
-        }
+        let bits: Unsigned18Bit = subword::right_half(self.0);
+        OperandAddress::from_raw_bits(bits)
     }
 
     fn operand_address_and_defer_bit(&self) -> Unsigned18Bit {
@@ -401,19 +395,46 @@ impl TryFrom<u8> for Opcode {
 }
 
 /// OperandAddress represents the least-significant 18 bits of an
-/// instruction word.  By using an enumeration for this we make it
-/// harder to accidentally mix up operand addresses (which might have
-/// a defer bit) and physical addresses (which only have 17 useful
-/// bits, since the highest physical memory address is 377 777).
+/// instruction word.  If the top bit is set, this indicates the use
+/// of deferred addressing (i.e. this bit has the same significance as
+/// it does in TX-2 instructions).
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum OperandAddress {
-    Direct(Address),
-    Deferred(Address),
-}
+pub struct OperandAddress(Address);
 
 impl Default for OperandAddress {
     fn default() -> OperandAddress {
-        OperandAddress::Direct(Address::ZERO)
+        OperandAddress(Address::ZERO)
+    }
+}
+
+impl OperandAddress {
+    pub fn is_deferred(&self) -> bool {
+        let (_, deferred) = self.0.split();
+        deferred
+    }
+
+    pub fn split(&self) -> (bool, Address) {
+        let (physical, deferred) = self.0.split();
+        (deferred, Address::from(physical))
+    }
+
+    pub fn bits(&self) -> Unsigned18Bit {
+        Unsigned18Bit::from(self.0)
+    }
+
+    pub fn direct(address: Address) -> OperandAddress {
+        let (_, defer) = address.split();
+        assert!(!defer);
+        Self(address)
+    }
+
+    pub fn deferred(address: Address) -> OperandAddress {
+        let (bits, _) = address.split();
+        Self(Address::join(bits, true))
+    }
+
+    fn from_raw_bits(bits: Unsigned18Bit) -> OperandAddress {
+        Self(Address::from(bits))
     }
 }
 
@@ -451,7 +472,7 @@ impl Inst for SymbolicInstruction {
     }
 
     fn is_deferred_addressing(&self) -> bool {
-        matches!(self.operand_address, OperandAddress::Deferred(_))
+        self.operand_address.is_deferred()
     }
 
     fn operand_address(&self) -> OperandAddress {
@@ -459,14 +480,7 @@ impl Inst for SymbolicInstruction {
     }
 
     fn operand_address_and_defer_bit(&self) -> Unsigned18Bit {
-        const ADDRESS_DEFER_BIT: u32 = 0o400_000;
-        match self.operand_address {
-            OperandAddress::Deferred(addr) => {
-                let defer_bit = Unsigned18Bit::try_from(ADDRESS_DEFER_BIT).unwrap();
-                Unsigned18Bit::from(addr) | defer_bit
-            }
-            OperandAddress::Direct(addr) => Unsigned18Bit::from(addr),
-        }
+        self.operand_address.bits()
     }
 }
 
@@ -546,16 +560,12 @@ mod tests {
         Unsigned5Bit::try_from(n).expect("valid test data")
     }
 
-    fn addr(a: u32) -> Address {
-        Address::from(Unsigned18Bit::try_from(a).expect("valid test data"))
-    }
-
     #[test]
     fn test_instruction_jmp() {
         let inst = Instruction(Unsigned36Bit::from(0o0500377750_u32));
         assert_eq!(
             inst.operand_address(),
-            OperandAddress::Direct(addr(0o0377750_u32)),
+            OperandAddress::direct(Address::from(u18!(0o377_750u32))),
             "wrong address"
         );
         assert!(!inst.is_deferred_addressing(), "wrong dismiss");
@@ -588,7 +598,7 @@ mod tests {
         assert_eq!(
             disassemble_word(u36!(0o000_500_377_750)),
             Ok(SymbolicInstruction {
-                operand_address: OperandAddress::Direct(addr(0o0377750)),
+                operand_address: OperandAddress::direct(Address::from(u18!(0o0377750))),
                 index: Unsigned6Bit::ZERO,
                 opcode: Opcode::Jmp,
                 configuration: config_value(0),
@@ -605,7 +615,7 @@ mod tests {
                     .expect("test data should be in range")
             ),
             Ok(SymbolicInstruction {
-                operand_address: OperandAddress::Direct(addr(0o0377752)),
+                operand_address: OperandAddress::direct(Address::from(u18!(0o0377752))),
                 index: Unsigned6Bit::try_from(3_u8).unwrap(),
                 opcode: Opcode::Jpx,
                 configuration: config_value(24), // -7
@@ -619,7 +629,7 @@ mod tests {
                     .expect("test data should be in range")
             ),
             Ok(SymbolicInstruction {
-                operand_address: OperandAddress::Direct(addr(0o0377751)),
+                operand_address: OperandAddress::direct(Address::from(u18!(0o0377751))),
                 index: Unsigned6Bit::ONE,
                 opcode: Opcode::Jpx,
                 configuration: config_value(30),
@@ -635,7 +645,7 @@ mod tests {
         assert_eq!(
             disassemble_word(u36!(0o011_600_777_605_u64)),
             Ok(SymbolicInstruction {
-                operand_address: OperandAddress::Deferred(addr(0o377605)),
+                operand_address: OperandAddress::deferred(Address::from(u18!(0o377_605))),
                 index: Unsigned6Bit::try_from(0_u8).unwrap(),
                 opcode: Opcode::Dpx,
                 configuration: config_value(1),
@@ -653,7 +663,7 @@ mod tests {
             configuration: Unsigned5Bit::try_from(1_u8).expect("valid configuraiton field"),
             opcode: Opcode::Rsx,
             index: Unsigned6Bit::try_from(0o54_u8).expect("valid index field"),
-            operand_address: OperandAddress::Direct(Address::new(u18!(5))),
+            operand_address: OperandAddress::direct(Address::from(u18!(5))),
         };
         let got: u64 = u64::from(Instruction::from(&sym).bits());
         const EXPECTED: u64 = 0o011_154_000_005_u64;
