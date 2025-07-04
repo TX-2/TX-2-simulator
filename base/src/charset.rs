@@ -138,8 +138,7 @@ impl Display for LincolnToUnicodeStrictConversionFailure {
             ) => {
                 write!(
                     f,
-                    "cannot convert code {:#o} from Lincoln Writer character set to Unicode, because it has no printable representation",
-                    n
+                    "cannot convert code {n:#o} from Lincoln Writer character set to Unicode, because it has no printable representation",
                 )
             }
             LincolnToUnicodeStrictConversionFailure::CannotSubscript(
@@ -148,9 +147,7 @@ impl Display for LincolnToUnicodeStrictConversionFailure {
             ) => {
                 write!(
                     f,
-                    "cannot convert {:#o} from Lincoln Writer character set to Unicode, because Unicode has no subscript form of '{}'",
-                    u,
-                    ch
+                    "cannot convert {u:#o} from Lincoln Writer character set to Unicode, because Unicode has no subscript form of '{ch}'",
                 )
             }
             LincolnToUnicodeStrictConversionFailure::CannotSuperscript(
@@ -159,9 +156,7 @@ impl Display for LincolnToUnicodeStrictConversionFailure {
             ) => {
                 write!(
                     f,
-                    "cannot convert {:#o} from Lincoln Writer character set to Unicode, because Unicode has no superscript form of '{}'",
-                    u,
-                    ch
+                    "cannot convert {u:#o} from Lincoln Writer character set to Unicode, because Unicode has no superscript form of '{ch}'",
                 )
             }
         }
@@ -620,8 +615,7 @@ impl Display for UnicodeToLincolnConversionFailure {
             UnicodeToLincolnConversionFailure::NoMapping(ch) => {
                 write!(
                     f,
-                    "there is no mapping for '{}' from Unicode to Lincoln Writer character set",
-                    ch,
+                    "there is no mapping for '{ch}' from Unicode to Lincoln Writer character set",
                 )
             }
         }

@@ -55,10 +55,7 @@ fn test_i8_round_tripping() {
         if let Some(qprev) = prev {
             assert!(
                 q > qprev,
-                "failed to round-trip {}: {:?} should be greater than {:?}",
-                i,
-                q,
-                qprev
+                "failed to round-trip {i}: {q:?} should be greater than {qprev:?}",
             );
         }
         prev = Some(q);
@@ -68,8 +65,8 @@ fn test_i8_round_tripping() {
             }
             Err(e) => {
                 panic!(
-		    "Unexpected overflow when round-tripping  {}->{:?}-> [conversion to i8 failed with error {}]",
-		    i, &q, e);
+                    "Unexpected overflow when round-tripping  {}->{:?}-> [conversion to i8 failed with error {}]",
+                    i, &q, e);
             }
         }
     }
@@ -83,10 +80,7 @@ fn test_u8_round_tripping() {
         if let Some(qprev) = prev {
             assert!(
                 q > qprev,
-                "failed to round-trip {}: {:?} should be greater than {:?}",
-                i,
-                q,
-                qprev
+                "failed to round-trip {i}: {q:?} should be greater than {qprev:?}",
             );
         }
         prev = Some(q);
@@ -96,8 +90,8 @@ fn test_u8_round_tripping() {
             }
             Err(e) => {
                 panic!(
-		    "Unexpected overflow when round-tripping  {}->{:?}-> [conversion to i8 failed with error {}]",
-		    i, &q, e);
+                    "Unexpected overflow when round-tripping  {}->{:?}-> [conversion to i8 failed with error {}]",
+                    i, &q, e);
             }
         }
     }
@@ -319,8 +313,7 @@ fn test_wrapping_add() {
 
             assert_eq!(
                 expected, got,
-                "Expected {} + {} = {}, got {:?} + {:?} = {}",
-                left, right, expected, left_operand, right_operand, got
+                "Expected {left} + {right} = {expected}, got {left_operand:?} + {right_operand:?} = {got}",
             );
         }
     }
@@ -339,8 +332,7 @@ fn test_wrapping_sub() {
 
             assert_eq!(
                 expected, got,
-                "Expected {} + {} = {}, got {:?} + {:?} = {}",
-                left, right, expected, left_operand, right_operand, got
+                "Expected {left} + {right} = {expected}, got {left_operand:?} + {right_operand:?} = {got}",
             );
         }
     }

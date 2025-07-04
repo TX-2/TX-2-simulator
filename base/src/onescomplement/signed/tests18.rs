@@ -86,10 +86,7 @@ fn test_i8_round_tripping() {
         if let Some(qprev) = prev {
             assert!(
                 q > qprev,
-                "failed to round-trip {}: {:?} should be greater than {:?}",
-                i,
-                q,
-                qprev
+                "failed to round-trip {i}: {q:?} should be greater than {qprev:?}",
             );
         }
         prev = Some(q);
@@ -99,8 +96,8 @@ fn test_i8_round_tripping() {
             }
             Err(e) => {
                 panic!(
-		    "Unexpected overflow when round-tripping  {}->{:?}-> [conversion to i8 failed with error {}]",
-		    i, &q, e);
+                    "Unexpected overflow when round-tripping  {}->{:?}-> [conversion to i8 failed with error {}]",
+                    i, &q, e);
             }
         }
     }
@@ -114,10 +111,7 @@ fn test_i16_round_tripping() {
         if let Some(qprev) = prev {
             assert!(
                 q > qprev,
-                "failed to round-trip {}: {:?} should be greater than {:?}",
-                i,
-                q,
-                qprev
+                "failed to round-trip {i}: {q:?} should be greater than {qprev:?}",
             );
         }
         prev = Some(q);
@@ -127,8 +121,8 @@ fn test_i16_round_tripping() {
             }
             Err(e) => {
                 panic!(
-		    "Unexpected overflow when round-tripping  {}->{:?}-> [conversion to i8 failed with error {}]",
-		    i, &q, e);
+                    "Unexpected overflow when round-tripping  {}->{:?}-> [conversion to i8 failed with error {}]",
+                    i, &q, e);
             }
         }
     }
@@ -142,10 +136,7 @@ fn test_u8_round_tripping() {
         if let Some(qprev) = prev {
             assert!(
                 q > qprev,
-                "failed to round-trip {}: {:?} should be greater than {:?}",
-                i,
-                q,
-                qprev
+                "failed to round-trip {i}: {q:?} should be greater than {qprev:?}",
             );
         }
         prev = Some(q);
@@ -155,8 +146,8 @@ fn test_u8_round_tripping() {
             }
             Err(e) => {
                 panic!(
-		    "Unexpected overflow when round-tripping  {}->{:?}-> [conversion to i8 failed with error {}]",
-		    i, &q, e);
+                    "Unexpected overflow when round-tripping  {}->{:?}-> [conversion to i8 failed with error {}]",
+                    i, &q, e);
             }
         }
     }
@@ -170,10 +161,7 @@ fn test_u16_round_tripping() {
         if let Some(qprev) = prev {
             assert!(
                 q > qprev,
-                "failed to round-trip {}: {:?} should be greater than {:?}",
-                i,
-                q,
-                qprev
+                "failed to round-trip {i}: {q:?} should be greater than {qprev:?}",
             );
         }
         prev = Some(q);
@@ -183,8 +171,8 @@ fn test_u16_round_tripping() {
             }
             Err(e) => {
                 panic!(
-		    "Unexpected overflow when round-tripping  {}->{:?}-> [conversion to i8 failed with error {}]",
-		    i, &q, e);
+                    "Unexpected overflow when round-tripping  {}->{:?}-> [conversion to i8 failed with error {}]",
+                    i, &q, e);
             }
         }
     }
@@ -322,8 +310,8 @@ fn test_from_signed18bit_to_i16() {
 
 #[test]
 fn test_from_u16_to_signed18bit() {
-    assert_eq!(Signed18Bit::try_from(0_u16), Ok(Signed18Bit::ZERO));
-    assert_eq!(Signed18Bit::try_from(1_u16), Ok(Signed18Bit::ONE));
+    assert_eq!(Signed18Bit::from(0_u16), Signed18Bit::ZERO);
+    assert_eq!(Signed18Bit::from(1_u16), Signed18Bit::ONE);
     assert_eq!(Signed18Bit::from(0o377_u16).bits, 0o000_000_377_u32);
 }
 

@@ -69,10 +69,7 @@ fn test_i8_round_tripping() {
         if let Some(qprev) = prev {
             assert!(
                 q > qprev,
-                "failed to round-trip {}: {:?} should be greater than {:?}",
-                i,
-                q,
-                qprev
+                "failed to round-trip {i}: {q:?} should be greater than {qprev:?}",
             );
         }
         prev = Some(q);
@@ -97,10 +94,7 @@ fn test_u8_round_tripping() {
         if let Some(qprev) = prev {
             assert!(
                 q > qprev,
-                "failed to round-trip {}: {:?} should be greater than {:?}",
-                i,
-                q,
-                qprev
+                "failed to round-trip {i}: {q:?} should be greater than {qprev:?}",
             );
         }
         prev = Some(q);
@@ -151,7 +145,7 @@ fn test_unsigned9bit_zero_values() {
     const CAREFUL_NOW: Unsigned9Bit = Unsigned9Bit {
         bits: 0b111_111_111_u16,
     };
-    assert_eq!(u16::try_from(CAREFUL_NOW), Ok(0o777));
+    assert_eq!(u16::from(CAREFUL_NOW), 0o777);
 }
 
 #[test]

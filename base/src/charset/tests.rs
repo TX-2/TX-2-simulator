@@ -77,11 +77,11 @@ fn round_trip() {
                     assert_eq!(input, s);
                 }
                 Err(e) => {
-                    panic!("failed to convert back to unicode: {}", e);
+                    panic!("failed to convert back to unicode: {e}");
                 }
             },
             Err(e) => {
-                panic!("failed to convert [{}] to Lincoln: {}", input, e);
+                panic!("failed to convert [{input}] to Lincoln: {e}");
             }
         }
     }

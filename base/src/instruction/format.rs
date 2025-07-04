@@ -109,10 +109,10 @@ impl Octal for OperandAddress {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         match self {
             OperandAddress::Direct(addr) => {
-                write!(f, "{:o}", addr)
+                write!(f, "{addr:o}")
             }
             OperandAddress::Deferred(addr) => {
-                write!(f, "[{:o}]", addr)
+                write!(f, "[{addr:o}]")
             }
         }
     }
@@ -130,12 +130,12 @@ impl Display for DisassemblyFailure {
                 n
             }
         };
-        write!(f, " {:03o}", opcode)
+        write!(f, " {opcode:03o}")
     }
 }
 
 fn octal_superscript_u8(n: u8) -> Result<String, NoSuperscriptKnown> {
-    format!("{:o}", n).chars().map(superscript_char).collect()
+    format!("{n:o}").chars().map(superscript_char).collect()
 }
 
 fn subscript(s: &str) -> Result<String, NoSubscriptKnown> {
@@ -143,7 +143,7 @@ fn subscript(s: &str) -> Result<String, NoSubscriptKnown> {
 }
 
 fn octal_subscript_number(n: u8) -> String {
-    subscript(&format!("{:o}", n)).unwrap()
+    subscript(&format!("{n:o}")).unwrap()
 }
 
 fn write_opcode(op: Opcode, cfg: Unsigned5Bit, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
@@ -204,7 +204,7 @@ fn write_opcode(op: Opcode, cfg: Unsigned5Bit, f: &mut Formatter<'_>) -> Result<
             0o14 => "SUR",
             _ => "SKM",
         }),
-        _ => write!(f, "{}", op),
+        _ => write!(f, "{op}"),
     }
 }
 

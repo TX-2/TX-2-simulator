@@ -147,8 +147,7 @@ fn round_trip(input: Unsigned36Bit) -> Result<(), String> {
     for (i, component) in unsplayed.into_iter().enumerate() {
         let next = cycle_and_splay(output, component);
         println!(
-            "round_trip: splay iteration {}: value {:03o} changed word from {:012o} to {:012o}",
-            i, component, output, next
+            "round_trip: splay iteration {i}: value {component:03o} changed word from {output:012o} to {next:012o}",
         );
         output = next;
     }
@@ -156,8 +155,7 @@ fn round_trip(input: Unsigned36Bit) -> Result<(), String> {
     if input == output {
         Ok(())
     } else {
-        Err(format!("mismatch: input word {:012o} unsplayed to {:?}, which splayed to {:012o}, which doesn't match",
-                    input, unsplayed, output))
+        Err(format!("mismatch: input word {input:012o} unsplayed to {unsplayed:?}, which splayed to {output:012o}, which doesn't match",))
     }
 }
 
@@ -176,7 +174,7 @@ fn test_round_trip_selected() {
         Unsigned36Bit::from(0o23574373_u32),
     ] {
         if let Err(e) = round_trip(value) {
-            panic!("round_trip failed for {:012o}: {}", value, e);
+            panic!("round_trip failed for {value:012o}: {e}");
         }
     }
 }
@@ -186,7 +184,7 @@ fn test_round_trip_bitcycle() {
     for bitpos in 0..36 {
         let input: Unsigned36Bit = Unsigned36Bit::ONE.shl(bitpos);
         if let Err(e) = round_trip(input) {
-            panic!("round_trip failed for {:012o}: {}", input, e);
+            panic!("round_trip failed for {input:012o}: {e}");
         }
     }
 }

@@ -139,8 +139,8 @@ impl From<Instruction> for Unsigned36Bit {
 impl Debug for Instruction {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         let lhs = match SymbolicInstruction::try_from(self) {
-            Ok(sym) => format!("{}", sym),
-            Err(e) => format!("(invalid instruction: {})", e),
+            Ok(sym) => format!("{sym}"),
+            Err(e) => format!("(invalid instruction: {e})"),
         };
         write!(f, "{:<40} {}", lhs, self.0)
     }
@@ -510,7 +510,7 @@ impl Debug for DisassemblyFailure {
                 n
             }
         };
-        write!(f, "(0{:o})", opcode)
+        write!(f, "(0{opcode:o})")
     }
 }
 

@@ -66,10 +66,7 @@ fn test_i16_round_tripping() {
         if let Some(qprev) = prev {
             assert!(
                 q > qprev,
-                "failed to round-trip {}: {:?} should be greater than {:?}",
-                i,
-                q,
-                qprev
+                "failed to round-trip {i}: {q:?} should be greater than {qprev:?}",
             );
         }
         prev = Some(q);
