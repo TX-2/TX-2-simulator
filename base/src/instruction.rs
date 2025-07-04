@@ -44,6 +44,8 @@
 
 use std::fmt::{self, Debug, Formatter};
 
+use test_strategy::{proptest, Arbitrary};
+
 use super::prelude::*;
 use super::subword;
 
@@ -225,7 +227,7 @@ impl Inst for Instruction {
 /// Different copies of the User Handbook differ in the description of
 /// opcodes 0o44 and 0o45.
 #[repr(u8)]
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Arbitrary)]
 pub enum Opcode {
     // opcode 1 is unused
     // opcode 2 may be XEQ, but no documentation on this.
@@ -398,7 +400,7 @@ impl TryFrom<u8> for Opcode {
 /// instruction word.  If the top bit is set, this indicates the use
 /// of deferred addressing (i.e. this bit has the same significance as
 /// it does in TX-2 instructions).
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Arbitrary)]
 pub struct OperandAddress(Address);
 
 impl Default for OperandAddress {
@@ -439,7 +441,7 @@ impl OperandAddress {
 }
 
 /// A TX-2 instruction broken down into its component fields.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Arbitrary)]
 pub struct SymbolicInstruction {
     pub held: bool,
     pub configuration: Unsigned5Bit,
@@ -493,6 +495,20 @@ impl From<&SymbolicInstruction> for Instruction {
         let address_and_defer_bits: u64 = s.operand_address_and_defer_bit().into();
         let val: u64 = hold_bit | cf_bits | op_bits | index_bits | address_and_defer_bits;
         Instruction(Unsigned36Bit::try_from(val).unwrap())
+    }
+}
+
+#[proptest]
+fn reversible_disassembly(input: SymbolicInstruction) {
+    let inst: Instruction = Instruction::from(&input);
+    let bits = inst.bits();
+    match SymbolicInstruction::try_from(&inst) {
+        Ok(symbolic_disassembly) => {
+            assert_eq!(symbolic_disassembly, input);
+        }
+        Err(e) => {
+            panic!("input {input:?} assembled to {bits} but that could not be disassembled ({e})");
+        }
     }
 }
 

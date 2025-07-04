@@ -11,5 +11,7 @@ publish = false
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-keyed_priority_queue = "0.4.1"	# MIT license
+keyed_priority_queue = "0.4.1"  # MIT license
 serde = { version = "1", features = ["derive"] }
+proptest = "1.7.0"
+test-strategy = "0.4.3"
