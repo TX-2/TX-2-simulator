@@ -463,3 +463,266 @@ fn test_unsigned36bit_checked_div() {
 
     assert_eq!(four.checked_div(Unsigned36Bit::ZERO), None);
 }
+
+#[cfg(test)]
+mod u5_proptests {
+    use super::super::Unsigned5Bit;
+    use test_strategy::{proptest, Arbitrary};
+
+    #[derive(Debug, Arbitrary)]
+    struct U5SubtractionTestInput {
+        #[strategy(0..0o40u8)]
+        greater: u8,
+        #[strategy(0..=#greater)]
+        lesser: u8,
+    }
+
+    #[proptest]
+    fn wrapping_sub_and_checked_sub_give_same_result(input: U5SubtractionTestInput) {
+        let lesser = Unsigned5Bit::try_from(input.lesser).unwrap();
+        let greater = Unsigned5Bit::try_from(input.greater).unwrap();
+
+        if let Some(diff) = greater.checked_sub(lesser) {
+            let wdiff: Unsigned5Bit = greater.wrapping_sub(lesser);
+            assert_eq!(diff, wdiff);
+        }
+    }
+
+    #[proptest]
+    fn subtraction_is_reverse_of_addition(input: U5SubtractionTestInput) {
+        let lesser = Unsigned5Bit::try_from(input.lesser).unwrap();
+        let greater = Unsigned5Bit::try_from(input.greater).unwrap();
+
+        assert!(lesser <= greater);
+        assert!(greater >= lesser);
+
+        match greater.checked_sub(lesser) {
+            None => {
+                panic!("{greater}.checked_sub({lesser}) should not be None");
+            }
+            Some(diff) => {
+                assert_eq!(lesser.checked_add(diff), Some(greater));
+                assert_eq!(diff.checked_add(lesser), Some(greater));
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod u6_proptests {
+    use super::super::Unsigned6Bit;
+    use test_strategy::{proptest, Arbitrary};
+
+    #[derive(Debug, Arbitrary)]
+    struct U6SubtractionTestInput {
+        #[strategy(0..0o100u8)]
+        greater: u8,
+        #[strategy(0..=#greater)]
+        lesser: u8,
+    }
+
+    #[proptest]
+    fn wrapping_sub_and_checked_sub_give_same_result(input: U6SubtractionTestInput) {
+        let lesser = Unsigned6Bit::try_from(input.lesser).unwrap();
+        let greater = Unsigned6Bit::try_from(input.greater).unwrap();
+
+        if let Some(diff) = greater.checked_sub(lesser) {
+            let wdiff: Unsigned6Bit = greater.wrapping_sub(lesser);
+            assert_eq!(diff, wdiff);
+        }
+    }
+
+    #[proptest]
+    fn subtraction_is_reverse_of_addition(input: U6SubtractionTestInput) {
+        let lesser = Unsigned6Bit::try_from(input.lesser).unwrap();
+        let greater = Unsigned6Bit::try_from(input.greater).unwrap();
+
+        assert!(lesser <= greater);
+        assert!(greater >= lesser);
+
+        match greater.checked_sub(lesser) {
+            None => {
+                panic!("{greater}.checked_sub({lesser}) should not be None");
+            }
+            Some(diff) => {
+                assert_eq!(lesser.checked_add(diff), Some(greater));
+                assert_eq!(diff.checked_add(lesser), Some(greater));
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod u9_proptests {
+    use super::super::Unsigned9Bit;
+    use test_strategy::{proptest, Arbitrary};
+
+    #[derive(Debug, Arbitrary)]
+    struct U9SubtractionTestInput {
+        #[strategy(0..0o1000u16)]
+        greater: u16,
+        #[strategy(0..=#greater)]
+        lesser: u16,
+    }
+
+    #[proptest]
+    fn wrapping_sub_and_checked_sub_give_same_result(input: U9SubtractionTestInput) {
+        let lesser = Unsigned9Bit::try_from(input.lesser).unwrap();
+        let greater = Unsigned9Bit::try_from(input.greater).unwrap();
+
+        if let Some(diff) = greater.checked_sub(lesser) {
+            let wdiff: Unsigned9Bit = greater.wrapping_sub(lesser);
+            assert_eq!(diff, wdiff);
+        }
+    }
+
+    #[proptest]
+    fn subtraction_is_reverse_of_addition(input: U9SubtractionTestInput) {
+        let lesser = Unsigned9Bit::try_from(input.lesser).unwrap();
+        let greater = Unsigned9Bit::try_from(input.greater).unwrap();
+
+        assert!(lesser <= greater);
+        assert!(greater >= lesser);
+
+        match greater.checked_sub(lesser) {
+            None => {
+                panic!("{greater}.checked_sub({lesser}) should not be None");
+            }
+            Some(diff) => {
+                assert_eq!(lesser.checked_add(diff), Some(greater));
+                assert_eq!(diff.checked_add(lesser), Some(greater));
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod u12_proptests {
+    use super::super::Unsigned12Bit;
+    use test_strategy::{proptest, Arbitrary};
+
+    #[derive(Debug, Arbitrary)]
+    struct U12SubtractionTestInput {
+        #[strategy(0..0o10000u16)]
+        greater: u16,
+        #[strategy(0..=#greater)]
+        lesser: u16,
+    }
+
+    #[proptest]
+    fn wrapping_sub_and_checked_sub_give_same_result(input: U12SubtractionTestInput) {
+        let lesser = Unsigned12Bit::try_from(input.lesser).unwrap();
+        let greater = Unsigned12Bit::try_from(input.greater).unwrap();
+
+        if let Some(diff) = greater.checked_sub(lesser) {
+            let wdiff: Unsigned12Bit = greater.wrapping_sub(lesser);
+            assert_eq!(diff, wdiff);
+        }
+    }
+
+    #[proptest]
+    fn subtraction_is_reverse_of_addition(input: U12SubtractionTestInput) {
+        let lesser = Unsigned12Bit::try_from(input.lesser).unwrap();
+        let greater = Unsigned12Bit::try_from(input.greater).unwrap();
+
+        assert!(lesser <= greater);
+        assert!(greater >= lesser);
+
+        match greater.checked_sub(lesser) {
+            None => {
+                panic!("{greater}.checked_sub({lesser}) should not be None");
+            }
+            Some(diff) => {
+                assert_eq!(lesser.checked_add(diff), Some(greater));
+                assert_eq!(diff.checked_add(lesser), Some(greater));
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod u18_proptests {
+    use super::super::Unsigned18Bit;
+    use test_strategy::{proptest, Arbitrary};
+
+    #[derive(Debug, Arbitrary)]
+    struct U18SubtractionTestInput {
+        #[strategy(0..0o1000000u32)]
+        greater: u32,
+        #[strategy(0..=#greater)]
+        lesser: u32,
+    }
+
+    #[proptest]
+    fn wrapping_sub_and_checked_sub_give_same_result(input: U18SubtractionTestInput) {
+        let lesser = Unsigned18Bit::try_from(input.lesser).unwrap();
+        let greater = Unsigned18Bit::try_from(input.greater).unwrap();
+
+        if let Some(diff) = greater.checked_sub(lesser) {
+            let wdiff: Unsigned18Bit = greater.wrapping_sub(lesser);
+            assert_eq!(diff, wdiff);
+        }
+    }
+
+    #[proptest]
+    fn subtraction_is_reverse_of_addition(input: U18SubtractionTestInput) {
+        let lesser = Unsigned18Bit::try_from(input.lesser).unwrap();
+        let greater = Unsigned18Bit::try_from(input.greater).unwrap();
+
+        assert!(lesser <= greater);
+        assert!(greater >= lesser);
+
+        match greater.checked_sub(lesser) {
+            None => {
+                panic!("{greater}.checked_sub({lesser}) should not be None");
+            }
+            Some(diff) => {
+                assert_eq!(lesser.checked_add(diff), Some(greater));
+                assert_eq!(diff.checked_add(lesser), Some(greater));
+            }
+        }
+    }
+}
+
+mod u36_proptests {
+    use super::super::Unsigned36Bit;
+    use test_strategy::{proptest, Arbitrary};
+
+    #[derive(Debug, Arbitrary)]
+    struct U36SubtractionTestInput {
+        #[strategy(0..0o1000000000000u64)]
+        greater: u64,
+        #[strategy(0..=#greater)]
+        lesser: u64,
+    }
+
+    #[proptest]
+    fn wrapping_sub_and_checked_sub_give_same_result(input: U36SubtractionTestInput) {
+        let lesser = Unsigned36Bit::try_from(input.lesser).unwrap();
+        let greater = Unsigned36Bit::try_from(input.greater).unwrap();
+
+        if let Some(diff) = greater.checked_sub(lesser) {
+            let wdiff: Unsigned36Bit = greater.wrapping_sub(lesser);
+            assert_eq!(diff, wdiff);
+        }
+    }
+
+    #[proptest]
+    fn subtraction_is_reverse_of_addition(input: U36SubtractionTestInput) {
+        let lesser = Unsigned36Bit::try_from(input.lesser).unwrap();
+        let greater = Unsigned36Bit::try_from(input.greater).unwrap();
+
+        assert!(lesser <= greater);
+        assert!(greater >= lesser);
+
+        match greater.checked_sub(lesser) {
+            None => {
+                panic!("{greater}.checked_sub({lesser}) should not be None");
+            }
+            Some(diff) => {
+                assert_eq!(lesser.checked_add(diff), Some(greater));
+                assert_eq!(diff.checked_add(lesser), Some(greater));
+            }
+        }
+    }
+}
