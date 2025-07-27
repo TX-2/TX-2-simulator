@@ -6,6 +6,7 @@ use std::cmp::Ordering;
 use std::fmt::{Debug, Display, Error, Formatter, Octal};
 use std::hash::{Hash, Hasher};
 
+#[cfg(test)]
 use test_strategy::Arbitrary;
 
 use super::onescomplement::error::ConversionFailed;
@@ -63,7 +64,8 @@ pub trait IndexBy<T> {
 /// same page as being a positive integer.  Therefore when performing
 /// address arithmetic, we sometimes need to convert index register
 /// values to the [`Signed18Bit`] type.
-#[derive(Clone, Copy, Arbitrary)]
+#[cfg_attr(test, derive(Arbitrary))]
+#[derive(Clone, Copy)]
 pub struct Address(Unsigned18Bit);
 
 /// Placeholders (saved sequence instruction pointers in the index

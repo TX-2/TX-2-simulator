@@ -10,6 +10,8 @@ use std::fmt::{self, Debug, Display, Formatter, Octal};
 use std::hash::{Hash, Hasher};
 
 use serde::Serialize;
+
+#[cfg(test)]
 use test_strategy::Arbitrary;
 
 use super::super::subword::{right_half, split_halfword, split_halves};
@@ -503,33 +505,37 @@ macro_rules! unsigned_ones_complement_impl {
 
 /// `Unsigned5Bit` is used as a system configuration value; that is,
 /// an index into F-memory.
-#[derive(Clone, Copy, Serialize, Arbitrary)]
+#[cfg_attr(test, derive(Arbitrary))]
+#[derive(Clone, Copy, Serialize)]
 pub struct Unsigned5Bit {
-    #[strategy(0..32u8)]
+    #[cfg_attr(test, strategy(0..32u8))]
     pub(crate) bits: u8,
 }
 
 /// `Unsigned6Bit` is used as an X-register address. That is, the `j`
 /// in `Xj`.
-#[derive(Clone, Copy, Serialize, Arbitrary)]
+#[cfg_attr(test, derive(Arbitrary))]
+#[derive(Clone, Copy, Serialize)]
 pub struct Unsigned6Bit {
-    #[strategy(0..64u8)]
+    #[cfg_attr(test, strategy(0..64u8))]
     pub(crate) bits: u8,
 }
 
 /// `Unsigned9Bit` is the value of a "quarter" of the 36-bit TX-2
 /// machine word.  A number of instructions - and in particular the
 /// Exchange Unit - work on the quarters of a word.
-#[derive(Clone, Copy, Serialize, Arbitrary)]
+#[cfg_attr(test, derive(Arbitrary))]
+#[derive(Clone, Copy, Serialize)]
 pub struct Unsigned9Bit {
-    #[strategy(0..512u16)]
+    #[cfg_attr(test, strategy(0..512u16))]
     pub(crate) bits: u16,
 }
 
 /// `Unsigned12Bit` is used as the _mode_ of a connected I/O device.
-#[derive(Clone, Copy, Serialize, Arbitrary)]
+#[cfg_attr(test, derive(Arbitrary))]
+#[derive(Clone, Copy, Serialize)]
 pub struct Unsigned12Bit {
-    #[strategy(0..4095u16)]
+    #[cfg_attr(test, strategy(0..4095u16))]
     pub(crate) bits: u16,
 }
 
@@ -539,9 +545,10 @@ pub struct Unsigned12Bit {
 /// bits wide.  The remaining bit can be used to "mark" an address
 /// either for tracing (when it's an instruction address) or for
 /// deferred addressing (when it's an operand address).
-#[derive(Clone, Copy, Serialize, Arbitrary)]
+#[cfg_attr(test, derive(Arbitrary))]
+#[derive(Clone, Copy, Serialize)]
 pub struct Unsigned18Bit {
-    #[strategy(0..262143u32)]
+    #[cfg_attr(test, strategy(0..262143u32))]
     pub(crate) bits: u32,
 }
 
@@ -549,9 +556,10 @@ pub struct Unsigned18Bit {
 /// the width of the registers in the Arithmetic Unit, and it is the
 /// unit on which the Exchange Unit operates when performing memory
 /// fetches or stores.  This is also the width of all instructions.
-#[derive(Clone, Copy, Serialize, Arbitrary)]
+#[cfg_attr(test, derive(Arbitrary))]
+#[derive(Clone, Copy, Serialize)]
 pub struct Unsigned36Bit {
-    #[strategy(0..68719476735u64)]
+    #[cfg_attr(test, strategy(0..68719476735u64))]
     pub(crate) bits: u64,
 }
 

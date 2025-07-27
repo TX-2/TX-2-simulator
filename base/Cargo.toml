@@ -13,5 +13,23 @@ publish = false
 [dependencies]
 keyed_priority_queue = "0.4.1"  # MIT license
 serde = { version = "1", features = ["derive"] }
-proptest = "1.7.0"
+
+[dev-dependencies]
 test-strategy = "0.4.3"
+
+# This is a clunky workaround to get proptest to work correctly.  The
+# proptest crate depends on getrandom, but that crate only builds on
+# wasm targets if you enable a feature (see
+# https://docs.rs/getrandom/0.3.3/getrandom/#webassembly-support for
+# details).  However, Cargo doesn't allow the user to enable features
+# in indirect dependenices.  So we use a workaround described at
+# https://altsysrq.github.io/proptest-book/proptest/wasm.html and for
+# that to work, we have to avoid using proptest when building in a
+# non-dev configuration.
+[dev-dependencies.proptest]
+version = "1.7.0"
+# The default feature set includes things like process forking which are not
+# supported in Web Assembly.
+default-features = false
+# Enable using the `std` crate.
+features = ["std"]

@@ -44,6 +44,7 @@
 
 use std::fmt::{self, Debug, Formatter};
 
+#[cfg(test)]
 use test_strategy::{proptest, Arbitrary};
 
 use super::prelude::*;
@@ -227,7 +228,8 @@ impl Inst for Instruction {
 /// Different copies of the User Handbook differ in the description of
 /// opcodes 0o44 and 0o45.
 #[repr(u8)]
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Arbitrary)]
+#[cfg_attr(test, derive(Arbitrary))]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub enum Opcode {
     // opcode 1 is unused
     // opcode 2 may be XEQ, but no documentation on this.
@@ -400,7 +402,8 @@ impl TryFrom<u8> for Opcode {
 /// instruction word.  If the top bit is set, this indicates the use
 /// of deferred addressing (i.e. this bit has the same significance as
 /// it does in TX-2 instructions).
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Arbitrary)]
+#[cfg_attr(test, derive(Arbitrary))]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct OperandAddress(Address);
 
 impl Default for OperandAddress {
@@ -441,7 +444,8 @@ impl OperandAddress {
 }
 
 /// A TX-2 instruction broken down into its component fields.
-#[derive(Debug, PartialEq, Eq, Arbitrary)]
+#[cfg_attr(test, derive(Arbitrary))]
+#[derive(Debug, PartialEq, Eq)]
 pub struct SymbolicInstruction {
     pub held: bool,
     pub configuration: Unsigned5Bit,
@@ -498,6 +502,7 @@ impl From<&SymbolicInstruction> for Instruction {
     }
 }
 
+#[cfg(test)]
 #[proptest]
 fn reversible_disassembly(input: SymbolicInstruction) {
     let inst: Instruction = Instruction::from(&input);
