@@ -9,9 +9,8 @@
     DISCONNECT  =  20000    ** IOS command to disconnect a unit
     BEGIN       =    100
 
-** The first Lincoln Writer is output unit 66.  We will put the code
-** for its sequence at 200, so the program counter for sequence 66
-** (which is X₆₆) should start at 200.
+** The first Lincoln Writer is output unit 66. The program counter for
+** sequence 66 (which is X₆₆) should start at OUTPUT.
 BEGIN|      REX₆₆ OUTPUT      ** Set X₆₆ to the address of the printing code.
         ²¹IOS₆₆ LWCONNECT   ** Connect Lincoln Writer output 1 (unit 66).
 
