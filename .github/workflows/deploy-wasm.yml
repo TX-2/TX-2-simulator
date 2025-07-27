@@ -79,7 +79,12 @@ jobs:
       # When changing version of this action, remember to update the
       # repository settings in github, otherwise the new version may
       # not be allowed to run.
-      uses: crazy-max/ghaction-github-pages@v4
+      #
+      # We switched from "v4" to
+      # "df5cc2bfa78282ded844b354faee141f06b41865" on the advice of
+      # https://docs.github.com/en/actions/reference/security/secure-use#using-third-party-actions
+      # (this guards against supply-chain attacks).
+      uses: crazy-max/ghaction-github-pages@df5cc2bfa78282ded844b354faee141f06b41865
       with:
         repo: TX-2/demo
         target_branch: gh-pages
