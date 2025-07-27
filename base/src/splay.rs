@@ -1,5 +1,8 @@
 use std::ops::Shl;
 
+#[cfg(test)]
+use test_strategy::proptest;
+
 use super::onescomplement::unsigned::{Unsigned36Bit, Unsigned6Bit};
 #[cfg(test)]
 use super::u36;
@@ -159,6 +162,7 @@ fn round_trip(input: Unsigned36Bit) -> Result<(), String> {
     }
 }
 
+// test_unsplay_splay_round_trip doesn't necessarily cover all these cases.
 #[test]
 fn test_round_trip_selected() {
     for value in [
@@ -176,6 +180,16 @@ fn test_round_trip_selected() {
         if let Err(e) = round_trip(value) {
             panic!("round_trip failed for {value:012o}: {e}");
         }
+    }
+}
+
+// This property test doesn't necessarily cover all the cases in
+// test_round_trip_selected, so we can't delete that test.
+#[cfg(test)]
+#[proptest]
+fn test_unsplay_splay_round_trip(input: Unsigned36Bit) {
+    if let Err(e) = round_trip(input) {
+        panic!("round trip failed for {input:012o}: {e}");
     }
 }
 
