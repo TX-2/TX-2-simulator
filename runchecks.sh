@@ -22,14 +22,20 @@ npm_checks() {
     )
 }
 
-if rust_checks && npm_checks
-then
-    echo "Everything is OK"
-else
-    rv=$?
-    exec >&2
-    echo
-    echo 'Please fix the problems above before committing your change.'
-    echo '(if the problem is that wasm-opt was not found, please see docs/build/web.md)'
-    exit $rv
-fi
+for check in rust_checks npm_checks
+do
+    if $check
+    then
+        printf "%s: OK\n" "${check}"
+    else
+        rv=$?
+        exec >&2
+        echo
+        echo "check ${check} failed."
+        echo
+        echo 'Please fix the problems above before committing your change.'
+        echo '(if the problem is that wasm-opt was not found, please see docs/build/web.md)'
+        exit $rv
+    fi
+done
+echo "Everything is OK"
