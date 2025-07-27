@@ -11,6 +11,8 @@
 on: [push, pull_request]
 
 name: Continuous integration
+permissions:
+  - contents: read
 
 jobs:
   check:
