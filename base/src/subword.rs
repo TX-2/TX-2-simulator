@@ -54,6 +54,8 @@ pub fn quarters(word: Unsigned36Bit) -> [Unsigned9Bit; 4] {
 
 #[cfg(test)]
 mod tests {
+    use test_strategy::proptest;
+
     use super::super::onescomplement::unsigned::{Unsigned18Bit, Unsigned36Bit, Unsigned9Bit};
     use super::*;
 
@@ -115,5 +117,29 @@ mod tests {
             quarters(Unsigned36Bit::try_from(0o123_456_525_252_u64).unwrap()),
             [q(0o123), q(0o456), q(0o525), q(0o252)]
         )
+    }
+
+    #[proptest]
+    fn test_word_split_and_join_are_inverses(value: Unsigned36Bit) {
+        let left = left_half(value);
+        let right = right_half(value);
+        let joined = join_halves(left, right);
+        assert_eq!(value, joined);
+    }
+
+    #[proptest]
+    fn test_halfword_split_and_join_are_inverses(value: Unsigned18Bit) {
+        let (left, right) = split_halfword(value);
+        let joined = join_quarters(left, right);
+        assert_eq!(joined, value);
+    }
+
+    #[proptest]
+    fn test_word_quartering_and_joining_are_inverses(value: Unsigned36Bit) {
+        let quarters: [Unsigned9Bit; 4] = quarters(value);
+        let left = join_quarters(quarters[0], quarters[1]);
+        let right = join_quarters(quarters[2], quarters[3]);
+        let joined = join_halves(left, right);
+        assert_eq!(joined, value);
     }
 }
