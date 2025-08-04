@@ -3,7 +3,7 @@ name = "tx2-web"
 description = "Crate which runs as WASM to simulate the TX-2 in a browser"
 version = "0.1.0"
 authors = ["James Youngman <youngman@google.com>"]
-edition = "2021"
+edition = "2024"
 license-file = "../LICENSE-MIT"
 publish = false
 
