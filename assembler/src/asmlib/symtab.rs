@@ -440,8 +440,8 @@ pub(super) fn assign_default_rc_word_tags<R: RcAllocator>(
     Ok(())
 }
 
-pub(super) fn record_undefined_symbol_or_return_failure<'s>(
-    source_file_body: &Source<'s>,
+pub(super) fn record_undefined_symbol_or_return_failure(
+    source_file_body: &Source<'_>,
     e: SymbolLookupFailure,
     undefined_symbols: &mut BTreeMap<SymbolName, ProgramError>,
 ) -> Result<(), AssemblerFailure> {

@@ -1828,7 +1828,7 @@ impl InstructionSequence {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn build_binary_block<'s, R: RcUpdater>(
+    pub(crate) fn build_binary_block<R: RcUpdater>(
         &self,
         location: Address,
         start_offset: Unsigned18Bit,
@@ -1838,7 +1838,7 @@ impl InstructionSequence {
         index_register_assigner: &mut IndexRegisterAssigner,
         rc_allocator: &mut R,
         final_symbols: &mut FinalSymbolTable,
-        body: &Source<'s>,
+        body: &Source<'_>,
         listing: &mut Listing,
         bad_symbol_definitions: &mut BTreeMap<SymbolName, ProgramError>,
     ) -> Result<Vec<Unsigned36Bit>, AssemblerFailure> {
