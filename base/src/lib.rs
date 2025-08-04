@@ -21,35 +21,35 @@ pub use onescomplement::unsigned::*;
 
 #[macro_export]
 macro_rules! u36 {
-    ($n:expr) => {
+    ($n:expr_2021) => {
         $crate::prelude::Unsigned36Bit::new::<{ $n }>()
     };
 }
 
 #[macro_export]
 macro_rules! u18 {
-    ($n:expr) => {
+    ($n:expr_2021) => {
         $crate::prelude::Unsigned18Bit::new::<{ $n }>()
     };
 }
 
 #[macro_export]
 macro_rules! u5 {
-    ($n:expr) => {
+    ($n:expr_2021) => {
         $crate::prelude::Unsigned5Bit::new::<{ $n }>()
     };
 }
 
 #[macro_export]
 macro_rules! u6 {
-    ($n:expr) => {
+    ($n:expr_2021) => {
         $crate::prelude::Unsigned6Bit::new::<{ $n }>()
     };
 }
 
 #[macro_export]
 macro_rules! u9 {
-    ($n:expr) => {
+    ($n:expr_2021) => {
         $crate::prelude::Unsigned9Bit::new::<{ $n }>()
     };
 }

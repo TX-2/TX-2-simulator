@@ -230,7 +230,7 @@ impl SystemConfiguration {
 
 #[cfg(test)]
 macro_rules! assert_octal_eq {
-    ($left:expr, $right:expr $(,)?) => {{
+    ($left:expr_2021, $right:expr_2021 $(,)?) => {{
         match (&$left, &$right) {
             (left_val, right_val) => {
                 if !(*left_val == *right_val) {

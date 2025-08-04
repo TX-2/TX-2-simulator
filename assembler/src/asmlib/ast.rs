@@ -201,7 +201,7 @@ impl SignedAtom {
         &self,
         block_id: BlockIdentifier,
         block_offset: Unsigned18Bit,
-    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> {
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + use<> {
         self.magnitude.symbol_uses(block_id, block_offset)
     }
 
@@ -308,7 +308,7 @@ impl ArithmeticExpression {
         &self,
         block_id: BlockIdentifier,
         block_offset: Unsigned18Bit,
-    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> {
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + use<> {
         let mut result = Vec::with_capacity(1 + self.tail.len());
         result.extend(self.first.symbol_uses(block_id, block_offset));
         result.extend(
@@ -445,7 +445,7 @@ impl ConfigValue {
         &self,
         block_id: BlockIdentifier,
         block_offset: Unsigned18Bit,
-    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> {
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + use<> {
         self.expr
             .symbol_uses(block_id, block_offset)
             .map(|r| match r {
@@ -776,7 +776,7 @@ impl Atom {
         &self,
         block_id: BlockIdentifier,
         block_offset: Unsigned18Bit,
-    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> {
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + use<> {
         let mut result: Vec<Result<_, _>> = Vec::with_capacity(1);
         match self {
             Atom::SymbolOrLiteral(SymbolOrLiteral::Symbol(script, name, span)) => {
@@ -933,7 +933,7 @@ pub(crate) enum SymbolOrLiteral {
 impl SymbolOrLiteral {
     fn symbol_uses(
         &self,
-    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> {
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + use<> {
         let mut result = Vec::with_capacity(1);
         match self {
             SymbolOrLiteral::Here(_, _) | SymbolOrLiteral::Literal(_) => (),
@@ -1101,7 +1101,7 @@ impl InstructionFragment {
         &self,
         block_id: BlockIdentifier,
         block_offset: Unsigned18Bit,
-    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> {
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + use<> {
         let mut uses: Vec<Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> =
             Vec::new();
         match self {
@@ -1282,7 +1282,7 @@ impl Origin {
     pub(super) fn symbol_uses(
         &self,
         block_id: BlockIdentifier,
-    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> {
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + use<> {
         let mut result = Vec::with_capacity(1);
         match self {
             Origin::Literal(_span, _) => (),
@@ -1581,7 +1581,7 @@ impl Tag {
         &self,
         block_id: BlockIdentifier,
         block_offset: Unsigned18Bit,
-    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> {
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + use<> {
         [Ok((
             self.name.clone(),
             self.span,
@@ -1621,7 +1621,7 @@ impl TaggedProgramInstruction {
         &self,
         block_id: BlockIdentifier,
         offset: Unsigned18Bit,
-    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> {
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + use<> {
         let mut result: Vec<Result<_, _>> = Vec::new();
         result.extend(
             self.tags
@@ -1809,7 +1809,7 @@ impl InstructionSequence {
     pub(crate) fn symbol_uses(
         &self,
         block_id: BlockIdentifier,
-    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> {
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + use<> {
         let no_symbols = ExplicitSymbolTable::default();
         let local_scope: &ExplicitSymbolTable = self.local_symbols.as_ref().unwrap_or(&no_symbols);
         let mut result: Vec<Result<_, _>> = Vec::new();
@@ -1903,7 +1903,7 @@ pub(crate) struct Equality {
 impl Equality {
     pub(super) fn symbol_uses(
         &self,
-    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> {
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + use<> {
         [Ok((
             self.name.clone(),
             self.span,

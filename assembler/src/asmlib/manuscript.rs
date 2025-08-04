@@ -365,7 +365,7 @@ impl ManuscriptBlock {
     pub(super) fn symbol_uses(
         &self,
         block_id: BlockIdentifier,
-    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> {
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + use<> {
         let mut result: Vec<Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> =
             Vec::new();
         if let Some(origin) = self.origin.as_ref() {

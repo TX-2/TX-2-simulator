@@ -71,14 +71,14 @@ impl<T> OneOrMore<T> {
     }
 
     pub fn try_from_iter<I: Iterator<Item = T>>(mut it: I) -> Result<Self, NoItems> {
-        if let Some(head) = it.next() {
+        match it.next() { Some(head) => {
             Ok(Self {
                 head,
                 tail: it.collect(),
             })
-        } else {
+        } _ => {
             Err(NoItems {})
-        }
+        }}
     }
 
     pub fn extend<I: Iterator<Item = T>>(&mut self, items: I) {
