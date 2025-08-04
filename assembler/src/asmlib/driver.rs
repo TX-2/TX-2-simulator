@@ -10,14 +10,14 @@ use std::io::{BufReader, BufWriter, Read};
 use std::path::{Path, PathBuf};
 
 use chumsky::error::Rich;
-use tracing::{event, span, Level};
+use tracing::{Level, event, span};
 
 use super::ast::*;
 use super::collections::OneOrMore;
 use super::directive::Directive;
 use super::eval::Evaluate;
 use super::eval::HereValue;
-use super::eval::{extract_final_equalities, EvaluationContext, RcBlock};
+use super::eval::{EvaluationContext, RcBlock, extract_final_equalities};
 use super::lexer;
 use super::listing::*;
 #[cfg(test)]
@@ -35,8 +35,8 @@ use super::span::*;
 use super::state::{NumeralMode, State};
 use super::symbol::SymbolName;
 use super::symtab::{
-    assign_default_rc_word_tags, ExplicitSymbolTable, FinalSymbolDefinition, FinalSymbolTable,
-    FinalSymbolType, ImplicitSymbolTable, IndexRegisterAssigner,
+    ExplicitSymbolTable, FinalSymbolDefinition, FinalSymbolTable, FinalSymbolType,
+    ImplicitSymbolTable, IndexRegisterAssigner, assign_default_rc_word_tags,
 };
 use super::types::*;
 use base::prelude::{Address, IndexBy, Unsigned18Bit, Unsigned36Bit};
@@ -117,7 +117,9 @@ fn assemble_nonempty_input<'a, 'b: 'a>(input: &'b Source<'a>) -> AssemblerPass1O
         Ok((None, _output_options)) => match OneOrMore::try_from_vec(errors) {
             Ok(errors) => AssemblerPass1Or2Output::Pass1Failed(Ok(errors)),
             Err(_) => {
-                unreachable!("assemble_pass1 returned no SourceFile instance but there were no output errors either");
+                unreachable!(
+                    "assemble_pass1 returned no SourceFile instance but there were no output errors either"
+                );
             }
         },
         Ok((Some(source_file), output_options)) => match assemble_pass2(source_file, input) {
@@ -364,9 +366,9 @@ fn assemble_pass2<'s>(
         match (&block_identifier, &block_position).evaluate(&mut ctx) {
             Ok(value) => {
                 if !ctx.index_register_assigner.is_empty() {
-                    return Err(AssemblerFailure::InternalError(
-                        format!(
-                            "While determining the addresses of {block_identifier}, we assigned an index register.  Block origins should not depend on index registers")));
+                    return Err(AssemblerFailure::InternalError(format!(
+                        "While determining the addresses of {block_identifier}, we assigned an index register.  Block origins should not depend on index registers"
+                    )));
                 }
 
                 let address: Address = subword::right_half(value).into();
@@ -541,11 +543,15 @@ fn assemble_pass3(
     for name in implicit_symtab.symbols() {
         match (implicit_symtab.get(name), explicit_symtab.get(name)) {
             (Some(implicit), Some(explicit)) => {
-                panic!("symbol {name} appears in both the implicit ({implicit:#?} and the explicit ({explicit:#?} symbol tables");
+                panic!(
+                    "symbol {name} appears in both the implicit ({implicit:#?} and the explicit ({explicit:#?} symbol tables"
+                );
             }
             (Some(_), None) | (None, Some(_)) => (),
             (None, None) => {
-                panic!("symbol {name} is returned by ImplicitSymbolTable::symbols() but is not defined there");
+                panic!(
+                    "symbol {name} is returned by ImplicitSymbolTable::symbols() but is not defined there"
+                );
             }
         }
     }
@@ -866,8 +872,11 @@ fn test_duplicate_global_tag() {
                     inner: ProgramError::SyntaxError { msg, span: _ },
                     ..
                 } => {
-                    assert!(msg
-                        .contains("bad symbol definition for TGX: TGX is defined more than once"));
+                    assert!(
+                        msg.contains(
+                            "bad symbol definition for TGX: TGX is defined more than once"
+                        )
+                    );
                 }
                 other => {
                     panic!("expected a syntax error report, got {other:?}");

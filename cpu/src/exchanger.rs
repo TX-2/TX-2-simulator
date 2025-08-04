@@ -12,7 +12,7 @@
 //! the User Guide.
 use std::fmt::{self, Binary, Display, Formatter, Octal};
 
-use tracing::{event, Level};
+use tracing::{Level, event};
 
 use base::prelude::*;
 
@@ -48,11 +48,7 @@ impl QuarterActivity {
 
     pub(crate) fn first_active_quarter(&self) -> Option<u8> {
         let n = self.0.trailing_zeros() as u8;
-        if n < 4 {
-            Some(n)
-        } else {
-            None
-        }
+        if n < 4 { Some(n) } else { None }
     }
 
     pub(crate) fn masked_by(&self, mask: u8) -> QuarterActivity {

@@ -8,7 +8,7 @@ use std::fmt::{self, Debug, Display, Formatter, Write};
 use std::hash::Hash;
 use std::sync::OnceLock;
 
-use base::charset::{subscript_char, superscript_char, Script};
+use base::charset::{Script, subscript_char, superscript_char};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub(crate) enum Unrecognised {
@@ -166,10 +166,12 @@ fn test_subscript_char_agreement() {
         if let Some(ch) = g.normal {
             if let Some(glyph_sub_ch) = g.subscript {
                 if let Ok(charset_sub_ch) = subscript_char(ch) {
-                    assert_eq!(glyph_sub_ch, charset_sub_ch,
-                               "glyph {g:?} maps {ch} to {glyph_sub_ch} ({}) but subscript_char maps it to {charset_sub_ch} ({})",
-                               glyph_sub_ch.escape_unicode(),
-                               charset_sub_ch.escape_unicode(),
+                    assert_eq!(
+                        glyph_sub_ch,
+                        charset_sub_ch,
+                        "glyph {g:?} maps {ch} to {glyph_sub_ch} ({}) but subscript_char maps it to {charset_sub_ch} ({})",
+                        glyph_sub_ch.escape_unicode(),
+                        charset_sub_ch.escape_unicode(),
                     );
                 }
             }
@@ -183,10 +185,12 @@ fn test_superscript_char_agreement() {
         if let Some(ch) = g.normal {
             if let Some(glyph_sup_ch) = g.superscript {
                 if let Ok(charset_sup_ch) = superscript_char(ch) {
-                    assert_eq!(glyph_sup_ch, charset_sup_ch,
-                               "glyph {g:?} maps {ch} to {glyph_sup_ch} ({}) but superscript_char maps it to {charset_sup_ch} ({})",
-                               glyph_sup_ch.escape_unicode(),
-                               charset_sup_ch.escape_unicode(),
+                    assert_eq!(
+                        glyph_sup_ch,
+                        charset_sup_ch,
+                        "glyph {g:?} maps {ch} to {glyph_sup_ch} ({}) but superscript_char maps it to {charset_sup_ch} ({})",
+                        glyph_sup_ch.escape_unicode(),
+                        charset_sup_ch.escape_unicode(),
                     );
                 }
             }

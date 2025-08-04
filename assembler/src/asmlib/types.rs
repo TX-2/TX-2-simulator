@@ -57,7 +57,10 @@ impl Display for MachineLimitExceededFailure {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         match self {
             MachineLimitExceededFailure::RanOutOfIndexRegisters(_span, name) => {
-                write!(f, "there are not enough index registers to assign one as the default for the symbol {name}")
+                write!(
+                    f,
+                    "there are not enough index registers to assign one as the default for the symbol {name}"
+                )
             }
             MachineLimitExceededFailure::BlockTooLarge {
                 span: _,
@@ -126,7 +129,10 @@ impl Display for ProgramError {
                 )
             }
             FailedToAssignIndexRegister(_span, symbol_name) => {
-                write!(f, "there are not enough index registers available to assign one for {symbol_name}")
+                write!(
+                    f,
+                    "there are not enough index registers available to assign one for {symbol_name}"
+                )
             }
             BlockTooLong(_span, mle) => {
                 write!(f, "program block contains too many machine words: {mle}")

@@ -29,7 +29,7 @@ use std::fmt::{self, Debug, Display, Formatter};
 #[cfg(test)]
 use std::ops::RangeInclusive;
 
-use tracing::{event, Level};
+use tracing::{Level, event};
 
 use base::prelude::*;
 

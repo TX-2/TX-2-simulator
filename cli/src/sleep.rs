@@ -1,7 +1,7 @@
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
-use tracing::{event, Level};
+use tracing::{Level, event};
 
 use super::clock::{BasicClock, Clock};
 

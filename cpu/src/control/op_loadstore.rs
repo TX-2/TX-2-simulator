@@ -11,7 +11,7 @@
 //! - STE: [`ControlUnit::op_ste`]
 //! - EXA: (unimplemented)
 
-use tracing::{event, Level};
+use tracing::{Level, event};
 
 use super::alarm::Alarm;
 use super::context::Context;

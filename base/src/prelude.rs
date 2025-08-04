@@ -9,4 +9,4 @@ pub use super::splay::{cycle_and_splay, unsplay};
 pub use super::subword::{join_halves, join_quarters, left_half, right_half, split_halves};
 pub use super::types::IndexBy;
 pub use super::types::*;
-pub use super::{u18, u36, u5, u6, u9};
+pub use super::{u5, u6, u9, u18, u36};

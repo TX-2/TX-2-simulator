@@ -8,7 +8,7 @@
 //! - JPX: [`ControlUnit::op_jpx`]
 //! - JNX: [`ControlUnit::op_jnx`]
 
-use tracing::{event, Level};
+use tracing::{Level, event};
 
 use base::prelude::*;
 use base::subword;
@@ -16,7 +16,7 @@ use base::subword;
 use super::alarm::{Alarm, AlarmDetails, Alarmer, BadMemOp};
 use super::context::Context;
 use super::control::{
-    sign_extend_index_value, ControlUnit, OpcodeResult, ProgramCounterChange, UpdateE,
+    ControlUnit, OpcodeResult, ProgramCounterChange, UpdateE, sign_extend_index_value,
 };
 use super::memory::{MemoryUnit, MetaBitChange};
 

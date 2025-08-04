@@ -1,16 +1,15 @@
 use std::collections::BTreeMap;
 
-use tracing::{event, Level};
+use tracing::{Level, event};
 
+use base::Unsigned18Bit;
+#[cfg(test)]
+use base::Unsigned36Bit;
 use base::charset::Script;
 use base::prelude::Address;
 #[cfg(test)]
 use base::u18;
-use base::Unsigned18Bit;
-#[cfg(test)]
-use base::Unsigned36Bit;
 
-use super::ast::block_items_with_offset;
 use super::ast::ArithmeticExpression;
 use super::ast::Equality;
 use super::ast::EqualityValue;
@@ -25,15 +24,16 @@ use super::ast::SymbolTableBuildFailure;
 use super::ast::SymbolUse;
 use super::ast::Tag;
 use super::ast::TaggedProgramInstruction;
+use super::ast::block_items_with_offset;
 use super::collections::OneOrMore;
 use super::directive::Directive;
 use super::lexer::Token;
 use super::memorymap::LocatedBlock;
 use super::memorymap::MemoryMap;
-#[cfg(test)]
-use super::span::span;
 use super::span::Span;
 use super::span::Spanned;
+#[cfg(test)]
+use super::span::span;
 use super::state::NumeralMode;
 use super::symbol::InconsistentSymbolUse;
 use super::symbol::SymbolContext;
@@ -365,7 +365,8 @@ impl ManuscriptBlock {
     pub(super) fn symbol_uses(
         &self,
         block_id: BlockIdentifier,
-    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + use<> {
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + use<>
+    {
         let mut result: Vec<Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> =
             Vec::new();
         if let Some(origin) = self.origin.as_ref() {
@@ -549,7 +550,9 @@ impl MacroDefinition {
                         // tag definitions can be invalid, equalities
                         // cannot (as long as the right-hand-side can
                         // be parsed, which has already happened).
-                        panic!("unexpected failure when defining equality for {name} inside a macro body: {e}");
+                        panic!(
+                            "unexpected failure when defining equality for {name} inside a macro body: {e}"
+                        );
                     }
                 }
             }

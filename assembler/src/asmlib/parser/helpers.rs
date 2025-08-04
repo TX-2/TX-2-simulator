@@ -25,14 +25,14 @@ pub(super) fn make_u36(s: &str, radix: u32) -> Result<Unsigned36Bit, StringConve
         Ok(n) => n.try_into().map_err(StringConversionFailed::Range),
         Err(e) => match e.kind() {
             IntErrorKind::Empty => Err(StringConversionFailed::EmptyInput),
-            IntErrorKind::InvalidDigit => {
-                match s.chars().find(|ch| ch.to_digit(radix).is_none()) {
-                    Some(ch) => Err(StringConversionFailed::NotOctal(ch)),
-                    None => {
-                        panic!("at least one character of '{s}' is known to be invalid in base {radix}");
-                    }
+            IntErrorKind::InvalidDigit => match s.chars().find(|ch| ch.to_digit(radix).is_none()) {
+                Some(ch) => Err(StringConversionFailed::NotOctal(ch)),
+                None => {
+                    panic!(
+                        "at least one character of '{s}' is known to be invalid in base {radix}"
+                    );
                 }
-            }
+            },
             IntErrorKind::PosOverflow => {
                 Err(StringConversionFailed::Range(ConversionFailed::TooLarge))
             }

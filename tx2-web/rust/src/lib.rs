@@ -13,7 +13,7 @@ use cpu::*;
 
 use float_next_after::NextAfter;
 use lw::display_lw_unit_output_event;
-use tracing::{event, Level};
+use tracing::{Level, event};
 use wasm_bindgen::prelude::*;
 use web_sys::{Document, Window};
 

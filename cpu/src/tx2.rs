@@ -2,20 +2,20 @@ use std::cmp::min;
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-use tracing::{event, span, Level};
+use tracing::{Level, event, span};
 
 use wasm_bindgen::prelude::*;
 
 use base::prelude::*;
 
+use super::PETR;
 use super::alarm::{Alarm, AlarmKind, Alarmer, UnmaskedAlarm};
 use super::alarmunit::AlarmStatus;
 use super::context::Context;
 use super::control::{ConfigurationMemorySetup, ControlUnit, ResetMode, RunMode};
 use super::event::{InputEvent, OutputEvent};
-use super::io::{set_up_peripherals, DeviceManager, ExtendedUnitState, InputFlagRaised};
+use super::io::{DeviceManager, ExtendedUnitState, InputFlagRaised, set_up_peripherals};
 use super::memory::{MemoryConfiguration, MemoryUnit};
-use super::PETR;
 use super::{InputEventError, PanicOnUnmaskedAlarm};
 
 #[wasm_bindgen]
@@ -290,8 +290,12 @@ impl Tx2 {
             match self.poll_hw(ctx) {
                 Ok(()) => {
                     if self.next_hw_poll_due == prev_poll_due {
-                        event!(Level::WARN, "polled hardware successfully at system time {:?}, but poll_hw returned with next_hw_poll_due={:?}",
-                               system_time, self.next_hw_poll_due);
+                        event!(
+                            Level::WARN,
+                            "polled hardware successfully at system time {:?}, but poll_hw returned with next_hw_poll_due={:?}",
+                            system_time,
+                            self.next_hw_poll_due
+                        );
                     }
                 }
                 Err(alarm) => {

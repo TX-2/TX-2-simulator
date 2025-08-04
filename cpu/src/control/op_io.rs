@@ -2,7 +2,7 @@ use std::ops::BitAnd;
 
 use base::prelude::*;
 
-use tracing::{event, Level};
+use tracing::{Level, event};
 
 use super::super::event::OutputEvent;
 use super::super::*;

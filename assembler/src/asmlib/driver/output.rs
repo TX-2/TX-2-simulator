@@ -1,11 +1,11 @@
 use std::io::Write;
 use std::path::Path;
 
-use tracing::{event, span, Level};
+use tracing::{Level, event, span};
 
 use base::prelude::{
-    join_halves, split_halves, u18, u5, u6, unsplay, Address, Instruction, Opcode, OperandAddress,
-    Signed18Bit, SymbolicInstruction, Unsigned18Bit, Unsigned36Bit, Unsigned6Bit,
+    Address, Instruction, Opcode, OperandAddress, Signed18Bit, SymbolicInstruction, Unsigned6Bit,
+    Unsigned18Bit, Unsigned36Bit, join_halves, split_halves, u5, u6, u18, unsplay,
 };
 
 use super::super::readerleader::reader_leader;
@@ -146,7 +146,9 @@ fn create_begin_block(
             // should closely examine what appear to be the original
             // (TX-2 assembly language) programmer's assumptions about
             // what will happen.
-            panic!("PUNCH directive specifies deferred start address {start:o}; this is (deliberately) not yet supported - check carefully!");
+            panic!(
+                "PUNCH directive specifies deferred start address {start:o}; this is (deliberately) not yet supported - check carefully!"
+            );
         }
         // When there is a known start address `start` we emit a `JPQ
         // start` instruction into memory register 0o27.
@@ -193,8 +195,10 @@ pub fn write_user_program<W: Write>(
     write_data(writer, output_file_name, &reader_leader())?;
     for chunk in binary.chunks().iter() {
         if chunk.is_empty() {
-            event!(Level::ERROR, "Will not write empty block at {:o}; the assembler should not have generated one; this is a bug.",
-                   chunk.address,
+            event!(
+                Level::ERROR,
+                "Will not write empty block at {:o}; the assembler should not have generated one; this is a bug.",
+                chunk.address,
             );
             continue;
         }

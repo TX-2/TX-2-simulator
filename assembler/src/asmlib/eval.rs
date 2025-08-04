@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::ops::Shl;
 
-use tracing::{event, Level};
+use tracing::{Level, event};
 
 use base::{
     charset::Script,
@@ -22,9 +22,9 @@ use super::symbol::{ConfigUse, IndexUse, OriginUse, SymbolName};
 use super::types::{AssemblerFailure, BlockIdentifier, MachineLimitExceededFailure, ProgramError};
 use crate::symbol::SymbolContext;
 use crate::symtab::{
-    record_undefined_symbol_or_return_failure, ExplicitDefinition, ExplicitSymbolTable,
-    FinalSymbolDefinition, FinalSymbolTable, FinalSymbolType, ImplicitDefinition,
-    ImplicitSymbolTable, IndexRegisterAssigner, LookupOperation, TagDefinition,
+    ExplicitDefinition, ExplicitSymbolTable, FinalSymbolDefinition, FinalSymbolTable,
+    FinalSymbolType, ImplicitDefinition, ImplicitSymbolTable, IndexRegisterAssigner,
+    LookupOperation, TagDefinition, record_undefined_symbol_or_return_failure,
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -66,7 +66,10 @@ impl Display for SymbolLookupFailure {
                 )
             }
             FailedToAssignIndexRegister(_, name) => {
-                write!(f, "unable to assign index register as the default value for symbol {name} because there are not enough index registers")
+                write!(
+                    f,
+                    "unable to assign index register as the default value for symbol {name} because there are not enough index registers"
+                )
             }
             BlockTooLarge(_span, mle) => {
                 write!(f, "program block too large: {mle}")
@@ -138,7 +141,9 @@ fn assign_default_value(
     use IndexUse::*;
     match &contexts_used.origin {
         OriginUse::IncludesOrigin(_block, _origin) => {
-            unreachable!("assign_default_value should not be called for origin speicifations; attempted to assign default value for {name} (used in contexts: {contexts_used:?}")
+            unreachable!(
+                "assign_default_value should not be called for origin speicifations; attempted to assign default value for {name} (used in contexts: {contexts_used:?}"
+            )
         }
         OriginUse::NotOrigin { config, index } => match (config, index) {
             (NotConfig, NotIndex) => {
@@ -147,9 +152,13 @@ fn assign_default_value(
                     // therefore should point to a zero-initialised
                     // RC-word) should already have a default value
                     // assigned.
-                    unreachable!("default assignments for address-context symexes should be assigned before evaluation starts")
+                    unreachable!(
+                        "default assignments for address-context symexes should be assigned before evaluation starts"
+                    )
                 } else {
-                    unreachable!("attempted to assign a default value for a symbol {name} which appears not to be used in any context at all")
+                    unreachable!(
+                        "attempted to assign a default value for a symbol {name} which appears not to be used in any context at all"
+                    )
                 }
             }
             (IncludesConfig, _) => Ok(Unsigned36Bit::ZERO),
@@ -236,14 +245,18 @@ impl<R: RcUpdater> EvaluationContext<'_, R> {
                                 ) {
                                     Ok(()) => Ok(value),
                                     Err(e) => {
-                                        panic!("got a bad symbol definition error ({e:?}) on a previously undefined origin symbol");
+                                        panic!(
+                                            "got a bad symbol definition error ({e:?}) on a previously undefined origin symbol"
+                                        );
                                     }
                                 }
                             }
                             Err(e) => Err(e),
                         }
                     } else {
-                        unreachable!("symbol {name} was used as an origin for block {block_identifier} but this is not a known block");
+                        unreachable!(
+                            "symbol {name} was used as an origin for block {block_identifier} but this is not a known block"
+                        );
                     }
                 } else {
                     match assign_default_value(self.index_register_assigner, name, &context) {

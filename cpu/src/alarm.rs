@@ -304,7 +304,8 @@ impl Display for AlarmDetails {
                         write!(
                             f,
                             "BUGAL: encountered simulator bug during execution of instruction {:o}: {}",
-                            instruction.bits(), message,
+                            instruction.bits(),
+                            message,
                         )
                     }
                 } else {

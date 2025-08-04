@@ -1,8 +1,8 @@
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 
-use base::charset::DescribedChar;
 use base::Unsigned6Bit;
+use base::charset::DescribedChar;
 
 use super::alarm::Alarm;
 

@@ -2,7 +2,7 @@
 //! into smaller components and for joining them together.
 use std::ops::Shl;
 
-use super::onescomplement::unsigned::{Unsigned18Bit, Unsigned36Bit, Unsigned9Bit};
+use super::onescomplement::unsigned::{Unsigned9Bit, Unsigned18Bit, Unsigned36Bit};
 
 /// Split a 36-bit word into two 18-bit values.
 pub fn split_halves(w: Unsigned36Bit) -> (Unsigned18Bit, Unsigned18Bit) {
@@ -56,7 +56,7 @@ pub fn quarters(word: Unsigned36Bit) -> [Unsigned9Bit; 4] {
 mod tests {
     use test_strategy::proptest;
 
-    use super::super::onescomplement::unsigned::{Unsigned18Bit, Unsigned36Bit, Unsigned9Bit};
+    use super::super::onescomplement::unsigned::{Unsigned9Bit, Unsigned18Bit, Unsigned36Bit};
     use super::*;
 
     macro_rules! assert_octal_eq {

@@ -1,7 +1,7 @@
 //! Simulation of elapsed time in the simulated system.
 use cpu::Context;
 use std::time::{Duration, SystemTime};
-use tracing::{event, Level};
+use tracing::{Level, event};
 
 /// Clock is a simulated system clock.  Its run rate may be real-time
 /// (i.e. one simulated second per actual wall-clock second) or it may

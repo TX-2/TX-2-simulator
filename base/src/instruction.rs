@@ -45,7 +45,7 @@
 use std::fmt::{self, Debug, Formatter};
 
 #[cfg(test)]
-use test_strategy::{proptest, Arbitrary};
+use test_strategy::{Arbitrary, proptest};
 
 use super::prelude::*;
 use super::subword;
@@ -599,10 +599,12 @@ mod tests {
     #[test]
     fn test_instruction_held() {
         assert!(!Instruction(Unsigned36Bit::ZERO).is_held());
-        assert!(Instruction(
-            Unsigned36Bit::try_from(1_u64 << 35).expect("test data should be in-range")
-        )
-        .is_held());
+        assert!(
+            Instruction(
+                Unsigned36Bit::try_from(1_u64 << 35).expect("test data should be in-range")
+            )
+            .is_held()
+        );
     }
 
     #[test]

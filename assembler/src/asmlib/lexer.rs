@@ -5,15 +5,15 @@ use std::{
 };
 
 use base::{
-    charset::{subscript_char, superscript_char, Script},
-    error::StringConversionFailed,
     Unsigned36Bit,
+    charset::{Script, subscript_char, superscript_char},
+    error::StringConversionFailed,
 };
 
 use super::{
     glyph::{
-        elevate, glyph_from_name, glyph_of_char, is_allowed_in_symex, Elevated, Glyph, GlyphShape,
-        Unrecognised,
+        Elevated, Glyph, GlyphShape, Unrecognised, elevate, glyph_from_name, glyph_of_char,
+        is_allowed_in_symex,
     },
     parser::helpers,
     state::NumeralMode,
@@ -422,11 +422,15 @@ fn tokenise_single_glyph(g: Elevated<&'static Glyph>) -> Option<Token> {
         // Unicode code points.
         match name.chars().count() {
             0 => {
-                panic!("incoming token '{g:?}' was assigned as part of a symex syllable, but we don't have a character for it in script {script:?}");
+                panic!(
+                    "incoming token '{g:?}' was assigned as part of a symex syllable, but we don't have a character for it in script {script:?}"
+                );
             }
             1 => (),
             n => {
-                panic!("incoming token '{g:?}' was assigned as part of a symex syllable, but the resuting initial token body unexpectedly has more than one character (specifically, {n}): {name:?}");
+                panic!(
+                    "incoming token '{g:?}' was assigned as part of a symex syllable, but the resuting initial token body unexpectedly has more than one character (specifically, {n}): {name:?}"
+                );
             }
         }
         Some(Token::SymexSyllable(script, name))
@@ -546,14 +550,17 @@ fn tokenise_single_glyph(g: Elevated<&'static Glyph>) -> Option<Token> {
             // allowed in symexes.  We scan them as numeric
             // literals and then join them into symexes when we
             // discover what their neighbours are.
-            assert!(is_allowed_in_symex(g.get().shape),
-                    "all glyphs allowed in numeric literals are also allowed in symexes, but this went wrong for {g:?}");
+            assert!(
+                is_allowed_in_symex(g.get().shape),
+                "all glyphs allowed in numeric literals are also allowed in symexes, but this went wrong for {g:?}"
+            );
         } else if g.get().shape == GlyphShape::Space {
             // Permitted in a symex but this is implemented at the parser level.
         } else {
             assert!(
                 !is_allowed_in_symex(g.get().shape),
-                "glyph shape {g:?} is allowed in a symex but the scanner didn't recognise it that way");
+                "glyph shape {g:?} is allowed in a symex but the scanner didn't recognise it that way"
+            );
         }
     }
     output

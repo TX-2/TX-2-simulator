@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use clap::ArgAction::{Set, SetTrue};
 use clap::Parser;
-use tracing::{event, span, Level};
+use tracing::{Level, event, span};
 use tracing_subscriber::prelude::*;
 
 use assembler::*;
@@ -43,8 +43,9 @@ fn run_asembler() -> Result<(), Fail> {
         .or_else(|_| tracing_subscriber::EnvFilter::try_new("info"))
     {
         Err(e) => {
-            return Err(Fail::InitialisationFailure(
-                format!("failed to initialise tracing filter (perhaps there is a problem with environment variables): {e}")));
+            return Err(Fail::InitialisationFailure(format!(
+                "failed to initialise tracing filter (perhaps there is a problem with environment variables): {e}"
+            )));
         }
         Ok(layer) => layer,
     };
