@@ -231,7 +231,7 @@ impl SymbolContext {
                     ConfigOrIndexUsage::Index,
                 ))
             }
-            OriginUse::NotOrigin { ref mut index, .. } => {
+            OriginUse::NotOrigin { index, .. } => {
                 *index = IndexUse::IncludesIndex;
                 self.uses.insert(OrderableSpan(span));
                 Ok(())

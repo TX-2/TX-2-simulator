@@ -109,7 +109,7 @@ macro_rules! try_from_self_to_native_type {
 }
 
 macro_rules! signed_ones_complement_impl {
-    ($SelfT:ty, $BITS:expr, $InnerT:ty, $SignedInnerT:ty, $UnsignedPeerT:ty) => {
+    ($SelfT:ty, $BITS:expr_2021, $InnerT:ty, $SignedInnerT:ty, $UnsignedPeerT:ty) => {
         impl $SelfT {
             const SIGN_BIT: $InnerT = 1 << ($BITS - 1);
             const VALUE_BITS: $InnerT = Self::SIGN_BIT - 1;

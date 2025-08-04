@@ -125,7 +125,7 @@ macro_rules! try_from_native_type_to_self {
 /// equivalent signed type having the same width (e.g. for
 /// `Unsigned18Bit` this should be `Signed`8Bit`).
 macro_rules! unsigned_ones_complement_impl {
-    ($SelfT:ty, $BITS:expr, $InnerT:ty, $SignedPeerT:ty) => {
+    ($SelfT:ty, $BITS:expr_2021, $InnerT:ty, $SignedPeerT:ty) => {
         impl $SelfT {
             const MODULUS: $InnerT = (1 << $BITS);
             const VALUE_BITS: $InnerT = Self::MODULUS - 1;

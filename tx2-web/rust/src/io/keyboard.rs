@@ -547,7 +547,7 @@ impl HtmlCanvas2DPainter {
         context: web_sys::CanvasRenderingContext2d,
         hits_only: bool,
     ) -> Result<HtmlCanvas2DPainter, KeyPaintError> {
-        if let Some(canvas) = context.canvas() {
+        match context.canvas() { Some(canvas) => {
             HtmlCanvas2DPainter::set_up_context_defaults(&context);
             Ok(HtmlCanvas2DPainter {
                 height: canvas.height() as f32,
@@ -555,11 +555,11 @@ impl HtmlCanvas2DPainter {
                 context,
                 hits_only,
             })
-        } else {
+        } _ => {
             Err(KeyPaintError::Failed(
                 "CanvasRenderingContext2d has no associated canvas".to_string(),
             ))
-        }
+        }}
     }
 
     fn set_up_context_defaults(context: &CanvasRenderingContext2d) {
