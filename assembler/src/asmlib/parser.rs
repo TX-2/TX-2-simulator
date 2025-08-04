@@ -17,10 +17,10 @@ use chumsky::extra::{Full, ParserExtra};
 use chumsky::input::InputRef;
 use chumsky::input::{Emitter, MapExtra, Stream, ValueInput};
 
-use chumsky::prelude::{choice, just, one_of, recursive, Input, IterParser, Recursive, SimpleSpan};
-use chumsky::select;
 use chumsky::Boxed;
 use chumsky::Parser;
+use chumsky::prelude::{Input, IterParser, Recursive, SimpleSpan, choice, just, one_of, recursive};
+use chumsky::select;
 
 use crate::collections::OneOrMore;
 
@@ -28,9 +28,9 @@ use super::ast::*;
 use super::glyph::Unrecognised;
 use super::lexer::{self};
 use super::manuscript::{
-    manuscript_lines_to_source_file, MacroBodyLine, MacroDefinition, MacroDummyParameters,
-    MacroInvocation, MacroParameter, MacroParameterBindings, MacroParameterValue, ManuscriptLine,
-    ManuscriptMetaCommand, SourceFile,
+    MacroBodyLine, MacroDefinition, MacroDummyParameters, MacroInvocation, MacroParameter,
+    MacroParameterBindings, MacroParameterValue, ManuscriptLine, ManuscriptMetaCommand, SourceFile,
+    manuscript_lines_to_source_file,
 };
 use super::span::*;
 use super::state::{NumeralMode, State};
@@ -363,8 +363,8 @@ where
     .labelled("arithmetic operator")
 }
 
-fn asterisk_indirection_fragment<'srcbody, I>(
-) -> impl Parser<'srcbody, I, InstructionFragment, ExtraWithoutContext<'srcbody>> + Clone
+fn asterisk_indirection_fragment<'srcbody, I>()
+-> impl Parser<'srcbody, I, InstructionFragment, ExtraWithoutContext<'srcbody>> + Clone
 where
     I: Input<'srcbody, Token = Tok, Span = Span> + ValueInput<'srcbody>,
 {
@@ -463,8 +463,8 @@ where
 }
 
 // Exposed for testing.
-fn macro_definition_dummy_parameter<'a, I>(
-) -> impl Parser<'a, I, MacroParameter, ExtraWithoutContext<'a>>
+fn macro_definition_dummy_parameter<'a, I>()
+-> impl Parser<'a, I, MacroParameter, ExtraWithoutContext<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
@@ -479,8 +479,8 @@ where
     )
 }
 
-fn macro_definition_dummy_parameters<'a, I>(
-) -> impl Parser<'a, I, MacroDummyParameters, ExtraWithoutContext<'a>>
+fn macro_definition_dummy_parameters<'a, I>()
+-> impl Parser<'a, I, MacroDummyParameters, ExtraWithoutContext<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
@@ -544,8 +544,8 @@ where
     ))
 }
 
-fn arithmetic_expression_in_any_script_allowing_spaces<'a, I>(
-) -> impl Parser<'a, I, (Span, Script, ArithmeticExpression), ExtraWithoutContext<'a>>
+fn arithmetic_expression_in_any_script_allowing_spaces<'a, I>()
+-> impl Parser<'a, I, (Span, Script, ArithmeticExpression), ExtraWithoutContext<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
@@ -678,18 +678,23 @@ where
                         }
                     }
                 } else {
-                    return Err(Rich::custom(span, format!("in invocation of macro {}, expected macro terminator {} before parameter {} but got {}",
-                                                          &macro_def.name,
-                                                          &param_def.preceding_terminator,
-                                                          &param_def.name,
-                                                          &got)));
+                    return Err(Rich::custom(
+                        span,
+                        format!(
+                            "in invocation of macro {}, expected macro terminator {} before parameter {} but got {}",
+                            &macro_def.name, &param_def.preceding_terminator, &param_def.name, &got
+                        ),
+                    ));
                 }
             } else {
                 let span = inp.span_since(&before);
-                return Err(Rich::custom(span, format!("in invocation of macro {}, expected macro terminator {} before parameter {}",
-                                                      &macro_def.name,
-                                                      &param_def.preceding_terminator,
-                                                      &param_def.name)));
+                return Err(Rich::custom(
+                    span,
+                    format!(
+                        "in invocation of macro {}, expected macro terminator {} before parameter {}",
+                        &macro_def.name, &param_def.preceding_terminator, &param_def.name
+                    ),
+                ));
             }
         }
         Ok(MacroInvocation {
@@ -812,7 +817,9 @@ where
                             (_, Some(ic)) => span(ic.span().start..ic.span().start),
                             (Some(tc), _) => span(tc.span().start..tc.span().start),
                             (None, None) => {
-                                unreachable!("should be no need to interpose a null instruction between two instances of zero commas");
+                                unreachable!(
+                                    "should be no need to interpose a null instruction between two instances of zero commas"
+                                );
                             }
                         };
                         acc.push(CommasOrInstruction::I(null_instruction(null_inst_span)));
@@ -1224,8 +1231,8 @@ where
 }
 
 #[cfg(test)]
-fn tagged_instruction<'a, I>(
-) -> impl Parser<'a, I, TaggedProgramInstruction, ExtraWithoutContext<'a>>
+fn tagged_instruction<'a, I>()
+-> impl Parser<'a, I, TaggedProgramInstruction, ExtraWithoutContext<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
@@ -1282,8 +1289,8 @@ where
             /// think it's not required that an arithmetic expression
             /// (e.g. "5+BAR") be accepted in an origin notation (such as
             /// "<something>|").
-            fn literal_address_expression<'a, I>(
-            ) -> impl Parser<'a, I, Origin, ExtraWithoutContext<'a>>
+            fn literal_address_expression<'a, I>()
+            -> impl Parser<'a, I, Origin, ExtraWithoutContext<'a>>
             where
                 I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
             {
@@ -1296,8 +1303,8 @@ where
                     .labelled("literal address expression")
             }
 
-            fn symbolic_address_expression<'a, I>(
-            ) -> impl Parser<'a, I, Origin, ExtraWithoutContext<'a>>
+            fn symbolic_address_expression<'a, I>()
+            -> impl Parser<'a, I, Origin, ExtraWithoutContext<'a>>
             where
                 I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
             {
@@ -1364,8 +1371,8 @@ where
         .labelled("comment or end-of-line")
 }
 
-fn terminated_manuscript_line<'a, I>(
-) -> impl Parser<'a, I, Option<(Span, ManuscriptLine)>, ExtraWithoutContext<'a>>
+fn terminated_manuscript_line<'a, I>()
+-> impl Parser<'a, I, Option<(Span, ManuscriptLine)>, ExtraWithoutContext<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {

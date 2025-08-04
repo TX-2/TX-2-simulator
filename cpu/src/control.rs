@@ -16,7 +16,7 @@ use std::fmt::Write;
 use std::ops::BitAnd;
 use std::time::Duration;
 
-use tracing::{event, span, Level};
+use tracing::{Level, event, span};
 
 mod op_configuration;
 mod op_index;
@@ -36,8 +36,8 @@ use super::alarm::{Alarm, AlarmDetails, AlarmKind, Alarmer, BadMemOp};
 use super::alarmunit::AlarmUnit;
 use super::context::Context;
 use super::exchanger::{
-    exchanged_value_for_load, exchanged_value_for_store, standard_plugboard_f_memory_settings,
-    SystemConfiguration,
+    SystemConfiguration, exchanged_value_for_load, exchanged_value_for_store,
+    standard_plugboard_f_memory_settings,
 };
 use super::io::DeviceManager;
 use super::memory::{self, ExtraBits, MemoryMapped, MemoryOpFailure, MemoryUnit, MetaBitChange};
@@ -413,16 +413,25 @@ impl ResetMode {
                         let (left, right) = subword::split_halves(word);
                         if left != 0 {
                             // issue warning but otherwise ignore
-                            event!(Level::WARN, "Ignoring non-zero left subword of reset register {:o}, containing {:o} (left side is {:o})",
-                                   loc, word, left);
+                            event!(
+                                Level::WARN,
+                                "Ignoring non-zero left subword of reset register {:o}, containing {:o} (left side is {:o})",
+                                loc,
+                                word,
+                                left
+                            );
                         }
                         // We assume that reset operations don't implement deferred addressing.
                         const PHYSICAL_ADDRESS_BITS: u32 = 0o377_777;
                         let defer_bit = Unsigned18Bit::try_from(0o400_000).unwrap();
                         if right & defer_bit != 0 {
                             // issue warning but otherwise ignore
-                            event!(Level::WARN, "Ignoring non-zero defer bit of reset register {:o}, containing {:o}",
-                                   loc, word);
+                            event!(
+                                Level::WARN,
+                                "Ignoring non-zero defer bit of reset register {:o}, containing {:o}",
+                                loc,
+                                word
+                            );
                         }
 
                         let physical_address = Address::from(right & PHYSICAL_ADDRESS_BITS);
@@ -1489,9 +1498,13 @@ impl ControlUnit {
                     let mask: Unsigned18Bit = Unsigned18Bit::from(63_u8);
                     let j6: Unsigned6Bit = Unsigned6Bit::try_from(left.bitand(mask)).unwrap();
                     let next = Address::from(right).index_by(self.regs.get_index_register(j6));
-                    event!(Level::TRACE,
-                           "deferred addressing: fetched full word is {:o},,{:o}; j={:o}, using {:o} as the next address",
-                           &left, &right, &j6, &next,
+                    event!(
+                        Level::TRACE,
+                        "deferred addressing: fetched full word is {:o},,{:o}; j={:o}, using {:o} as the next address",
+                        &left,
+                        &right,
+                        &j6,
+                        &next,
                     );
                     if !seen_deferred_addresses.insert(next) {
                         // A `false` return indicates that the map

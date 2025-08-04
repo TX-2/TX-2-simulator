@@ -66,7 +66,8 @@ fn test_i8_round_tripping() {
             Err(e) => {
                 panic!(
                     "Unexpected overflow when round-tripping  {}->{:?}-> [conversion to i8 failed with error {}]",
-                    i, &q, e);
+                    i, &q, e
+                );
             }
         }
     }
@@ -91,7 +92,8 @@ fn test_u8_round_tripping() {
             Err(e) => {
                 panic!(
                     "Unexpected overflow when round-tripping  {}->{:?}-> [conversion to i8 failed with error {}]",
-                    i, &q, e);
+                    i, &q, e
+                );
             }
         }
     }

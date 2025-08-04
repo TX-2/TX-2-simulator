@@ -1,7 +1,7 @@
 use std::ops::Shl;
 use std::ops::Shr;
 
-use super::{ConversionFailed, Unsigned36Bit, Unsigned9Bit};
+use super::{ConversionFailed, Unsigned9Bit, Unsigned36Bit};
 
 macro_rules! assert_octal_eq {
     ($left:expr_2021, $right:expr_2021 $(,)?) => {{
@@ -80,7 +80,8 @@ fn test_i8_round_tripping() {
             Err(e) => {
                 panic!(
                     "Unexpected overflow when round-tripping  {}->{:?}-> [conversion to i8 failed with error {}]",
-                    i, &q, e);
+                    i, &q, e
+                );
             }
         }
     }
@@ -105,7 +106,8 @@ fn test_u8_round_tripping() {
             Err(e) => {
                 panic!(
                     "Unexpected overflow when round-tripping  {}->{:?}-> [conversion to i8 failed with error {}]",
-                    i, &q, e);
+                    i, &q, e
+                );
             }
         }
     }
@@ -467,7 +469,7 @@ fn test_unsigned36bit_checked_div() {
 #[cfg(test)]
 mod u5_proptests {
     use super::super::Unsigned5Bit;
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
     #[derive(Debug, Arbitrary)]
     struct U5SubtractionTestInput {
@@ -511,7 +513,7 @@ mod u5_proptests {
 #[cfg(test)]
 mod u6_proptests {
     use super::super::Unsigned6Bit;
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
     #[derive(Debug, Arbitrary)]
     struct U6SubtractionTestInput {
@@ -555,7 +557,7 @@ mod u6_proptests {
 #[cfg(test)]
 mod u9_proptests {
     use super::super::Unsigned9Bit;
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
     #[derive(Debug, Arbitrary)]
     struct U9SubtractionTestInput {
@@ -599,7 +601,7 @@ mod u9_proptests {
 #[cfg(test)]
 mod u12_proptests {
     use super::super::Unsigned12Bit;
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
     #[derive(Debug, Arbitrary)]
     struct U12SubtractionTestInput {
@@ -643,7 +645,7 @@ mod u12_proptests {
 #[cfg(test)]
 mod u18_proptests {
     use super::super::Unsigned18Bit;
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
     #[derive(Debug, Arbitrary)]
     struct U18SubtractionTestInput {
@@ -686,7 +688,7 @@ mod u18_proptests {
 
 mod u36_proptests {
     use super::super::Unsigned36Bit;
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
     #[derive(Debug, Arbitrary)]
     struct U36SubtractionTestInput {

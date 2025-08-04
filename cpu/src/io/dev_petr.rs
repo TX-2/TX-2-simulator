@@ -26,7 +26,7 @@ use base::prelude::*;
 use std::cmp;
 
 use conv::*;
-use tracing::{event, Level};
+use tracing::{Level, event};
 
 use super::*;
 use super::{TransferFailed, Unit, UnitStatus};
@@ -467,9 +467,10 @@ impl Unit for Petr {
                     self.connected_at_system_time,
                     ctx.simulated_time,
                 ) {
-                    write!(result, "Emulated duration {:.1} seconds, so emulated throughput is {:.1} lines/sec. ",
-                           throughput.total_seconds,
-                           throughput.lines_per_second,
+                    write!(
+                        result,
+                        "Emulated duration {:.1} seconds, so emulated throughput is {:.1} lines/sec. ",
+                        throughput.total_seconds, throughput.lines_per_second,
                     )?;
                 }
                 if let Some(throughput) = compute_throughput(

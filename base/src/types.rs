@@ -10,8 +10,8 @@ use std::hash::{Hash, Hasher};
 use test_strategy::Arbitrary;
 
 use super::onescomplement::error::ConversionFailed;
-use super::onescomplement::signed::{Signed18Bit, Signed5Bit, Signed6Bit};
-use super::onescomplement::unsigned::{Unsigned18Bit, Unsigned36Bit, Unsigned6Bit};
+use super::onescomplement::signed::{Signed5Bit, Signed6Bit, Signed18Bit};
+use super::onescomplement::unsigned::{Unsigned6Bit, Unsigned18Bit, Unsigned36Bit};
 use super::onescomplement::{Signum, WordCommon};
 
 /// The `IndexBy` trait implements address arithmetic (adding a signed

@@ -1,12 +1,12 @@
 use base::prelude::*;
 use base::subword;
 
+use super::super::UpdateE;
 use super::super::alarm::{Alarm, AlarmDetails, Alarmer, BadMemOp};
 use super::super::context::Context;
 use super::super::control::{ControlUnit, OpcodeResult, ProgramCounterChange};
 use super::super::exchanger::exchanged_value_for_load_without_sign_extension;
 use super::super::memory::{BitChange, MemoryMapped, MemoryOpFailure, MemoryUnit, WordChange};
-use super::super::UpdateE;
 
 /// ## "Jump Skip Class" opcodes
 ///

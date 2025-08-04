@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use js_sys::Array;
 use serde::Serialize;
-use tracing::{event, Level};
+use tracing::{Level, event};
 use wasm_bindgen::prelude::*;
 
 use base::Unsigned6Bit;
@@ -15,7 +15,7 @@ use super::io::keyboard::Code;
 use super::samples::{sample_binary_echo, sample_binary_hello};
 
 pub use keyboard::{
-    draw_keyboard, HtmlCanvas2DPainter, KeyPaintError, SWITCH_TO_FAR, SWITCH_TO_NEAR,
+    HtmlCanvas2DPainter, KeyPaintError, SWITCH_TO_FAR, SWITCH_TO_NEAR, draw_keyboard,
 };
 
 #[wasm_bindgen]

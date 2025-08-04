@@ -8,13 +8,13 @@
 use base::prelude::*;
 use base::subword;
 
+use super::Alarm;
 use super::context::Context;
 use super::control::{ControlUnit, OpcodeResult, UpdateE};
 use super::exchanger::SystemConfiguration;
 use super::memory::MemoryUnit;
-use super::Alarm;
 
-use tracing::{event, Level};
+use tracing::{Level, event};
 
 /// ## "Configuration Memory Class" opcodes
 ///

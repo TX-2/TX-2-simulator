@@ -1,10 +1,10 @@
 use core::time::Duration;
 
+use super::DeviceManager;
 use super::alarm::{Alarm, AlarmDetails};
 use super::context::Context;
 use super::control::ConfigurationMemorySetup;
 use super::memory::MetaBitChange;
-use super::DeviceManager;
 use super::{ControlUnit, MemoryConfiguration, MemoryUnit, PanicOnUnmaskedAlarm, UpdateE};
 use base::prelude::*;
 
@@ -67,7 +67,9 @@ fn test_roundtuital_not_maskable() {
         control.execute_instruction(&context, &mut devices, &mut mem, &mut poll_order_change);
     match result {
         Ok(_) => {
-            panic!("execution of SCA is not expected to succeed, it is not implemented yet: {result:?}");
+            panic!(
+                "execution of SCA is not expected to succeed, it is not implemented yet: {result:?}"
+            );
         }
         Err((
             Alarm {

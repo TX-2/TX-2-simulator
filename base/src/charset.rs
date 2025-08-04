@@ -28,7 +28,7 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 
-use super::{u6, Unsigned6Bit};
+use super::{Unsigned6Bit, u6};
 
 #[cfg(test)]
 mod tests;

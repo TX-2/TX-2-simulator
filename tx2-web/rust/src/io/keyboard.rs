@@ -91,16 +91,16 @@ use core::fmt::{Debug, Display};
 use std::collections::{HashMap, HashSet};
 
 use conv::*;
-use tracing::{event, Level};
+use tracing::{Level, event};
 use wasm_bindgen::prelude::*;
 use web_sys::{CanvasRenderingContext2d, TextMetrics};
 
 #[cfg(test)]
-use base::charset::{
-    lincoln_char_to_described_char, Colour, DescribedChar, LincolnState, LwCase, Script,
-};
-#[cfg(test)]
 use base::Unsigned6Bit;
+#[cfg(test)]
+use base::charset::{
+    Colour, DescribedChar, LincolnState, LwCase, Script, lincoln_char_to_described_char,
+};
 
 // Horizontal gap between LHS of unit and the first key of each row:
 const HPOS_DELETE: f32 = 0.7;
@@ -502,10 +502,9 @@ fn font_or_actual(
     match (font_value.is_nan(), actual_value.is_nan()) {
         (false, _) => Ok(font_value),
         (true, false) => Ok(actual_value * FONT_METRIC_FUDGE_FACTOR),
-        (true, true) => {
-            Err(KeyPaintError::InvalidFontMetrics(
-                format!("text metric {font_metric_name} is NaN, but fallback metric {actual_metric_name} is also NaN")))
-        }
+        (true, true) => Err(KeyPaintError::InvalidFontMetrics(format!(
+            "text metric {font_metric_name} is NaN, but fallback metric {actual_metric_name} is also NaN"
+        ))),
     }
 }
 
@@ -547,19 +546,20 @@ impl HtmlCanvas2DPainter {
         context: web_sys::CanvasRenderingContext2d,
         hits_only: bool,
     ) -> Result<HtmlCanvas2DPainter, KeyPaintError> {
-        match context.canvas() { Some(canvas) => {
-            HtmlCanvas2DPainter::set_up_context_defaults(&context);
-            Ok(HtmlCanvas2DPainter {
-                height: canvas.height() as f32,
-                width: canvas.width() as f32,
-                context,
-                hits_only,
-            })
-        } _ => {
-            Err(KeyPaintError::Failed(
+        match context.canvas() {
+            Some(canvas) => {
+                HtmlCanvas2DPainter::set_up_context_defaults(&context);
+                Ok(HtmlCanvas2DPainter {
+                    height: canvas.height() as f32,
+                    width: canvas.width() as f32,
+                    context,
+                    hits_only,
+                })
+            }
+            _ => Err(KeyPaintError::Failed(
                 "CanvasRenderingContext2d has no associated canvas".to_string(),
-            ))
-        }}
+            )),
+        }
     }
 
     fn set_up_context_defaults(context: &CanvasRenderingContext2d) {
@@ -1966,11 +1966,16 @@ fn code_round_trips_as_pixel_colour() {
                 );
             }
             Ok(None) => {
-                panic!("Key code {:?} round-tripped as if it were the keyboard's background (colour is {})",
-                       key.code, colour);
+                panic!(
+                    "Key code {:?} round-tripped as if it were the keyboard's background (colour is {})",
+                    key.code, colour
+                );
             }
             Err(msg) => {
-                panic!("Key code {:?} mapped to hit detection colour {} but this could not be round-tripped: {}", key.code, colour, msg);
+                panic!(
+                    "Key code {:?} mapped to hit detection colour {} but this could not be round-tripped: {}",
+                    key.code, colour, msg
+                );
             }
         }
     }
@@ -2025,7 +2030,10 @@ fn known_keys_consistent_with_base_charset() {
                             acc
                         });
                     if unicode_as_string != one_line_text {
-                        panic!("inconsistency for key {key:?}: label is {:?} (on one line: '{one_line_text}') but lincoln_char_to_described_char calls it '{unicode_as_string}'", key.label.text);
+                        panic!(
+                            "inconsistency for key {key:?}: label is {:?} (on one line: '{one_line_text}') but lincoln_char_to_described_char calls it '{unicode_as_string}'",
+                            key.label.text
+                        );
                     }
                 }
             }

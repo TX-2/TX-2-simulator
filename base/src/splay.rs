@@ -3,7 +3,7 @@ use std::ops::Shl;
 #[cfg(test)]
 use test_strategy::proptest;
 
-use super::onescomplement::unsigned::{Unsigned36Bit, Unsigned6Bit};
+use super::onescomplement::unsigned::{Unsigned6Bit, Unsigned36Bit};
 #[cfg(test)]
 use super::u36;
 
@@ -158,7 +158,9 @@ fn round_trip(input: Unsigned36Bit) -> Result<(), String> {
     if input == output {
         Ok(())
     } else {
-        Err(format!("mismatch: input word {input:012o} unsplayed to {unsplayed:?}, which splayed to {output:012o}, which doesn't match",))
+        Err(format!(
+            "mismatch: input word {input:012o} unsplayed to {unsplayed:?}, which splayed to {output:012o}, which doesn't match",
+        ))
     }
 }
 

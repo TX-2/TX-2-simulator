@@ -42,15 +42,15 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use serde::Serialize;
-use tracing::{event, span, Level};
+use tracing::{Level, event, span};
 
+use super::PETR;
 use super::alarm::{Alarm, AlarmDetails, Alarmer};
 use super::alarmunit::AlarmUnit;
 use super::changelog::ChangeIndex;
 use super::context::Context;
 use super::event::*;
 use super::types::*;
-use super::PETR;
 use base::charset::LincolnState;
 use base::prelude::*;
 
@@ -500,7 +500,9 @@ impl DeviceManager {
                 panic!("Cannot attach hardware to unit 0");
             }
             UnitType::IndexRegister(reg) => {
-                panic!("Cannot attach hardware to unit {reg:o}, it's reserved for use as an index register");
+                panic!(
+                    "Cannot attach hardware to unit {reg:o}, it's reserved for use as an index register"
+                );
             }
             UnitType::SoftwareOnly(seq) => {
                 panic!("Cannot attach hardware to software-only unit {seq:o}");

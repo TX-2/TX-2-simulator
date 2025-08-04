@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde::Serialize;
-use tracing::{event, Level};
+use tracing::{Level, event};
 
 use super::alarm::{Alarm, AlarmDetails, AlarmKind, AlarmMaskability, Alarmer};
 use super::changelog::ChangeIndex;

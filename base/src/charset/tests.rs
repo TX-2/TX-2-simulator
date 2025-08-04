@@ -1,7 +1,7 @@
 use super::super::u6;
 use super::{
-    lincoln_to_unicode_strict, LincolnChar, LincolnToUnicodeStrictConversionFailure,
-    UnicodeToLincolnMapping,
+    LincolnChar, LincolnToUnicodeStrictConversionFailure, UnicodeToLincolnMapping,
+    lincoln_to_unicode_strict,
 };
 
 #[test]

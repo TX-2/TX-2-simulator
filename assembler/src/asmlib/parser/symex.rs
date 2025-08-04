@@ -1,13 +1,13 @@
 use base::charset::Script;
+use chumsky::Parser;
 use chumsky::input::ValueInput;
 use chumsky::prelude::*;
-use chumsky::Parser;
 
 use super::super::lexer::{DOT_CHAR, DOT_STR};
 use super::super::span::*;
 use super::super::symbol::SymbolName;
 use super::helpers::{self};
-use super::{opcode_code, ExtraWithoutContext, Tok};
+use super::{ExtraWithoutContext, Tok, opcode_code};
 
 fn canonical_symbol_name(s: &str) -> SymbolName {
     // TODO: avoid copy where possible.

@@ -22,9 +22,9 @@ use super::super::{Alarm, AlarmDetails};
 use base::charset::LincolnStateTextInfo;
 #[cfg(test)]
 use base::charset::LwCase;
-use base::charset::{lincoln_char_to_described_char, lincoln_writer_state_update, LincolnState};
+use base::charset::{LincolnState, lincoln_char_to_described_char, lincoln_writer_state_update};
 use base::prelude::*;
-use tracing::{event, Level};
+use tracing::{Level, event};
 
 #[cfg(test)]
 use base::charset::{Colour, DescribedChar, LincolnChar, Script};
@@ -240,15 +240,21 @@ fn check_output(
     match (expected_output, writer.write(&context, out.into())) {
         (Some(expected_output), Ok(Some(OutputEvent::LincolnWriterPrint { unit: _, ch }))) => {
             if &ch != expected_output {
-                panic!("output of code {out:o} expected to generate character {expected_output:?}, actually generated {ch:?}");
+                panic!(
+                    "output of code {out:o} expected to generate character {expected_output:?}, actually generated {ch:?}"
+                );
             }
         }
         (None, Ok(None)) => (),
         (Some(expected), Ok(None)) => {
-            panic!("printing code {out:o} produced no output event, but should have produced {expected:?}");
+            panic!(
+                "printing code {out:o} produced no output event, but should have produced {expected:?}"
+            );
         }
         (None, Ok(Some(actual))) => {
-            panic!("printing code {out:o} should have produced no output event, but actually produced {actual:?}");
+            panic!(
+                "printing code {out:o} should have produced no output event, but actually produced {actual:?}"
+            );
         }
         (_, Err(e)) => {
             panic!("output transfer failed {e:?}");
@@ -256,7 +262,9 @@ fn check_output(
     }
     let actual = actual_state.borrow();
     if &*actual != expected_state {
-        panic!("output of code {out:o} expected to generate state {expected_state:?}, actual state is {actual:?}");
+        panic!(
+            "output of code {out:o} expected to generate state {expected_state:?}, actual state is {actual:?}"
+        );
     }
 }
 

@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 use std::time::Duration;
 
-use tracing::{event, Level};
+use tracing::{Level, event};
 
 use base::collections::pq::KeyedReversePriorityQueue;
 use base::prelude::*;

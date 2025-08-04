@@ -11,7 +11,7 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use clap::{ArgAction::Set, Parser, ValueEnum};
-use tracing::{event, Level};
+use tracing::{Level, event};
 use tracing_subscriber::filter::{EnvFilter, LevelFilter};
 use tracing_subscriber::prelude::*;
 

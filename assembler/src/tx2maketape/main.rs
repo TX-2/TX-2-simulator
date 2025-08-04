@@ -14,8 +14,8 @@ use clap::ArgAction::Set;
 use clap::Parser;
 use regex::Regex;
 
-use assembler::{write_user_program, Binary, BinaryChunk};
-use base::prelude::{join_halves, Address, Unsigned18Bit, Unsigned36Bit};
+use assembler::{Binary, BinaryChunk, write_user_program};
+use base::prelude::{Address, Unsigned18Bit, Unsigned36Bit, join_halves};
 
 const OCTAL: u32 = 8;
 

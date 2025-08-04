@@ -1,8 +1,8 @@
-use tracing::{event, Level};
+use tracing::{Level, event};
 use web_sys::Document;
 
-use base::charset::{Colour, DescribedChar, LincolnChar, LincolnState, Script};
 use base::Unsigned6Bit;
+use base::charset::{Colour, DescribedChar, LincolnChar, LincolnState, Script};
 
 fn generate_html_for_char(uch: char, attributes: &LincolnState, _advance: bool) -> String {
     let colour_class = match attributes.colour {

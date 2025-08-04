@@ -2,11 +2,11 @@
 use std::fmt::{self, Display, Formatter, Octal, Write};
 
 use super::super::charset::{
-    subscript_char, superscript_char, NoSubscriptKnown, NoSuperscriptKnown,
+    NoSubscriptKnown, NoSuperscriptKnown, subscript_char, superscript_char,
 };
 use super::super::instruction::{
-    index_address_to_bit_selection, BitSelector, DisassemblyFailure, Inst, Opcode, OperandAddress,
-    Quarter, SymbolicInstruction,
+    BitSelector, DisassemblyFailure, Inst, Opcode, OperandAddress, Quarter, SymbolicInstruction,
+    index_address_to_bit_selection,
 };
 use super::super::prelude::*;
 

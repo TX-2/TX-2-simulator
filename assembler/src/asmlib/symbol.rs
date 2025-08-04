@@ -116,10 +116,16 @@ impl Display for InconsistentSymbolUse {
                 _origin_2,
                 block_identifier_2,
             ) => {
-                write!(f, "symbol {name} cannot simultaneously be the origin for {block_identifier_1} and {block_identifier_2}; names must be unique")
+                write!(
+                    f,
+                    "symbol {name} cannot simultaneously be the origin for {block_identifier_1} and {block_identifier_2}; names must be unique"
+                )
             }
             InconsistentSymbolUse::MixingOrigin(name, _origin, _incompatibility) => {
-                write!(f, "symbols (in this case {name}) cannot be used as an origin name and a configuration or index value")
+                write!(
+                    f,
+                    "symbols (in this case {name}) cannot be used as an origin name and a configuration or index value"
+                )
             }
         }
     }
@@ -389,7 +395,9 @@ impl SymbolContext {
         match self.uses.first() {
             Some(orderable_span) => orderable_span.as_span(),
             None => {
-                panic!("invariant broken in SymbolContext::any_span(): SymbolContext contains empty uses");
+                panic!(
+                    "invariant broken in SymbolContext::any_span(): SymbolContext contains empty uses"
+                );
             }
         }
     }

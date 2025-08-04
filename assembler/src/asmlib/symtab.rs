@@ -383,12 +383,14 @@ impl Display for BadSymbolDefinition {
                     f,
                     "{0} is defined more than once, but this is not allowed for tags (tag defitions are {1} and {2})",
                     &self.symbol_name, td1, td2
-
                 )
             }
             _ => {
-                write!(f, "it is not allowed to override the symbol definition of {0} as {1} with a new definition {2}",
-                       &self.symbol_name, &self.existing, &self.proposed)
+                write!(
+                    f,
+                    "it is not allowed to override the symbol definition of {0} as {1} with a new definition {2}",
+                    &self.symbol_name, &self.existing, &self.proposed
+                )
             }
         }
     }
@@ -406,7 +408,9 @@ impl ImplicitDefinition {
             ImplicitDefinition::Undefined(current) => current.merge(name, context),
             ImplicitDefinition::DefaultAssigned(value, existing_context) => {
                 if &context != existing_context {
-                    panic!("attempting to change the recorded usage context for {name} after a default value {value:?} has been assigned; previous context was {existing_context:?}, new context is {context:?}");
+                    panic!(
+                        "attempting to change the recorded usage context for {name} after a default value {value:?} has been assigned; previous context was {existing_context:?}, new context is {context:?}"
+                    );
                 } else {
                     Ok(())
                 }

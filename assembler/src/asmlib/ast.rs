@@ -19,15 +19,15 @@ use std::fmt::{self, Display, Formatter, Octal, Write};
 use std::hash::Hash;
 use std::ops::{Shl, Shr};
 
-use tracing::{event, Level};
+use tracing::{Level, event};
 
-use base::charset::{subscript_char, superscript_char, Script};
+use base::charset::{Script, subscript_char, superscript_char};
 use base::prelude::*;
 use base::u18;
 
 use super::collections::OneOrMore;
 use super::eval::{
-    symbol_name_lookup, Evaluate, EvaluationContext, HereValue, SymbolLookupFailure,
+    Evaluate, EvaluationContext, HereValue, SymbolLookupFailure, symbol_name_lookup,
 };
 use super::glyph;
 use super::listing::{Listing, ListingLine};
@@ -40,9 +40,9 @@ use super::source::Source;
 use super::span::*;
 use super::symbol::{InconsistentSymbolUse, SymbolContext, SymbolName};
 use super::symtab::{
-    record_undefined_symbol_or_return_failure, BadSymbolDefinition, ExplicitDefinition,
-    ExplicitSymbolTable, FinalSymbolDefinition, FinalSymbolTable, FinalSymbolType,
-    ImplicitSymbolTable, IndexRegisterAssigner, TagDefinition,
+    BadSymbolDefinition, ExplicitDefinition, ExplicitSymbolTable, FinalSymbolDefinition,
+    FinalSymbolTable, FinalSymbolType, ImplicitSymbolTable, IndexRegisterAssigner, TagDefinition,
+    record_undefined_symbol_or_return_failure,
 };
 use super::types::*;
 mod eval;
@@ -201,7 +201,8 @@ impl SignedAtom {
         &self,
         block_id: BlockIdentifier,
         block_offset: Unsigned18Bit,
-    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + use<> {
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + use<>
+    {
         self.magnitude.symbol_uses(block_id, block_offset)
     }
 
@@ -308,7 +309,8 @@ impl ArithmeticExpression {
         &self,
         block_id: BlockIdentifier,
         block_offset: Unsigned18Bit,
-    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + use<> {
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + use<>
+    {
         let mut result = Vec::with_capacity(1 + self.tail.len());
         result.extend(self.first.symbol_uses(block_id, block_offset));
         result.extend(
@@ -339,7 +341,9 @@ impl ArithmeticExpression {
             Operator::Subtract => match left.checked_sub(right) {
                 Some(result) => result,
                 None => {
-                    todo!("subtraction overflow occurred in {left}-{right} but this is not implemented")
+                    todo!(
+                        "subtraction overflow occurred in {left}-{right} but this is not implemented"
+                    )
                 }
             },
             Operator::Multiply => match left.checked_mul(right) {
@@ -445,7 +449,8 @@ impl ConfigValue {
         &self,
         block_id: BlockIdentifier,
         block_offset: Unsigned18Bit,
-    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + use<> {
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + use<>
+    {
         self.expr
             .symbol_uses(block_id, block_offset)
             .map(|r| match r {
@@ -578,7 +583,9 @@ impl Spanned for RegistersContaining {
         match it.next() {
             Some(rc) => it.fold(rc.span(), |acc, rc| acc.union(rc.span())),
             None => {
-                unreachable!("invariant broken: RegistersContaining contains no RegisterContaining instances")
+                unreachable!(
+                    "invariant broken: RegistersContaining contains no RegisterContaining instances"
+                )
             }
         }
     }
@@ -638,7 +645,9 @@ impl RegisterContaining {
                             // words.
                         }
                         SymbolUse::Definition(ExplicitDefinition::Origin(_, _)) => {
-                            unreachable!("Found origin {name} inside an RC-word; the parser should have rejected this.");
+                            unreachable!(
+                                "Found origin {name} inside an RC-word; the parser should have rejected this."
+                            );
                         }
                         SymbolUse::Definition(_) => {
                             // e.g. we have an input like
@@ -655,7 +664,9 @@ impl RegisterContaining {
                             // When working on this case we should
                             // figure out if an equality is allowed
                             // inside a macro expansion.
-                            panic!("Found unexpected definition of {name} inside RC-word reference at {span:?}");
+                            panic!(
+                                "Found unexpected definition of {name} inside RC-word reference at {span:?}"
+                            );
                         }
                     }
                 }
@@ -776,7 +787,8 @@ impl Atom {
         &self,
         block_id: BlockIdentifier,
         block_offset: Unsigned18Bit,
-    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + use<> {
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + use<>
+    {
         let mut result: Vec<Result<_, _>> = Vec::with_capacity(1);
         match self {
             Atom::SymbolOrLiteral(SymbolOrLiteral::Symbol(script, name, span)) => {
@@ -933,7 +945,8 @@ pub(crate) enum SymbolOrLiteral {
 impl SymbolOrLiteral {
     fn symbol_uses(
         &self,
-    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + use<> {
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + use<>
+    {
         let mut result = Vec::with_capacity(1);
         match self {
             SymbolOrLiteral::Here(_, _) | SymbolOrLiteral::Literal(_) => (),
@@ -1101,7 +1114,8 @@ impl InstructionFragment {
         &self,
         block_id: BlockIdentifier,
         block_offset: Unsigned18Bit,
-    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + use<> {
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + use<>
+    {
         let mut uses: Vec<Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> =
             Vec::new();
         match self {
@@ -1172,7 +1186,9 @@ impl InstructionFragment {
                         rc_word_value,
                     }),
                 SymbolSubstitution::Hit(_span, _script, _arithmetic_expression) => {
-                    todo!("macro parameter expansion is not yet fully supported in the index part of pipe constructs")
+                    todo!(
+                        "macro parameter expansion is not yet fully supported in the index part of pipe constructs"
+                    )
                 }
                 SymbolSubstitution::Omit => None,
                 SymbolSubstitution::Zero(span) => Some(InstructionFragment::Null(span)),
@@ -1282,7 +1298,8 @@ impl Origin {
     pub(super) fn symbol_uses(
         &self,
         block_id: BlockIdentifier,
-    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + use<> {
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + use<>
+    {
         let mut result = Vec::with_capacity(1);
         match self {
             Origin::Literal(_span, _) => (),
@@ -1581,7 +1598,8 @@ impl Tag {
         &self,
         block_id: BlockIdentifier,
         block_offset: Unsigned18Bit,
-    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + use<> {
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + use<>
+    {
         [Ok((
             self.name.clone(),
             self.span,
@@ -1621,7 +1639,8 @@ impl TaggedProgramInstruction {
         &self,
         block_id: BlockIdentifier,
         offset: Unsigned18Bit,
-    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + use<> {
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + use<>
+    {
         let mut result: Vec<Result<_, _>> = Vec::new();
         result.extend(
             self.tags
@@ -1809,7 +1828,8 @@ impl InstructionSequence {
     pub(crate) fn symbol_uses(
         &self,
         block_id: BlockIdentifier,
-    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + use<> {
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + use<>
+    {
         let no_symbols = ExplicitSymbolTable::default();
         let local_scope: &ExplicitSymbolTable = self.local_symbols.as_ref().unwrap_or(&no_symbols);
         let mut result: Vec<Result<_, _>> = Vec::new();
@@ -1859,7 +1879,9 @@ impl InstructionSequence {
             }
 
             if self.local_symbols.is_some() {
-                panic!("InstructionSequence::build_binary_block: evaluation with local symbol tables is not yet implemented");
+                panic!(
+                    "InstructionSequence::build_binary_block: evaluation with local symbol tables is not yet implemented"
+                );
             }
             let mut ctx = EvaluationContext {
                 explicit_symtab,
@@ -1903,7 +1925,8 @@ pub(crate) struct Equality {
 impl Equality {
     pub(super) fn symbol_uses(
         &self,
-    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + use<> {
+    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + use<>
+    {
         [Ok((
             self.name.clone(),
             self.span,

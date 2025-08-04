@@ -1,7 +1,7 @@
-use std::io::{stdout, Write};
+use std::io::{Write, stdout};
 
 use termcolor::{self, ColorChoice, ColorSpec, StandardStream, WriteColor};
-use tracing::{event, Level};
+use tracing::{Level, event};
 
 use base::charset::{self, DescribedChar, LincolnChar, LincolnState};
 

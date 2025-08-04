@@ -8,7 +8,7 @@ use std::ffi::{OsStr, OsString};
 use std::fmt::{self, Display, Formatter};
 use std::fs::OpenOptions;
 use std::io::{BufReader, Read};
-use tracing::{span, Level};
+use tracing::{Level, span};
 use tracing_subscriber::prelude::*;
 
 // Thanks to Google for allowing this code to be open-sourced.  I
@@ -178,9 +178,9 @@ fn check_header<R: Read>(input: &mut R) -> Result<(), Fail> {
     let header = read_splayed_words(input, expected_leader.len(), None)?;
     for (pos, (want, got)) in expected_leader.iter().zip(header.iter()).enumerate() {
         if want != got {
-            return Err(Fail::Generic(
-                format!(
-                    "File does not begin with the expected header; at position {pos} we expected {want:>012o} but got {got:>012o}")));
+            return Err(Fail::Generic(format!(
+                "File does not begin with the expected header; at position {pos} we expected {want:>012o} but got {got:>012o}"
+            )));
         }
     }
     println!("** reader leader is valid:");
@@ -246,8 +246,9 @@ fn disassemble() -> Result<(), Fail> {
         .or_else(|_| tracing_subscriber::EnvFilter::try_new("info"))
     {
         Err(e) => {
-            return Err(Fail::Generic(
-                format!("failed to initialise tracing filter (perhaps there is a problem with environment variables): {e}")));
+            return Err(Fail::Generic(format!(
+                "failed to initialise tracing filter (perhaps there is a problem with environment variables): {e}"
+            )));
         }
         Ok(layer) => layer,
     };

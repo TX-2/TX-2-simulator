@@ -44,7 +44,9 @@ fn run_scan_test(input_relative_path: &str) {
     };
 
     if let Err(e) = scan_file(&source_file_body) {
-        panic!("should be able to scan file {input_relative_path} with the lexer, but this failed: {e}");
+        panic!(
+            "should be able to scan file {input_relative_path} with the lexer, but this failed: {e}"
+        );
     }
 }
 

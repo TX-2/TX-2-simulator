@@ -8,7 +8,7 @@ use chumsky::Parser;
 
 use super::super::{
     ast::{Atom, HoldBit, InstructionFragment, LiteralValue, Origin, TaggedProgramInstruction},
-    eval::{make_empty_rc_block_for_test, Evaluate, EvaluationContext, HereValue},
+    eval::{Evaluate, EvaluationContext, HereValue, make_empty_rc_block_for_test},
     lexer::Token,
     manuscript::{ManuscriptBlock, ManuscriptMetaCommand, SourceFile},
     memorymap::MemoryMap,
@@ -1443,7 +1443,9 @@ fn test_subs() {
             no_state_setup,
         );
         if got != expected {
-            panic!("Parsing '{input}' with parse_multi_syllable_symex, expected '{expected}', got '{got}'");
+            panic!(
+                "Parsing '{input}' with parse_multi_syllable_symex, expected '{expected}', got '{got}'"
+            );
         }
     }
 
@@ -1473,7 +1475,9 @@ fn test_greek_letters() {
             no_state_setup,
         );
         if got != input {
-            panic!("Parsing '{input}' with parse_multi_syllable_symex, expected '{input}', got '{got}'");
+            panic!(
+                "Parsing '{input}' with parse_multi_syllable_symex, expected '{input}', got '{got}'"
+            );
         }
     }
     check("β");
@@ -1937,12 +1941,14 @@ fn test_double_pipe_config_expression_disallows_spaces() {
     // Spaces are not allowed in config expressions.  First we verify
     // that an expression without spaces is valid:
     let input_qy_unspaced = "‖-(Q×2) Y";
-    assert!(dbg!(parse_with(
-        input_qy_unspaced,
-        tagged_instruction(),
-        no_state_setup
-    ))
-    .is_ok());
+    assert!(
+        dbg!(parse_with(
+            input_qy_unspaced,
+            tagged_instruction(),
+            no_state_setup
+        ))
+        .is_ok()
+    );
 
     // Now we verify that a similae expression with spaces is
     // rejected:
@@ -2155,7 +2161,7 @@ mod comma_tests {
         CommaDelimitedFragment, Commas, CommasOrInstruction, FragmentWithHold, HoldBit,
         InstructionFragment,
     };
-    use super::super::super::span::{span, Span, Spanned};
+    use super::super::super::span::{Span, Spanned, span};
     use super::super::instructions_with_comma_counts as parent_instructions_with_comma_counts;
     use std::fmt::Formatter;
 
@@ -2642,7 +2648,9 @@ fn test_make_bit_designator_literal() {
                         dbg!(&literal);
                         let n = literal.unshifted_value();
                         if (n & (!MASK)) != 0 {
-                            panic!("bit designator {what} produced output {n:o} but that has bits set outside the allowed mask {MASK:o}");
+                            panic!(
+                                "bit designator {what} produced output {n:o} but that has bits set outside the allowed mask {MASK:o}"
+                            );
                         }
                         if let Some((prevq, prevb)) = seen.insert(n, (q, bit)) {
                             panic!(

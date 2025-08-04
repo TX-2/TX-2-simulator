@@ -2,10 +2,10 @@ use std::collections::BTreeMap;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 
-use base::prelude::Address;
-use base::prelude::IndexBy;
 use base::Unsigned18Bit;
 use base::Unsigned36Bit;
+use base::prelude::Address;
+use base::prelude::IndexBy;
 
 use super::ast::InstructionSequence;
 use super::ast::Origin;
@@ -70,7 +70,10 @@ impl Display for RcWordAllocationFailure {
                 source,
                 rc_block_len,
             } => {
-                write!(f, "failed to allocate RC word for {source}; RC block is already {rc_block_len} words long")
+                write!(
+                    f,
+                    "failed to allocate RC word for {source}; RC block is already {rc_block_len} words long"
+                )
             }
             RcWordAllocationFailure::InconsistentTag {
                 tag_name,
