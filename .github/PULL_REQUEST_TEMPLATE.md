@@ -11,7 +11,10 @@ items you have done should be updated with a check mark (that is,
          license](../LICENSE-MIT).
    * [ ] Make sure that your PR is not a duplicate.
    * [ ] You have done your changes in a separate branch.
-   * [ ] You have a descriptive commit message with a short title (first line).
+   * [ ] You have a descriptive commit message with a short title
+         (first line).
+   * [ ] The author address in your commits is an address for which
+         emails will actually reach you ([instructions](https://docs.github.com/en/account-and-profile/how-tos/setting-up-and-managing-your-personal-account-on-github/managing-email-preferences/setting-your-commit-email-address)).
    * [ ] You have only one commit.  If not, either squash them into one
          commit or contribute your change as a sequence of smaller Pull
          Requests.
