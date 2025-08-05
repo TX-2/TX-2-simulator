@@ -82,6 +82,8 @@ export const MainGrid = (props: MainGridProps) => (
   <Box column="1" row="1">
         <details open>
           <summary>Instructions</summary>
+          <p>This is a simulator for the TX-2 computer.  It simulates the TX-2 machine and its peripherals.
+             You can run one of the canned example programs, or you can upload your own program.</p>
           <p>Here are some getting-started instructions.</p>
           <ol>
             <li> Press &quot;Mount Paper Tape&quot; and press the button to load the &lsquo;hello&rsquo; sample file.</li>
