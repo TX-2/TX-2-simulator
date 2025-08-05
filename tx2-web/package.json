@@ -17,9 +17,11 @@
   "dependencies": {
     "@react-css/grid": "^1.5.1",
     "@types/react-modal": "^3.13.1",
+    "nvm": "^0.0.4",
     "react": "^17.0.2",
     "react-dom": "^17.0.2",
-    "react-modal": "^3.15.1"
+    "react-modal": "^3.15.1",
+    "wsl-utils": "^0.1.0"
   },
   "devDependencies": {
     "@babel/plugin-syntax-jsx": "^7.17.12",
