@@ -56,7 +56,8 @@ const TapeLoadModal: FunctionComponent<TapeLoadModalProps> = ({ modalIsOpen, clo
     contentLabel="Load Paper Tape"
   ><h2>Load Paper Tape Image</h2>
     <div><p>Please select a paper tape image file to load.</p>
-      <p>You can press one of the buttons which load a canned example, or use the "Choose file" button to upload your own program and run it.</p></div>
+      <p>You can press one of the buttons which load a canned example,
+        or use the &quot;Choose file&quot; button to upload your own program and run it.</p></div>
     <form>
       <div className={styles['tape-load-modal__buttons']}>
         <input className={styles['tape-load-modal__buttons']} type="button" onClick={handleLoadHello} value="Load sample &lsquo;hello&rsquo;" />
