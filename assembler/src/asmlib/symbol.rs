@@ -80,20 +80,20 @@ impl Display for SymbolOrHere {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub(crate) enum InconsistentSymbolUse {
-    ConflictingOrigin(
-        SymbolName,
-        Box<Origin>,
-        BlockIdentifier,
-        Box<Origin>,
-        BlockIdentifier,
-    ),
+    ConflictingOrigin {
+        name: SymbolName,
+        first: (Span, BlockIdentifier),
+        second: (Span, BlockIdentifier),
+    },
     MixingOrigin(SymbolName, Span),
 }
 
 impl Spanned for InconsistentSymbolUse {
     fn span(&self) -> Span {
         match self {
-            InconsistentSymbolUse::ConflictingOrigin(_, _origin1, _, origin2, _) => origin2.span(),
+            InconsistentSymbolUse::ConflictingOrigin {
+                second: (span, _), ..
+            } => *span,
             InconsistentSymbolUse::MixingOrigin(_, span) => *span,
         }
     }
@@ -102,13 +102,11 @@ impl Spanned for InconsistentSymbolUse {
 impl Display for InconsistentSymbolUse {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            InconsistentSymbolUse::ConflictingOrigin(
+            InconsistentSymbolUse::ConflictingOrigin {
                 name,
-                _origin_1,
-                block_identifier_1,
-                _origin_2,
-                block_identifier_2,
-            ) => {
+                first: (_, block_identifier_1),
+                second: (_, block_identifier_2),
+            } => {
                 write!(
                     f,
                     "symbol {name} cannot simultaneously be the origin for {block_identifier_1} and {block_identifier_2}; names must be unique"
@@ -299,13 +297,11 @@ impl SymbolContext {
                     };
                     OriginUse::IncludesOrigin(*my_block, chosen.clone())
                 } else {
-                    return Err(InconsistentSymbolUse::ConflictingOrigin(
-                        name.clone(),
-                        Box::new(my_origin.clone()),
-                        *my_block,
-                        Box::new(their_origin.clone()),
-                        *their_block,
-                    ));
+                    return Err(InconsistentSymbolUse::ConflictingOrigin {
+                        name: name.clone(),
+                        first: (my_origin.span(), *my_block),
+                        second: (their_origin.span(), *their_block),
+                    });
                 }
             }
             (OriginUse::IncludesOrigin(_, my_origin), OriginUse::NotOrigin { .. }) => {
