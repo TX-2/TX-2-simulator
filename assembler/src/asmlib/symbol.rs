@@ -78,13 +78,6 @@ impl Display for SymbolOrHere {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub(crate) enum ConfigOrIndexUsage {
-    Configuration,
-    Index,
-    ConfigurationAndIndex,
-}
-
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub(crate) enum InconsistentSymbolUse {
     ConflictingOrigin(
@@ -94,14 +87,14 @@ pub(crate) enum InconsistentSymbolUse {
         Box<Origin>,
         BlockIdentifier,
     ),
-    MixingOrigin(SymbolName, Box<Origin>, ConfigOrIndexUsage),
+    MixingOrigin(SymbolName, Span),
 }
 
 impl Spanned for InconsistentSymbolUse {
     fn span(&self) -> Span {
         match self {
             InconsistentSymbolUse::ConflictingOrigin(_, _origin1, _, origin2, _) => origin2.span(),
-            InconsistentSymbolUse::MixingOrigin(_, origin, _) => origin.span(),
+            InconsistentSymbolUse::MixingOrigin(_, span) => *span,
         }
     }
 }
@@ -121,7 +114,7 @@ impl Display for InconsistentSymbolUse {
                     "symbol {name} cannot simultaneously be the origin for {block_identifier_1} and {block_identifier_2}; names must be unique"
                 )
             }
-            InconsistentSymbolUse::MixingOrigin(name, _origin, _incompatibility) => {
+            InconsistentSymbolUse::MixingOrigin(name, _) => {
                 write!(
                     f,
                     "symbols (in this case {name}) cannot be used as an origin name and a configuration or index value"
@@ -230,13 +223,9 @@ impl SymbolContext {
         span: Span,
     ) -> Result<(), InconsistentSymbolUse> {
         match &mut self.origin {
-            OriginUse::IncludesOrigin(_block_identifier, origin) => {
-                Err(InconsistentSymbolUse::MixingOrigin(
-                    name.clone(),
-                    Box::new(origin.clone()),
-                    ConfigOrIndexUsage::Index,
-                ))
-            }
+            OriginUse::IncludesOrigin(_block_identifier, origin) => Err(
+                InconsistentSymbolUse::MixingOrigin(name.clone(), origin.span()),
+            ),
             OriginUse::NotOrigin { index, .. } => {
                 *index = IndexUse::IncludesIndex;
                 self.uses.insert(OrderableSpan(span));
@@ -277,28 +266,6 @@ impl SymbolContext {
         name: &SymbolName,
         mut other: SymbolContext,
     ) -> Result<(), InconsistentSymbolUse> {
-        fn mix_err(
-            name: &SymbolName,
-            origin: Origin,
-            _block_id: BlockIdentifier,
-            configuration: ConfigUse,
-            index: IndexUse,
-        ) -> InconsistentSymbolUse {
-            let incompatiblity: ConfigOrIndexUsage = match (configuration, index) {
-                (ConfigUse::IncludesConfig, IndexUse::IncludesIndex) => {
-                    ConfigOrIndexUsage::ConfigurationAndIndex
-                }
-                (ConfigUse::IncludesConfig, IndexUse::NotIndex) => {
-                    ConfigOrIndexUsage::Configuration
-                }
-                (ConfigUse::NotConfig, IndexUse::IncludesIndex) => ConfigOrIndexUsage::Index,
-                (ConfigUse::NotConfig, IndexUse::NotIndex) => {
-                    unreachable!("enclosing match already eliminated this case")
-                }
-            };
-            InconsistentSymbolUse::MixingOrigin(name.clone(), Box::new(origin), incompatiblity)
-        }
-
         let origin: OriginUse = match (&self.origin, &other.origin) {
             (
                 OriginUse::NotOrigin {
@@ -341,34 +308,19 @@ impl SymbolContext {
                     ));
                 }
             }
-            (
-                OriginUse::IncludesOrigin(my_block, my_origin),
-                OriginUse::NotOrigin {
-                    config: their_config,
-                    index: their_index,
-                },
-            ) => {
-                return Err(mix_err(
-                    name,
-                    my_origin.clone(),
-                    *my_block,
-                    *their_config,
-                    *their_index,
+            (OriginUse::IncludesOrigin(_, my_origin), OriginUse::NotOrigin { .. }) => {
+                return Err(InconsistentSymbolUse::MixingOrigin(
+                    name.clone(),
+                    my_origin.span(),
                 ));
             }
             (
-                OriginUse::NotOrigin {
-                    config: my_config,
-                    index: my_index,
-                },
-                OriginUse::IncludesOrigin(their_block, their_origin),
+                OriginUse::NotOrigin { .. },
+                OriginUse::IncludesOrigin(_their_block, their_origin),
             ) => {
-                return Err(mix_err(
-                    name,
-                    their_origin.clone(),
-                    *their_block,
-                    *my_config,
-                    *my_index,
+                return Err(InconsistentSymbolUse::MixingOrigin(
+                    name.clone(),
+                    their_origin.span(),
                 ));
             }
         };
