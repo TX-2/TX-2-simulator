@@ -505,8 +505,7 @@ fn assemble_pass3(
             ref e @ RcWordAllocationFailure::InconsistentTag {
                 ref tag_name,
                 span,
-                existing: _,
-                proposed: _,
+                explanation: _,
             } => {
                 let location: LineAndColumn = body.location_of(span.start);
                 AssemblerFailure::BadProgram(OneOrMore::new(WithLocation {

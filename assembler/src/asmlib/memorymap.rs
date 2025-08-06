@@ -15,8 +15,7 @@ use super::source::Source;
 use super::span::{Span, Spanned};
 use super::symbol::SymbolName;
 use super::symtab::{
-    ExplicitDefinition, ExplicitSymbolTable, FinalSymbolTable, ImplicitSymbolTable,
-    IndexRegisterAssigner, TagDefinition,
+    ExplicitSymbolTable, FinalSymbolTable, ImplicitSymbolTable, IndexRegisterAssigner,
 };
 use super::types::AssemblerFailure;
 use super::types::BlockIdentifier;
@@ -58,8 +57,7 @@ pub(crate) enum RcWordAllocationFailure {
     InconsistentTag {
         tag_name: SymbolName,
         span: Span,
-        existing: Box<ExplicitDefinition>,
-        proposed: Box<TagDefinition>,
+        explanation: String,
     },
 }
 
@@ -78,13 +76,9 @@ impl Display for RcWordAllocationFailure {
             RcWordAllocationFailure::InconsistentTag {
                 tag_name,
                 span: _,
-                existing,
-                proposed,
+                explanation,
             } => {
-                write!(
-                    f,
-                    "failed to define tag {tag_name} because it already had a previous definition: {existing} versus {proposed}"
-                )
+                write!(f, "failed to define tag {tag_name}: {explanation}")
             }
         }
     }

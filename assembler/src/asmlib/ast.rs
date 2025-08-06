@@ -745,8 +745,9 @@ impl RegisterContaining {
                             return Err(RcWordAllocationFailure::InconsistentTag {
                                 tag_name: symbol_name,
                                 span,
-                                existing,
-                                proposed: Box::new(new_tag_definition),
+                                explanation: format!(
+                                    "previous definition {existing} is incompatible with new definition {new_tag_definition}"
+                                ),
                             });
                         }
                     }
