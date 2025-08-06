@@ -102,10 +102,7 @@ pub enum ProgramError {
         span: Span,
     },
     BlockTooLong(Span, MachineLimitExceededFailure),
-    RcBlockTooLong {
-        rc_word_source: RcWordSource,
-        rc_word_span: Span,
-    },
+    RcBlockTooLong(RcWordSource),
     FailedToAssignIndexRegister(Span, SymbolName),
 }
 
@@ -113,9 +110,7 @@ impl Spanned for ProgramError {
     fn span(&self) -> Span {
         use ProgramError::*;
         match self {
-            RcBlockTooLong {
-                rc_word_span: span, ..
-            }
+            RcBlockTooLong(RcWordSource { span, .. })
             | FailedToAssignIndexRegister(span, _)
             | BlockTooLong(span, _)
             | InconsistentTag { span, .. }
@@ -129,14 +124,8 @@ impl Display for ProgramError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         use ProgramError::*;
         match self {
-            RcBlockTooLong {
-                rc_word_source,
-                rc_word_span: _,
-            } => {
-                write!(
-                    f,
-                    "RC-word block grew too long to allocate {rc_word_source}"
-                )
+            RcBlockTooLong(RcWordSource { kind, .. }) => {
+                write!(f, "RC-word block grew too long to allocate {kind}")
             }
             FailedToAssignIndexRegister(_span, symbol_name) => {
                 write!(

@@ -22,29 +22,32 @@ use super::types::BlockIdentifier;
 use super::types::ProgramError;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum RcWordSource {
-    PipeConstruct(Span),
-    Braces(Span),
-    DefaultAssignment(Span, SymbolName),
+pub enum RcWordKind {
+    // Ivan Sutherland calls PipeConstruct "double addressing"
+    PipeConstruct,
+    Braces,
+    DefaultAssignment,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct RcWordSource {
+    pub span: Span,
+    pub kind: RcWordKind,
 }
 
 impl Spanned for RcWordSource {
     fn span(&self) -> Span {
-        match self {
-            RcWordSource::PipeConstruct(span)
-            | RcWordSource::Braces(span)
-            | RcWordSource::DefaultAssignment(span, _) => *span,
-        }
+        self.span
     }
 }
 
-impl Display for RcWordSource {
+impl Display for RcWordKind {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            RcWordSource::PipeConstruct(_) => write!(f, "pipe construct"),
-            RcWordSource::Braces(_) => write!(f, "RC-word"),
-            RcWordSource::DefaultAssignment(_, name) => write!(f, "default-assignment of {name}"),
-        }
+        f.write_str(match self {
+            RcWordKind::PipeConstruct => "pipe construct",
+            RcWordKind::Braces => "RC-word",
+            RcWordKind::DefaultAssignment => "default-assignment",
+        })
     }
 }
 
@@ -65,12 +68,12 @@ impl Display for RcWordAllocationFailure {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             RcWordAllocationFailure::RcBlockTooBig {
-                source,
+                source: RcWordSource { kind, .. },
                 rc_block_len,
             } => {
                 write!(
                     f,
-                    "failed to allocate RC word for {source}; RC block is already {rc_block_len} words long"
+                    "failed to allocate RC word for {kind}; RC block is already {rc_block_len} words long"
                 )
             }
             RcWordAllocationFailure::InconsistentTag {

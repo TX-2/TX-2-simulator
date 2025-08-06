@@ -7,7 +7,7 @@ use base::prelude::*;
 use super::ast::{EqualityValue, Origin};
 use super::collections::OneOrMore;
 use super::eval::SymbolLookupFailure;
-use super::memorymap::{RcAllocator, RcWordAllocationFailure, RcWordSource};
+use super::memorymap::{RcAllocator, RcWordAllocationFailure, RcWordKind, RcWordSource};
 use super::source::Source;
 use super::span::*;
 use super::symbol::{InconsistentSymbolUse, SymbolContext, SymbolName};
@@ -429,8 +429,13 @@ pub(super) fn assign_default_rc_word_tags<R: RcAllocator>(
             if context.requires_rc_word_allocation() {
                 let span: Span = *context.any_span();
                 let value = Unsigned36Bit::ZERO;
-                let addr =
-                    rcblock.allocate(RcWordSource::DefaultAssignment(span, name.clone()), value)?;
+                let addr = rcblock.allocate(
+                    RcWordSource {
+                        span,
+                        kind: RcWordKind::DefaultAssignment,
+                    },
+                    value,
+                )?;
                 final_symbols.define(
                     name.clone(),
                     FinalSymbolType::Equality,

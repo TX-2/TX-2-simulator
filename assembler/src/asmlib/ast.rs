@@ -35,7 +35,7 @@ use super::manuscript::{MacroDefinition, MacroParameterBindings, MacroParameterV
 use super::memorymap::MemoryMap;
 use super::memorymap::RcAllocator;
 use super::memorymap::RcWordAllocationFailure;
-use super::memorymap::RcWordSource;
+use super::memorymap::{RcWordKind, RcWordSource};
 use super::source::Source;
 use super::span::*;
 use super::symbol::{InconsistentSymbolUse, SymbolContext, SymbolName};
@@ -563,7 +563,10 @@ impl RegistersContaining {
         implicit_symtab: &mut ImplicitSymbolTable,
         rc_allocator: &mut R,
     ) -> Result<(), RcWordAllocationFailure> {
-        let source = RcWordSource::Braces(span);
+        let source = RcWordSource {
+            span,
+            kind: RcWordKind::Braces,
+        };
         for rc in self.words_mut() {
             *rc = rc.clone().assign_rc_word(
                 source.clone(),
@@ -1219,7 +1222,10 @@ impl InstructionFragment {
                 let span: Span = *rc_word_span;
                 let w = rc_word_value.clone();
                 *rc_word_value = w.assign_rc_word(
-                    RcWordSource::PipeConstruct(span),
+                    RcWordSource {
+                        span,
+                        kind: RcWordKind::PipeConstruct,
+                    },
                     explicit_symtab,
                     implicit_symtab,
                     rc_allocator,

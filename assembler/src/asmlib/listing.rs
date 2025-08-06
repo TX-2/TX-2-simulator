@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use super::memorymap::RcWordSource;
+use super::memorymap::{RcWordKind, RcWordSource};
 use super::source::Source;
 use super::span::Span;
 use super::symtab::FinalSymbolTable;
@@ -54,23 +54,9 @@ fn write_address(f: &mut std::fmt::Formatter<'_>, addr: &Address) -> std::fmt::R
 
 impl Display for ListingLineWithBody<'_, '_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.line.rc_source.as_ref() {
-            Some(RcWordSource::DefaultAssignment(_, name)) => {
-                write!(f, "{name:10}-> ")?;
-            }
-            Some(RcWordSource::Braces(_)) | Some(RcWordSource::PipeConstruct(_)) | None => {
-                write!(f, "{:13}", "")?;
-            }
-        }
-
         let source_span_to_print: Option<Span> = match self.line.span.as_ref() {
             Some(span) => Some(*span),
-            None => match self.line.rc_source.as_ref() {
-                Some(RcWordSource::Braces(span)) | Some(RcWordSource::PipeConstruct(span)) => {
-                    Some(*span)
-                }
-                _ => None,
-            },
+            None => self.line.rc_source.as_ref().map(|source| source.span),
         };
 
         if let Some(span) = source_span_to_print {
@@ -79,7 +65,10 @@ impl Display for ListingLineWithBody<'_, '_> {
             write!(f, "{prefix}{s:54}")?;
         } else if matches!(
             &self.line.rc_source,
-            Some(RcWordSource::DefaultAssignment(_, _))
+            Some(RcWordSource {
+                kind: RcWordKind::DefaultAssignment,
+                ..
+            })
         ) {
             write!(f, "{:<54}", 0)?;
         }

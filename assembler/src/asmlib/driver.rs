@@ -496,10 +496,7 @@ fn assemble_pass3(
                 let location: LineAndColumn = body.location_of(span.start);
                 AssemblerFailure::BadProgram(OneOrMore::new(WithLocation {
                     location,
-                    inner: ProgramError::RcBlockTooLong {
-                        rc_word_source: source,
-                        rc_word_span: span,
-                    },
+                    inner: ProgramError::RcBlockTooLong(source),
                 }))
             }
             ref e @ RcWordAllocationFailure::InconsistentTag {
