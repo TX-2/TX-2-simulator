@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::ops::Shl;
 
-use tracing::{event, Level};
+use tracing::{Level, event};
 
 use base::{
     charset::Script,
@@ -22,9 +22,9 @@ use super::symbol::{ConfigUse, IndexUse, OriginUse, SymbolName};
 use super::types::{AssemblerFailure, BlockIdentifier, MachineLimitExceededFailure, ProgramError};
 use crate::symbol::SymbolContext;
 use crate::symtab::{
-    record_undefined_symbol_or_return_failure, ExplicitDefinition, ExplicitSymbolTable,
-    FinalSymbolDefinition, FinalSymbolTable, FinalSymbolType, ImplicitDefinition,
-    ImplicitSymbolTable, IndexRegisterAssigner, LookupOperation, TagDefinition,
+    ExplicitDefinition, ExplicitSymbolTable, FinalSymbolDefinition, FinalSymbolTable,
+    FinalSymbolType, ImplicitDefinition, ImplicitSymbolTable, IndexRegisterAssigner,
+    LookupOperation, TagDefinition, record_undefined_symbol_or_return_failure,
 };
 
 #[derive(Debug, PartialEq, Eq)]
