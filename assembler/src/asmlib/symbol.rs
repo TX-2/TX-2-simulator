@@ -7,6 +7,8 @@ use base::charset::Script;
 
 use super::ast::Origin;
 use super::span::Spanned;
+#[cfg(test)]
+use super::span::span;
 use super::span::{OrderableSpan, Span};
 use super::types::BlockIdentifier;
 
@@ -78,6 +80,13 @@ impl Display for SymbolOrHere {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub(crate) enum ConfigOrIndexUsage {
+    Configuration,
+    Index,
+    ConfigurationAndIndex,
+}
+
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub(crate) enum InconsistentSymbolUse {
     ConflictingOrigin {
@@ -85,16 +94,18 @@ pub(crate) enum InconsistentSymbolUse {
         first: (Span, BlockIdentifier),
         second: (Span, BlockIdentifier),
     },
-    MixingOrigin(SymbolName, Span),
+    MixingOrigin(SymbolName, Span, ConfigOrIndexUsage),
 }
 
 impl Spanned for InconsistentSymbolUse {
     fn span(&self) -> Span {
         match self {
             InconsistentSymbolUse::ConflictingOrigin {
-                second: (span, _), ..
-            } => *span,
-            InconsistentSymbolUse::MixingOrigin(_, span) => *span,
+                name: _,
+                first: _,
+                second: (origin2_span, _),
+            } => *origin2_span,
+            InconsistentSymbolUse::MixingOrigin(_, span, _) => *span,
         }
     }
 }
@@ -112,11 +123,19 @@ impl Display for InconsistentSymbolUse {
                     "symbol {name} cannot simultaneously be the origin for {block_identifier_1} and {block_identifier_2}; names must be unique"
                 )
             }
-            InconsistentSymbolUse::MixingOrigin(name, _) => {
-                write!(
-                    f,
-                    "symbols (in this case {name}) cannot be used as an origin name and a configuration or index value"
-                )
+            InconsistentSymbolUse::MixingOrigin(name, _, incompatibility) => {
+                let what: &'static str = match incompatibility {
+                    ConfigOrIndexUsage::Configuration => {
+                        "a configuration value (though using it as an index value would also be incorrect)"
+                    }
+                    ConfigOrIndexUsage::Index => {
+                        "an index value (though using it as a configuration value would also be incorrect)"
+                    }
+                    ConfigOrIndexUsage::ConfigurationAndIndex => {
+                        "a configuration or index value (though in this case it was used as both)"
+                    }
+                };
+                write!(f, "symbols (in this case {name}) cannot be used as {what}")
             }
         }
     }
@@ -221,9 +240,13 @@ impl SymbolContext {
         span: Span,
     ) -> Result<(), InconsistentSymbolUse> {
         match &mut self.origin {
-            OriginUse::IncludesOrigin(_block_identifier, origin) => Err(
-                InconsistentSymbolUse::MixingOrigin(name.clone(), origin.span()),
-            ),
+            OriginUse::IncludesOrigin(_block_identifier, origin) => {
+                Err(InconsistentSymbolUse::MixingOrigin(
+                    name.clone(),
+                    origin.span(),
+                    ConfigOrIndexUsage::Index,
+                ))
+            }
             OriginUse::NotOrigin { index, .. } => {
                 *index = IndexUse::IncludesIndex;
                 self.uses.insert(OrderableSpan(span));
@@ -264,6 +287,28 @@ impl SymbolContext {
         name: &SymbolName,
         mut other: SymbolContext,
     ) -> Result<(), InconsistentSymbolUse> {
+        fn mix_err(
+            name: &SymbolName,
+            origin: Origin,
+            _block_id: BlockIdentifier,
+            configuration: ConfigUse,
+            index: IndexUse,
+        ) -> InconsistentSymbolUse {
+            let incompatiblity: ConfigOrIndexUsage = match (configuration, index) {
+                (ConfigUse::IncludesConfig, IndexUse::IncludesIndex) => {
+                    ConfigOrIndexUsage::ConfigurationAndIndex
+                }
+                (ConfigUse::IncludesConfig, IndexUse::NotIndex) => {
+                    ConfigOrIndexUsage::Configuration
+                }
+                (ConfigUse::NotConfig, IndexUse::IncludesIndex) => ConfigOrIndexUsage::Index,
+                (ConfigUse::NotConfig, IndexUse::NotIndex) => {
+                    unreachable!("enclosing match already eliminated this case")
+                }
+            };
+            InconsistentSymbolUse::MixingOrigin(name.clone(), origin.span(), incompatiblity)
+        }
+
         let origin: OriginUse = match (&self.origin, &other.origin) {
             (
                 OriginUse::NotOrigin {
@@ -304,20 +349,31 @@ impl SymbolContext {
                     });
                 }
             }
-            (OriginUse::IncludesOrigin(_, my_origin), OriginUse::NotOrigin { .. }) => {
-                return Err(InconsistentSymbolUse::MixingOrigin(
-                    name.clone(),
-                    my_origin.span(),
-                ));
+            (
+                OriginUse::IncludesOrigin(my_block, my_origin),
+                OriginUse::NotOrigin { config, index },
+            ) => {
+                if config == &ConfigUse::IncludesConfig || index == &IndexUse::IncludesIndex {
+                    return Err(mix_err(name, my_origin.clone(), *my_block, *config, *index));
+                } else {
+                    OriginUse::IncludesOrigin(*my_block, my_origin.clone())
+                }
             }
             (
-                OriginUse::NotOrigin { .. },
-                OriginUse::IncludesOrigin(_their_block, their_origin),
+                OriginUse::NotOrigin { config, index },
+                OriginUse::IncludesOrigin(their_block, their_origin),
             ) => {
-                return Err(InconsistentSymbolUse::MixingOrigin(
-                    name.clone(),
-                    their_origin.span(),
-                ));
+                if config == &ConfigUse::IncludesConfig || index == &IndexUse::IncludesIndex {
+                    return Err(mix_err(
+                        name,
+                        their_origin.clone(),
+                        *their_block,
+                        *config,
+                        *index,
+                    ));
+                } else {
+                    OriginUse::IncludesOrigin(*their_block, their_origin.clone())
+                }
             }
         };
         let result = SymbolContext {
@@ -347,6 +403,134 @@ impl SymbolContext {
                     "invariant broken in SymbolContext::any_span(): SymbolContext contains empty uses"
                 );
             }
+        }
+    }
+}
+
+#[test]
+fn test_origin_can_be_used_as_address() {
+    // Given a symbol usage as an origin name
+    let name = SymbolName::from("BEGIN");
+    let make_origin_context = || {
+        SymbolContext::origin(
+            BlockIdentifier::from(0),
+            Origin::Symbolic(span(10..15), name.clone()),
+        )
+    };
+    // And a symbol usage in an address context.
+    let make_address_context = || SymbolContext {
+        address: AddressUse::IncludesAddress,
+        origin: OriginUse::NotOrigin {
+            config: ConfigUse::NotConfig,
+            index: IndexUse::NotIndex,
+        },
+        uses: SymbolContext::uses(span(20..25)),
+    };
+
+    // When we merge these two uses of the same symbol, this should
+    // succeed.
+    let mut fwd = make_origin_context();
+    assert_eq!(fwd.merge(&name, make_address_context()), Ok(()));
+
+    let mut rev = make_address_context();
+    assert_eq!(rev.merge(&name, make_origin_context()), Ok(()));
+
+    // We should get the same result in either case.
+    assert_eq!(fwd, rev);
+}
+
+#[test]
+fn test_origin_cannot_be_used_as_an_index_value() {
+    // Given a symbol usage as an origin name
+    let name = SymbolName::from("BEGIN");
+    let make_origin_context = || {
+        SymbolContext::origin(
+            BlockIdentifier::from(0),
+            Origin::Symbolic(span(10..15), name.clone()),
+        )
+    };
+    // And a symbol usage in an index context.
+    let make_index_context = || SymbolContext {
+        address: AddressUse::NotAddress,
+        origin: OriginUse::NotOrigin {
+            config: ConfigUse::NotConfig,
+            index: IndexUse::IncludesIndex,
+        },
+        uses: SymbolContext::uses(span(20..25)),
+    };
+
+    // When we merge these two uses of the same symbol, this should
+    // fail (as this combination is not allowed)
+    let expected_msg = "symbols (in this case BEGIN) cannot be used as an index value (though using it as a configuration value would also be incorrect)";
+    let mut fwd = make_origin_context();
+    match fwd.merge(&name, make_index_context()) {
+        Ok(_) => {
+            panic!(
+                "failed to detect incompatibility in the use of a symbol as both origin and index"
+            );
+        }
+        Err(e) => {
+            assert_eq!(e.to_string(), expected_msg);
+        }
+    }
+
+    let mut rev = make_index_context();
+    match rev.merge(&name, make_origin_context()) {
+        Ok(_) => {
+            panic!(
+                "failed to detect incompatibility in the use of a symbol as both origin and index"
+            );
+        }
+        Err(e) => {
+            assert_eq!(e.to_string(), expected_msg);
+        }
+    }
+}
+
+#[test]
+fn test_origin_cannot_be_used_as_a_configuration_value() {
+    // Given a symbol usage as an origin name
+    let name = SymbolName::from("BEGIN");
+    let make_origin_context = || {
+        SymbolContext::origin(
+            BlockIdentifier::from(0),
+            Origin::Symbolic(span(10..15), name.clone()),
+        )
+    };
+    // And a symbol usage in a configuration context.
+    let make_configuration_context = || SymbolContext {
+        address: AddressUse::NotAddress,
+        origin: OriginUse::NotOrigin {
+            config: ConfigUse::IncludesConfig,
+            index: IndexUse::NotIndex,
+        },
+        uses: SymbolContext::uses(span(20..25)),
+    };
+
+    // When we merge these two uses of the same symbol, this should
+    // fail (as this combination is not allowed)
+    let expected_msg = "symbols (in this case BEGIN) cannot be used as a configuration value (though using it as an index value would also be incorrect)";
+    let mut fwd = make_origin_context();
+    match fwd.merge(&name, make_configuration_context()) {
+        Ok(_) => {
+            panic!(
+                "failed to detect incompatibility in the use of a symbol as both origin and index"
+            );
+        }
+        Err(e) => {
+            assert_eq!(e.to_string(), expected_msg);
+        }
+    }
+
+    let mut rev = make_configuration_context();
+    match rev.merge(&name, make_origin_context()) {
+        Ok(_) => {
+            panic!(
+                "failed to detect incompatibility in the use of a symbol as both origin and configuration value"
+            );
+        }
+        Err(e) => {
+            assert_eq!(e.to_string(), expected_msg);
         }
     }
 }
