@@ -36,7 +36,7 @@ const TapeLoadModal: FunctionComponent<TapeLoadModalProps> = ({ modalIsOpen, clo
     const files = e.target.files;
     if (files) {
       const file: File = files[0];
-      console.log("Attempting to load a tape " + file.name + " which has length " + file.size.toString());
+      console.log("Attempting to load a tape " + file.name + " which has length " + file.size.toString(10) + " (decimal)");
       const reader = new FileReader();
       reader.onloadend = function() {
         const bytes = new Uint8Array(reader.result as ArrayBuffer)

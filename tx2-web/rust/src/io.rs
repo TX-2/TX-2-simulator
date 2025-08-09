@@ -217,9 +217,36 @@ pub fn get_builtin_sample_tape(sample_name: &str) -> Result<Vec<u8>, String> {
 }
 
 #[derive(Debug, Serialize)]
+struct SerializableExtendedUnitState {
+    pub flag: bool,
+    pub connected: bool,
+    pub in_maintenance: bool,
+    pub name: String,
+    pub text_info: String,
+    /// status is None for units which are attached but not currently
+    /// connected.
+    pub status: Option<ExtendedConnectedUnitStatus>,
+    pub index_value: i32,
+}
+
+impl From<ExtendedUnitState> for SerializableExtendedUnitState {
+    fn from(input: cpu::ExtendedUnitState) -> Self {
+        SerializableExtendedUnitState {
+            flag: input.flag,
+            connected: input.connected,
+            in_maintenance: input.in_maintenance,
+            name: input.name,
+            text_info: input.text_info,
+            status: input.status,
+            index_value: i32::from(input.index_value), // this is a change of type.
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
 pub struct UnitState {
     unit: u8,
-    unit_state: ExtendedUnitState,
+    unit_state: SerializableExtendedUnitState,
 }
 
 #[wasm_bindgen]
@@ -238,7 +265,7 @@ pub fn tx2_drain_device_changes(
                         u8::from(unit),
                         UnitState {
                             unit: unit.into(),
-                            unit_state: state,
+                            unit_state: state.into(),
                         },
                     )
                 })
@@ -263,6 +290,11 @@ pub fn tx2_device_statuses(
         Ok(statuses) => statuses
             .into_iter()
             .map(|(unit, status)| {
+                let status: SerializableExtendedUnitState = status.into();
+                event!(
+                    Level::DEBUG,
+                    "tx2_device_statuses: serializable status for unit {unit} is {status:?}"
+                );
                 let tmp = UnitState {
                     unit: u8::from(unit),
                     unit_state: status,

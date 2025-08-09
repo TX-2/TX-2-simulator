@@ -9,6 +9,7 @@ export interface IoUnitProps {
     unit: number;
     key: string;
     flag: boolean;
+    index_value: number;
     connected: boolean;
     in_maintenance: boolean;
     name: string;
@@ -35,10 +36,13 @@ export class IoController {
     }
 
     convert_wasm_unit_state_to_props(state: WasmUnitState): IoUnitProps {
+        console.log("convert_wasm_unit_state_to_props: for unit "
+            + state.unit.toString(8) + ", index_value=" + state.unit_state.index_value.toString(8));
         return {
             unit: state.unit,
             key: state.unit.toString(8),
             flag: state.unit_state.flag,
+            index_value: state.unit_state.index_value,
             connected: state.unit_state.connected,
             in_maintenance: state.unit_state.in_maintenance,
             name: state.unit_state.name,
@@ -50,6 +54,7 @@ export class IoController {
 
     allUnitProps(): IoUnitProps[] {
         const statuses = this.tx2Controller.get_device_statuses();
+        console.log("allUnitProps: statuses=", statuses);
         return Array.from(statuses, this.convert_wasm_unit_state_to_props.bind(this));
     }
 
@@ -66,6 +71,6 @@ export class IoController {
                 cb(unit_props);
             }
         };
-	changes.forEach(performUpdate);
+        changes.forEach(performUpdate);
     }
 }

@@ -49,6 +49,7 @@ use super::alarm::{Alarm, AlarmDetails, Alarmer};
 use super::alarmunit::AlarmUnit;
 use super::changelog::ChangeIndex;
 use super::context::Context;
+use super::control::ControlUnit;
 use super::event::*;
 use super::types::*;
 use base::charset::LincolnState;
@@ -156,9 +157,10 @@ pub struct ExtendedConnectedUnitStatus {
     pub mode: u16,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
 pub struct ExtendedUnitState {
     pub flag: bool,
+    pub index_value: Signed18Bit,
     pub connected: bool,
     pub in_maintenance: bool,
     pub name: String,
@@ -391,7 +393,7 @@ pub struct DeviceManager {
     changes: ChangeIndex<Unsigned6Bit>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InputFlagRaised {
     No,
     Yes,
@@ -449,6 +451,7 @@ impl DeviceManager {
         ctx: &Context,
         unit: &AttachedUnit,
         alarmer: &mut A,
+        index_value: Signed18Bit,
     ) -> Result<ExtendedUnitState, Alarm> {
         let (extended_unit_status, flag): (Option<ExtendedConnectedUnitStatus>, bool) =
             if unit.connected {
@@ -472,17 +475,31 @@ impl DeviceManager {
             name: unit.name(),
             text_info: unit.text_info(ctx),
             status: extended_unit_status,
+            index_value,
         })
     }
 
-    pub fn device_statuses<A: Alarmer>(
+    pub fn device_statuses(
         &self,
         ctx: &Context,
-        alarmer: &mut A,
+        control: &mut ControlUnit,
     ) -> Result<BTreeMap<Unsigned6Bit, ExtendedUnitState>, Alarm> {
         let mut result: BTreeMap<Unsigned6Bit, ExtendedUnitState> = BTreeMap::new();
         for (unit, attached) in self.devices.iter() {
-            let ext_status = self.get_extended_status(ctx, attached, alarmer)?;
+            let xreg_value = match control
+                .inspect_registers()
+                .index_regs
+                .get(usize::from(*unit))
+            {
+                Some(xreg_value) => xreg_value,
+                None => {
+                    // This line should be unreachable as an
+                    // Unsigned6Bit value should never be out-of-range
+                    // as a lookup value into control.regs.index_regs.
+                    unreachable!("There is no index register for unit {unit:o}");
+                }
+            };
+            let ext_status = self.get_extended_status(ctx, attached, control, *xreg_value)?;
             result.insert(*unit, ext_status);
         }
         Ok(result)
@@ -582,7 +599,7 @@ impl DeviceManager {
         }
     }
 
-    pub fn poll(
+    pub(super) fn poll(
         &mut self,
         ctx: &Context,
         alarm_unit: &mut AlarmUnit,
@@ -657,7 +674,7 @@ impl DeviceManager {
                     event!(Level::TRACE, "unit {devno:02o} status is {unit_status:?}");
                     self.poll_queue.push(devno, unit_status.poll_after);
                     if let Some(FlagChange::Raise) = unit_status.change_flag {
-                        event!(Level::TRACE, "unit {devno:02o} has raised its flag");
+                        event!(Level::DEBUG, "unit {devno:02o} has raised its flag");
                         raised_flags |= 1 << u8::from(devno);
                     }
                     if alarm.is_none() {
@@ -797,15 +814,28 @@ impl DeviceManager {
         self.changes.add(unit);
     }
 
-    pub fn drain_changes<A: Alarmer>(
+    pub fn drain_changes(
         &mut self,
         ctx: &Context,
-        alarmer: &mut A,
+        control: &mut ControlUnit,
     ) -> Result<BTreeMap<Unsigned6Bit, ExtendedUnitState>, Alarm> {
         let mut result: BTreeMap<Unsigned6Bit, ExtendedUnitState> = BTreeMap::new();
         for unit_with_change in self.changes.drain().into_iter() {
             if let Some(attached_unit) = self.get(&unit_with_change) {
-                match self.get_extended_status(ctx, attached_unit, alarmer) {
+                let xreg_value = match control
+                    .inspect_registers()
+                    .index_regs
+                    .get(usize::from(unit_with_change))
+                {
+                    Some(xreg_value) => xreg_value,
+                    None => {
+                        // This line should be unreachable as an
+                        // Unsigned6Bit value should never be out-of-range
+                        // as a lookup value into control.regs.index_regs.
+                        unreachable!("There is no index register for unit {unit_with_change:o}");
+                    }
+                };
+                match self.get_extended_status(ctx, attached_unit, control, *xreg_value) {
                     Ok(state) => {
                         result.insert(unit_with_change, state);
                     }

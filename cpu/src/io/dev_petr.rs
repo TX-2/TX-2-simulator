@@ -228,7 +228,7 @@ impl Petr {
                 if !self.overrun {
                     self.overrun = self.data.is_some();
                     if self.overrun {
-                        event!(Level::WARN, "input overrun");
+                        event!(Level::WARN, "PETR input overrun");
                     }
                 }
                 self.data = Some(*byte);

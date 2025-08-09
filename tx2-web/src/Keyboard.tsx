@@ -99,7 +99,7 @@ const Keyboard = (props: KeyboardProps) => {
         const result = props.tx2Controller.lwKeyPress(props.unit, farActive, data);
         setFarActive(result.far_keyboard_is_active)
         if (!result.consumed) {
-          console.log("in Canvas click callback for hit detector canvas, input can't be accepted, perhaps the LW input unit is not connected.");
+          console.log("keyboard input can't be accepted, either the LW input unit is not connected or there is already input pending.");
         }
       } else {
         console.log("in Canvas click callback for hit detector canvas, failed to get image data for hit position.");

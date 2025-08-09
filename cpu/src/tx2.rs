@@ -138,7 +138,14 @@ impl Tx2 {
             data: codes.to_vec(),
         };
         match self.on_input_event(ctx, unit, event) {
-            Ok(flag_raise) => Ok((true, flag_raise)),
+            Ok(flag_raise) => {
+                if flag_raise == InputFlagRaised::Yes {
+                    // We should expect to poll the hardware in the
+                    // next call to tick().
+                    self.next_hw_poll_due = ctx.simulated_time;
+                }
+                Ok((true, flag_raise))
+            }
             Err(InputEventError::BufferUnavailable) => Ok((false, InputFlagRaised::No)),
             Err(e) => Err(e.to_string()),
         }
@@ -164,7 +171,14 @@ impl Tx2 {
             .poll_hardware(ctx, &mut self.devices, self.run_mode)
         {
             Ok((mode, next)) => {
+                if self.run_mode != mode {
+                    event!(
+                        Level::DEBUG,
+                        "poll_hardware updating run_mode to ({mode:?})"
+                    );
+                }
                 self.run_mode = mode;
+
                 self.set_next_hw_poll_due(
                     *now,
                     match next {
@@ -246,7 +260,7 @@ impl Tx2 {
                     // poll it again.
                     event!(
                         Level::DEBUG,
-                        "hardware state change for unit {seq:?}; bringing forward next hardware poll"
+                        "hardware state change for unit {seq}; bringing forward next hardware poll"
                     );
                     self.set_next_hw_poll_due(*now, *now + Duration::from_nanos(1));
                 } else {
@@ -281,11 +295,16 @@ impl Tx2 {
             let premature_by = due - system_time;
             event!(
                 Level::WARN,
-                "tick() was called {premature_by:?} prematurely"
+                "tick() was called {premature_by:?} prematurely (run mode is {:?})",
+                &self.run_mode
             );
         }
 
         if ctx.simulated_time >= self.next_hw_poll_due {
+            event!(
+                Level::DEBUG,
+                "tick(): polling the hardware (because this is due now)"
+            );
             let prev_poll_due = self.next_hw_poll_due;
             match self.poll_hw(ctx) {
                 Ok(()) => {
@@ -377,7 +396,11 @@ impl Tx2 {
         self.devices.disconnect_all(ctx, &mut self.control)
     }
 
-    fn extended_state_of_software_sequence(&self, seq: Unsigned6Bit) -> ExtendedUnitState {
+    fn extended_state_of_software_sequence(
+        &self,
+        seq: Unsigned6Bit,
+        index_value: Signed18Bit,
+    ) -> ExtendedUnitState {
         ExtendedUnitState {
             flag: self.control.current_flag_state(&seq),
             connected: false,
@@ -385,13 +408,24 @@ impl Tx2 {
             name: format!("Sequence {seq:>02o}"),
             status: None,
             text_info: "(software only)".to_string(),
+            index_value,
         }
     }
 
     fn software_sequence_statuses(&self) -> BTreeMap<Unsigned6Bit, ExtendedUnitState> {
+        let regvalues = self.control.inspect_registers();
         [u6!(0), u6!(0o76), u6!(0o77)]
             .into_iter()
-            .map(|seq| (seq, self.extended_state_of_software_sequence(seq)))
+            .map(|seq| {
+                let index_value: &Signed18Bit = regvalues
+                    .index_regs
+                    .get(usize::from(seq))
+                    .expect("software sequences should all have valid index register values");
+                (
+                    seq,
+                    self.extended_state_of_software_sequence(seq, *index_value),
+                )
+            })
             .collect()
     }
 
@@ -412,10 +446,10 @@ impl Tx2 {
         ctx: &Context,
     ) -> Result<BTreeMap<Unsigned6Bit, ExtendedUnitState>, Alarm> {
         let mut mapping = self.devices.drain_changes(ctx, &mut self.control)?;
-        for seq in self.control.drain_flag_changes().into_iter() {
+        for (seq, index_value) in self.control.drain_flag_changes().into_iter() {
             mapping
                 .entry(seq)
-                .or_insert_with(|| self.extended_state_of_software_sequence(seq));
+                .or_insert_with(|| self.extended_state_of_software_sequence(seq, index_value));
         }
         Ok(mapping)
     }
