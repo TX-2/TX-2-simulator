@@ -293,7 +293,7 @@ pub struct ControlRegisters {
     /// description of the AUX instruction) and are described on page
     /// 3-68 of the User Handbook (section 3-3.1) as being signed
     /// integers.
-    index_regs: [Signed18Bit; 0o100], // AKA the X memory
+    pub index_regs: [Signed18Bit; 0o100], // AKA the X memory
     f_memory: [SystemConfiguration; 32], // the F memory
     flags: SequenceFlags,
     current_sequence_is_runnable: bool,
@@ -1657,8 +1657,24 @@ impl ControlUnit {
         self.alarm_unit.drain_alarm_changes()
     }
 
-    pub fn drain_flag_changes(&mut self) -> Vec<SequenceNumber> {
-        self.regs.flags.drain_flag_changes()
+    pub fn drain_flag_changes(&mut self) -> Vec<(SequenceNumber, Signed18Bit)> {
+        self.regs
+            .flags
+            .drain_flag_changes()
+            .into_iter()
+            .map(|seq| {
+                let index_value: &Signed18Bit = self
+                    .regs
+                    .index_regs
+                    .get(usize::from(seq))
+                    .expect("sequences should all have valid index register values");
+                (seq, *index_value)
+            })
+            .collect()
+    }
+
+    pub fn inspect_registers(&self) -> &ControlRegisters {
+        &self.regs
     }
 }
 

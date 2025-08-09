@@ -452,12 +452,18 @@ impl Unit for LincolnWriterInput {
     fn text_info(&self, _ctx: &Context) -> String {
         // Don't show connected/disconnected state here, as that is
         // shown separately.
-        if self.data.is_empty() {
-            "Idle."
-        } else {
-            "Input available."
+        match self.data.as_slice() {
+            [] => "Idle.".to_string(),
+            [one] => {
+                format!("Input available: {one:o}.")
+            }
+            many => {
+                // This case should not happen, but for now we don't
+                // raise an alarm.
+                let len = many.len();
+                format!("Multiple ({len}) inputs available!")
+            }
         }
-        .to_string()
     }
 
     fn connect(&mut self, _ctx: &Context, mode: Unsigned12Bit) {

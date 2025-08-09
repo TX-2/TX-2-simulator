@@ -11,6 +11,7 @@ export interface WasmExtendedConnectedUnitStatus {
 // WasmExtendedUnitState mirrors struct UnitState in WASM (cpu/src/io.rs)
 export interface WasmExtendedUnitState {
     flag: boolean;
+    index_value: number;
     connected: boolean;
     in_maintenance: boolean;
     name: string;

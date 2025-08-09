@@ -96,6 +96,7 @@ export class IoUnitStatusRow extends Component<IoUnitProps, IoUnitProps> {
       <IoUnitHeader value={this.props.unit} />
       <IoCell>{this.state.name}</IoCell>
       <IoCell>{choose(this.state.flag, "down", "up")}</IoCell>
+      <OctalNumberCell value={this.state.index_value} digits={6} />
       <IoCell>{yesno(this.state.connected)}</IoCell>
       <IoCell>{chooseblank(this.state.connected, this.state.status?.buffer_available_to_cpu, "busy", "free")}</IoCell>
       <IoCell>{yesno(this.state.in_maintenance)}</IoCell>
@@ -130,6 +131,7 @@ export class IoPanel extends Component<IoUnitStatusPanelProps> {
         unit={props.unit}
         key={props.key}
         flag={props.flag}
+        index_value={props.index_value}
         connected={props.connected}
         in_maintenance={props.in_maintenance}
         name={props.name}
@@ -144,6 +146,7 @@ export class IoPanel extends Component<IoUnitStatusPanelProps> {
             <IoColHeader>Unit</IoColHeader>
             <IoColHeader>Name</IoColHeader>
             <IoColHeader>Flag</IoColHeader>
+            <IoColHeader>Index Value</IoColHeader>
             <IoColHeader>Connected</IoColHeader>
             <IoColHeader>Status</IoColHeader>
             <IoColHeader>Maintenance</IoColHeader>
