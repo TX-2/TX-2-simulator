@@ -7,12 +7,31 @@
 ** cargo run  --bin tx2m4as --  --output ../examples/echo.tape examples/echo.tx2as
 **
 **
+
+******************************************************************************
+** Constants
+******************************************************************************
+
+** Some invalid instruction words inticating various program
+** termination conditions.  The emulator stops when it executes an
+** invalid opcode (and the opcode part of all of these words is zero,
+** which is not a valid opcode).
+EXIT START FAIL = 1
+EXIT SUCCESS    = 42 ** Sorry Douglas, this is octal.
+
+DREG = 377607
+EREG = 377610
+
+******************************************************************************
+** Program start
+******************************************************************************
 ** The first Lincoln Writer's input is unit 65.  We will put the code
 ** for its sequence at 200, so the program counter for sequence 65
 ** (which is X₆₅) should start at 200.
-100|      REX₆₅ ECHOLOOP     ** Set X₆₅ to ECHOLOOP.
+100|      REX₆₅ INPUT        ** Set X₆₅ to the address of the input routine
+          REX₆₆ OUTPUT       ** Set X₆₆ to the address of the ouput routine
         ²¹IOS₆₅ 30000        ** Connect Lincoln Writer input 1 (unit 65).
-          1  ** Something has gone wrong; execute an invalid instruction.
+          EXIT SART FAIL     ** Something has gone wrong; execute an invalid instruction.
 
 ******************************************************************************
 ** Sequence 65: Input
@@ -32,24 +51,30 @@
 ** in Volume 2 of the TX-2 Techical Manual.  In our current case,
 ** there is no need to write this data to any other location than E.
 
-ECHOLOOP|  ³TSD 377610       ** read code into E register
-           ³SED    STOPCODE  ** compare with STOP, skip if different.
+INPUT|     ³TSD    EREG      ** read code into E register
+        h  ³SED    STOPCODE  ** compare with STOP, skip if different.
                              ** use configuration 3 to compare only Q1.
-           0                 ** STOP entered, so execute an invalid instruction.
-           JMP    ECHOLOOP   ** code is not STOP, so loop to 200.
+           EXIT SUCCESS      ** STOP entered, so execute an invalid instruction.
+
+** To print our character, we simply activate sequence 65 (the output
+** half of the Lincoln Writer).  That sequence just prints a single
+** character which we leave in PRINTME.
+        h   STE PRINTME   ** Store the code to be printed.
+          ²¹IOS₆₅ 30000   ** Allow output sequence to run.
+           JMP    INPUT   ** Loop to read the next character.
 
 ******************************************************************************
 ** Sequence 66: Output
 ******************************************************************************
 
-300|    REX₆₅   200     ** Set X₆₅ to 200.
-      ²¹IOS₆₅ 30000     ** Connect input, dismiss 66.
-       ³TSD  377607     ** Print code in D register.
-        JMP     300     ** loop.
+OUTPUT|
+        ³TSD   PRINTME   ** Print the output character.
+       ²⁰JMP       300   ** loop, dismissing the current sequence.
 
 ******************************************************************************
 ** Data
 ******************************************************************************
+PRINTME ->  0           ** Temporary for the character to print.
 STOPCODE-> 76           ** the LW code for STOP
 
 ** Indicate to the assembler that it should generate a punched tape
