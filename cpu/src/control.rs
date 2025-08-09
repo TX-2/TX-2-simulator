@@ -997,11 +997,15 @@ impl ControlUnit {
         }
 
         // For each newly-raised flag, raise the flag in self.flags.
-        event!(
-            Level::TRACE,
-            "poll_hardware: there are {} new flag raises",
-            raised_flags.count_ones(),
-        );
+        let raise_count = raised_flags.count_ones();
+        if raise_count > 0 {
+            event!(
+                Level::DEBUG,
+                "poll_hardware: {raise_count:2} new flag raises: {raised_flags:#o}"
+            );
+        } else {
+            event!(Level::TRACE, "poll_hardware: no new flag raises");
+        }
         for bitpos in 0.. {
             if raised_flags == 0 {
                 break;
