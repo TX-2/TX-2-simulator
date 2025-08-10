@@ -85,6 +85,18 @@ impl ImplicitSymbolTable {
             .or_insert_with(|| ImplicitDefinition::DefaultAssigned(value.into(), context.clone()))
             .merge_context(&name, context)
     }
+
+    #[cfg(test)]
+    pub(super) fn load_test_definitions<
+        I: IntoIterator<Item = (SymbolName, ImplicitDefinition)>,
+    >(
+        &mut self,
+        defs: I,
+    ) {
+        for (name, definition) in defs.into_iter() {
+            self.definitions.insert(name, definition);
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]

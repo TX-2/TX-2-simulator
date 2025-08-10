@@ -161,10 +161,8 @@ pub(crate) enum AddressUse {
 impl AddressUse {
     fn or(&self, other: &AddressUse) -> AddressUse {
         match (self, other) {
-            (AddressUse::IncludesAddress, _) | (_, AddressUse::IncludesAddress) => {
-                AddressUse::IncludesAddress
-            }
-            _ => AddressUse::NotAddress,
+            (AddressUse::NotAddress, AddressUse::NotAddress) => AddressUse::NotAddress,
+            _ => AddressUse::IncludesAddress,
         }
     }
 }
@@ -249,7 +247,9 @@ impl SymbolContext {
     pub(crate) fn origin(block_id: BlockIdentifier, origin: Origin) -> SymbolContext {
         let span = origin.span();
         SymbolContext {
-            address: AddressUse::NotAddress,
+            // All origins are (implicitly) uses of the symbol as an
+            // address.
+            address: AddressUse::IncludesAddress,
             origin: OriginUse::IncludesOrigin(block_id, origin),
             uses: SymbolContext::uses(span),
         }
@@ -301,7 +301,7 @@ impl SymbolContext {
                 OriginUse::IncludesOrigin(my_block, my_origin),
                 OriginUse::IncludesOrigin(their_block, their_origin),
             ) => {
-                if my_block == their_block && my_origin.has_same_specification(their_origin) {
+                if my_block == their_block {
                     // If one of the origins is a deduced origin, that
                     // has more information, so retain that one.
                     //
@@ -366,7 +366,24 @@ impl SymbolContext {
     }
 
     pub(super) fn requires_rc_word_allocation(&self) -> bool {
-        self.address == AddressUse::IncludesAddress
+        if self.address == AddressUse::IncludesAddress {
+            if matches!(&self.origin, &OriginUse::IncludesOrigin(_, _)) {
+                // This symbol is used in address contexts, but it is
+                // the name used for an origin.  Therefore we do not
+                // need to allocate an RC-word for it.
+                false
+            } else {
+                // This name is used in an address context but it is
+                // not the name of an origin, so when there is no tag
+                // definition for it, we will need to allocate an
+                // RC-word for it.
+                true
+            }
+        } else {
+            // Since nothing expects this symbol to refer to an
+            // address, there is no need to allocate an RC-word.
+            false
+        }
     }
 
     pub(super) fn any_span(&self) -> &Span {
@@ -511,17 +528,103 @@ fn test_origin_cannot_be_used_as_a_configuration_value() {
 
 #[test]
 fn test_deduced_origin_merge() {
-    use super::span::span;
-    use base::prelude::Address;
-    use base::u18;
-    let span = span(0..4);
-    let block = BlockIdentifier::from(0);
-    let name = SymbolName::from("OGN");
-    let address = Address::from(u18!(0o200_000));
-    let mut current = SymbolContext::origin(block, Origin::Symbolic(span, name.clone()));
-    let new_use = SymbolContext::origin(block, Origin::Deduced(span, name.clone(), address));
-    assert_eq!(current.merge(&name, new_use.clone()), Ok(()));
-    assert_eq!(current, new_use);
+    struct Contexts {
+        reference: SymbolContext,
+        origin_definition: SymbolContext,
+        expected_merge: SymbolContext,
+    }
+    // Convenience function for creating the test input and expected output.
+    fn make_symbolic_and_deduced_origin_contexts(
+        name: SymbolName,
+        is_forward_reference: bool,
+    ) -> Contexts {
+        let block = BlockIdentifier::from(0);
+
+        let deduced_origin_span: Span = span(1000..1010);
+        let symbol_span = if is_forward_reference {
+            // The reference appears before the origin specification
+            span(10..20)
+        } else {
+            // The reference appears after the origin specification
+            span(2000..2020)
+        };
+
+        // In our examples, the deduced origin value is a
+        // symbolically-defined origin to which we would deduced
+        // address (from the locations and sizes of the blocks
+        // preceding it).
+        let deduced_origin_context = SymbolContext {
+            address: AddressUse::IncludesAddress,
+            origin: OriginUse::IncludesOrigin(
+                block,
+                Origin::Symbolic(deduced_origin_span, name.clone()),
+            ),
+            uses: SymbolContext::uses(deduced_origin_span),
+        };
+
+        // The symbolic context is is simply a reference to the
+        // origin, either preceding (is_forward_reference) or
+        // following (!is_forward_reference) the definition of the
+        // origin.
+        let reference_context = SymbolContext {
+            address: AddressUse::IncludesAddress,
+            // Although this use of the symbol will turn out to be a
+            // reference to an origin, we cannot tell that at the
+            // reference site, and so the context in which this symbol
+            // is used at that point is not an origin context.
+            origin: OriginUse::NotOrigin {
+                config: ConfigUse::NotConfig,
+                index: IndexUse::NotIndex,
+            },
+            uses: SymbolContext::uses(symbol_span),
+        };
+
+        Contexts {
+            reference: reference_context,
+            origin_definition: deduced_origin_context,
+            expected_merge: SymbolContext {
+                address: AddressUse::IncludesAddress,
+                origin: OriginUse::IncludesOrigin(
+                    BlockIdentifier::from(0),
+                    Origin::Symbolic(deduced_origin_span, name.clone()),
+                ),
+                uses: [
+                    OrderableSpan(deduced_origin_span),
+                    OrderableSpan(symbol_span),
+                ]
+                .into_iter()
+                .collect(),
+            },
+        }
+    }
+    let name = SymbolName::from("OGNX");
+    // Set up contexts for the forward-reference and the backward-reference cases.
+    let contexts_backward_ref = make_symbolic_and_deduced_origin_contexts(name.clone(), false);
+    let contexts_forward_ref = make_symbolic_and_deduced_origin_contexts(name.clone(), true);
+    // The value in expected_merge is not the same in each case, since
+    // although the span of the origin definition is fixed, the span
+    // of the reference to it is different for the forward-reference
+    // and backward-reference cases.
+
+    // Merge for the defined-then-used direction (where we encouter
+    // the origin defintiion and later a reference to it).
+    let mut current = contexts_backward_ref.origin_definition.clone();
+    assert_eq!(
+        current.merge(&name, contexts_backward_ref.reference.clone()),
+        Ok(())
+    );
+    assert_eq!(current, contexts_backward_ref.expected_merge);
+
+    // Merge in forward-reference direction (where we find a reference
+    // to the origin address of a block before we have seen the origin
+    // definition of that block).
+    //
+    let mut current = contexts_forward_ref.reference.clone(); // we find the fwd ref first
+    assert_eq!(
+        current.merge(&name, contexts_forward_ref.origin_definition.clone()),
+        Ok(())
+    );
+    assert_eq!(current, contexts_forward_ref.expected_merge);
 }
 
 impl From<(&Script, Span)> for SymbolContext {

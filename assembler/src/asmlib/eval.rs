@@ -9,6 +9,8 @@ use base::{
     prelude::{Address, IndexBy, Unsigned18Bit, Unsigned36Bit},
     subword,
 };
+#[cfg(test)]
+use base::{u18, u36};
 
 use super::ast::*;
 use super::collections::OneOrMore;
@@ -17,6 +19,8 @@ use super::memorymap::{
 };
 use super::source::Source;
 use super::span::*;
+#[cfg(test)]
+use super::symbol::AddressUse;
 use super::symbol::{ConfigUse, IndexUse, OriginUse, SymbolName};
 
 use super::types::{AssemblerFailure, BlockIdentifier, MachineLimitExceededFailure, ProgramError};
@@ -212,6 +216,7 @@ impl<R: RcUpdater> EvaluationContext<'_, R> {
         match existing_def {
             ImplicitDefinition::DefaultAssigned(value, _) => Ok(*value),
             ImplicitDefinition::Undefined(_) => {
+                let saved_def = existing_def.clone();
                 let context: SymbolContext = existing_def.context().clone();
                 let span: Span = *context.any_span();
 
@@ -243,8 +248,9 @@ impl<R: RcUpdater> EvaluationContext<'_, R> {
                                 ) {
                                     Ok(()) => Ok(value),
                                     Err(e) => {
+                                        dbg!(saved_def);
                                         panic!(
-                                            "got a bad symbol definition error ({e:?}) on a previously undefined origin symbol"
+                                            "got a bad symbol definition error ({e:?}) on a previously undefined origin symbol {name}"
                                         );
                                     }
                                 }
@@ -270,6 +276,113 @@ impl<R: RcUpdater> EvaluationContext<'_, R> {
                     }
                 }
             }
+        }
+    }
+}
+
+#[test]
+fn can_deduce_address_of_origin_with_previous_forward_reference() {
+    // GIVEN a program containing two blocks, in whicht the second block has a
+    // symbolic origin and where there is a forward reference within the first
+    // block to the address of the second block
+    let origin_name = SymbolName::from("INPUT");
+    let origin_def = Origin::Symbolic(span(2455..2461), origin_name.clone());
+    const BLOCK0_SIZE: Unsigned18Bit = u18!(4);
+    const BLOCK1_SIZE: Unsigned18Bit = u18!(3);
+    let block0_pos = BlockPosition {
+        block_identifier: BlockIdentifier::from(0),
+        // The first reference to block 1 is inside block 1, so the
+        // span of block1 includes the location of the first reference
+        // to origin_name.  This is not a necessary setup for our test
+        // scenario, but it is realistic.
+        span: span(0..2400),
+        origin: None,
+        block_address: None,
+        block_size: BLOCK0_SIZE,
+    };
+    let block1_pos = BlockPosition {
+        block_identifier: BlockIdentifier::from(1),
+        span: span(2455..2800),
+        origin: None,
+        block_address: None,
+        block_size: BLOCK1_SIZE,
+    };
+
+    let mut implicit_symtab = ImplicitSymbolTable::default();
+    implicit_symtab.load_test_definitions([(
+        origin_name.clone(),
+        ImplicitDefinition::Undefined(SymbolContext {
+            address: AddressUse::IncludesAddress,
+            origin: OriginUse::IncludesOrigin(block1_pos.block_identifier, origin_def.clone()),
+            uses: [
+                // The first reference is inside block 0.
+                OrderableSpan(span(1188..1193)),
+                // The second reference is in the origin definition of
+                // block 1 (which is the thing we're trying to assign
+                // a default value to).
+                OrderableSpan(span(block1_pos.span.start..(block1_pos.span.start + 6))),
+                // There is a third reference (but this is just from
+                // our motivating example, it is not necessary to the
+                // test).
+                OrderableSpan(span(3059..3064)),
+            ]
+            .into_iter()
+            .collect(),
+        }),
+    )]);
+
+    let explicit_symtab = ExplicitSymbolTable::default();
+    let mut register_assigner = IndexRegisterAssigner::default();
+    let mut memory_map = MemoryMap::new([
+        (span(0..10), None, BLOCK0_SIZE),
+        (
+            span(2455..2461),
+            Some(Origin::Symbolic(span(2455..2461), origin_name.clone())),
+            BLOCK1_SIZE,
+        ),
+    ]);
+    let mut rc_block = RcBlock::default();
+    let mut context = EvaluationContext {
+        here: HereValue::Address(Address::from(u18!(0o100))),
+        explicit_symtab: &explicit_symtab,
+        implicit_symtab: &mut implicit_symtab,
+        index_register_assigner: &mut register_assigner,
+        memory_map: &memory_map,
+        rc_updater: &mut rc_block,
+        lookup_operation: LookupOperation::default(),
+    };
+
+    // Assign an address for block 0 as part of the scenario setup.
+    let block0_addr = block0_pos
+        .evaluate(&mut context)
+        .expect("should be able to assign an address to the first block");
+    drop(context); // no longer want an immutable borrow on memory_map.
+    memory_map.set_block_position(
+        block0_pos.block_identifier,
+        subword::right_half(block0_addr).into(),
+    );
+
+    // WHEN we try to assign an address to the second block (block 1).
+    let mut context = EvaluationContext {
+        here: HereValue::Address(Address::from(u18!(0o100))),
+        explicit_symtab: &explicit_symtab,
+        implicit_symtab: &mut implicit_symtab,
+        index_register_assigner: &mut register_assigner,
+        memory_map: &memory_map,
+        rc_updater: &mut rc_block,
+        lookup_operation: LookupOperation::default(),
+    };
+    let eval_result = context.fetch_or_assign_default(&origin_name);
+
+    // THEN we should assign an address without failing.
+    match eval_result {
+        Err(e) => {
+            panic!("should not fail to assign a start address to a block: {e}");
+        }
+        Ok(default_value) => {
+            let expected: Unsigned36Bit =
+                u36!(0o200000).wrapping_add(Unsigned36Bit::from(BLOCK0_SIZE));
+            assert_eq!(default_value, expected);
         }
     }
 }
