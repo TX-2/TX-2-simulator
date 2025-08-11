@@ -191,7 +191,7 @@ fn make_unit_report_word(
         report = report | IO_MASK_AVAIL;
     }
     // A unit can raise but not lower its flag.
-    if current_flag || status.change_flag == Some(FlagChange::Raise) {
+    if current_flag || matches!(&status.change_flag, Some(FlagChange::Raise(_))) {
         report = report | IO_MASK_FLAG;
     }
     report | Unsigned36Bit::from(unit).shl(18) | Unsigned36Bit::from(status.special).shl(24)
@@ -456,7 +456,7 @@ impl DeviceManager {
         let (extended_unit_status, flag): (Option<ExtendedConnectedUnitStatus>, bool) =
             if unit.connected {
                 let unit_status = unit.poll(ctx, alarmer)?;
-                let flag: bool = matches!(unit_status.change_flag, Some(FlagChange::Raise));
+                let flag: bool = matches!(unit_status.change_flag, Some(FlagChange::Raise(_)));
                 let ext_status = ExtendedConnectedUnitStatus {
                     buffer_available_to_cpu: unit_status.buffer_available_to_cpu,
                     inability: unit_status.inability,
@@ -609,6 +609,7 @@ impl DeviceManager {
         let mut alarm: Option<Alarm> = None;
         let mut next_poll: Option<Duration> = None;
 
+        event!(Level::DEBUG, "poll_queue is: {:?}", &self.poll_queue);
         loop {
             match self.poll_queue.peek() {
                 None => {
@@ -642,8 +643,8 @@ impl DeviceManager {
                     self.mark_device_changed(devno);
 
                     event!(
-                        Level::TRACE,
-                        "poll: next poll is now due; due={:?}, now={:?}",
+                        Level::DEBUG,
+                        "poll: next poll is now due  for unit {devno:o}; due={:?}, now={:?}",
                         poll_time,
                         system_time
                     );
@@ -673,8 +674,11 @@ impl DeviceManager {
                     let unit_status = attached.poll(ctx, alarm_unit)?;
                     event!(Level::TRACE, "unit {devno:02o} status is {unit_status:?}");
                     self.poll_queue.push(devno, unit_status.poll_after);
-                    if let Some(FlagChange::Raise) = unit_status.change_flag {
-                        event!(Level::DEBUG, "unit {devno:02o} has raised its flag");
+                    if let Some(FlagChange::Raise(reason)) = unit_status.change_flag {
+                        event!(
+                            Level::DEBUG,
+                            "unit {devno:02o} has raised its flag: {reason}"
+                        );
                         raised_flags |= 1 << u8::from(devno);
                     }
                     if alarm.is_none() {
@@ -777,6 +781,10 @@ impl DeviceManager {
         match self.devices.get_mut(device) {
             Some(attached) => {
                 if attached.in_maintenance {
+                    event!(
+                        Level::INFO,
+                        "attempt to connect in-maintenance unit {device:o}, raising IOSAL"
+                    );
                     Err(Alarm {
                         sequence: Some(*device),
                         details: AlarmDetails::IOSAL {
@@ -786,8 +794,18 @@ impl DeviceManager {
                         },
                     })
                 } else {
+                    event!(Level::DEBUG, "connecting unit {device:o}");
+                    // If the unit being connected is an OUTPUT unit,
+                    // and the unit was not already connected, then
+                    // its flag is raised (Users Handbook page 4-7).
                     let flag_change = if attached.is_disconnected_output_unit() {
-                        Some(FlagChange::Raise)
+                        event!(
+                            Level::DEBUG,
+                            "Connecting previously-unconnected output unit {device:o}, so raising its flag"
+                        );
+                        Some(FlagChange::Raise(
+                            "attaching a previously-disconnected output unit",
+                        ))
                     } else {
                         None
                     };
@@ -797,6 +815,10 @@ impl DeviceManager {
                 }
             }
             None => {
+                event!(
+                    Level::WARN,
+                    "attempt to connect nonexistent unit {device:o}"
+                );
                 alarm_unit.fire_if_not_masked(Alarm {
                     sequence: calling_sequence, // NOTE: not the same as *device.
                     details: AlarmDetails::IOSAL {

@@ -246,46 +246,65 @@ fn test_sequence_flags_current_flag_state() {
     assert_eq!(flags.drain_flag_changes(), vec![u6!(0o52)]);
 }
 
+/// ControlRegisterDiagnostics is only for generating debug
+/// information.  They must not be used for control/execution
+/// purposes.
+#[derive(Debug)]
+pub struct CurrentInstructionDiagnostics {
+    pub current_instruction: Instruction,
+    pub instruction_address: Address,
+}
+
 #[derive(Debug)]
 pub struct ControlRegisters {
+    pub diagnostic_only: CurrentInstructionDiagnostics,
+
     // Arithmetic Element registers (A-E) are actually in V-memory.
+    /// Contents of the simulated N register.
     pub n: Instruction,
     pub n_sym: Option<SymbolicInstruction>,
+
+    /// The P register is the program counter for the current sequence.
     pub p: Address,
+
+    /// Contents of the simulaterd Q register.
     pub q: Address,
 
-    // The k register (User guide 4-3.1) holds the current sequence
-    // number (User guide 5-24).  k is Option<SequenceNumber> in order
-    // to allow the (emulated) control unit to recognise a CODABO
-    // button as indicating a need to change sequence from the control
-    // unit's initial state to sequence 0.
-    //
-    // This likely doesn't reflect the actual operation of the TX-2
-    // very well, and better understanding of the real operation of
-    // the machine will likely change this.
-    //
-    // I think that perhaps section 12-2.6.2 of Volume 2 of the
-    // technical manual may explain how the real TX-2 avoided this
-    // problem, but I don't think I understand what that section says.
-    // The text is:
-    //
-    // """12-2.6.2 XPS FLIP-FLOP LOGIC.  This flip-floop inhibits the
-    // X Memory strobe pulse into X when the register selected has the
-    // same address or the current program counter, is not register 0,
-    // and this is the first reference to this register since the last
-    // sequence change.  In this case all the cores of the register
-    // are clearered and only "junk" (with a 50-50 chance of a bad
-    // parity) would be strobed into X.  If XPS¹, then a clear pulse
-    // is substituted for the strobe pulse.
-    //
-    // The flip-flop is set whenever a sequence change occurs, and is
-    // cleared the first time thereafter that the program counter
-    // register is referenced during a PK cycle (if ever).  See Fig
-    // 12-8."""
+    /// The k register (User guide 4-3.1) holds the current sequence
+    /// number (User guide 5-24).  k is Option<SequenceNumber> in order
+    /// to allow the (emulated) control unit to recognise a CODABO
+    /// button as indicating a need to change sequence from the control
+    /// unit's initial state to sequence 0.
+    ///
+    /// This likely doesn't reflect the actual operation of the TX-2
+    /// very well, and better understanding of the real operation of
+    /// the machine will likely change this.
+    ///
+    /// I think that perhaps section 12-2.6.2 of Volume 2 of the
+    /// technical manual may explain how the real TX-2 avoided this
+    /// problem, but I don't think I understand what that section says.
+    /// The text is:
+    ///
+    /// """12-2.6.2 XPS FLIP-FLOP LOGIC.  This flip-floop inhibits the
+    /// X Memory strobe pulse into X when the register selected has the
+    /// same address or the current program counter, is not register 0,
+    /// and this is the first reference to this register since the last
+    /// sequence change.  In this case all the cores of the register
+    /// are clearered and only "junk" (with a 50-50 chance of a bad
+    /// parity) would be strobed into X.  If XPS¹, then a clear pulse
+    /// is substituted for the strobe pulse.
+    ///
+    /// The flip-flop is set whenever a sequence change occurs, and is
+    /// cleared the first time thereafter that the program counter
+    /// register is referenced during a PK cycle (if ever).  See Fig
+    /// 12-8."""
     pub k: Option<SequenceNumber>,
 
-    spr: Address, // Start Point Register
+    /// Start Point Register
+    spr: Address,
 
+    /// Index registers.
+    ///
     /// Index register 0 is the Toggle Start point.
     /// Index registers 40-77 are program counters for the sequences.
     ///
@@ -294,14 +313,21 @@ pub struct ControlRegisters {
     /// 3-68 of the User Handbook (section 3-3.1) as being signed
     /// integers.
     pub index_regs: [Signed18Bit; 0o100], // AKA the X memory
-    f_memory: [SystemConfiguration; 32], // the F memory
+
+    /// the F memory
+    f_memory: [SystemConfiguration; 32],
+
+    /// The flags; these indicate which sequences are runnable.
     flags: SequenceFlags,
     current_sequence_is_runnable: bool,
+
+    /// prev_hold is set when the instruction we most previously
+    /// executed had the "hold" bit set.
+    prev_hold: bool,
     // TODO: we may be able to eliminate prev_hold by moving the logic
     // that's currently at the beginning of fetch_instruction() so
     // that it occurs at the end of execute_instruction() instead.
     // See the comment at the top of fetch_instruction().
-    prev_hold: bool,
 }
 
 impl ControlRegisters {
@@ -317,6 +343,10 @@ impl ControlRegisters {
         };
 
         let mut result = ControlRegisters {
+            diagnostic_only: CurrentInstructionDiagnostics {
+                current_instruction: Instruction::invalid(),
+                instruction_address: Address::from(u18!(0o777_777)),
+            },
             n: Instruction::invalid(), // not a valid instruction
             n_sym: None,
             p: Address::default(),
@@ -921,6 +951,7 @@ impl ControlUnit {
         // Calculate the address from which we will fetch the
         // instruction, and the increment the program counter.
         let p_physical_address = Address::from(self.regs.p.split().0);
+        self.regs.diagnostic_only.instruction_address = p_physical_address;
         event!(
             Level::TRACE,
             "Fetching instruction from physical address {p_physical_address:>012o}"
@@ -931,7 +962,7 @@ impl ControlUnit {
         } else {
             MetaBitChange::None
         };
-        let instruction_word = match mem.fetch(ctx, &p_physical_address, &meta_op) {
+        let instruction_word: Unsigned36Bit = match mem.fetch(ctx, &p_physical_address, &meta_op) {
             Ok((inst, extra_bits)) => {
                 if extra_bits.meta && self.trap.trap_on_marked_instruction() {
                     self.raise_trap();
@@ -975,6 +1006,10 @@ impl ControlUnit {
                 p_physical_address
             );
         }
+        // Several things update the N register, so we update
+        // `current_instruction` directly here instead of inside
+        // update_n_register().
+        self.regs.diagnostic_only.current_instruction = Instruction::from(instruction_word);
         self.update_n_register(instruction_word)?;
         Ok(())
     }
@@ -1632,8 +1667,8 @@ impl ControlUnit {
         if let Some(current_seq) = self.regs.k {
             event!(
                 Level::DEBUG,
-                "dismissing current sequence (reason: {})",
-                reason
+                "dismissing current sequence {current_seq:o} (reason: {reason}) while executing instruction from {:o}",
+                self.regs.diagnostic_only.instruction_address,
             );
             self.regs.flags.lower(&current_seq);
             self.regs.current_sequence_is_runnable = false;

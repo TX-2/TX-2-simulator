@@ -98,7 +98,9 @@ impl Unit for LincolnWriterOutput {
         let change_flag = if !self.connected || transmitting {
             None
         } else {
-            Some(FlagChange::Raise)
+            Some(FlagChange::Raise(
+                "(still or newly) connected and not already transmitting",
+            ))
         };
         event!(
             Level::TRACE,
@@ -414,7 +416,7 @@ impl Unit for LincolnWriterInput {
                     "LW input {:o}: connected and data is ready; raising flag",
                     self.unit
                 );
-                Some(FlagChange::Raise) // data is ready, raise flag
+                Some(FlagChange::Raise("keyboard data is ready")) // data is ready, raise flag
             } else {
                 event!(
                     Level::TRACE,
