@@ -17,6 +17,7 @@
 ** invalid opcode (and the opcode part of all of these words is zero,
 ** which is not a valid opcode).
 EXIT START FAIL = 1
+EXIT PREMATURE OUTPUT = 2
 EXIT SUCCESS    = 42 ** Sorry Douglas, this is octal.
 
 DREG = 377607
@@ -29,9 +30,10 @@ EREG = 377610
 ** for its sequence at 200, so the program counter for sequence 65
 ** (which is X₆₅) should start at 200.
 100|      REX₆₅ INPUT        ** Set X₆₅ to the address of the input routine
-          REX₆₆ OUTPUT       ** Set X₆₆ to the address of the ouput routine
-        ²¹IOS₆₅ 30000        ** Connect Lincoln Writer input 1 (unit 65).
-          EXIT SART FAIL     ** Something has gone wrong; execute an invalid instruction.
+          REX₆₆ TOOSOON      ** Not ready for output yet.
+      h ²¹IOS₆₅  30000       ** Connect LW input 1 (unit 65), dismiss current sequence
+        ²¹IOS₆₆  30000       ** Connect LW output 1 (unit 66)
+          EXIT START FAIL    ** Something has gone wrong; execute an invalid instruction.
 
 ******************************************************************************
 ** Sequence 65: Input
@@ -51,25 +53,29 @@ EREG = 377610
 ** in Volume 2 of the TX-2 Techical Manual.  In our current case,
 ** there is no need to write this data to any other location than E.
 
-INPUT|     ³TSD    EREG      ** read code into E register
+INPUT|     ³TSD    PRINTME   ** read code
         h  ³SED    STOPCODE  ** compare with STOP, skip if different.
                              ** use configuration 3 to compare only Q1.
-           EXIT SUCCESS      ** STOP entered, so execute an invalid instruction.
+            EXIT SUCCESS     ** STOP entered, so we are finished
 
 ** To print our character, we simply activate sequence 65 (the output
 ** half of the Lincoln Writer).  That sequence just prints a single
-** character which we leave in PRINTME.
-        h   STE PRINTME   ** Store the code to be printed.
-          ²¹IOS₆₅ 30000   ** Allow output sequence to run.
-           JMP    INPUT   ** Loop to read the next character.
+** character which we leave in PRINTME.   When we loop, the current
+** sequence will be dismissed, giving the output sequence a chance
+** to run.
+        h ³⁰SKX₆₆ OUTPUT  ** Raise flag, on LW output, start at OUTPUT
+            JMP    INPUT  ** Loop to read the next character.
 
 ******************************************************************************
 ** Sequence 66: Output
 ******************************************************************************
 
-OUTPUT|
-        ³TSD   PRINTME   ** Print the output character.
-       ²⁰JMP       300   ** loop, dismissing the current sequence.
+OUTPUT ->  ³TSD   PRINTME   ** Print the output character.
+            IOS₆₆   40000   ** Drop flag
+          ²⁰JMP    OUTPUT   ** loop, dismissing the current sequence.
+
+TOOSOON-> IOS₆₆   40000   ** Drop flag
+        ²⁰JMP    OUTPUT   ** loop, dismissing the current sequence.
 
 ******************************************************************************
 ** Data
