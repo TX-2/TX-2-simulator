@@ -6,7 +6,7 @@ use base::prelude::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum FlagChange {
-    Raise,
+    Raise(&'static str),
 }
 
 /// A value of which bits 0..width are significant (0 being the least significant bit).

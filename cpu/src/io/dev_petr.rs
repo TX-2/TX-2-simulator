@@ -336,7 +336,7 @@ impl Unit for Petr {
         UnitStatus {
             special: Unsigned12Bit::ZERO,
             change_flag: if data_ready {
-                Some(FlagChange::Raise)
+                Some(FlagChange::Raise("data is ready"))
             } else {
                 None
             },

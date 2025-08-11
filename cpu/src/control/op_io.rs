@@ -162,8 +162,12 @@ impl ControlUnit {
             }
             _ => devices.connect(ctx, regs.k, &unit, mode, alarm_unit)?,
         };
-        if let Some(FlagChange::Raise) = maybe_flag_change {
-            regs.flags.raise(&unit);
+        match maybe_flag_change {
+            Some(FlagChange::Raise(reason)) => {
+                event!(Level::DEBUG, "unit {unit:o} raised its flag: {reason}");
+                regs.flags.raise(&unit);
+            }
+            None => (),
         }
         Ok(())
     }
