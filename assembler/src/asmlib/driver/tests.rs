@@ -143,61 +143,58 @@ fn test_metacommand_dec_changes_default_base() {
             sequences,
         },
     ] = directive.blocks.values().collect::<Vec<_>>().as_slice()
-    {
-        if let [
+        && let [
             InstructionSequence {
                 local_symbols: None,
                 instructions,
             },
         ] = sequences.as_slice()
-        {
-            if let [
-                TaggedProgramInstruction {
-                    span: _,
-                    tags: tags1,
-                    instruction: first_instruction,
-                },
-                TaggedProgramInstruction {
-                    span: _,
-                    tags: tags2,
-                    instruction: second_instruction,
-                },
-            ] = instructions.as_slice()
-            {
-                assert!(tags1.is_empty());
-                assert!(tags2.is_empty());
+        && let [
+            TaggedProgramInstruction {
+                span: _,
+                tags: tags1,
+                instruction: first_instruction,
+            },
+            TaggedProgramInstruction {
+                span: _,
+                tags: tags2,
+                instruction: second_instruction,
+            },
+        ] = instructions.as_slice()
+    {
+        assert!(tags1.is_empty());
+        assert!(tags2.is_empty());
 
-                let first_fragment = first_instruction.fragments.first();
-                let second_fragment = second_instruction.fragments.first();
+        let first_fragment = first_instruction.fragments.first();
+        let second_fragment = second_instruction.fragments.first();
 
-                assert_eq!(first_fragment.leading_commas, None);
-                assert_eq!(first_fragment.trailing_commas, None);
-                assert_eq!(second_fragment.leading_commas, None);
-                assert_eq!(second_fragment.trailing_commas, None);
+        assert_eq!(first_fragment.leading_commas, None);
+        assert_eq!(first_fragment.trailing_commas, None);
+        assert_eq!(second_fragment.leading_commas, None);
+        assert_eq!(second_fragment.trailing_commas, None);
 
-                // Then we should see that the first value is assembled as 10 octal...
-                assert_eq!(
-                    &first_fragment.fragment,
-                    &InstructionFragment::from((
-                        Span::from(0..2usize),
-                        Script::Normal,
-                        Unsigned36Bit::from(0o10_u32),
-                    )),
-                );
-                // ... and that the first value is assembled as 12
-                // octal (10 decimal).
-                assert_eq!(
-                    &second_fragment.fragment,
-                    &InstructionFragment::from((
-                        span(17..19),
-                        Script::Normal,
-                        Unsigned36Bit::from(0o12_u32),
-                    )),
-                );
-                return;
-            }
-        }
+        // Then we should see that the first value is assembled as 10 octal...
+        assert_eq!(
+            &first_fragment.fragment,
+            &InstructionFragment::from((
+                Span::from(0..2usize),
+                Script::Normal,
+                Unsigned36Bit::from(0o10_u32),
+            )),
+        );
+        // ... and that the first value is assembled as 12
+        // octal (10 decimal).
+        assert_eq!(
+            &second_fragment.fragment,
+            &InstructionFragment::from((
+                span(17..19),
+                Script::Normal,
+                Unsigned36Bit::from(0o12_u32),
+            )),
+        );
+        return;
     }
+
     panic!(
         "expected two items with value 10 octal and 12 octal, got {:?}",
         &directive,

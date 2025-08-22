@@ -163,18 +163,17 @@ impl Glyph {
 #[test]
 fn test_subscript_char_agreement() {
     for g in ALL_GLYPHS {
-        if let Some(ch) = g.normal {
-            if let Some(glyph_sub_ch) = g.subscript {
-                if let Ok(charset_sub_ch) = subscript_char(ch) {
-                    assert_eq!(
-                        glyph_sub_ch,
-                        charset_sub_ch,
-                        "glyph {g:?} maps {ch} to {glyph_sub_ch} ({}) but subscript_char maps it to {charset_sub_ch} ({})",
-                        glyph_sub_ch.escape_unicode(),
-                        charset_sub_ch.escape_unicode(),
-                    );
-                }
-            }
+        if let Some(ch) = g.normal
+            && let Some(glyph_sub_ch) = g.subscript
+            && let Ok(charset_sub_ch) = subscript_char(ch)
+        {
+            assert_eq!(
+                glyph_sub_ch,
+                charset_sub_ch,
+                "glyph {g:?} maps {ch} to {glyph_sub_ch} ({}) but subscript_char maps it to {charset_sub_ch} ({})",
+                glyph_sub_ch.escape_unicode(),
+                charset_sub_ch.escape_unicode(),
+            );
         }
     }
 }
@@ -182,18 +181,17 @@ fn test_subscript_char_agreement() {
 #[test]
 fn test_superscript_char_agreement() {
     for g in ALL_GLYPHS {
-        if let Some(ch) = g.normal {
-            if let Some(glyph_sup_ch) = g.superscript {
-                if let Ok(charset_sup_ch) = superscript_char(ch) {
-                    assert_eq!(
-                        glyph_sup_ch,
-                        charset_sup_ch,
-                        "glyph {g:?} maps {ch} to {glyph_sup_ch} ({}) but superscript_char maps it to {charset_sup_ch} ({})",
-                        glyph_sup_ch.escape_unicode(),
-                        charset_sup_ch.escape_unicode(),
-                    );
-                }
-            }
+        if let Some(ch) = g.normal
+            && let Some(glyph_sup_ch) = g.superscript
+            && let Ok(charset_sup_ch) = superscript_char(ch)
+        {
+            assert_eq!(
+                glyph_sup_ch,
+                charset_sup_ch,
+                "glyph {g:?} maps {ch} to {glyph_sup_ch} ({}) but superscript_char maps it to {charset_sup_ch} ({})",
+                glyph_sup_ch.escape_unicode(),
+                charset_sup_ch.escape_unicode(),
+            );
         }
     }
 }

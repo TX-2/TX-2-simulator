@@ -1249,7 +1249,7 @@ fn test_assignment_origin() {
 
 #[test]
 fn test_symbolic_origin() {
-    const INPUT: &str = concat!("BEGIN|2\n",);
+    const INPUT: &str = "BEGIN|2\n";
     let tree = parse_successfully_with(INPUT, source_file(), no_state_setup);
     assert_eq!(
         tree,
@@ -1314,7 +1314,9 @@ fn test_metacommand_octal() {
     );
 }
 
-fn parse_normal_arithmetic_expression(input: &str) -> Result<ArithmeticExpression, ParseErrors> {
+fn parse_normal_arithmetic_expression(
+    input: &str,
+) -> Result<ArithmeticExpression, ParseErrors<'_>> {
     let g = grammar();
     parse_with(
         input,
@@ -1325,7 +1327,7 @@ fn parse_normal_arithmetic_expression(input: &str) -> Result<ArithmeticExpressio
 
 fn parse_superscript_arithmetic_expression(
     input: &str,
-) -> Result<ArithmeticExpression, ParseErrors> {
+) -> Result<ArithmeticExpression, ParseErrors<'_>> {
     let g = grammar();
     parse_with(
         input,
@@ -1334,7 +1336,9 @@ fn parse_superscript_arithmetic_expression(
     )
 }
 
-fn parse_subscript_arithmetic_expression(input: &str) -> Result<ArithmeticExpression, ParseErrors> {
+fn parse_subscript_arithmetic_expression(
+    input: &str,
+) -> Result<ArithmeticExpression, ParseErrors<'_>> {
     let g = grammar();
     parse_with(
         input,
