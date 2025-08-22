@@ -91,14 +91,14 @@ fn assemble_pass1<'a, 'b: 'a>(
     let (mut sf, mut new_errors) = parse_source_file(source_file_body.as_str(), setup);
     errors.append(&mut new_errors);
 
-    if let Some(source_file) = sf.as_mut() {
-        if let Err(tag_errors) = source_file.build_local_symbol_tables() {
-            errors.extend(
-                tag_errors
-                    .into_iter()
-                    .map(|tag_err| Rich::custom(tag_err.span(), tag_err.to_string())),
-            );
-        }
+    if let Some(source_file) = sf.as_mut()
+        && let Err(tag_errors) = source_file.build_local_symbol_tables()
+    {
+        errors.extend(
+            tag_errors
+                .into_iter()
+                .map(|tag_err| Rich::custom(tag_err.span(), tag_err.to_string())),
+        );
     }
     Ok((sf, options))
 }
@@ -298,10 +298,10 @@ fn initial_symbol_table<'a>(
     for r in source_file.global_symbol_references() {
         match r {
             Ok((symbol, span, context)) => {
-                if !explicit_symbols.is_defined(&symbol) {
-                    if let Err(e) = implicit_symbols.record_usage_context(symbol.clone(), context) {
-                        errors.push(Rich::custom(span, e.to_string()));
-                    }
+                if !explicit_symbols.is_defined(&symbol)
+                    && let Err(e) = implicit_symbols.record_usage_context(symbol.clone(), context)
+                {
+                    errors.push(Rich::custom(span, e.to_string()));
                 }
             }
             Err(e) => {
@@ -461,15 +461,15 @@ fn assemble_pass3(
     let mut bad_symbol_definitions: BTreeMap<SymbolName, ProgramError> = Default::default();
     // TODO: consider moving this into pass 2.
     for block in blocks.values() {
-        if let Some(Origin::Symbolic(span, symbol_name)) = block.origin.as_ref() {
-            if !explicit_symtab.is_defined(symbol_name) {
-                final_symbols.define_if_undefined(
-                    symbol_name.clone(),
-                    FinalSymbolType::Tag, // actually origin
-                    body.extract(span.start..span.end).to_string(),
-                    FinalSymbolDefinition::PositionIndependent(block.location.into()),
-                );
-            }
+        if let Some(Origin::Symbolic(span, symbol_name)) = block.origin.as_ref()
+            && !explicit_symtab.is_defined(symbol_name)
+        {
+            final_symbols.define_if_undefined(
+                symbol_name.clone(),
+                FinalSymbolType::Tag, // actually origin
+                body.extract(span.start..span.end).to_string(),
+                FinalSymbolDefinition::PositionIndependent(block.location.into()),
+            );
         }
     }
 

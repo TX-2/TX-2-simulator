@@ -47,7 +47,7 @@ impl<T> OneOrMore<T> {
         self.tail.push(item);
     }
 
-    pub fn iter(&self) -> OneOrMoreIter<T> {
+    pub fn iter(&self) -> OneOrMoreIter<'_, T> {
         OneOrMoreIter {
             inner: std::iter::once(&self.head).chain(self.tail.iter()),
         }
@@ -60,7 +60,7 @@ impl<T> OneOrMore<T> {
         }
     }
 
-    pub fn iter_mut(&mut self) -> OneOrMoreIterMut<T> {
+    pub fn iter_mut(&mut self) -> OneOrMoreIterMut<'_, T> {
         OneOrMoreIterMut {
             inner: std::iter::once(&mut self.head).chain(self.tail.iter_mut()),
         }

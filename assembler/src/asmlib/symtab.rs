@@ -425,25 +425,25 @@ pub(super) fn assign_default_rc_word_tags<R: RcAllocator>(
     final_symbols: &mut FinalSymbolTable,
 ) -> Result<(), RcWordAllocationFailure> {
     for (name, def) in implicit_symtab.definitions.iter_mut() {
-        if let ImplicitDefinition::Undefined(context) = def {
-            if context.requires_rc_word_allocation() {
-                let span: Span = *context.any_span();
-                let value = Unsigned36Bit::ZERO;
-                let addr = rcblock.allocate(
-                    RcWordSource {
-                        span,
-                        kind: RcWordKind::DefaultAssignment,
-                    },
-                    value,
-                )?;
-                final_symbols.define(
-                    name.clone(),
-                    FinalSymbolType::Equality,
-                    value.to_string(),
-                    FinalSymbolDefinition::PositionIndependent(value),
-                );
-                *def = ImplicitDefinition::DefaultAssigned(addr.into(), context.clone());
-            }
+        if let ImplicitDefinition::Undefined(context) = def
+            && context.requires_rc_word_allocation()
+        {
+            let span: Span = *context.any_span();
+            let value = Unsigned36Bit::ZERO;
+            let addr = rcblock.allocate(
+                RcWordSource {
+                    span,
+                    kind: RcWordKind::DefaultAssignment,
+                },
+                value,
+            )?;
+            final_symbols.define(
+                name.clone(),
+                FinalSymbolType::Equality,
+                value.to_string(),
+                FinalSymbolDefinition::PositionIndependent(value),
+            );
+            *def = ImplicitDefinition::DefaultAssigned(addr.into(), context.clone());
         }
     }
     Ok(())

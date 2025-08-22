@@ -417,10 +417,10 @@ impl ManuscriptBlock {
         if let Some(origin) = self.origin.as_ref() {
             origin.span()
         } else {
-            if let Some(s) = self.sequences.first() {
-                if let Some(first) = s.first() {
-                    return first.span();
-                }
+            if let Some(s) = self.sequences.first()
+                && let Some(first) = s.first()
+            {
+                return first.span();
             }
             Span::from(0..0)
         }

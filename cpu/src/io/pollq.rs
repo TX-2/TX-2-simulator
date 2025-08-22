@@ -36,16 +36,16 @@ impl PollQueue {
 
     pub(crate) fn push(&mut self, key: SequenceNumber, priority: Duration) -> Option<Duration> {
         let old_pri = self.items.push(key, priority);
-        if let Some(prev) = old_pri {
-            if prev < priority {
-                event!(
-                    Level::WARN,
-                    "unit {:o} poll time pushed back from {:?} to {:?}",
-                    key,
-                    prev,
-                    priority
-                );
-            }
+        if let Some(prev) = old_pri
+            && prev < priority
+        {
+            event!(
+                Level::WARN,
+                "unit {:o} poll time pushed back from {:?} to {:?}",
+                key,
+                prev,
+                priority
+            );
         }
         old_pri
     }

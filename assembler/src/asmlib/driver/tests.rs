@@ -260,8 +260,7 @@ fn test_super_hash_value() {
 #[test]
 fn test_sub_hash_value() {
     // Given a program which assembles at address 1 the value of # ("here"), when we assemble it
-    let program =
-        assemble_source(concat!("1| @sub_hash@\n",), Default::default()).expect("program is valid");
+    let program = assemble_source("1| @sub_hash@\n", Default::default()).expect("program is valid");
 
     // Then we should see that # evaluates as 1, the address of the
     // insruction containing it.

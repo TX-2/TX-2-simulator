@@ -245,19 +245,19 @@ impl Petr {
         );
         match self.activity {
             Activity::Started => {
-                if let Some(t) = self.time_of_next_read {
-                    if t > *system_time {
-                        // The next line has not yet appeared under the read
-                        // head.
-                        let to_wait = || t - *system_time;
-                        event!(
-                            Level::TRACE,
-                            "motor running ({}) but next line will not be read for {:?} yet",
-                            self.direction,
-                            to_wait()
-                        );
-                        return;
-                    }
+                if let Some(t) = self.time_of_next_read
+                    && t > *system_time
+                {
+                    // The next line has not yet appeared under the read
+                    // head.
+                    let to_wait = || t - *system_time;
+                    event!(
+                        Level::TRACE,
+                        "motor running ({}) but next line will not be read for {:?} yet",
+                        self.direction,
+                        to_wait()
+                    );
+                    return;
                 }
                 match self.direction {
                     Direction::Bin => {
@@ -304,21 +304,21 @@ fn compute_throughput(
     connect_time: Option<Duration>,
     now: Duration,
 ) -> Option<Throughput> {
-    if let Some(connected_at) = connect_time {
-        if let Some(elapsed) = now.checked_sub(connected_at) {
-            let elapsed = elapsed.as_secs_f64();
+    if let Some(connected_at) = connect_time
+        && let Some(elapsed) = now.checked_sub(connected_at)
+    {
+        let elapsed = elapsed.as_secs_f64();
 
-            // It seems that in a WASM build, f64::value_from(usize)
-            // is irrefutable.  But clippy doesn't warn about it in
-            // non-WASM builds because it's not always irrefutable.
-            #[allow(irrefutable_let_patterns)]
-            if let Ok(n) = f64::value_from(pos) {
-                let throughput = n / elapsed;
-                return Some(Throughput {
-                    lines_per_second: throughput,
-                    total_seconds: elapsed,
-                });
-            }
+        // It seems that in a WASM build, f64::value_from(usize)
+        // is irrefutable.  But clippy doesn't warn about it in
+        // non-WASM builds because it's not always irrefutable.
+        #[allow(irrefutable_let_patterns)]
+        if let Ok(n) = f64::value_from(pos) {
+            let throughput = n / elapsed;
+            return Some(Throughput {
+                lines_per_second: throughput,
+                total_seconds: elapsed,
+            });
         }
     }
     None

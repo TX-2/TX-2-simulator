@@ -28,7 +28,7 @@ impl Ord for OrderableSpan {
 
 impl PartialOrd for OrderableSpan {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.0.start.cmp(&other.0.start))
+        Some(self.cmp(other))
     }
 }
 

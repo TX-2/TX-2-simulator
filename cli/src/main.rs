@@ -312,10 +312,10 @@ fn run_simulator() -> Result<(), Box<dyn std::error::Error>> {
     };
     let initial_context = clk.make_fresh_context();
     let mut tx2 = Tx2::new(&initial_context, panic_on_unmasked_alarm, &mem_config);
-    if let Some(tape) = tape_data {
-        if let Err(e) = tx2.mount_tape(&initial_context, tape) {
-            return Err(Box::new(e));
-        }
+    if let Some(tape) = tape_data
+        && let Err(e) = tx2.mount_tape(&initial_context, tape)
+    {
+        return Err(Box::new(e));
     }
     run(&mut tx2, &mut clk, sleep_multiplier)
 }

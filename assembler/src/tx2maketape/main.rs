@@ -145,11 +145,9 @@ fn read_binary(input_file: File) -> Result<Binary, Fail> {
             Some(expected) => expected != addr,
         };
 
-        if non_contiuguous {
-            if let Some(old) = chunk.take() {
-                assert!(!old.is_empty());
-                binary.add_chunk(old);
-            }
+        if non_contiuguous && let Some(old) = chunk.take() {
+            assert!(!old.is_empty());
+            binary.add_chunk(old);
         }
         let ch: &mut BinaryChunk = chunk.get_or_insert_with(|| BinaryChunk {
             address: Address::from(addr),
@@ -158,10 +156,10 @@ fn read_binary(input_file: File) -> Result<Binary, Fail> {
         prev_addr = Some(addr);
         ch.push(word);
     }
-    if let Some(current) = chunk.take() {
-        if !current.is_empty() {
-            binary.add_chunk(current);
-        }
+    if let Some(current) = chunk.take()
+        && !current.is_empty()
+    {
+        binary.add_chunk(current);
     }
     Ok(binary)
 }
