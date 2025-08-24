@@ -1081,6 +1081,22 @@ fn test_union() {
 }
 
 #[test]
+fn test_query() {
+    assert_eq!(
+        scan_tokens_only("?"),
+        Ok(vec![Token::Query(Script::Normal)])
+    );
+    assert_eq!(
+        scan_tokens_only("@sub_?@"), // not @sub_query@
+        Ok(vec![Token::Query(Script::Sub)])
+    );
+    assert_eq!(
+        scan_tokens_only("@sup_?@"), // not @sup_query@
+        Ok(vec![Token::Query(Script::Super)])
+    );
+}
+
+#[test]
 fn test_solidus() {
     assert_eq!(
         scan_tokens_only("/"),

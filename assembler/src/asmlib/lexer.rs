@@ -120,6 +120,7 @@ pub(crate) enum Token {
     Tilde(Script),
     LessThan(Script),
     GreaterThan(Script),
+    Query(Script), // question mark, i.e. "?"
     Intersection(Script),
     Union(Script),
 
@@ -197,6 +198,7 @@ impl Display for Token {
             Token::Tilde(script) => write_elevated(script, "~"),
             Token::LessThan(script) => write_elevated(script, "<"),
             Token::GreaterThan(script) => write_elevated(script, ">"),
+            Token::Query(script) => write_elevated(script, "?"),
             Token::Intersection(script) => write_elevated(script, "∩"),
             Token::Union(script) => write_elevated(script, "∪"),
             Token::Solidus(script) => write_elevated(script, "/"),
@@ -509,9 +511,7 @@ fn tokenise_single_glyph(g: Elevated<&'static Glyph>) -> Option<Token> {
         | GlyphShape::i
         | GlyphShape::y
         | GlyphShape::z => make_symex(),
-        GlyphShape::Query => {
-            todo!("'?' (question-mark) is a symex terminator but does not yet have a token")
-        }
+        GlyphShape::Query => Some(Token::Query(script)),
         GlyphShape::Union => Some(Token::Union(script)),
         GlyphShape::Intersection => Some(Token::Intersection(script)),
         GlyphShape::j | GlyphShape::k => make_symex(),
@@ -926,6 +926,15 @@ fn test_glyph_tokenizer_space_breaks_tokens() {
         ))
     );
     assert_eq!(lex.get_next_spanned_token(), None);
+}
+
+#[test]
+fn test_glyph_tokenizer_question_mark() {
+    let mut lex = GlyphTokenizer::new("?");
+    assert_eq!(
+        lex.get_next_spanned_token(),
+        Some((Ok(Token::Query(Script::Normal)), 0..1))
+    );
 }
 
 #[derive(Debug, Clone)]

@@ -1063,11 +1063,13 @@ const ALL_GLYPHS: &[Glyph] = &[
         ..GDEF
     },
     Glyph {
-        shape: GlyphShape::Query,
+        shape: GlyphShape::Query, // A question mark.
         name: "?",
         normal: Some('?'),
         superscript: Some('ˀ'), // dot is missing but it's the best we can do.
-        subscript: None,
+        // U+FE56, "Small Question Mark" is not really a subscript
+        // character, but let's try it out.
+        subscript: Some('﹖'),
         ..GDEF
     },
     Glyph {
