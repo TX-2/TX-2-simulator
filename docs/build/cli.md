@@ -12,6 +12,13 @@ tools:
 To be able to build the code, [install the Rust build
 tools](https://doc.rust-lang.org/cargo/getting-started/installation.html).
 
+Then, simply build everything with `cargo`:
+
+```
+cargo build --workspace
+```
+
+
 ## Trying It Out
 
 Right now the simulator doesn't have enough I/O support to be usable
