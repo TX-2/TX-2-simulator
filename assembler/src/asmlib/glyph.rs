@@ -196,6 +196,27 @@ fn test_superscript_char_agreement() {
     }
 }
 
+#[test]
+fn test_glyph_names_do_not_contain_underscore() {
+    // Because sup_ and sub_ use an underscore as a kind of separator,
+    // it's probably too confusing to allow them in glyph names.  So
+    // this test prevents someone using one.
+    //
+    // I am currently also considering a convention in which a
+    // combining character is specified by including the name of the
+    // second character inside @...@.  For example @square_minus@ to
+    // denote a square (which does not advance the carriage) followed
+    // by a minus sign (which does).  This plan would require us to
+    // treat '_' as a glyph name separator.
+    for g in ALL_GLYPHS {
+        assert!(
+            !g.name.contains('_'),
+            "glyph name {} should not contain an underscore",
+            &g.name
+        );
+    }
+}
+
 mod shape {
     #![allow(non_camel_case_types)]
 
