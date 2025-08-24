@@ -44,7 +44,6 @@ implemented.
 The Users Handbook mentions the ☛☛DEMO metacommand but doesn't explain
 what it does, so this is not implemented.
 
-
 ## TX-2 Project Issues
 
 See the [TX-2 Simulator project's

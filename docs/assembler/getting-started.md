@@ -2,13 +2,13 @@
 
 Here's an example input:
 
-<pre>
+```
 100|               0
 200| h ²¹IOS₅₂ 30106
      h   STE     100
          0
 ☛☛PUNCH 200
-</pre>
+```
 
 This program consists of four words:
 

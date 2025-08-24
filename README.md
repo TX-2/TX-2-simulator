@@ -12,32 +12,16 @@ From [the Wikipedia entry for the TX-2](https://en.wikipedia.org/wiki/TX-2):
 > intelligence and human–computer interaction. Wesley A. Clark was the
 > chief architect of the TX-2.
 
-## For More Information
-
-The [OVERVIEW](docs/OVERVIEW.md) file explains the high-level design
-of the simulator. More information is available at the [TX-2
-Project's website](https://tx-2.github.io/).
-
 ## Trying It Out
 
-The simulator doesn't emulate all the features of the original TX-2
-yet, but you can still try it out.
+To get started with using the emulator, please read [Getting
+Started](docs/getting-started.md).
 
-### Try It Out Online
+## For More Information
 
-You can try it on-line [here](https://tx-2.github.io/demo/).
-
-### Building and Running the Web-based simulator
-
-To run the web-based version locally yourself, follow [these
-instructions](docs/build/web.md).
-
-### Building and Running The Command-Line Tools
-
-Hardware emulation is much less complete in the command-line version.
-
-You can [try out the command-line simulator and tools by following
-these instructions](docs/build/cli.md).
+There is [more documentation about the emulator and its tools](docs),
+including a [Design Overview](docs/OVERVIEW.md). See also the [TX-2
+Project's website](https://tx-2.github.io/).
 
 ## Contributing
 
