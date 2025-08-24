@@ -1,6 +1,6 @@
 # Getting Started
 
-This project has several components:
+The TX-2 emulator repository includes several components:
 
 - Command-line tools for assembling, disassembling and inspecting TX-2
   programs

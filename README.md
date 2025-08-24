@@ -21,7 +21,9 @@ Started](docs/getting-started.md).
 
 There is [more documentation about the emulator and its tools](docs),
 including a [Design Overview](docs/OVERVIEW.md). See also the [TX-2
-Project's website](https://tx-2.github.io/).
+Project's website](https://tx-2.github.io/), which includes
+information about the TX-2 computer, the software which ran on it, and
+our effort to make ti run again.
 
 ## Contributing
 

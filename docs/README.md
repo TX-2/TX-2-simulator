@@ -1,6 +1,7 @@
-This folder contains documentation about the simulator itself.  For
-documentation about the TX-2, please see the [TX-2 project's web
-page](https://tx-2.github.io/).
+This folder contains documentation about the simulator program itself.
+For documentation about the TX-2 and our efforts to bring back this
+important computer and its software, please see the [TX-2 project's
+web page](https://tx-2.github.io/).
 
 You might want to read:
 
