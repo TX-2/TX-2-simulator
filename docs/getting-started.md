@@ -38,7 +38,8 @@ web server.  The simulator doesn't execute on the server.
 
 You should not need `cargo-generate`.
 
-If these instructions seem not to work then please [raise a
+If these instructions seem not to work and the tips in [Build
+Trouble](build-trouble.md) don't help, then please [raise a
 bug](https://github.com/TX-2/TX-2-simulator/issues/new/choose).
 
 
