@@ -14,8 +14,8 @@ This seems confusing at first but the key to understanding it is that
 the Lincoln Writer (from which these characters come) has four
 characters which don't advance the carriage when they are printed
 (underline, overline, square, circle).  That is, the following
-character is overstruck.  The underline _ is one such character: then
-_ followed by G is a compound character, _ overstruck with G.  This
+character is overstruck.  The underline \_ is one such character: then
+\_ followed by G is a compound character, \_ overstruck with G.  This
 would be a two-character compound character.
 
 A compound character can also be formed with a space, presumably for
@@ -49,7 +49,6 @@ difference; the current parser implementation accepts Unicode input,
 and by the time the Lincoln Writer code have been translated into
 Unicode, the upper/lower case shift codes are no longer present in the
 parser's input.
-
 
 Another input that tests our understanding is this one:
 
@@ -92,10 +91,9 @@ A compound character is a sequene of two or three characters
 which
 
 1. Does not begin with a backspace
-2. Does not end with a backspace
-3. Does not end with a dead character (a character which does
-   not advance the carriage).
-4. Includes either a backspace or a dead character.
+1. Does not end with a backspace
+1. Does not end with a dead character (a character which does not advance the carriage).
+1. Includes either a backspace or a dead character.
 
 The thinking behind this restriction is that it enforces a
 requirement that the "compound character" not overlap with
@@ -151,11 +149,10 @@ characters:
   compound character DX, because this reflects the fact that the
   syllable takes up two "columns")
 
-This overstriking behaviour is described by A. Vanderburgh
-in "The Lincoln Keyboard - a typewriter keyboard designed
-for computers imput flexibility", a one-page paper in
-Communications of the ACM, Volume 1, Issue 7, July 1958
-(https://doi.org/10.1145/368873.368879).
+This overstriking behaviour is described by A. Vanderburgh in "The
+Lincoln Keyboard - a typewriter keyboard designed for computers imput
+flexibility", a one-page paper in [Communications of the ACM, Volume
+1, Issue 7, July 1958](https://doi.org/10.1145/368873.368879).
 
 
 ## Difficulty of Supporting Compound Characters for Unicode Input
