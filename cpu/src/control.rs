@@ -1164,11 +1164,164 @@ impl ControlUnit {
                 Opcode::Ios => control.op_ios(ctx, mem, devices),
                 Opcode::Tsd => control.op_tsd(ctx, devices, prev_program_counter, mem),
                 Opcode::Sed => control.op_sed(ctx, mem),
-                _ => Err(Alarm {
+                Opcode::Exx => Err(Alarm {
                     sequence: control.regs.k,
-                    details: AlarmDetails::ROUNDTUITAL(format!(
-                        "The emulator does not yet implement opcode {opcode}",
-                    )),
+                    details: AlarmDetails::ROUNDTUITAL {
+                        explanation: "The emulator does not yet implement opcode EXX".to_string(),
+                        bug_report_url: "https://github.com/TX-2/TX-2-simulator/issues/16",
+                    },
+                }),
+                Opcode::Adx => Err(Alarm {
+                    sequence: control.regs.k,
+                    details: AlarmDetails::ROUNDTUITAL {
+                        explanation: "The emulator does not yet implement opcode ADX".to_string(),
+                        bug_report_url: "https://github.com/TX-2/TX-2-simulator/issues/18",
+                    },
+                }),
+                Opcode::Spf => Err(Alarm {
+                    sequence: control.regs.k,
+                    details: AlarmDetails::ROUNDTUITAL {
+                        explanation: "The emulator does not yet implement opcode SPF".to_string(),
+                        bug_report_url: "https://github.com/TX-2/TX-2-simulator/issues/13",
+                    },
+                }),
+                Opcode::Flf | Opcode::Flg => Err(Alarm {
+                    sequence: control.regs.k,
+                    details: AlarmDetails::ROUNDTUITAL {
+                        explanation: "The emulator does not yet implement opcode {opcode}"
+                            .to_string(),
+                        // Note: that bug report covers two opcodes.
+                        bug_report_url: "https://github.com/TX-2/TX-2-simulator/issues/14",
+                    },
+                }),
+                Opcode::Ite | Opcode::Ita | Opcode::Una | Opcode::Dsa => Err(Alarm {
+                    sequence: control.regs.k,
+                    details: AlarmDetails::ROUNDTUITAL {
+                        explanation: "The emulator does not yet implement opcode {opcode}"
+                            .to_string(),
+                        // Note: this bug report covers several opcodes.
+                        bug_report_url: "https://github.com/TX-2/TX-2-simulator/issues/25",
+                    },
+                }),
+                Opcode::Jov => Err(Alarm {
+                    sequence: control.regs.k,
+                    details: AlarmDetails::ROUNDTUITAL {
+                        explanation: "The emulator does not yet implement opcode JOV".to_string(),
+                        bug_report_url: "https://github.com/TX-2/TX-2-simulator/issues/11",
+                    },
+                }),
+                Opcode::Jpa => Err(Alarm {
+                    sequence: control.regs.k,
+                    details: AlarmDetails::ROUNDTUITAL {
+                        explanation: "The emulator does not yet implement opcode JPA".to_string(),
+                        bug_report_url: "https://github.com/TX-2/TX-2-simulator/issues/9",
+                    },
+                }),
+                Opcode::Jna => Err(Alarm {
+                    sequence: control.regs.k,
+                    details: AlarmDetails::ROUNDTUITAL {
+                        explanation: "The emulator does not yet implement opcode JNA".to_string(),
+                        bug_report_url: "https://github.com/TX-2/TX-2-simulator/issues/10",
+                    },
+                }),
+                Opcode::Exa => Err(Alarm {
+                    sequence: control.regs.k,
+                    details: AlarmDetails::ROUNDTUITAL {
+                        explanation: "The emulator does not yet implement opcode EXA".to_string(),
+                        bug_report_url: "https://github.com/TX-2/TX-2-simulator/issues/143",
+                    },
+                }),
+                Opcode::Ins => Err(Alarm {
+                    sequence: control.regs.k,
+                    details: AlarmDetails::ROUNDTUITAL {
+                        explanation: "The emulator does not yet implement opcode INS".to_string(),
+                        bug_report_url: "https://github.com/TX-2/TX-2-simulator/issues/26",
+                    },
+                }),
+                Opcode::Com => Err(Alarm {
+                    sequence: control.regs.k,
+                    details: AlarmDetails::ROUNDTUITAL {
+                        explanation: "The emulator does not yet implement opcode COM".to_string(),
+                        bug_report_url: "https://github.com/TX-2/TX-2-simulator/issues/27",
+                    },
+                }),
+                Opcode::Cya | Opcode::Cyb | Opcode::Cab => Err(Alarm {
+                    sequence: control.regs.k,
+                    details: AlarmDetails::ROUNDTUITAL {
+                        explanation: "The emulator does not yet implement opcode {opcode}"
+                            .to_string(),
+                        bug_report_url: "https://github.com/TX-2/TX-2-simulator/issues/24",
+                    },
+                }),
+                Opcode::Noa => Err(Alarm {
+                    sequence: control.regs.k,
+                    details: AlarmDetails::ROUNDTUITAL {
+                        explanation: "The emulator does not yet implement opcode NOA".to_string(),
+                        bug_report_url: "https://github.com/TX-2/TX-2-simulator/issues/22",
+                    },
+                }),
+                Opcode::Nab => Err(Alarm {
+                    sequence: control.regs.k,
+                    details: AlarmDetails::ROUNDTUITAL {
+                        explanation: "The emulator does not yet implement opcode NAB".to_string(),
+                        bug_report_url: "https://github.com/TX-2/TX-2-simulator/issues/23",
+                    },
+                }),
+                Opcode::Add => Err(Alarm {
+                    sequence: control.regs.k,
+                    details: AlarmDetails::ROUNDTUITAL {
+                        explanation: "The emulator does not yet implement opcode ADD".to_string(),
+                        bug_report_url: "https://github.com/TX-2/TX-2-simulator/issues/28",
+                    },
+                }),
+                Opcode::Sca => Err(Alarm {
+                    sequence: control.regs.k,
+                    details: AlarmDetails::ROUNDTUITAL {
+                        explanation: "The emulator does not yet implement opcode SCA".to_string(),
+                        bug_report_url: "https://github.com/TX-2/TX-2-simulator/issues/19",
+                    },
+                }),
+                Opcode::Scb => Err(Alarm {
+                    sequence: control.regs.k,
+                    details: AlarmDetails::ROUNDTUITAL {
+                        explanation: "The emulator does not yet implement opcode SCB".to_string(),
+                        bug_report_url: "https://github.com/TX-2/TX-2-simulator/issues/20",
+                    },
+                }),
+                Opcode::Sab => Err(Alarm {
+                    sequence: control.regs.k,
+                    details: AlarmDetails::ROUNDTUITAL {
+                        explanation: "The emulator does not yet implement opcode SAB".to_string(),
+                        bug_report_url: "https://github.com/TX-2/TX-2-simulator/issues/21",
+                    },
+                }),
+                Opcode::Tly => Err(Alarm {
+                    sequence: control.regs.k,
+                    details: AlarmDetails::ROUNDTUITAL {
+                        explanation: "The emulator does not yet implement opcode TLY".to_string(),
+                        bug_report_url: "https://github.com/TX-2/TX-2-simulator/issues/32",
+                    },
+                }),
+                Opcode::Div => Err(Alarm {
+                    sequence: control.regs.k,
+                    details: AlarmDetails::ROUNDTUITAL {
+                        explanation: "The emulator does not yet implement opcode DIV".to_string(),
+                        bug_report_url: "https://github.com/TX-2/TX-2-simulator/issues/31",
+                    },
+                }),
+                Opcode::Mul => Err(Alarm {
+                    sequence: control.regs.k,
+                    details: AlarmDetails::ROUNDTUITAL {
+                        explanation: "The emulator does not yet implement opcode MUL".to_string(),
+                        bug_report_url: "https://github.com/TX-2/TX-2-simulator/issues/30",
+                    },
+                }),
+                Opcode::Sub => Err(Alarm {
+                    sequence: control.regs.k,
+                    details: AlarmDetails::ROUNDTUITAL {
+                        explanation: "The emulator does not yet implement opcode SUB".to_string(),
+                        bug_report_url: "https://github.com/TX-2/TX-2-simulator/issues/29",
+                    },
                 }),
             }
         }
@@ -1344,9 +1497,15 @@ impl ControlUnit {
                 // we don't know what the TX-2 did in this case.
                 Err(self.alarm_unit.always_fire(Alarm {
                     sequence: self.regs.k,
-                    details: AlarmDetails::ROUNDTUITAL(format!(
+                    details: AlarmDetails::ROUNDTUITAL {
+                        explanation: format!(
                         "memory unit indicated address {operand_address:o} is not mapped and we don't know what to do when QSAL is masked",
-                    ))
+                        ),
+                        // Note: there are two different ways in which
+                        // we can raise a ROUNDTUITAL alarm referring
+                        // to this bug report URL.
+                        bug_report_url: "https://github.com/TX-2/TX-2-simulator/issues/142",
+                    }
                 }))
             }
             Err(MemoryOpFailure::ReadOnly(_, _)) => unreachable!(),
@@ -1508,10 +1667,16 @@ impl ControlUnit {
                     // QSAL is masked.  I don't know what the TX-2 did in this situation.
                     return Err(self.alarm_unit.always_fire(Alarm {
                         sequence: self.regs.k,
-                        details: AlarmDetails::ROUNDTUITAL(format!(
-                            "we don't know how to handle {} when QSAL is masked",
-                            msg()
-                        )),
+                        details: AlarmDetails::ROUNDTUITAL {
+                            explanation: format!(
+                                "we don't know how to handle {} when QSAL is masked",
+                                msg()
+                            ),
+                            // Note: there are two different ways in
+                            // which we can raise a ROUNDTUITAL alarm
+                            // referring to this bug report URL.
+                            bug_report_url: "https://github.com/TX-2/TX-2-simulator/issues/142",
+                        },
                     }));
                 }
                 Ok((word, extra)) => {

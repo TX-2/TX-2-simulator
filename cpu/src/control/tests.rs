@@ -74,7 +74,7 @@ fn test_roundtuital_not_maskable() {
         Err((
             Alarm {
                 sequence: _,
-                details: AlarmDetails::ROUNDTUITAL(_),
+                details: AlarmDetails::ROUNDTUITAL { .. },
             },
             _,
         )) => (),

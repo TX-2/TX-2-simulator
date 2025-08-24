@@ -184,7 +184,10 @@ pub enum AlarmDetails {
 
     // The following alarms didn't exist in the real TX-2:
     /// Something is not implemented
-    ROUNDTUITAL(String),
+    ROUNDTUITAL {
+        explanation: String,
+        bug_report_url: &'static str,
+    },
 
     /// Loop in deferred addressing (detection of this is not a feature
     /// of the TX-2).
@@ -225,7 +228,7 @@ impl AlarmDetails {
                 message: _,
             } => AlarmKind::IOSAL,
             AlarmDetails::MISAL { affected_unit: _ } => AlarmKind::MISAL,
-            AlarmDetails::ROUNDTUITAL(_) => AlarmKind::ROUNDTUITAL,
+            AlarmDetails::ROUNDTUITAL { .. } => AlarmKind::ROUNDTUITAL,
             AlarmDetails::DEFERLOOPAL { address: _ } => AlarmKind::DEFERLOOPAL,
             AlarmDetails::BUGAL {
                 instr: _,
@@ -269,10 +272,13 @@ impl Display for AlarmDetails {
                     msg
                 )
             }
-            ROUNDTUITAL(msg) => {
+            ROUNDTUITAL {
+                explanation,
+                bug_report_url,
+            } => {
                 write!(
                     f,
-                    "ROUNDTUITAL: the program used a feature not supported in the emulator: {msg}",
+                    "ROUNDTUITAL: the program used a feature not supported in the emulator: {explanation}. See feature request at {bug_report_url}",
                 )
             }
 

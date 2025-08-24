@@ -113,9 +113,12 @@ impl ControlUnit {
                 // Select unit XXX
                 Err(self.alarm_unit.always_fire(Alarm {
                     sequence: self.regs.k,
-                    details: AlarmDetails::ROUNDTUITAL(format!(
-                        "IOS operand {operand:o}: Select Unit command is not yet implemented.",
-                    )),
+                    details: AlarmDetails::ROUNDTUITAL {
+                        explanation: format!(
+                            "IOS operand {operand:o}: Select Unit command is not yet implemented.",
+                        ),
+                        bug_report_url: "https://github.com/TX-2/TX-2-simulator/issues/139",
+                    },
                 }))
             }
             _ => {
@@ -338,10 +341,12 @@ impl ControlUnit {
                                         .alarm_unit
                                         .always_fire(Alarm {
                                         sequence: self.regs.k,
-                                        details: AlarmDetails::ROUNDTUITAL(
-                                            "TSD output in assembly mode is not yet implemented."
-                                                .to_string(),
-                                        ),
+                                            details: AlarmDetails::ROUNDTUITAL{
+                                                explanation:
+                                                "TSD output in assembly mode is not yet implemented."
+                                                    .to_string(),
+                                                bug_report_url: "https://github.com/TX-2/TX-2-simulator/issues/140",
+                                            },
                                     })),
                                 }
                             }

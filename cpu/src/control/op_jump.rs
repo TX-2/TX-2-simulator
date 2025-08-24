@@ -67,9 +67,10 @@ impl ControlUnit {
             // need to implement it.  It's not yet implemented.
             return Err(self.alarm_unit.always_fire(Alarm {
                 sequence: self.regs.k,
-                details: AlarmDetails::ROUNDTUITAL(
-                    "deferred JMP is not yet implemented".to_string(),
-                ),
+                details: AlarmDetails::ROUNDTUITAL {
+                    explanation: "deferred JMP is not yet implemented".to_string(),
+                    bug_report_url: "https://github.com/TX-2/TX-2-simulator/issues/141",
+                },
             }));
         }
 

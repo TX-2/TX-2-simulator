@@ -201,11 +201,14 @@ fn unmaskable_alarms_are_not_maskable() {
     assert!(matches!(
         alarm_unit.fire_if_not_masked(Alarm {
             sequence: Some(Unsigned6Bit::ZERO),
-            details: AlarmDetails::ROUNDTUITAL("I am not maskable!".to_string()),
+            details: AlarmDetails::ROUNDTUITAL {
+                explanation: "The ROUNDTUITAL alarm is not maskable!".to_string(),
+                bug_report_url: "https://github.com/TX-2/TX-2-simulator/issues/144",
+            },
         }),
         Err(Alarm {
             sequence: Some(_),
-            details: AlarmDetails::ROUNDTUITAL(_),
+            details: AlarmDetails::ROUNDTUITAL { .. },
         })
     ));
     // Verify that the alarm manager considers that an unmasked (in

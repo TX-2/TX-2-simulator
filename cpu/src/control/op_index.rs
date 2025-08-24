@@ -176,10 +176,13 @@ impl ControlUnit {
             }
             _ => Err(self.alarm_unit.always_fire(Alarm {
                 sequence: self.regs.k,
-                details: AlarmDetails::ROUNDTUITAL(format!(
-                    "SKX configuration {:#o} is not implemented yet",
-                    inst.configuration()
-                )),
+                details: AlarmDetails::ROUNDTUITAL {
+                    explanation: format!(
+                        "SKX configuration value {:#o} is not implemented yet",
+                        inst.configuration()
+                    ),
+                    bug_report_url: "https://github.com/TX-2/TX-2-simulator/issues/138",
+                },
             })),
         }
     }
