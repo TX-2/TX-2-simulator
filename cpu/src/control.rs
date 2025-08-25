@@ -16,7 +16,7 @@ use std::fmt::Write;
 use std::ops::BitAnd;
 use std::time::Duration;
 
-use tracing::{Level, event, span};
+use tracing::{Level, event, event_enabled, span};
 
 mod op_configuration;
 mod op_index;
@@ -150,17 +150,23 @@ impl SequenceFlags {
         let mask = SequenceFlags::flagbit(flag);
         self.flag_values |= mask;
         self.flag_changes |= mask;
-        let seqs: String =
-            ones_of_value_as_vec(self.flag_values)
-                .into_iter()
-                .fold(String::new(), |mut acc, v| {
+
+        if event_enabled!(Level::DEBUG) {
+            // Build the debug message which we are going to use; this
+            // is conditional only because it allocates memory and so
+            // is likely to be expensive.
+            let seqs: String = ones_of_value_as_vec(self.flag_values).into_iter().fold(
+                String::new(),
+                |mut acc, v| {
                     write!(acc, "{:>02o} ", u64::from(v)).expect("write to string must succeed");
                     acc
-                });
-        event!(
-            Level::DEBUG,
-            "Raised flag {flag:o}; runnable sequences now {seqs}"
-        );
+                },
+            );
+            event!(
+                Level::DEBUG,
+                "Raised flag {flag:o}; runnable sequences now {seqs}"
+            );
+        }
     }
 
     fn current_flag_state(&self, flag: &SequenceNumber) -> bool {
@@ -1000,7 +1006,7 @@ impl ControlUnit {
             );
         } else {
             event!(
-                Level::DEBUG,
+                Level::DEBUG, // TODO: perhaps this should be INFO.
                 "Unspecified sequence fetched instruction {:>012o} from physical address {:>012o}",
                 instruction_word,
                 p_physical_address
@@ -1412,7 +1418,7 @@ impl ControlUnit {
                 }
             } else {
                 event!(
-                    Level::DEBUG,
+                    Level::DEBUG, // TODO: perhaps this should be INFO.
                     "fetched instruction {:?} is invalid",
                     &self.regs.n
                 );
