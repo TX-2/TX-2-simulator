@@ -5,8 +5,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::Serialize;
 use tracing::{Level, event};
 
-use super::alarm::{Alarm, AlarmDetails, AlarmKind, AlarmMaskability, Alarmer};
+use super::alarm::{Alarm, AlarmDetails, AlarmKind, AlarmMaskability, Alarmer, BugActivity};
 use super::changelog::ChangeIndex;
+use super::diagnostics::DiagnosticFetcher;
+use crate::diagnostics::CurrentInstructionDiagnostics;
 
 #[cfg(test)]
 use base::Unsigned6Bit;
@@ -80,17 +82,22 @@ impl AlarmUnit {
         }
     }
 
-    pub fn mask(&mut self, kind: AlarmKind) -> Result<(), Alarm> {
+    pub fn mask(
+        &mut self,
+        kind: AlarmKind,
+        diags: &CurrentInstructionDiagnostics,
+    ) -> Result<(), Alarm> {
         match kind.maskable() {
             AlarmMaskability::Unmaskable => {
                 let bug = Alarm {
                     sequence: None,
                     details: AlarmDetails::BUGAL {
-                        instr: None,
+                        activity: BugActivity::AlarmHandling,
+                        diagnostics: diags.clone(),
                         message: format!("attempt to mask unmaskable alarm {kind}"),
                     },
                 };
-                Err(self.always_fire(bug))
+                Err(self.always_fire(bug, diags))
             }
             AlarmMaskability::Maskable => {
                 self.changes.add(kind);
@@ -161,12 +168,20 @@ impl AlarmUnit {
 }
 
 impl Alarmer for AlarmUnit {
-    fn fire_if_not_masked(&mut self, alarm_instance: Alarm) -> Result<(), Alarm> {
+    fn fire_if_not_masked<F: DiagnosticFetcher>(
+        &mut self,
+        alarm_instance: Alarm,
+        _get_diags: F,
+    ) -> Result<(), Alarm> {
         self.changes.add(alarm_instance.kind());
         self.set_active(alarm_instance)
     }
 
-    fn always_fire(&mut self, alarm_instance: Alarm) -> Alarm {
+    fn always_fire<F: DiagnosticFetcher>(
+        &mut self,
+        alarm_instance: Alarm,
+        get_diagnostics: F,
+    ) -> Alarm {
         let kind = alarm_instance.kind();
         self.changes.add(kind);
         let sequence = alarm_instance.sequence;
@@ -176,7 +191,8 @@ impl Alarmer for AlarmUnit {
                 let bug = Alarm {
                     sequence,
                     details: AlarmDetails::BUGAL {
-                        instr: None,
+                        activity: BugActivity::AlarmHandling,
+                        diagnostics: get_diagnostics.diagnostics(),
                         message: format!(
                             "alarm {kind} is masked, but the caller assumed it could not be"
                         ),
@@ -193,19 +209,32 @@ impl Alarmer for AlarmUnit {
 
 #[test]
 fn unmaskable_alarms_are_not_maskable() {
+    use base::prelude::{Address, Instruction};
+
     let mut alarm_unit = AlarmUnit::new_with_panic(false);
     assert!(!alarm_unit.unmasked_alarm_active());
+    let diagnostics = CurrentInstructionDiagnostics {
+        current_instruction: Instruction::invalid(),
+        instruction_address: Address::ZERO,
+    };
     // Any attempt to mask an unmaskable alarm should itself result in an error.
-    assert!(alarm_unit.mask(AlarmKind::ROUNDTUITAL).is_err());
+    assert!(
+        alarm_unit
+            .mask(AlarmKind::ROUNDTUITAL, &diagnostics)
+            .is_err()
+    );
     // Now we raise some non-maskable alarm.
     assert!(matches!(
-        alarm_unit.fire_if_not_masked(Alarm {
-            sequence: Some(Unsigned6Bit::ZERO),
-            details: AlarmDetails::ROUNDTUITAL {
-                explanation: "The ROUNDTUITAL alarm is not maskable!".to_string(),
-                bug_report_url: "https://github.com/TX-2/TX-2-simulator/issues/144",
+        alarm_unit.fire_if_not_masked(
+            Alarm {
+                sequence: Some(Unsigned6Bit::ZERO),
+                details: AlarmDetails::ROUNDTUITAL {
+                    explanation: "The ROUNDTUITAL alarm is not maskable!".to_string(),
+                    bug_report_url: "https://github.com/TX-2/TX-2-simulator/issues/144",
+                },
             },
-        }),
+            &diagnostics
+        ),
         Err(Alarm {
             sequence: Some(_),
             details: AlarmDetails::ROUNDTUITAL { .. },
@@ -218,8 +247,14 @@ fn unmaskable_alarms_are_not_maskable() {
 
 #[test]
 fn maskable_alarms_are_not_masked_by_default() {
+    use base::prelude::{Address, Instruction};
+
     let mut alarm_unit = AlarmUnit::new_with_panic(false);
     assert!(!alarm_unit.unmasked_alarm_active());
+    let diagnostics = CurrentInstructionDiagnostics {
+        current_instruction: Instruction::invalid(),
+        instruction_address: Address::ZERO,
+    };
     // Now we raise some maskable, but not masked, alarm.
     let the_alarm = Alarm {
         sequence: Some(Unsigned6Bit::ZERO),
@@ -227,11 +262,11 @@ fn maskable_alarms_are_not_masked_by_default() {
     };
     // raise the alarm, verify that it really fires.
     assert!(matches!(
-        alarm_unit.fire_if_not_masked(the_alarm),
+        alarm_unit.fire_if_not_masked(the_alarm, &diagnostics),
         Err(Alarm {
             sequence: _,
             details: AlarmDetails::PSAL(22, _),
-        })
+        },)
     ));
     // Verify that the alarm manager considers that an unmasked (in
     // this case because maskable but not actually masked) alarm is active.

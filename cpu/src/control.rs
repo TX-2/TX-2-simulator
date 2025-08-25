@@ -35,6 +35,7 @@ use base::subword;
 use super::alarm::{Alarm, AlarmDetails, AlarmKind, Alarmer, BadMemOp};
 use super::alarmunit::AlarmUnit;
 use super::context::Context;
+use super::diagnostics::{CurrentInstructionDiagnostics, DiagnosticFetcher};
 use super::exchanger::{
     SystemConfiguration, exchanged_value_for_load, exchanged_value_for_store,
     standard_plugboard_f_memory_settings,
@@ -252,15 +253,6 @@ fn test_sequence_flags_current_flag_state() {
     assert_eq!(flags.drain_flag_changes(), vec![u6!(0o52)]);
 }
 
-/// ControlRegisterDiagnostics is only for generating debug
-/// information.  They must not be used for control/execution
-/// purposes.
-#[derive(Debug)]
-pub struct CurrentInstructionDiagnostics {
-    pub current_instruction: Instruction,
-    pub instruction_address: Address,
-}
-
 #[derive(Debug)]
 pub struct ControlRegisters {
     pub diagnostic_only: CurrentInstructionDiagnostics,
@@ -424,6 +416,12 @@ impl ControlRegisters {
     }
 }
 
+impl DiagnosticFetcher for &ControlRegisters {
+    fn diagnostics(self) -> CurrentInstructionDiagnostics {
+        self.diagnostic_only.clone()
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub enum ResetMode {
     ResetTSP = 0,
@@ -552,6 +550,10 @@ impl ControlUnit {
         }
     }
 
+    pub fn diagnostics(&self) -> &CurrentInstructionDiagnostics {
+        &self.regs.diagnostic_only
+    }
+
     fn make_alarm(&self, details: AlarmDetails) -> Alarm {
         Alarm {
             sequence: self.regs.k,
@@ -560,13 +562,14 @@ impl ControlUnit {
     }
 
     fn fire_details_if_not_masked(&mut self, alarm_details: AlarmDetails) -> Result<(), Alarm> {
+        let diagnostics: CurrentInstructionDiagnostics = self.diagnostics().clone();
         self.alarm_unit
-            .fire_if_not_masked(self.make_alarm(alarm_details))
+            .fire_if_not_masked(self.make_alarm(alarm_details), diagnostics)
     }
 
     pub fn set_alarm_masked(&mut self, kind: AlarmKind, masked: bool) -> Result<(), Alarm> {
         if masked {
-            self.alarm_unit.mask(kind)
+            self.alarm_unit.mask(kind, &self.regs.diagnostic_only)
         } else {
             self.alarm_unit.unmask(kind);
             Ok(())
@@ -979,13 +982,16 @@ impl ControlUnit {
             }
             Err(e) => match e {
                 MemoryOpFailure::NotMapped(addr) => {
-                    self.alarm_unit.fire_if_not_masked(Alarm {
-                        sequence: self.regs.k,
-                        details: AlarmDetails::PSAL(
-                            u32::from(addr),
-                            "memory unit indicated physical address is not mapped".to_string(),
-                        ),
-                    })?;
+                    self.alarm_unit.fire_if_not_masked(
+                        Alarm {
+                            sequence: self.regs.k,
+                            details: AlarmDetails::PSAL(
+                                u32::from(addr),
+                                "memory unit indicated physical address is not mapped".to_string(),
+                            ),
+                        },
+                        &self.regs.diagnostic_only,
+                    )?;
                     // PSAL is masked, but we don't know what
                     // instruction to execute, since we couldn't fetch
                     // one.  The program counter will not be updated
@@ -1090,7 +1096,7 @@ impl ControlUnit {
             Ok(()) // valid instruction
         } else {
             self.alarm_unit
-                .fire_if_not_masked(self.invalid_opcode_alarm())?;
+                .fire_if_not_masked(self.invalid_opcode_alarm(), &self.regs.diagnostic_only)?;
             self.regs.n_sym = None;
             Ok(()) // invalid instruction, but OCSAL is masked.
         }
@@ -1396,7 +1402,10 @@ impl ControlUnit {
                     }
                     Err(alarm) => {
                         event!(Level::WARN, "instruction {} raised alarm {}", inst, alarm);
-                        match self.alarm_unit.fire_if_not_masked(alarm.clone()) {
+                        match self
+                            .alarm_unit
+                            .fire_if_not_masked(alarm.clone(), &self.regs.diagnostic_only)
+                        {
                             Err(alarm) => {
                                 event!(
                                     Level::DEBUG,
@@ -1426,7 +1435,7 @@ impl ControlUnit {
                 );
                 match self
                     .alarm_unit
-                    .fire_if_not_masked(self.invalid_opcode_alarm())
+                    .fire_if_not_masked(self.invalid_opcode_alarm(), &self.regs.diagnostic_only)
                 {
                     Err(e) => {
                         self.set_program_counter(ProgramCounterChange::Stop(p));
@@ -1493,14 +1502,19 @@ impl ControlUnit {
                 Ok((word, extra_bits))
             }
             Err(MemoryOpFailure::NotMapped(addr)) => {
-                self.alarm_unit.fire_if_not_masked(Alarm {
-                    sequence: self.regs.k,
-                    details: AlarmDetails::QSAL(
-                        self.regs.n,
-                        BadMemOp::Read(Unsigned36Bit::from(addr)),
-                        format!("memory unit indicated address {operand_address:o} is not mapped",),
-                    ),
-                })?;
+                self.alarm_unit.fire_if_not_masked(
+                    Alarm {
+                        sequence: self.regs.k,
+                        details: AlarmDetails::QSAL(
+                            self.regs.n,
+                            BadMemOp::Read(Unsigned36Bit::from(addr)),
+                            format!(
+                                "memory unit indicated address {operand_address:o} is not mapped",
+                            ),
+                        ),
+                    },
+                    &self.regs.diagnostic_only,
+                )?;
                 // QSAL is masked to we have to return some value, but
                 // we don't know what the TX-2 did in this case.
                 Err(self.alarm_unit.always_fire(Alarm {
@@ -1514,7 +1528,7 @@ impl ControlUnit {
                         // to this bug report URL.
                         bug_report_url: "https://github.com/TX-2/TX-2-simulator/issues/142",
                     }
-                }))
+                }, &self.regs.diagnostic_only))
             }
             Err(MemoryOpFailure::ReadOnly(_, _)) => unreachable!(),
         }
@@ -1542,14 +1556,17 @@ impl ControlUnit {
             mem.set_e_register(*value);
         }
         if let Err(e) = mem.store(ctx, target, value, meta_op) {
-            self.alarm_unit.fire_if_not_masked(Alarm {
-                sequence: self.regs.k,
-                details: AlarmDetails::QSAL(
-                    self.regs.n,
-                    BadMemOp::Write(Unsigned36Bit::from(*target)),
-                    format!("memory store to address {target:#o} failed: {e}",),
-                ),
-            })?;
+            self.alarm_unit.fire_if_not_masked(
+                Alarm {
+                    sequence: self.regs.k,
+                    details: AlarmDetails::QSAL(
+                        self.regs.n,
+                        BadMemOp::Write(Unsigned36Bit::from(*target)),
+                        format!("memory store to address {target:#o} failed: {e}",),
+                    ),
+                },
+                &self.regs.diagnostic_only,
+            )?;
             Ok(()) // QSAL is masked, so just carry on.
         } else {
             Ok(())
@@ -1664,28 +1681,34 @@ impl ControlUnit {
                         )
                     };
 
-                    self.alarm_unit.fire_if_not_masked(Alarm {
-                        sequence: self.regs.k,
-                        details: AlarmDetails::QSAL(
-                            self.regs.n,
-                            BadMemOp::Read(Unsigned36Bit::from(physical)),
-                            msg(),
-                        ),
-                    })?;
-                    // QSAL is masked.  I don't know what the TX-2 did in this situation.
-                    return Err(self.alarm_unit.always_fire(Alarm {
-                        sequence: self.regs.k,
-                        details: AlarmDetails::ROUNDTUITAL {
-                            explanation: format!(
-                                "we don't know how to handle {} when QSAL is masked",
-                                msg()
+                    self.alarm_unit.fire_if_not_masked(
+                        Alarm {
+                            sequence: self.regs.k,
+                            details: AlarmDetails::QSAL(
+                                self.regs.n,
+                                BadMemOp::Read(Unsigned36Bit::from(physical)),
+                                msg(),
                             ),
-                            // Note: there are two different ways in
-                            // which we can raise a ROUNDTUITAL alarm
-                            // referring to this bug report URL.
-                            bug_report_url: "https://github.com/TX-2/TX-2-simulator/issues/142",
                         },
-                    }));
+                        &self.regs.diagnostic_only,
+                    )?;
+                    // QSAL is masked.  I don't know what the TX-2 did in this situation.
+                    return Err(self.alarm_unit.always_fire(
+                        Alarm {
+                            sequence: self.regs.k,
+                            details: AlarmDetails::ROUNDTUITAL {
+                                explanation: format!(
+                                    "we don't know how to handle {} when QSAL is masked",
+                                    msg()
+                                ),
+                                // Note: there are two different ways in
+                                // which we can raise a ROUNDTUITAL alarm
+                                // referring to this bug report URL.
+                                bug_report_url: "https://github.com/TX-2/TX-2-simulator/issues/142",
+                            },
+                        },
+                        &self.regs.diagnostic_only,
+                    ));
                 }
                 Ok((word, extra)) => {
                     if extra.meta && self.trap.trap_on_deferred_address() {
@@ -1729,10 +1752,13 @@ impl ControlUnit {
                         // states, "In fact, you can inadvertantly
                         // [sic] defer back to where you started and
                         // get a loop less than one instruction long".
-                        return Err(self.alarm_unit.always_fire(Alarm {
-                            sequence: self.regs.k,
-                            details: AlarmDetails::DEFERLOOPAL { address: right },
-                        }));
+                        return Err(self.alarm_unit.always_fire(
+                            Alarm {
+                                sequence: self.regs.k,
+                                details: AlarmDetails::DEFERLOOPAL { address: right },
+                            },
+                            &self.regs.diagnostic_only,
+                        ));
                     }
                     next
                 }
@@ -1896,11 +1922,16 @@ impl Default for ControlUnit {
 }
 
 impl Alarmer for ControlUnit {
-    fn fire_if_not_masked(&mut self, alarm_instance: Alarm) -> Result<(), Alarm> {
-        self.alarm_unit.fire_if_not_masked(alarm_instance)
+    fn fire_if_not_masked<F: DiagnosticFetcher>(
+        &mut self,
+        alarm_instance: Alarm,
+        get_diags: F,
+    ) -> Result<(), Alarm> {
+        self.alarm_unit
+            .fire_if_not_masked(alarm_instance, get_diags)
     }
 
-    fn always_fire(&mut self, alarm_instance: Alarm) -> Alarm {
-        self.alarm_unit.always_fire(alarm_instance)
+    fn always_fire<F: DiagnosticFetcher>(&mut self, alarm_instance: Alarm, get_diags: F) -> Alarm {
+        self.alarm_unit.always_fire(alarm_instance, get_diags)
     }
 }

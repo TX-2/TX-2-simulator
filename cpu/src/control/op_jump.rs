@@ -2,9 +2,10 @@ use base::prelude::*;
 use base::subword;
 
 use super::super::UpdateE;
-use super::super::alarm::{Alarm, AlarmDetails, Alarmer, BadMemOp};
+use super::super::alarm::{Alarm, AlarmDetails, Alarmer, BadMemOp, BugActivity};
 use super::super::context::Context;
 use super::super::control::{ControlUnit, OpcodeResult, ProgramCounterChange};
+use super::super::diagnostics::CurrentInstructionDiagnostics;
 use super::super::exchanger::exchanged_value_for_load_without_sign_extension;
 use super::super::memory::{BitChange, MemoryMapped, MemoryOpFailure, MemoryUnit, WordChange};
 
@@ -53,25 +54,31 @@ impl ControlUnit {
             // not, but if we disallow this for now, we can
             // use any resulting error to identify cases where
             // this is in fact used.
-            self.alarm_unit.fire_if_not_masked(Alarm {
-                sequence: self.regs.k,
-                details: AlarmDetails::PSAL(
-                    u32::from(self.regs.n.operand_address_and_defer_bit()),
-                    format!(
-                        "JMP target has deferred address {:#o}",
-                        self.regs.n.operand_address()
+            self.alarm_unit.fire_if_not_masked(
+                Alarm {
+                    sequence: self.regs.k,
+                    details: AlarmDetails::PSAL(
+                        u32::from(self.regs.n.operand_address_and_defer_bit()),
+                        format!(
+                            "JMP target has deferred address {:#o}",
+                            self.regs.n.operand_address()
+                        ),
                     ),
-                ),
-            })?;
+                },
+                &self.regs.diagnostic_only,
+            )?;
             // If deferred addressing is allowed for JMP, we will
             // need to implement it.  It's not yet implemented.
-            return Err(self.alarm_unit.always_fire(Alarm {
-                sequence: self.regs.k,
-                details: AlarmDetails::ROUNDTUITAL {
-                    explanation: "deferred JMP is not yet implemented".to_string(),
-                    bug_report_url: "https://github.com/TX-2/TX-2-simulator/issues/141",
+            return Err(self.alarm_unit.always_fire(
+                Alarm {
+                    sequence: self.regs.k,
+                    details: AlarmDetails::ROUNDTUITAL {
+                        explanation: "deferred JMP is not yet implemented".to_string(),
+                        bug_report_url: "https://github.com/TX-2/TX-2-simulator/issues/141",
+                    },
                 },
-            }));
+                &self.regs.diagnostic_only,
+            ));
         }
 
         let new_pc: Address = if indexed {
@@ -140,7 +147,7 @@ impl ControlUnit {
                             "SKM instruction attempted to access address {addr:o} but it is not mapped",
                         ),
                     ),
-                })?;
+                }, &self.regs.diagnostic_only)?;
                 // The alarm is masked.  We turn the memory mutation into a no-op.
                 return Ok(OpcodeResult::default());
             }
@@ -155,7 +162,7 @@ impl ControlUnit {
                                 "SKM instruction attempted to modify (instruction configuration={cf:o}) a read-only location {target:o}",
                             ),
                         )
-                    })?;
+                    }, &self.regs.diagnostic_only)?;
                 // The alarm is masked.  We turn the memory mutation into a no-op.
                 return Ok(OpcodeResult::default());
             }
@@ -203,14 +210,19 @@ impl ControlUnit {
         let (mut word, _extra) =
             self.fetch_operand_from_address_without_exchange(ctx, mem, &target, &UpdateE::No)?;
         if mem.get_e_register() != existing_e_value {
-            return Err(self.always_fire(Alarm {
-                sequence: self.regs.k,
-                details: AlarmDetails::BUGAL {
-                    instr: Some(self.regs.n),
-                    message: "memory fetch during execution of SED changed the E register"
-                        .to_string(),
+            let diags: CurrentInstructionDiagnostics = self.regs.diagnostic_only.clone();
+            return Err(self.always_fire(
+                Alarm {
+                    sequence: self.regs.k,
+                    details: AlarmDetails::BUGAL {
+                        activity: BugActivity::Opcode,
+                        diagnostics: diags.clone(),
+                        message: "memory fetch during execution of SED changed the E register"
+                            .to_string(),
+                    },
                 },
-            }));
+                &diags,
+            ));
         }
 
         // Perform active-quarter masking and permutation, but not sign

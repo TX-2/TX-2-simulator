@@ -44,6 +44,8 @@ use std::time::Duration;
 use serde::Serialize;
 use tracing::{Level, event, span};
 
+use crate::diagnostics::CurrentInstructionDiagnostics;
+
 use super::PETR;
 use super::alarm::{Alarm, AlarmDetails, Alarmer};
 use super::alarmunit::AlarmUnit;
@@ -224,12 +226,17 @@ pub trait Unit {
     fn disconnect(&mut self, ctx: &Context);
     fn transfer_mode(&self) -> TransferMode;
     /// Handle a TSD on an input channel.
-    fn read(&mut self, ctx: &Context) -> Result<MaskedWord, TransferFailed>;
+    fn read(
+        &mut self,
+        ctx: &Context,
+        diagnostics: &CurrentInstructionDiagnostics,
+    ) -> Result<MaskedWord, TransferFailed>;
     /// Handle a TSD on an output channel.
     fn write(
         &mut self,
         ctx: &Context,
         source: Unsigned36Bit,
+        diagnostics: &CurrentInstructionDiagnostics,
     ) -> Result<Option<OutputEvent>, TransferFailed>;
     fn name(&self) -> String;
     fn on_input_event(
@@ -258,7 +265,13 @@ impl AttachedUnit {
         (!self.is_input_unit) && (!self.connected)
     }
 
-    fn call_inner<A, F, T>(&self, what: &str, alarmer: &mut A, f: F) -> Result<T, Alarm>
+    fn call_inner<A, F, T>(
+        &self,
+        what: &str,
+        alarmer: &mut A,
+        diagnostics: &CurrentInstructionDiagnostics,
+        f: F,
+    ) -> Result<T, Alarm>
     where
         A: Alarmer,
         F: Fn(&dyn Unit) -> T,
@@ -267,20 +280,30 @@ impl AttachedUnit {
             let output = f(self.inner.borrow().as_ref());
             Ok(output)
         } else {
-            Err(alarmer.always_fire(Alarm {
-                sequence: Some(self.unit),
-                details: AlarmDetails::BUGAL {
-                    instr: None,
-                    message: format!(
-                        "attempt read-only use (for {}) of disconnected unit {:o}",
-                        what, self.unit
-                    ),
+            Err(alarmer.always_fire(
+                Alarm {
+                    sequence: Some(self.unit),
+                    details: AlarmDetails::BUGAL {
+                        activity: crate::alarm::BugActivity::Io,
+                        diagnostics: diagnostics.clone(),
+                        message: format!(
+                            "attempt read-only use (for {}) of disconnected unit {:o}",
+                            what, self.unit
+                        ),
+                    },
                 },
-            }))
+                diagnostics,
+            ))
         }
     }
 
-    fn call_mut_inner<A, F, T>(&self, what: &str, alarmer: &mut A, mut f: F) -> Result<T, Alarm>
+    fn call_mut_inner<A, F, T>(
+        &self,
+        what: &str,
+        alarmer: &mut A,
+        diagnostics: &CurrentInstructionDiagnostics,
+        mut f: F,
+    ) -> Result<T, Alarm>
     where
         A: Alarmer,
         F: FnMut(&mut dyn Unit) -> T,
@@ -289,16 +312,20 @@ impl AttachedUnit {
             let output = f(self.inner.borrow_mut().as_mut());
             Ok(output)
         } else {
-            Err(alarmer.always_fire(Alarm {
-                sequence: Some(self.unit),
-                details: AlarmDetails::BUGAL {
-                    instr: None,
-                    message: format!(
-                        "attempt read-write use (for {}) of disconnected unit {:o}",
-                        what, self.unit
-                    ),
+            Err(alarmer.always_fire(
+                Alarm {
+                    sequence: Some(self.unit),
+                    details: AlarmDetails::BUGAL {
+                        activity: crate::alarm::BugActivity::Io,
+                        diagnostics: diagnostics.clone(),
+                        message: format!(
+                            "attempt read-write use (for {}) of disconnected unit {:o}",
+                            what, self.unit
+                        ),
+                    },
                 },
-            }))
+                diagnostics,
+            ))
         }
     }
 
@@ -334,8 +361,12 @@ impl AttachedUnit {
         Ok(())
     }
 
-    pub fn transfer_mode<A: Alarmer>(&self, alarmer: &mut A) -> Result<TransferMode, Alarm> {
-        self.call_inner("transfer_mode", alarmer, |unit: &dyn Unit| {
+    pub fn transfer_mode<A: Alarmer>(
+        &self,
+        alarmer: &mut A,
+        diagnostics: &CurrentInstructionDiagnostics,
+    ) -> Result<TransferMode, Alarm> {
+        self.call_inner("transfer_mode", alarmer, diagnostics, |unit: &dyn Unit| {
             unit.transfer_mode()
         })
     }
@@ -344,8 +375,11 @@ impl AttachedUnit {
         &self,
         ctx: &Context,
         alarmer: &mut A,
+        diagnostics: &CurrentInstructionDiagnostics,
     ) -> Result<MaskedWord, TransferFailed> {
-        match self.call_mut_inner("read", alarmer, |unit: &mut dyn Unit| unit.read(ctx)) {
+        match self.call_mut_inner("read", alarmer, diagnostics, |unit: &mut dyn Unit| {
+            unit.read(ctx, diagnostics)
+        }) {
             Ok(Ok(mw)) => Ok(mw),
             Ok(Err(e)) => Err(e),
             Err(alarm) => Err(TransferFailed::Alarm(alarm)),
@@ -356,8 +390,9 @@ impl AttachedUnit {
         &mut self,
         ctx: &Context,
         source: Unsigned36Bit,
+        diagnostics: &CurrentInstructionDiagnostics,
     ) -> Result<Option<OutputEvent>, TransferFailed> {
-        self.inner.borrow_mut().write(ctx, source)
+        self.inner.borrow_mut().write(ctx, source, diagnostics)
     }
 
     pub fn on_input_event(
@@ -567,6 +602,7 @@ impl DeviceManager {
         unit: Unsigned6Bit,
         current_flag: bool,
         alarm_unit: &mut AlarmUnit,
+        diagnostics: &CurrentInstructionDiagnostics,
     ) -> Result<Unsigned36Bit, Alarm> {
         match self.devices.get_mut(&unit) {
             Some(attached) => {
@@ -585,14 +621,17 @@ impl DeviceManager {
                 ))
             }
             None => {
-                alarm_unit.fire_if_not_masked(Alarm {
-                    sequence: current_sequence,
-                    details: AlarmDetails::IOSAL {
-                        unit,
-                        operand: None,
-                        message: format!("unit {unit:o} is not known"),
+                alarm_unit.fire_if_not_masked(
+                    Alarm {
+                        sequence: current_sequence,
+                        details: AlarmDetails::IOSAL {
+                            unit,
+                            operand: None,
+                            message: format!("unit {unit:o} is not known"),
+                        },
                     },
-                })?;
+                    diagnostics,
+                )?;
                 // IOSAL is masked.
                 Ok(make_report_word_for_invalid_unit(unit, current_flag))
             }
@@ -733,6 +772,7 @@ impl DeviceManager {
         ctx: &Context,
         device: &Unsigned6Bit,
         alarm_unit: &mut AlarmUnit,
+        diagnostics: &CurrentInstructionDiagnostics,
     ) -> Result<(), Alarm> {
         let mut changed = false;
         if *device == u6!(0o42) {
@@ -752,14 +792,17 @@ impl DeviceManager {
                 attached.disconnect(ctx, alarm_unit)
             }
             None => {
-                alarm_unit.fire_if_not_masked(Alarm {
-                    sequence: Some(*device),
-                    details: AlarmDetails::IOSAL {
-                        unit: *device,
-                        operand: None,
-                        message: format!("Attempt to disconnect missing unit {device:o}"),
+                alarm_unit.fire_if_not_masked(
+                    Alarm {
+                        sequence: Some(*device),
+                        details: AlarmDetails::IOSAL {
+                            unit: *device,
+                            operand: None,
+                            message: format!("Attempt to disconnect missing unit {device:o}"),
+                        },
                     },
-                })?;
+                    diagnostics,
+                )?;
                 Ok(()) // IOSAL is masked, carry on.
             }
         };
@@ -776,6 +819,7 @@ impl DeviceManager {
         device: &Unsigned6Bit,
         mode: Unsigned12Bit,
         alarm_unit: &mut AlarmUnit,
+        diagnostics: &CurrentInstructionDiagnostics,
     ) -> Result<Option<FlagChange>, Alarm> {
         self.mark_device_changed(*device);
         match self.devices.get_mut(device) {
@@ -819,14 +863,17 @@ impl DeviceManager {
                     Level::WARN,
                     "attempt to connect nonexistent unit {device:o}"
                 );
-                alarm_unit.fire_if_not_masked(Alarm {
-                    sequence: calling_sequence, // NOTE: not the same as *device.
-                    details: AlarmDetails::IOSAL {
-                        unit: *device,
-                        operand: None,
-                        message: format!("Attempt to connect missing unit {device:o}"),
+                alarm_unit.fire_if_not_masked(
+                    Alarm {
+                        sequence: calling_sequence, // NOTE: not the same as *device.
+                        details: AlarmDetails::IOSAL {
+                            unit: *device,
+                            operand: None,
+                            message: format!("Attempt to connect missing unit {device:o}"),
+                        },
                     },
-                })?;
+                    diagnostics,
+                )?;
                 Ok(None) // IOSAL is masked, carry on
             }
         }

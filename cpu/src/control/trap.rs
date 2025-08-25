@@ -5,6 +5,8 @@ use std::fmt::Write;
 use base::prelude::*;
 use std::time::Duration;
 
+use crate::diagnostics::CurrentInstructionDiagnostics;
+
 use super::super::context::Context;
 use super::super::event::InputEvent;
 use super::super::io::{InputFlagRaised, TransferFailed, Unit, UnitStatus};
@@ -139,7 +141,11 @@ impl Unit for TrapCircuit {
     /// cycle-left and dismiss features (See Users Handbook, section
     /// 4-15 ("TRAP").  Because it cycles left, it must be an "input"
     /// unit.
-    fn read(&mut self, _ctx: &Context) -> Result<MaskedWord, TransferFailed> {
+    fn read(
+        &mut self,
+        _ctx: &Context,
+        _diags: &CurrentInstructionDiagnostics,
+    ) -> Result<MaskedWord, TransferFailed> {
         // TODO: add unit tests for the cycle-left and dismiss
         // behaviours.
         Ok(MaskedWord {
@@ -154,6 +160,7 @@ impl Unit for TrapCircuit {
         &mut self,
         _ctx: &Context,
         _source: Unsigned36Bit,
+        _diags: &CurrentInstructionDiagnostics,
     ) -> Result<Option<OutputEvent>, TransferFailed> {
         unreachable!()
     }

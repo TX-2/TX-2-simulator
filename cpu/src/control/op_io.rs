@@ -6,7 +6,7 @@ use tracing::{Level, event};
 
 use super::super::event::OutputEvent;
 use super::super::*;
-use super::alarm::{Alarm, AlarmDetails, Alarmer, BadMemOp};
+use super::alarm::{Alarm, AlarmDetails, Alarmer, BadMemOp, BugActivity};
 use super::alarmunit::AlarmUnit;
 use super::context::Context;
 use super::control::{
@@ -69,6 +69,7 @@ impl ControlUnit {
                 j,
                 flag_raised,
                 &mut self.alarm_unit,
+                &self.regs.diagnostic_only,
             )?);
         }
         let mut dismiss_reason: Option<&str> = if cf & 0o20 != 0 {
@@ -79,7 +80,9 @@ impl ControlUnit {
 
         let operand = self.regs.n.operand_address_and_defer_bit();
         let result = match u32::from(operand) {
-            0o20_000 => devices.disconnect(ctx, &j, &mut self.alarm_unit),
+            0o20_000 => {
+                devices.disconnect(ctx, &j, &mut self.alarm_unit, &self.regs.diagnostic_only)
+            }
             0o30_000..=0o37_777 => {
                 let mode: Unsigned12Bit = Unsigned12Bit::try_from(operand & 0o07_777).unwrap();
                 ControlUnit::connect_unit(
@@ -119,7 +122,7 @@ impl ControlUnit {
                         ),
                         bug_report_url: "https://github.com/TX-2/TX-2-simulator/issues/139",
                     },
-                }))
+                }, &self.regs.diagnostic_only))
             }
             _ => {
                 let command: u8 = (u32::from(operand) >> 12) as u8;
@@ -132,7 +135,7 @@ impl ControlUnit {
                             "IOS operand {operand:o} has unrecognised leading command digit {command:o}",
                         ),
                     },
-                })?;
+                }, &self.regs.diagnostic_only)?;
                 // IOSAL is masked.  Just do nothing.
                 Ok(())
             }
@@ -163,7 +166,7 @@ impl ControlUnit {
                 trap.connect(ctx, mode);
                 None
             }
-            _ => devices.connect(ctx, regs.k, &unit, mode, alarm_unit)?,
+            _ => devices.connect(ctx, regs.k, &unit, mode, alarm_unit, &regs.diagnostic_only)?,
         };
         match maybe_flag_change {
             Some(FlagChange::Raise(reason)) => {
@@ -223,7 +226,10 @@ impl ControlUnit {
                         })
                     }
                     Err(MemoryOpFailure::NotMapped(_)) => {
-                        self.alarm_unit.fire_if_not_masked(not_mapped(bad_write))?;
+                        self.alarm_unit.fire_if_not_masked(
+                            not_mapped(bad_write),
+                            &self.regs.diagnostic_only,
+                        )?;
                         // QSAL is masked, carry on.
                         Ok(TransferOutcome::Success {
                             metabit_was_set: false, // act as if metabit unset
@@ -257,7 +263,8 @@ impl ControlUnit {
                             // We're actually going to do the (input or output) transfer.
                             // First load into the M register the existing contents of
                             // memory.
-                            let transfer_mode = device.transfer_mode(&mut self.alarm_unit)?;
+                            let transfer_mode = device
+                                .transfer_mode(&mut self.alarm_unit, &self.regs.diagnostic_only)?;
                             let (m_register, extra_bits) = self
                                 .fetch_operand_from_address_without_exchange(
                                     ctx,
@@ -271,7 +278,11 @@ impl ControlUnit {
                                 // IOBM bus, into the E register.  See
                                 // figure 15-18 in Volume 2 of the TX-2
                                 // Techical Manual.
-                                match device.read(ctx, &mut self.alarm_unit) {
+                                match device.read(
+                                    ctx,
+                                    &mut self.alarm_unit,
+                                    &self.regs.diagnostic_only,
+                                ) {
                                     Ok(masked_word) => {
                                         const UPDATE_E_YES: UpdateE = UpdateE::Yes;
                                         let newval: Unsigned36Bit =
@@ -326,7 +337,7 @@ impl ControlUnit {
                                 ));
                                 match transfer_mode {
                                     TransferMode::Exchange => {
-                                        match device.write(ctx, mem.get_e_register()) {
+                                        match device.write(ctx, mem.get_e_register(), &self.regs.diagnostic_only) {
                                             Err(TransferFailed::BufferNotFree) => {
                                                 Ok(TransferOutcome::DismissAndWait)
                                             }
@@ -347,7 +358,7 @@ impl ControlUnit {
                                                     .to_string(),
                                                 bug_report_url: "https://github.com/TX-2/TX-2-simulator/issues/140",
                                             },
-                                    })),
+                                    }, &self.regs.diagnostic_only)),
                                 }
                             }
                         }
@@ -358,9 +369,10 @@ impl ControlUnit {
             Err(self.alarm_unit.always_fire(Alarm {
                 sequence: self.regs.k,
                 details: AlarmDetails::BUGAL {
-                instr: Some(self.regs.n),
-                message: "Executed TSD instruction while the K register is None (i.e. there is no current sequence)".to_string(),
-                }}))
+                    activity: BugActivity::Opcode,
+                    diagnostics: self.regs.diagnostic_only.clone(),
+                    message: "Executed TSD instruction while the K register is None (i.e. there is no current sequence)".to_string(),
+                }}, &self.regs.diagnostic_only))
         };
         match result {
             Ok(TransferOutcome::Success {

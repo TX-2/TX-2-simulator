@@ -9,9 +9,11 @@
 
 mod alarm;
 mod alarmunit;
+mod bugreport;
 mod changelog;
 mod context;
 mod control;
+mod diagnostics;
 mod event;
 mod exchanger;
 mod io;
@@ -21,6 +23,7 @@ mod types;
 
 pub use alarm::{Alarm, AlarmDetails, AlarmKind, UnmaskedAlarm};
 pub use alarmunit::AlarmStatus;
+pub use bugreport::bug_report_url;
 pub use context::Context;
 pub use control::{ControlRegisters, ControlUnit, PanicOnUnmaskedAlarm, ResetMode, RunMode};
 pub use event::*;

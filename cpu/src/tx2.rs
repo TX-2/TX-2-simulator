@@ -8,6 +8,8 @@ use wasm_bindgen::prelude::*;
 
 use base::prelude::*;
 
+use crate::diagnostics::CurrentInstructionDiagnostics;
+
 use super::PETR;
 use super::alarm::{Alarm, AlarmKind, Alarmer, UnmaskedAlarm};
 use super::alarmunit::AlarmStatus;
@@ -198,7 +200,8 @@ impl Tx2 {
                     "Alarm raised during hardware polling at system time {:?}",
                     now
                 );
-                self.control.fire_if_not_masked(alarm)
+                let diags: CurrentInstructionDiagnostics = self.control.diagnostics().clone();
+                self.control.fire_if_not_masked(alarm, diags)
             }
         }
     }

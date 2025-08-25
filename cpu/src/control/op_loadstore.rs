@@ -240,6 +240,7 @@ mod tests {
     }
 
     /// Simulate a load instruction; return (target register, e register)
+    #[allow(clippy::too_many_arguments)]
     fn simulate_load(
         ctx: &Context,
         final_operand_address: Unsigned18Bit,
@@ -376,6 +377,7 @@ mod tests {
         (control, mem)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn simulate_store(
         ctx: &Context,
         control: &mut ControlUnit,

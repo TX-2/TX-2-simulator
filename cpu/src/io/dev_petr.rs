@@ -28,6 +28,8 @@ use std::cmp;
 use conv::*;
 use tracing::{Level, event};
 
+use crate::diagnostics::CurrentInstructionDiagnostics;
+
 use super::*;
 use super::{TransferFailed, Unit, UnitStatus};
 
@@ -387,7 +389,11 @@ impl Unit for Petr {
         self.transfer_mode()
     }
 
-    fn read(&mut self, ctx: &Context) -> Result<MaskedWord, TransferFailed> {
+    fn read(
+        &mut self,
+        ctx: &Context,
+        _diagnostics: &CurrentInstructionDiagnostics,
+    ) -> Result<MaskedWord, TransferFailed> {
         let system_time = &ctx.simulated_time;
         match self.data.take() {
             None => {
@@ -412,8 +418,9 @@ impl Unit for Petr {
         &mut self,
         _ctx: &Context,
         _source: Unsigned36Bit,
+        diagnostics: &CurrentInstructionDiagnostics,
     ) -> Result<Option<OutputEvent>, TransferFailed> {
-        unreachable!()
+        unreachable!("attempted to write to the paper tape reader ({diagnostics})")
     }
 
     fn name(&self) -> String {

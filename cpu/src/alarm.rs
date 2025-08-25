@@ -7,6 +7,9 @@ use serde::Serialize;
 use base::instruction::Instruction;
 use base::prelude::*;
 
+use super::bugreport::{IssueType, bug_report_url};
+use super::diagnostics::{CurrentInstructionDiagnostics, DiagnosticFetcher};
+
 #[derive(Debug, Clone)]
 pub enum BadMemOp {
     Read(Unsigned36Bit),
@@ -125,6 +128,14 @@ fn test_alarm_kind_round_trip() {
     assert!(AlarmKind::try_from("this is not an alarm name").is_err());
 }
 
+/// Indicates what the emulator was doing when a bug was discovered.
+#[derive(Debug, Clone)]
+pub enum BugActivity {
+    Io,
+    Opcode,
+    AlarmHandling,
+}
+
 // Alarms from User's Handbook section 5-2.2; full names are taken
 // from section 10-2.5.1 (vol 2) of the Technical Manual.
 // These acrronyms are upper case to follow the names in the TX-2 documentation.
@@ -198,7 +209,11 @@ pub enum AlarmDetails {
 
     /// There is a bug in the simulator.
     BUGAL {
-        instr: Option<Instruction>,
+        /// What were we doing?
+        activity: BugActivity,
+        /// What instruction was executing?
+        diagnostics: CurrentInstructionDiagnostics,
+        /// What went wrong?
         message: String,
     },
 }
@@ -222,18 +237,11 @@ impl AlarmDetails {
             AlarmDetails::PSAL(_, _) => AlarmKind::PSAL,
             AlarmDetails::OCSAL(_, _) => AlarmKind::OCSAL,
             AlarmDetails::QSAL(_, _, _) => AlarmKind::QSAL,
-            AlarmDetails::IOSAL {
-                unit: _,
-                operand: _,
-                message: _,
-            } => AlarmKind::IOSAL,
-            AlarmDetails::MISAL { affected_unit: _ } => AlarmKind::MISAL,
+            AlarmDetails::IOSAL { .. } => AlarmKind::IOSAL,
+            AlarmDetails::MISAL { .. } => AlarmKind::MISAL,
             AlarmDetails::ROUNDTUITAL { .. } => AlarmKind::ROUNDTUITAL,
-            AlarmDetails::DEFERLOOPAL { address: _ } => AlarmKind::DEFERLOOPAL,
-            AlarmDetails::BUGAL {
-                instr: _,
-                message: _,
-            } => AlarmKind::BUGAL,
+            AlarmDetails::DEFERLOOPAL { .. } => AlarmKind::DEFERLOOPAL,
+            AlarmDetails::BUGAL { .. } => AlarmKind::BUGAL,
         }
     }
 }
@@ -299,24 +307,22 @@ impl Display for AlarmDetails {
                 "MISAL: program too slow; missed data for unit {affected_unit:o}"
             ),
 
-            BUGAL { instr, message } => {
-                if let Some(instruction) = instr.as_ref() {
-                    if let Ok(symbolic) = SymbolicInstruction::try_from(instruction) {
-                        write!(
-                            f,
-                            "BUGAL: encountered simulator bug during execution of instruction {symbolic}: {message}"
-                        )
-                    } else {
-                        write!(
-                            f,
-                            "BUGAL: encountered simulator bug during execution of instruction {:o}: {}",
-                            instruction.bits(),
-                            message,
-                        )
-                    }
-                } else {
-                    write!(f, "BUGAL: encountered simulator bug: {message}")
-                }
+            BUGAL {
+                diagnostics,
+                message,
+                activity,
+            } => {
+                let (issue_type, activity_desc): (Option<IssueType>, &'static str) = match activity
+                {
+                    BugActivity::AlarmHandling => (None, "alarm handling"),
+                    BugActivity::Io => (Some(IssueType::Io), "I/O"),
+                    BugActivity::Opcode => (Some(IssueType::Opcode), "instruction execution"),
+                };
+                let report_url = bug_report_url(message, issue_type);
+                write!(
+                    f,
+                    "BUGAL: encountered a bug in enumator {activity_desc} during execution of {diagnostics}: {message}; please report this as a bug at {report_url}",
+                )
             }
             DEFERLOOPAL { address } => {
                 write!(
@@ -349,6 +355,10 @@ impl Display for UnmaskedAlarm {
 }
 
 pub trait Alarmer {
-    fn fire_if_not_masked(&mut self, alarm_instance: Alarm) -> Result<(), Alarm>;
-    fn always_fire(&mut self, alarm_instance: Alarm) -> Alarm;
+    fn fire_if_not_masked<F: DiagnosticFetcher>(
+        &mut self,
+        alarm_instance: Alarm,
+        get_diags: F,
+    ) -> Result<(), Alarm>;
+    fn always_fire<F: DiagnosticFetcher>(&mut self, alarm_instance: Alarm, get_diags: F) -> Alarm;
 }

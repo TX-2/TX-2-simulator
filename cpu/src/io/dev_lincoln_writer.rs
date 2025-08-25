@@ -15,6 +15,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use super::super::context::Context;
+use super::super::diagnostics::CurrentInstructionDiagnostics;
 use super::super::event::{InputEvent, InputEventError, OutputEvent};
 use super::super::io::{FlagChange, InputFlagRaised, TransferFailed, Unit, UnitStatus};
 use super::super::types::*;
@@ -126,14 +127,19 @@ impl Unit for LincolnWriterOutput {
         self.mode = mode;
     }
 
-    fn read(&mut self, _ctx: &Context) -> Result<MaskedWord, TransferFailed> {
-        unreachable!("attempted to read from an output device")
+    fn read(
+        &mut self,
+        _ctx: &Context,
+        diags: &CurrentInstructionDiagnostics,
+    ) -> Result<MaskedWord, TransferFailed> {
+        unreachable!("attempted to read from an output device (executing {diags})")
     }
 
     fn write(
         &mut self,
         ctx: &Context,
         source: base::Unsigned36Bit,
+        diagnostics: &CurrentInstructionDiagnostics,
     ) -> Result<Option<OutputEvent>, TransferFailed> {
         match self.state.try_borrow_mut() {
             Ok(mut state) => {
@@ -175,11 +181,12 @@ impl Unit for LincolnWriterOutput {
                 }
             }
             Err(e) => Err(TransferFailed::Alarm(self.make_alarm(AlarmDetails::BUGAL {
-                    instr: None,
-                    message: format!(
-                        "attempted to transmit on unit {:o} while the Lincoln Writer state is being mutated by receive path: {e}",
-                        self.unit,
-                    )
+                activity: crate::alarm::BugActivity::Io,
+                diagnostics: diagnostics.clone(),
+                message: format!(
+                    "attempted to transmit on unit {:o} while the Lincoln Writer state is being mutated by receive path: {e}",
+                    self.unit,
+                )
             })))
         }
     }
@@ -235,11 +242,21 @@ fn check_output(
     expected_state: &LincolnState,
     actual_state: &Rc<RefCell<LincolnState>>,
 ) {
+    use base::prelude::{Address, Instruction};
+
     let context = Context {
         simulated_time: when,
         real_elapsed_time: when,
     };
-    match (expected_output, writer.write(&context, out.into())) {
+    let diagnostics = CurrentInstructionDiagnostics {
+        current_instruction: Instruction::invalid(),
+        instruction_address: Address::ZERO,
+    };
+
+    match (
+        expected_output,
+        writer.write(&context, out.into(), &diagnostics),
+    ) {
         (Some(expected_output), Ok(Some(OutputEvent::LincolnWriterPrint { unit: _, ch }))) => {
             if &ch != expected_output {
                 panic!(
@@ -481,7 +498,11 @@ impl Unit for LincolnWriterInput {
         TransferMode::Exchange
     }
 
-    fn read(&mut self, _ctx: &Context) -> Result<MaskedWord, TransferFailed> {
+    fn read(
+        &mut self,
+        _ctx: &Context,
+        _diags: &CurrentInstructionDiagnostics,
+    ) -> Result<MaskedWord, TransferFailed> {
         event!(
             Level::DEBUG,
             "read from LW input device having state {self:?}"
@@ -500,8 +521,9 @@ impl Unit for LincolnWriterInput {
         &mut self,
         _ctx: &Context,
         _source: Unsigned36Bit,
+        diagnostics: &CurrentInstructionDiagnostics,
     ) -> Result<Option<OutputEvent>, TransferFailed> {
-        unreachable!("attempted to write to an input device")
+        unreachable!("attempted to write to an input device (while executing {diagnostics})")
     }
 
     fn name(&self) -> String {
