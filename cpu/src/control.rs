@@ -674,7 +674,9 @@ impl ControlUnit {
     fn calaco(&mut self) {
         self.clear_alarms();
         // TODO: there is currently no simulator representation for
-        // STOP/START, but CALACO is supposed to perform START.
+        // STOP/START, but CALACO is supposed to perform START.  This
+        // might be relevant because PRESET is supposet to have no
+        // effect unless the computer is in the stopped state.
     }
 
     fn clear_alarms(&mut self) {
@@ -1006,7 +1008,7 @@ impl ControlUnit {
             );
         } else {
             event!(
-                Level::DEBUG, // TODO: perhaps this should be INFO.
+                Level::ERROR,
                 "Unspecified sequence fetched instruction {:>012o} from physical address {:>012o}",
                 instruction_word,
                 p_physical_address
@@ -1418,7 +1420,7 @@ impl ControlUnit {
                 }
             } else {
                 event!(
-                    Level::DEBUG, // TODO: perhaps this should be INFO.
+                    Level::INFO,
                     "fetched instruction {:?} is invalid",
                     &self.regs.n
                 );
