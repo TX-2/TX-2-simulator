@@ -1,5 +1,17 @@
 # Getting Started
 
+## Online Demo
+
+If you just want to see the emulator running, the simplest way is to
+use the [online demo](https://tx-2.github.io/demo/).  This runs
+locally in your browser.
+
+The rest of this document explains to build and run the emulator and
+its associated tools yourself, but you don't need to do that just to
+see it running.
+
+## Components of the TX-2 Emulator
+
 The TX-2 emulator repository includes several components:
 
 - Command-line tools for assembling, disassembling and inspecting TX-2

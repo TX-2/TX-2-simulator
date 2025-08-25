@@ -14,8 +14,12 @@ From [the Wikipedia entry for the TX-2](https://en.wikipedia.org/wiki/TX-2):
 
 ## Trying It Out
 
-To get started with using the emulator, please read [Getting
-Started](docs/getting-started.md).
+You can [try out an online demo](https://tx-2.github.io/demo/).  This
+runs locally in your browser.
+
+You can also check out a copy of the source code, and build and run
+the emulator yourself; to get started with using the emulator, please
+read [Getting Started](docs/getting-started.md).
 
 ## For More Information
 
