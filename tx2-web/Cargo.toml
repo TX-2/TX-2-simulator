@@ -22,7 +22,7 @@ serde = { version = "1", features = ["derive"] }
 tracing = "0.1"                 # License: MIT
 tracing-wasm = "0.2.1"          # License: MIT or Apache
 wasm-bindgen = { version = "0.2", features = ["serde-serialize"] } # License: MIT or Apache
-serde-wasm-bindgen = "0.4.3"                                       # License: MIT
+serde-wasm-bindgen = "0.6"      # License: MIT
 cpu = {path = "../cpu" }
 base = {path = "../base" }
 
