@@ -969,10 +969,6 @@ impl<'a> Lexer<'a> {
         self.adjust_span(self.lower.span())
     }
 
-    fn next_upper(upper: &mut GlyphTokenizer<'a>) -> Option<(Token, Span)> {
-        upper.get_next_spanned_token()
-    }
-
     pub(crate) fn spanned(&self) -> SpannedIter<'a> {
         let lexer: Lexer<'a> = self.clone();
         SpannedIter::new(lexer)
@@ -981,7 +977,7 @@ impl<'a> Lexer<'a> {
     fn get_next(&mut self) -> Option<Token> {
         use lower::Lexeme;
         if let Some(upper_lexer) = self.upper.as_mut() {
-            match Lexer::next_upper(upper_lexer) {
+            match upper_lexer.get_next_spanned_token() {
                 Some((r, span)) => {
                     self.upper_span = Some(span);
                     return Some(r);
@@ -1002,11 +998,12 @@ impl<'a> Lexer<'a> {
             Lexeme::Text(text) => {
                 let upper = GlyphTokenizer::new(text);
                 self.upper = Some(upper);
-                match Lexer::next_upper(
-                    self.upper
-                        .as_mut()
-                        .expect("the option cannot be empty, we just filled it"),
-                ) {
+                match self
+                    .upper
+                    .as_mut()
+                    .expect("the option cannot be empty, we just filled it")
+                    .get_next_spanned_token()
+                {
                     Some((r, span)) => {
                         self.upper_span = Some(span);
                         Some(r)
