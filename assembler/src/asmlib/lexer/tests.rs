@@ -1,36 +1,60 @@
-use super::super::glyph::Unrecognised;
 use super::*;
 
 fn is_error_token(t: &Token) -> bool {
     matches!(t, Token::Error(_))
 }
 
-fn scan_slices(input: &str) -> Result<Vec<(Token, &str)>, Unrecognised> {
+fn fail_if_error_token(
+    accumulator: Result<Vec<Token>, ErrorTokenKind>,
+    token: Token,
+) -> Result<Vec<Token>, ErrorTokenKind> {
+    match (accumulator, token) {
+        (Err(e), _) => Err(e),
+        (Ok(_), Token::Error(e)) => Err(e),
+        (Ok(mut tokens), non_error) => {
+            tokens.push(non_error);
+            Ok(tokens)
+        }
+    }
+}
+
+fn scan_slices(input: &str) -> Result<Vec<(Token, &str)>, ErrorTokenKind> {
     dbg!(input);
     dbg!(input.len());
 
-    let mapping =
-        |(r, span): (Result<Token, Unrecognised>, Span)| -> Result<(Token, &str), Unrecognised> {
-            match r {
-                Ok(t) => Ok((t, &input[span])),
-                Err(e) => Err(e),
-            }
-        };
+    let mapping = |(t, span): (Token, Span)| -> (Token, &str) { (t, &input[span]) };
 
-    Lexer::new(input).spanned().map(mapping).collect()
+    fn fail_if_stringy_error_token<'a>(
+        accumulator: Result<Vec<(Token, &'a str)>, ErrorTokenKind>,
+        token_and_str: (Token, &'a str),
+    ) -> Result<Vec<(Token, &'a str)>, ErrorTokenKind> {
+        match (accumulator, token_and_str) {
+            (Err(e), _) => Err(e),
+            (Ok(_), (Token::Error(e), _)) => Err(e),
+            (Ok(mut tokens), non_error) => {
+                tokens.push(non_error);
+                Ok(tokens)
+            }
+        }
+    }
+
+    Lexer::new(input)
+        .spanned()
+        .map(mapping)
+        .fold(Ok(Vec::new()), fail_if_stringy_error_token)
 }
 
-fn scan_tokens_only(input: &str) -> Result<Vec<Token>, Unrecognised> {
-    Lexer::new(input).collect()
+fn scan_tokens_only(input: &str) -> Result<Vec<Token>, ErrorTokenKind> {
+    Lexer::new(input).fold(Ok(Vec::new()), fail_if_error_token)
 }
 
 #[test]
 fn test_lexer_next_newline_rparen() {
     let input = "\n)";
     let mut lex = Lexer::new(input);
-    assert_eq!(lex.next(), Some(Ok(Token::Newline)));
+    assert_eq!(lex.next(), Some(Token::Newline));
     assert_eq!(lex.span(), 0..1);
-    assert_eq!(lex.next(), Some(Ok(Token::RightParen(Script::Normal))));
+    assert_eq!(lex.next(), Some(Token::RightParen(Script::Normal)));
     assert_eq!(lex.span(), 1..2);
     assert_eq!(lex.next(), None);
 }
@@ -39,7 +63,7 @@ fn test_lexer_next_newline_rparen() {
 fn test_lexer_next_comment() {
     let input = "**X\n";
     let mut lex = Lexer::new(input);
-    assert_eq!(lex.next(), Some(Ok(Token::Newline)));
+    assert_eq!(lex.next(), Some(Token::Newline));
     assert_eq!(lex.span(), 3..4);
     assert_eq!(&input[3..4], "\n");
 }
@@ -48,7 +72,7 @@ fn test_lexer_next_comment() {
 fn test_lexer_spanned_next_comment() {
     let input = "**X\n";
     let mut lex = Lexer::new(input).spanned();
-    assert_eq!(lex.next(), Some((Ok(Token::Newline), 3..4)));
+    assert_eq!(lex.next(), Some((Token::Newline, 3..4)));
     assert_eq!(&input[3..4], "\n");
 }
 
@@ -1359,24 +1383,24 @@ fn test_foo3() {
     dbg!(&input[0..3]);
     assert_eq!(
         lex.next(),
-        Some(Ok(Token::SymexSyllable(Script::Normal, "FOO".to_string())))
+        Some(Token::SymexSyllable(Script::Normal, "FOO".to_string()))
     );
     assert_eq!(lex.span(), 0..3);
 
     dbg!(&input[3..4]);
-    assert_eq!(lex.next(), Some(Ok(Token::Equals(Script::Normal))));
+    assert_eq!(lex.next(), Some(Token::Equals(Script::Normal)));
     assert_eq!(lex.span(), 3..4);
 
     dbg!(&input[4..7]);
     assert_eq!(
         lex.next(),
-        Some(Ok(Token::Digits(
+        Some(Token::Digits(
             Script::Sub,
             NumericLiteral {
                 digits: "3".to_string(),
                 has_trailing_dot: false
             }
-        )))
+        ))
     );
     // The key point about the next assertion is that slice indices
     // and spans are both byte positins, not character indexes.
@@ -1718,7 +1742,7 @@ fn merge_makes_bit_selector() {
         },
     );
     assert_eq!(
-        merge_tokens((Ok(left), 0..16), (Ok(right), 16..23)),
+        merge_tokens((left, 0..16), (right, 16..23)),
         TokenMergeResult::Merged(
             Token::BitPosition(Script::Sub, "4".to_string(), "1".to_string()),
             0..23
@@ -1734,7 +1758,7 @@ fn merge_another_dot_onto_bit_selector() {
     let left = Token::BitPosition(Script::Sub, "4".to_string(), "1".to_string());
     let right = Token::Dot(Script::Sub);
     assert_eq!(
-        merge_tokens((Ok(left), 0..23), (Ok(right), 23..32)),
+        merge_tokens((left, 0..23), (right, 23..32)),
         TokenMergeResult::Merged(Token::SymexSyllable(Script::Sub, "4·1·".to_string()), 0..32)
     )
 }
@@ -1747,7 +1771,7 @@ fn merge_letter_onto_bit_selector() {
     let left = Token::BitPosition(Script::Sub, "4".to_string(), "1".to_string());
     let right = Token::SymexSyllable(Script::Sub, "C".to_string());
     assert_eq!(
-        merge_tokens((Ok(left), 0..23), (Ok(right), 23..30)),
+        merge_tokens((left, 0..23), (right, 23..30)),
         TokenMergeResult::Merged(Token::SymexSyllable(Script::Sub, "4·1C".to_string()), 0..30)
     )
 }

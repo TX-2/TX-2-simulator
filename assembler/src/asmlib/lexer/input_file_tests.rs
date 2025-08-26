@@ -2,7 +2,6 @@ use std::fs::OpenOptions;
 use std::io::{BufReader, Read};
 use std::path::PathBuf;
 
-use super::super::glyph::Unrecognised;
 use super::{Lexer, Token};
 
 fn get_test_input_file_name(relative_to_manifest: &str) -> PathBuf {
@@ -18,7 +17,7 @@ fn get_test_input_file_name(relative_to_manifest: &str) -> PathBuf {
     }
 }
 
-fn scan_file(body: &str) -> Result<Vec<Token>, Unrecognised> {
+fn scan_file(body: &str) -> Vec<Token> {
     let lexer = Lexer::new(body);
     lexer.collect()
 }
@@ -43,10 +42,12 @@ fn run_scan_test(input_relative_path: &str) {
         }
     };
 
-    if let Err(e) = scan_file(&source_file_body) {
-        panic!(
-            "should be able to scan file {input_relative_path} with the lexer, but this failed: {e}"
-        );
+    for token in scan_file(&source_file_body) {
+        if let Token::Error(e) = token {
+            panic!(
+                "should be able to scan file {input_relative_path} with the lexer, but this failed: {e}"
+            );
+        }
     }
 }
 

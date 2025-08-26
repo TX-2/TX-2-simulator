@@ -25,7 +25,6 @@ use chumsky::select;
 use crate::collections::OneOrMore;
 
 use super::ast::*;
-use super::glyph::Unrecognised;
 use super::lexer::{self};
 use super::manuscript::{
     MacroBodyLine, MacroDefinition, MacroDummyParameters, MacroInvocation, MacroParameter,
@@ -1478,55 +1477,35 @@ where
     // Chumsky documentation.
     let scanner = lexer::Lexer::new(input).spanned();
     let tokens: Vec<(Tok, SimpleSpan)> = scanner
-        .map(
-            |item: (Result<Tok, Unrecognised>, Range<usize>)| -> (Tok, Span) {
-                match item {
-                    (Ok(Tok::Tab), span) => {
-                        // The basic problem here is that the TX-2's
-                        // M4 assembler allows a space to occur in the
-                        // middle of a symex.  We implement this in
-                        // the parser by returning the individual
-                        // parts from the lexer and having the parser
-                        // join them together.  The lexer doesn't
-                        // return spaces.  In order to prevent the
-                        // parser joining together "XY\tZ" in a
-                        // similar way we would need to return TAB as
-                        // a lexeme.  The problem with doing that
-                        // though is that the parser would have to
-                        // permit the TAB token between regular
-                        // tokens everywhere in the grammar except
-                        // between two symex components.  That would
-                        // make the grammar difficult to maintain (and
-                        // difficult to specify without bugs).
-                        let long_msg: String = concat!(
-                            "Please do not use the TAB character. ",
-                            "The differences between the M4 assembler's interpretation of tab and its interpreation of the space ",
-                            "characer are complex, and these are not fully implemented.  If you want to ",
-                            "prevent two adjacent symexes being joined together, please use parentheses ",
-                            "or an explicit '+' operation instead.  That is, use (A)(B) or A+B instead of A<tab>B. ",
-                            "If you intended to simply use TAB to produce some particular code layout, please ",
-                            "use spaces instead.",
-                            // Also, Winnie was right.
-                        ).to_string();
-                        (Tok::Error(long_msg), span.into())
-                    }
-                    (Ok(tok), span) => {
-                        // Turn the `Range<usize>` spans logos gives us into
-                        // chumsky's `SimpleSpan` via `Into`, because it's
-                        // easier to work with
-                        (tok, span.into())
-                    }
-                    (Err(e), span) => {
-                        // Convert logos errors into tokens. We want parsing to
-                        // be recoverable and not fail at the lexing stage, so we
-                        // have a dedicated `Token::Error` variant that
-                        // represents a token error that was previously
-                        // encountered
-                        (Tok::Error(e.to_string()), span.into())
-                    }
+        .map(|item: (Tok, Range<usize>)| -> (Tok, Span) {
+            match item {
+                (Tok::Tab, span) => {
+                    // The basic problem here is that the TX-2's
+                    // M4 assembler allows a space to occur in the
+                    // middle of a symex.  We implement this in
+                    // the parser by returning the individual
+                    // parts from the lexer and having the parser
+                    // join them together.  The lexer doesn't
+                    // return spaces.  In order to prevent the
+                    // parser joining together "XY\tZ" in a
+                    // similar way we would need to return TAB as
+                    // a lexeme.  The problem with doing that
+                    // though is that the parser would have to
+                    // permit the TAB token between regular
+                    // tokens everywhere in the grammar except
+                    // between two symex components.  That would
+                    // make the grammar difficult to maintain (and
+                    // difficult to specify without bugs).
+                    (Tok::Error(lexer::ErrorTokenKind::Tab), span.into())
                 }
-            },
-        )
+                (tok, span) => {
+                    // Turn the `Range<usize>` spans logos gives us into
+                    // chumsky's `SimpleSpan` via `Into`, because it's
+                    // easier to work with
+                    (tok, span.into())
+                }
+            }
+        })
         .collect();
     let end_span: SimpleSpan = SimpleSpan::new(
         0,
