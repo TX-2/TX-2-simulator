@@ -31,6 +31,12 @@ use crate::symtab::{
     LookupOperation, TagDefinition, record_undefined_symbol_or_return_failure,
 };
 
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
+pub(crate) struct ExhaustedIndexRegisters {
+    span: Span,
+    name: SymbolName,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum SymbolLookupFailure {
     Loop {
@@ -38,7 +44,7 @@ pub(crate) enum SymbolLookupFailure {
         deps_in_order: OneOrMore<SymbolName>,
     },
     BlockTooLarge(Span, MachineLimitExceededFailure),
-    FailedToAssignIndexRegister(Span, SymbolName),
+    FailedToAssignIndexRegister(ExhaustedIndexRegisters),
     HereIsNotAllowedHere(Span),
 }
 
@@ -46,7 +52,10 @@ impl Spanned for SymbolLookupFailure {
     fn span(&self) -> Span {
         match self {
             SymbolLookupFailure::HereIsNotAllowedHere(span)
-            | SymbolLookupFailure::FailedToAssignIndexRegister(span, _)
+            | SymbolLookupFailure::FailedToAssignIndexRegister(ExhaustedIndexRegisters {
+                span,
+                ..
+            })
             | SymbolLookupFailure::Loop { span, .. }
             | SymbolLookupFailure::BlockTooLarge(span, _) => *span,
         }
@@ -69,7 +78,7 @@ impl Display for SymbolLookupFailure {
                     names.join("->")
                 )
             }
-            FailedToAssignIndexRegister(_, name) => {
+            FailedToAssignIndexRegister(ExhaustedIndexRegisters { name, .. }) => {
                 write!(
                     f,
                     "unable to assign index register as the default value for symbol {name} because there are not enough index registers"
@@ -88,9 +97,10 @@ impl Display for SymbolLookupFailure {
 impl SymbolLookupFailure {
     pub(crate) fn into_program_error(self) -> ProgramError {
         match self {
-            SymbolLookupFailure::FailedToAssignIndexRegister(span, name) => {
-                ProgramError::FailedToAssignIndexRegister(span, name)
-            }
+            SymbolLookupFailure::FailedToAssignIndexRegister(ExhaustedIndexRegisters {
+                span,
+                name,
+            }) => ProgramError::FailedToAssignIndexRegister(span, name),
             SymbolLookupFailure::BlockTooLarge(span, mle) => ProgramError::BlockTooLong(span, mle),
             SymbolLookupFailure::Loop {
                 deps_in_order,
@@ -135,7 +145,7 @@ fn assign_default_value(
     index_register_assigner: &mut IndexRegisterAssigner,
     name: &SymbolName,
     contexts_used: &SymbolContext,
-) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+) -> Result<Unsigned36Bit, ExhaustedIndexRegisters> {
     event!(
         Level::DEBUG,
         "assigning default value for {name} used in contexts {contexts_used:?}"
@@ -146,7 +156,7 @@ fn assign_default_value(
     match &contexts_used.origin {
         OriginUse::IncludesOrigin(_block, _origin) => {
             unreachable!(
-                "assign_default_value should not be called for origin speicifations; attempted to assign default value for {name} (used in contexts: {contexts_used:?}"
+                "assign_default_value should not be called for origin specifications; attempted to assign default value for {name} (used in contexts: {contexts_used:?}"
             )
         }
         OriginUse::NotOrigin { config, index } => match (config, index) {
@@ -171,10 +181,10 @@ fn assign_default_value(
                 // index register.
                 match index_register_assigner.assign_index_register() {
                     Some(n) => Ok(n.into()),
-                    None => Err(SymbolLookupFailure::FailedToAssignIndexRegister(
+                    None => Err(ExhaustedIndexRegisters {
                         span,
-                        name.clone(),
-                    )),
+                        name: name.clone(),
+                    }),
                 }
             }
         },
@@ -268,11 +278,7 @@ impl<R: RcUpdater> EvaluationContext<'_, R> {
                             *existing_def = ImplicitDefinition::DefaultAssigned(value, context);
                             Ok(value)
                         }
-                        Err(e) => {
-                            // TODO: this should be an error at the time
-                            // the usage was recorded.
-                            Err(e)
-                        }
+                        Err(e) => Err(SymbolLookupFailure::FailedToAssignIndexRegister(e)),
                     }
                 }
             }
