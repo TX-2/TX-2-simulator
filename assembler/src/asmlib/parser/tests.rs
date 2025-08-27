@@ -2018,8 +2018,31 @@ fn test_superscript_configuration_literal() {
 }
 
 #[test]
+fn test_normal_hash() {
+    assert_eq!(
+        parse_single_instruction_fragment("#"),
+        InstructionFragment::Arithmetic(ArithmeticExpression::from(SignedAtom {
+            negated: false,
+            span: span(0..1),
+            magnitude: Atom::SymbolOrLiteral(SymbolOrLiteral::Here(Script::Normal, span(0..1))),
+        }))
+    );
+}
+
+#[test]
+fn test_negated_normal_hash() {
+    assert_eq!(
+        parse_single_instruction_fragment("-#"),
+        InstructionFragment::Arithmetic(ArithmeticExpression::from(SignedAtom {
+            negated: true,
+            span: span(0..2),
+            magnitude: Atom::SymbolOrLiteral(SymbolOrLiteral::Here(Script::Normal, span(1..2))),
+        }))
+    );
+}
+
+#[test]
 fn test_superscript_configuration_hash() {
-    // TODO: negated hash
     assert_eq!(
         parse_single_instruction_fragment("@sup_hash@"),
         InstructionFragment::Config(ConfigValue {
@@ -2028,6 +2051,24 @@ fn test_superscript_configuration_hash() {
                 negated: false,
                 span: span(0..10),
                 magnitude: Atom::SymbolOrLiteral(SymbolOrLiteral::Here(Script::Super, span(0..10))),
+            })
+        }),
+    );
+}
+
+#[test]
+fn test_superscript_configuration_negated_hash() {
+    assert_eq!(
+        parse_single_instruction_fragment("@sup_minus@@sup_hash@"),
+        InstructionFragment::Config(ConfigValue {
+            already_superscript: true,
+            expr: ArithmeticExpression::from(SignedAtom {
+                negated: true,
+                span: span(0..21),
+                magnitude: Atom::SymbolOrLiteral(SymbolOrLiteral::Here(
+                    Script::Super,
+                    span(11..21)
+                )),
             })
         }),
     );
