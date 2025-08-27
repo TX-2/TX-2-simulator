@@ -335,14 +335,16 @@ impl ArithmeticExpression {
                     // We also come here for cases like 4 + -2,
                     // because (in the context of this function) -2
                     // appears to be a large unsigned number.
-                    todo!("addition overflow occurred but end-around carry is not implemented")
+                    todo!(
+                        "{left:>012o}+{right:>012o} overflowed; please fix https://github.com/TX-2/TX-2-simulator/issues/146"
+                    )
                 }
             },
             Operator::Subtract => match left.checked_sub(right) {
                 Some(result) => result,
                 None => {
                     todo!(
-                        "subtraction overflow occurred in {left}-{right} but this is not implemented"
+                        "{left:>012o}-{right:>012o} overflowed; please fix https://github.com/TX-2/TX-2-simulator/issues/146"
                     )
                 }
             },
