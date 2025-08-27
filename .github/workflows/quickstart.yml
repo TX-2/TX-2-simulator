@@ -15,6 +15,34 @@ permissions:
   contents: read
 
 jobs:
+
+  # These "X_and_Y" jobs each combine some steps that previously
+  # existed in separate jobs, because combining them is more
+  # efficient.
+  build_and_test:
+    # Combines previous Check, Build (stable), Test Suite (Rust stable)
+    name: Check, Build and Test (Rust stable)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo check --workspace --all-features
+      - run: cargo build --workspace --all-features
+      - run: cargo test  --workspace --all-features
+
+  fmt_and_clippy:
+    # Combines previous Rustfmt (stable) and Clippy (stable) jobs
+    name: Format and Lint Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace -- -D warnings
+
+  # The following jobs are not combined, and so are less efficient.
+  # We plan to remove these if the combined jobs above work OK.
+
   check:
     name: Check
     runs-on: ubuntu-latest
