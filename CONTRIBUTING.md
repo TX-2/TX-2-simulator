@@ -55,20 +55,53 @@ us an electronic version of the document you have, that works for us.
 
 ### Contributing by Programming
 
-We also need help in implementing the instructions and machine
-features we already have documentation for.  Some important things
-that still need to be written are recorded in the [issues
-list](https://github.com/TX-2/TX-2-simulator/issues).  Items which we
-think are good choices for fist-time contributors are [marked with the
-"good first issue"
+You can help by improving our TX-2 cross-assembler or by improving the
+TX-2 emulation.
+
+Some important things that still need to be written are recorded in
+the [issues list](https://github.com/TX-2/TX-2-simulator/issues).
+Items which we think are good choices for fist-time contributors are
+[marked with the "good first issue"
 tag](https://github.com/TX-2/TX-2-simulator/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22).
 
-The "good first issue" tags are marked that way mainly because they
-implement a simple instruction and there is something in the existing
-code to guide you.
+#### Assembler Improvements
+
+Our assembler runs on a modern computer but produces code for the
+TX-2.  Once the assembler fully supports the features of the original
+TX-2 assembler ("M4") we can use it to help [recover original TX-2
+software](https://tx-2.github.io/software/verifying-listings)
+including some historically important programs.
+
+See ["good first issues" for the
+assembler](https://github.com/TX-2/TX-2-simulator/issues?q=is%3Aissue%20is%3Aopen%20label%3A%22good%20first%20issue%22%20%20label%3Aassembler)
+for a list of specific things you could work on.
+
+#### Emulator Improvements
+
+
+We also need help in implementing the instructions and machine
+features we already have documentation for.
+
+All bugs with the "good first issue" can be tackled without a deep
+understanding of how the TX-2 worked.   While having that in
+common, they fall into several categories:
+
+[Opcode](https://github.com/TX-2/TX-2-simulator/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22good%20first%20issue%22%20%20label%3AOpcode)
+: Instructions which are not fully implemented yet, but where there is
+  something in the existing code to guide you and the instruction
+  doesn't require a deep understanding of the TX-2.
+
+[I/O](https://github.com/TX-2/TX-2-simulator/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22good%20first%20issue%22%20%20label%3AI%2FO)
+: Enhancements to the emulation of TX-2 peripherals, where this does
+  not require a deep understanding of the TX-2.
+
+[Web](https://github.com/TX-2/TX-2-simulator/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22good%20first%20issue%22%20%20label%3AWeb)
+: Enhancements to the UI of the web-based simulator which don't rely
+  on an understanding of how the TX-2 works in detail.
 
 If you are planning a significant contribution which doesn't already
-have an issue, please create one and outline what you hope to do.
+have an issue, please create one and outline what you hope to do
+(email james@youngman.org if you cannot create an issue).
 
 If you are unfamiliar with Github, or Git or Rust, please let us know
 so that we can help you to get started.
