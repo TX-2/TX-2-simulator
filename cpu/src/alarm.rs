@@ -148,9 +148,13 @@ pub enum AlarmDetails {
 
     /// Operation Code Alarm.  This fires when an instruction word
     /// containing an undefined operation code is read out of memory.
-    /// Section 10-2.5.3 states that this can also happen when an AOP
-    /// instruction specifies an undefined op code in bits N₂.₆-N₂.₁.
-    /// But I don't know what an AOP instruction is, yet.
+    ///
+    /// Section 10-2.5.3 of the TX-2 Technical Manual (Volume 2)
+    /// states that this can also happen when an AOP instruction
+    /// specifies an undefined op code in bits N₂.₆-N₂.₁.  An AOP
+    /// instruction is has opcode number 4, but with bits N₂.₈=0 and
+    /// N₂.₇=1 (instead of 00 which is the case for an IOS
+    /// instruction).
     OCSAL(Instruction, String),
 
     /// Q Memory Cycle Selecttion Alarm.  Q register (i.e. data fetch

@@ -1,5 +1,6 @@
 use std::ops::BitAnd;
 
+use base::bitselect::{Quarter, QuarterBit, bit_select};
 use base::prelude::*;
 
 use tracing::{Level, event};
@@ -43,8 +44,70 @@ fn bad_write(addr: Address) -> BadMemOp {
 }
 
 impl ControlUnit {
-    /// Implements the IOS opcode
-    pub(crate) fn op_ios(
+    /// OPR: Implements the IOS opcode and the AOP opcode.
+    ///
+    /// Bits 2.7 and 2.8 of the N register (i.e. the instruction word)
+    /// distinguish between IOS and AOP (which together are known as
+    /// OPR).  This decoding is described in section 7-11
+    /// ("MISCELLANEOUS OPERATION CODES") in Volume 1 of the Technical
+    /// Manual.  Neither of these insructions are indexable or
+    /// configurable (probably because they don't perform a memory
+    /// access).
+    pub(crate) fn op_opr(
+        &mut self,
+        ctx: &Context,
+        mem: &mut MemoryUnit,
+        devices: &mut DeviceManager,
+    ) -> Result<OpcodeResult, Alarm> {
+        // Perform the decoding described in section 7-11
+        // ("MISCELLANEOUS OPERATION CODES") of Volume 1 of the TX-2
+        // Technical Manual.
+        //
+        // The decoding chart there is
+        //
+        // N2.8 | N2.7 | OPR
+        //   0  |  0   | IOS
+        //   0  |  1   | AOP
+        //   1  |  0   | undefined
+        //   1  |  1   | undefined
+        //
+        // Section 10-2.5.3 ("OPERATION CODE ALARM") of the TX-2
+        // Technical Manual (March 1961) states that if bits 2.6..2.1
+        // of an AOP instruction specify an invalid opcode, OCSAL is
+        // raised.  But that text doesn't cover the case where
+        // N2.8==1, since that isn't the AOP case.
+        let b7: bool = bit_select(self.regs.n.bits(), Quarter::Q2, QuarterBit::B7);
+        if bit_select(self.regs.n.bits(), Quarter::Q2, QuarterBit::B8) {
+            // This is the "undefined" case from the table above.  The
+            // documentation doesn't explicitly state that OCSAL
+            // should be raised for this case, but it is a reasonably
+            // safe interpretation.  If we find that some piece of
+            // software expects a different result, we can look at
+            // this again.
+            Err(self.invalid_opr_subcode(b7))
+        } else {
+            // This opcode is either IOS (00) or AOP (01).
+            if b7 {
+                // AOP isn't implemented because we have not found any
+                // information about what its opcodes are, or what
+                // they do.
+                let trailing_digit: char = if b7 { '1' } else { '0' };
+                Err(self.alarm_unit.always_fire(Alarm {
+                    sequence: self.regs.k,
+                    details: AlarmDetails::ROUNDTUITAL {
+                        explanation: format!(
+                            "The AOP instruction (opcode 04 with subcode 0{trailing_digit}) is not yet implemented.",
+                        ),
+                        bug_report_url: "https://github.com/TX-2/TX-2-simulator/issues/148",
+                    },
+                }, &self.regs.diagnostic_only))
+            } else {
+                self.op_ios(ctx, mem, devices)
+            }
+        }
+    }
+
+    fn op_ios(
         &mut self,
         ctx: &Context,
         mem: &mut MemoryUnit,

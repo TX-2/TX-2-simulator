@@ -1112,6 +1112,20 @@ impl ControlUnit {
         }
     }
 
+    fn invalid_opr_subcode(&self, bit2dot7: bool) -> Alarm {
+        let opcode = self.regs.n.opcode_number();
+        let ch: char = if bit2dot7 { '1' } else { '0' };
+        Alarm {
+            sequence: self.regs.k,
+            details: AlarmDetails::OCSAL(
+                self.regs.n,
+                format!(
+                    "Opcode OPR/IOS/AOP used with opcode {opcode:#o} and invalid subcode 1{ch}"
+                ),
+            ),
+        }
+    }
+
     fn estimate_execute_time_ns(&self, orig_inst: &Instruction) -> u64 {
         let inst_from: Address = self.regs.p; // this is now P+1 but likely in the same memory type.
         let defer_from = match orig_inst.operand_address().split() {
@@ -1175,7 +1189,7 @@ impl ControlUnit {
                 Opcode::Jnx => control.op_jnx(ctx, mem),
                 Opcode::Skm => control.op_skm(ctx, mem),
                 Opcode::Spg => control.op_spg(ctx, mem),
-                Opcode::Ios => control.op_ios(ctx, mem, devices),
+                Opcode::Ios => control.op_opr(ctx, mem, devices),
                 Opcode::Tsd => control.op_tsd(ctx, devices, prev_program_counter, mem),
                 Opcode::Sed => control.op_sed(ctx, mem),
                 Opcode::Exx => Err(Alarm {

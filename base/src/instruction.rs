@@ -234,7 +234,22 @@ pub enum Opcode {
     // opcode 1 is unused
     // opcode 2 may be XEQ, but no documentation on this.
     // opcode 3 is unused
-    Ios = 0o4, // see also Vol 3 page 16-05-07
+    /// Opcode 04 (which is sometimes known as OPR) is used to encode
+    /// two kinds of instructions, IOS and AOP.
+    ///
+    /// IOS is the I/O select instruction and is described in the TX-2
+    /// Users Handbook, section 4-3.5.
+    ///
+    /// AOP is (apparently, documentation is a bit thin) the
+    /// Arithmetic Operation instruction.  This operates only on the
+    /// Arithmetic unit (that is, it makes no memory reference).
+    ///
+    /// See Technical Manual Vol 2 section 10-2.5.3 (AOP
+    /// instructions), Technical Manual Vol 3 section 16-5.1 (OPR (04)
+    /// AOP, see physical PDF page number 45).  Section 16-5.1 claims
+    /// that AOP is described in detail in chapter 4 of the Technical
+    /// Manual.
+    Ios = 0o4,
     Jmp = 0o5,
     Jpx = 0o6,
     Jnx = 0o7,
