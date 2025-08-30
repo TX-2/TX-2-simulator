@@ -7,15 +7,15 @@
 #![deny(unsafe_code)]
 #![deny(unused_crate_dependencies)]
 
-mod onescomplement;
-mod types;
-
+pub mod bitselect;
 pub mod charset;
 pub mod collections;
 pub mod instruction;
+mod onescomplement;
 pub mod prelude;
 pub mod splay;
 pub mod subword;
+mod types;
 pub use onescomplement::error;
 pub use onescomplement::unsigned::*;
 
