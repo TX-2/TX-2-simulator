@@ -51,7 +51,7 @@ pub(crate) fn estimate_instruction_ns(
     };
     if let Ok(opcode) = Opcode::try_from(op) {
         tenths += match opcode {
-            Opcode::Ios => 72,
+            Opcode::Opr => 72,
             Opcode::Jmp => 56,
             Opcode::Jpx => 76,
             Opcode::Jnx => 76,

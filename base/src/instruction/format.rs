@@ -1,6 +1,7 @@
 /// Human-oriented formatting for instructions (or parts of instructions).
 use std::fmt::{self, Display, Formatter, Octal, Write};
 
+use super::super::bitselect::{BitPos, BitSelector, bit_select};
 use super::super::charset::{
     NoSubscriptKnown, NoSuperscriptKnown, subscript_char, superscript_char,
 };
@@ -20,7 +21,7 @@ impl Display for Opcode {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         use Opcode::*;
         f.write_str(match self {
-            Ios => "IOS",
+            Opr => "OPR",
             Jmp => "JMP",
             Jpx => "JPX",
             Jnx => "JNX",
@@ -121,12 +122,39 @@ fn octal_subscript_number(n: u8) -> String {
     subscript(&format!("{n:o}")).unwrap()
 }
 
-fn write_opcode(op: Opcode, cfg: Unsigned5Bit, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+fn write_opcode(
+    op: Opcode,
+    cfg: Unsigned5Bit,
+    base_address_bits: Unsigned18Bit,
+    f: &mut Formatter<'_>,
+) -> Result<(), fmt::Error> {
+    let w = Unsigned36Bit::from(base_address_bits);
+    let bit_2_8 = bit_select(
+        w,
+        BitSelector {
+            quarter: Quarter::Q2,
+            bitpos: BitPos::B8,
+        },
+    );
+    let bit_2_7 = bit_select(
+        w,
+        BitSelector {
+            quarter: Quarter::Q2,
+            bitpos: BitPos::B8,
+        },
+    );
     // Where there is a supernumerary mnemonic, prefer it.
     // This list is taken from table 7-3 in the Users
     // Handbook.
     let cfg = u8::from(cfg);
     match op {
+        Opcode::Opr => f.write_str(if bit_2_8 {
+            "OPR"
+        } else if bit_2_7 {
+            "AOP"
+        } else {
+            "IOS"
+        }),
         Opcode::Jmp => f.write_str(match cfg {
             0o00 => "JMP",
             0o01 => "BRC",
@@ -251,7 +279,8 @@ impl Display for SymbolicInstruction {
             let cf: u8 = self.configuration().into();
             f.write_str(&octal_superscript_u8(cf).unwrap())?;
         }
-        write_opcode(self.opcode(), self.configuration(), f)?;
+        let base_address = self.operand_address_and_defer_bit();
+        write_opcode(self.opcode(), self.configuration(), base_address, f)?;
         let j = self.index_address();
         match self.opcode() {
             Opcode::Skm => {
@@ -425,5 +454,60 @@ mod tests {
             held: true, // this is signaled by the 'h'.
         };
         assert_eq!(&sinst.to_string(), "h ³⁴RSX₇₁ 377762"); // the 'h' indicates `held`
+    }
+
+    #[test]
+    fn test_display_ios() {
+        // This instruction appears in the listing for the "READER
+        // LEADER" in section 5-5.2 of the Users Handbook.
+        let sinst = SymbolicInstruction {
+            operand_address: OperandAddress::direct(Address::from(u18!(0o020_000_u32))),
+            index: Unsigned6Bit::try_from(0o52_u8).unwrap(),
+            // Bits 2.7 and 2.8 in the base address field distinguish
+            // the IOS and AOP variants of the OPR opcode.  If they're
+            // both zero, we're looking at IOS.
+            //
+            // This distinction and the bits used to make it are
+            // described in section 7-11 ("MISCELLANEOUS OPERATION
+            // CODES") of Volume 1 of the TX-2 Technical Manual.
+            opcode: Opcode::Opr,
+            configuration: config_value(0o1),
+            held: false,
+        };
+        assert_eq!(&sinst.to_string(), "¹IOS₅₂ 20000");
+    }
+
+    #[test]
+    fn test_disassemble_ios() {
+        // This instruction appears in the listing for the "READER
+        // LEADER" in section 5-5.2 of the Users Handbook.
+        let inst = Instruction::from(u36!(0o010_452_020_000));
+        assert_eq!(
+            SymbolicInstruction::try_from(&inst),
+            Ok(SymbolicInstruction {
+                operand_address: OperandAddress::direct(Address::from(u18!(0o020_000_u32))),
+                index: Unsigned6Bit::try_from(0o52_u8).unwrap(),
+                opcode: Opcode::Opr,
+                configuration: config_value(0o1),
+                held: false,
+            })
+        );
+    }
+    #[test]
+    fn test_assemble_ios() {
+        // This instruction appears in the listing for the "READER
+        // LEADER" in section 5-5.2 of the Users Handbook, in both
+        // symbolic and octal form.
+        assert_eq!(
+            Instruction::from(&SymbolicInstruction {
+                operand_address: OperandAddress::direct(Address::from(u18!(0o020_000_u32))),
+                index: Unsigned6Bit::try_from(0o52_u8).unwrap(),
+                opcode: Opcode::Opr,
+                configuration: config_value(0o1),
+                held: false,
+            })
+            .bits(),
+            u36!(0o010_452_020_000)
+        );
     }
 }

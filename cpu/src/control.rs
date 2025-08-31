@@ -1189,7 +1189,7 @@ impl ControlUnit {
                 Opcode::Jnx => control.op_jnx(ctx, mem),
                 Opcode::Skm => control.op_skm(ctx, mem),
                 Opcode::Spg => control.op_spg(ctx, mem),
-                Opcode::Ios => control.op_opr(ctx, mem, devices),
+                Opcode::Opr => control.op_opr(ctx, mem, devices),
                 Opcode::Tsd => control.op_tsd(ctx, devices, prev_program_counter, mem),
                 Opcode::Sed => control.op_sed(ctx, mem),
                 Opcode::Exx => Err(Alarm {

@@ -307,6 +307,9 @@ pub enum Opcode {
     /// IOS is the I/O select instruction and is described in the TX-2
     /// Users Handbook, section 4-3.5.
     ///
+    /// Bits 2.7 and 2.8 of the instruction work determine whether an
+    /// OPR instruction is IOS or AOP (or invalid).
+    ///
     /// AOP is (apparently, documentation is a bit thin) the
     /// Arithmetic Operation instruction.  This operates only on the
     /// Arithmetic unit (that is, it makes no memory reference).
@@ -316,7 +319,7 @@ pub enum Opcode {
     /// AOP, see physical PDF page number 45).  Section 16-5.1 claims
     /// that AOP is described in detail in chapter 4 of the Technical
     /// Manual.
-    Ios = 0o4,
+    Opr = 0o4,
     Jmp = 0o5,
     Jpx = 0o6,
     Jnx = 0o7,
@@ -411,7 +414,7 @@ impl TryFrom<u8> for Opcode {
                 Err(DisassemblyFailure::UnimplementedOpcode(opcode))
             }
             3 => Err(DisassemblyFailure::InvalidOpcode(opcode)),
-            0o4 => Ok(Ios),
+            0o4 => Ok(Opr),
             0o5 => Ok(Jmp),
             0o6 => Ok(Jpx),
             0o7 => Ok(Jnx),

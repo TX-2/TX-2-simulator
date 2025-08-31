@@ -134,7 +134,7 @@ fn create_begin_block(
         // 027: ¹IOS₅₂ 20000     ** Disconnect PETR, load report word into E.
         held: false,
         configuration: u5!(1), // signals that PETR report word should be loaded into E
-        opcode: Opcode::Ios,
+        opcode: Opcode::Opr,
         index: u6!(0o52),
         operand_address: OperandAddress::direct(Address::from(u18!(0o020_000))),
     };
