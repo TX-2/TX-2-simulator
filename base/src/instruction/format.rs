@@ -5,36 +5,10 @@ use super::super::charset::{
     NoSubscriptKnown, NoSuperscriptKnown, subscript_char, superscript_char,
 };
 use super::super::instruction::{
-    BitSelector, DisassemblyFailure, Inst, Opcode, OperandAddress, Quarter, SymbolicInstruction,
+    DisassemblyFailure, Inst, Opcode, OperandAddress, SkmBitSelector, SymbolicInstruction,
     index_address_to_bit_selection,
 };
 use super::super::prelude::*;
-
-/// Render the quarter ("q") part of the bit selector ("q.b").
-impl Display for Quarter {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        f.write_str(match self {
-            Quarter::Q1 => "1",
-            Quarter::Q2 => "2",
-            Quarter::Q3 => "3",
-            Quarter::Q4 => "4",
-        })
-    }
-}
-
-/// Render the bit selector in the form q.b.  Unfortunately the TX2
-/// documentation is inconsistent in how the bit number is formatted.
-/// Page 3-34 of the User Handbook clearly says "Bit Numbers are
-/// interpreted asd Decimal".  However, the plugboard listing (page
-/// 5-27 of the same document) disassembles the instruction 301712
-/// 377744 as "³⁰SKN₄.₁₂ 377744" so here the bit number is given in
-/// octal.  We adopt the decimal convention since it is in wider use
-/// in the documentation.
-impl Display for BitSelector {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "{}.{}", self.quarter, self.bitpos)
-    }
-}
 
 /// Convert an opcode to its text representation.
 ///
@@ -285,7 +259,7 @@ impl Display for SymbolicInstruction {
                 // identify a bit in the operand to operate on, and
                 // are shown in the form "q.b".  The "q" identifies
                 // the quarter and the "b" the bit.
-                let selector: BitSelector = index_address_to_bit_selection(j);
+                let selector: SkmBitSelector = index_address_to_bit_selection(j);
                 let rendering: String = subscript(&selector.to_string()).unwrap();
                 f.write_str(&rendering)?;
             }

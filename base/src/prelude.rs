@@ -5,6 +5,7 @@ pub use super::instruction::*;
 pub use super::onescomplement::error::*;
 pub use super::onescomplement::signed::*;
 pub use super::onescomplement::unsigned::*;
+pub use super::quarters::Quarter;
 pub use super::splay::{cycle_and_splay, unsplay};
 pub use super::subword::{join_halves, join_quarters, left_half, right_half, split_halves};
 pub use super::types::IndexBy;

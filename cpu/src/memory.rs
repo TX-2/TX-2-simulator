@@ -31,6 +31,7 @@ use std::ops::RangeInclusive;
 
 use tracing::{Level, event};
 
+use base::bitselect::BitSelector;
 use base::prelude::*;
 
 use super::context::Context;
@@ -93,7 +94,7 @@ pub(crate) enum BitChange {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct WordChange {
-    pub(crate) bit: BitSelector,
+    pub(crate) bit: SkmBitSelector,
     pub(crate) bitop: Option<BitChange>,
     pub(crate) cycle: bool,
 }
@@ -107,13 +108,10 @@ impl WordChange {
         } else {
             // Only bit positions 1-9 (normal bits) and 10 (meta) are
             // modifiable.
-            !matches!(
-                self.bit,
-                BitSelector {
-                    quarter: _,
-                    bitpos: 0 | 11 | 12
-                }
-            )
+            match &self.bit.bitpos {
+                SkmBitPos::Value(_) | SkmBitPos::Meta => true,
+                SkmBitPos::Nonexistent(_) | SkmBitPos::Parity | SkmBitPos::ParityCircuit => false,
+            }
         }
     }
 }
@@ -477,17 +475,6 @@ impl MemoryUnit {
     }
 }
 
-fn skm_bit_mask(bit: &BitSelector) -> Unsigned36Bit {
-    if bit.bitpos <= 9 {
-        match Unsigned36Bit::try_from(1 << ((u8::from(bit.quarter) * 9) + (bit.bitpos - 1))) {
-            Ok(value) => value,
-            Err(_) => unreachable!("mask calculation cannot yield an out-of-range value"),
-        }
-    } else {
-        panic!("unexpected bit selector {bit:?}")
-    }
-}
-
 /// Implement the heart of the change_bit() operation used by the SKM
 /// instruction.  Returns the value of the selected bit, or None if
 /// the bit selector indicates a nonexistent bit (e.g. 0.0, 1.0).
@@ -496,34 +483,51 @@ fn skm_bitop_get<R: MemoryRead>(target_word: &R, op: &WordChange) -> Option<bool
     // handbook, page 3-35) explains, we perform the
     // possible bit change before the possible rotate.
     match op.bit.bitpos {
-        0 => None,
-        1..=9 => {
-            let mask = skm_bit_mask(&op.bit);
+        SkmBitPos::Value(value_bit_pos) => {
+            let mask: u64 = BitSelector {
+                quarter: op.bit.quarter,
+                bitpos: value_bit_pos,
+            }
+            .raw_mask();
             Some((target_word.get_value() & mask) != 0)
         }
-        10 => {
+        SkmBitPos::Meta => {
             // The metabit.
             Some(target_word.get_meta_bit())
         }
-        // 11 is the parity bit 12 is the computed parity.
-        // Both are read-only, but I don't think an attempt
-        // to modify them trips an alarm (at least, I
-        // can't see any mention of this in the SKM
-        // documentation).
-        11 | 12 => Some(u64::from(target_word.get_value()).count_ones() & 1 != 0),
-        _ => unreachable!(),
+        SkmBitPos::Parity | SkmBitPos::ParityCircuit => {
+            // 11 is the parity bit 12 is the computed parity (see SKM
+            // instruction description, page 3-34 of the Users
+            // Handbook).
+            //
+            // Both are read-only, but I don't think an attempt to
+            // modify them trips an alarm (at least, I can't see any
+            // mention of this in the SKM documentation).
+            Some(u64::from(target_word.get_value()).count_ones() & 1 != 0)
+        }
+        SkmBitPos::Nonexistent(_) => None,
     }
 }
 
 fn skm_bitop_write(mut target: MemoryWriteRef<'_>, op: &WordChange) -> Option<bool> {
     let maybe_bit: Option<bool> = skm_bitop_get(&target, op);
-    match (maybe_bit, op.bit.bitpos) {
-        (None, _) => {
-            // A nonexistent bit has been selected, so we can't change
-            // it.
+
+    match op.bit.bitpos {
+        SkmBitPos::Parity | SkmBitPos::ParityCircuit | SkmBitPos::Nonexistent(_) => {
+            // Do nothing.  This matches the explicit expectations of
+            // the SKM instruction for bits 0, 11, 12 (TX-2 Users
+            // Handbook, page 3-34).
+            //
+            // We assume that for other nonexistent bits (13, 14, 15)
+            // the behavious should be the same as for bit 0.
         }
-        (_, 1..=9) => {
-            let mask = skm_bit_mask(&op.bit);
+
+        SkmBitPos::Value(value_bit_pos) => {
+            let mask: Unsigned36Bit = BitSelector {
+                quarter: op.bit.quarter,
+                bitpos: value_bit_pos,
+            }
+            .mask();
             match op.bitop {
                 None => (),
                 Some(BitChange::Clear) => target.set_value(target.get_value() & !mask),
@@ -531,19 +535,18 @@ fn skm_bitop_write(mut target: MemoryWriteRef<'_>, op: &WordChange) -> Option<bo
                 Some(BitChange::Flip) => target.set_value(target.get_value() ^ mask),
             }
         }
-        (Some(meta_bit_val), 10) => {
+        SkmBitPos::Meta => {
             // The metabit.
             match op.bitop {
                 None => (),
                 Some(BitChange::Clear) => target.set_meta_bit_to_value(false),
                 Some(BitChange::Set) => target.set_meta_bit_to_value(true),
-                Some(BitChange::Flip) => target.set_meta_bit_to_value(!meta_bit_val),
+                Some(BitChange::Flip) => {
+                    let meta_bit_val: bool = target.get_meta_bit();
+                    target.set_meta_bit_to_value(!meta_bit_val)
+                }
             }
         }
-        (_, 11 | 12) => {
-            // Cannot set the parity bits in software.
-        }
-        (Some(_), 0 | 13..=u8::MAX) => unreachable!(),
     }
     if op.cycle {
         target.set_value(target.get_value() >> 1);

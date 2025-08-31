@@ -42,65 +42,132 @@
 //! the hold bit seems to be set without this being indicated in the
 //! symbolic form of the instruction.
 
-use std::fmt::{self, Debug, Formatter};
+use std::fmt::{self, Debug, Display, Formatter};
 
 #[cfg(test)]
 use test_strategy::{Arbitrary, proptest};
 
+use super::bitselect::{BitPos, BitSelector};
 use super::prelude::*;
 use super::subword;
-
 mod format;
 
 pub const DEFER_BIT: Unsigned36Bit = Unsigned36Bit {
     bits: 0o400_000_u64,
 };
 
-/// `Quarter` describes which quarter of a word an SKM instruction
-/// will operate on.  See the [`index_address_to_bit_selection`]
-/// function.
+/// While examples usually choose 0 as the non-existent bit position,
+/// the index portion of the instruction word (which encodes the
+/// quarter and bit position for SKM instructions) stores two bits of
+/// quarter number and four bits of bit position, meaning that the
+/// possible range of bit positions is 0..=15 (decimal).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Quarter {
-    Q1 = 0,
-    Q2 = 1,
-    Q3 = 2,
-    Q4 = 3,
+pub enum NonexistentBitPos {
+    Zero,
+    Thirteen,
+    Fourteen,
+    Fifteen,
 }
 
-/// Convert the `Quarter` enumeration value into the position of that
-/// quarter (counting from the least-significant end of the 36-bit
-/// word).
-impl From<Quarter> for u8 {
-    fn from(q: Quarter) -> u8 {
-        match q {
-            Quarter::Q1 => 0,
-            Quarter::Q2 => 1,
-            Quarter::Q3 => 2,
-            Quarter::Q4 => 3,
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum SkmBitPos {
+    Value(BitPos), // bits 1 to 9 inclusive
+    Meta,          // bit 10
+    Parity,        // bit 11 (can be tested but not set)
+    ParityCircuit, // bit 12 (can be tested but not set)
+
+    /// Bit zero of any quarter is non-existent.  The interpretation
+    /// of bit 0 is explained in the documentation for SKM (Users
+    /// Handbook, page 3-34:
+    ///
+    /// If a non-existent bit is selected, e.g. bit 0.0,1.0,2.0,3.0
+    /// for example, Unconditional Skips (SKU) and Rotate (CYR) will
+    /// still work, but "makes" will do nothing, and conditional skips
+    /// will not skip.
+    Nonexistent(NonexistentBitPos),
+}
+
+impl Display for SkmBitPos {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        match self {
+            SkmBitPos::Nonexistent(NonexistentBitPos::Zero) => f.write_str("0"),
+            SkmBitPos::Value(bitpos) => write!(f, "{bitpos}"),
+            SkmBitPos::Meta => f.write_str("10"),
+            SkmBitPos::Parity => f.write_str("11"),
+            SkmBitPos::ParityCircuit => f.write_str("12"),
+            SkmBitPos::Nonexistent(NonexistentBitPos::Thirteen) => f.write_str("13"),
+            SkmBitPos::Nonexistent(NonexistentBitPos::Fourteen) => f.write_str("14"),
+            SkmBitPos::Nonexistent(NonexistentBitPos::Fifteen) => f.write_str("15"),
         }
     }
 }
 
-/// `BitSelector` is primarily for use with the SKM instruction which
-/// can access bits 1-9 of quarters, plus the meta and parity bits (of
-/// the full word).  Hence the wider range.  See the
-/// [`index_address_to_bit_selection`] function.
+/// `SkmBitSelector` is primarily for use with the SKM
+/// instruction which can access bits 1-9 of quarters, plus the meta
+/// and parity bits (of the full word).  Hence the wider range.  See
+/// the [`index_address_to_bit_selection`] function.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct BitSelector {
+pub struct SkmBitSelector {
     pub quarter: Quarter,
-    /// `bitpos` values 1 to 9 inclusive are normal bit positions in a
-    /// quarter.  0 is a valid value but not a valid bit (so a default
-    /// will be used when SKM tests bit 0).  10 is the meta bit.  11
-    /// is the parity bit stored in memory.  12 is the parity value
-    /// computed from the bits stored in memory.
-    pub bitpos: u8, // takes values 0..=12.
+    pub bitpos: SkmBitPos,
+}
+
+/// Render the bit selector in the form q.b.  Unfortunately the TX2
+/// documentation is inconsistent in how the bit number is formatted.
+/// Page 3-34 of the User Handbook clearly says "Bit Numbers are
+/// interpreted asd Decimal".  However, the plugboard listing (page
+/// 5-27 of the same document) disassembles the instruction 301712
+/// 377744 as "³⁰SKN₄.₁₂ 377744" so here the bit number is given in
+/// octal.  We adopt the decimal convention since it is in wider use
+/// in the documentation.
+///
+/// TODO: perhaps the ₄.₁₂ is specifically referring to the parity
+/// circuit (meaning that there is no inconsistency, and this bit
+/// number also was given in decimal).  I seem to remember seeing
+/// somewhere that the idea of the instruction is to verify (during
+/// boot) that there were no problems with parity checking.
+impl Display for SkmBitSelector {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(f, "{}.{}", self.quarter, self.bitpos)
+    }
+}
+
+impl SkmBitSelector {
+    pub fn to_value_bit(self) -> Option<BitSelector> {
+        match self.bitpos {
+            SkmBitPos::Value(b) => Some(BitSelector {
+                quarter: self.quarter,
+                bitpos: b,
+            }),
+            _ => None,
+        }
+    }
 }
 
 /// Convert the index address field of an SKM instruction into a
 /// `BitSelector` struct describing which bit we will operate on.
-pub fn index_address_to_bit_selection(index_address: Unsigned6Bit) -> BitSelector {
+pub fn index_address_to_bit_selection(index_address: Unsigned6Bit) -> SkmBitSelector {
     let j: u8 = u8::from(index_address);
-    BitSelector {
+    let bitpos: SkmBitPos = match j & 0b1111_u8 {
+        0 => SkmBitPos::Nonexistent(NonexistentBitPos::Zero),
+        1 => SkmBitPos::Value(BitPos::B1),
+        2 => SkmBitPos::Value(BitPos::B2),
+        3 => SkmBitPos::Value(BitPos::B3),
+        4 => SkmBitPos::Value(BitPos::B4),
+        5 => SkmBitPos::Value(BitPos::B5),
+        6 => SkmBitPos::Value(BitPos::B6),
+        7 => SkmBitPos::Value(BitPos::B7),
+        8 => SkmBitPos::Value(BitPos::B8),
+        9 => SkmBitPos::Value(BitPos::B9),
+        10 => SkmBitPos::Meta,
+        11 => SkmBitPos::Parity,
+        12 => SkmBitPos::ParityCircuit,
+        13 => SkmBitPos::Nonexistent(NonexistentBitPos::Thirteen),
+        14 => SkmBitPos::Nonexistent(NonexistentBitPos::Fourteen),
+        15 => SkmBitPos::Nonexistent(NonexistentBitPos::Fifteen),
+        _ => unreachable!(),
+    };
+    SkmBitSelector {
         quarter: match (j >> 4) & 0b11 {
             0 => Quarter::Q4,
             1 => Quarter::Q1,
@@ -108,7 +175,7 @@ pub fn index_address_to_bit_selection(index_address: Unsigned6Bit) -> BitSelecto
             3 => Quarter::Q3,
             _ => unreachable!(),
         },
-        bitpos: j & 0b1111_u8,
+        bitpos,
     }
 }
 

@@ -13,6 +13,7 @@ pub mod collections;
 pub mod instruction;
 mod onescomplement;
 pub mod prelude;
+pub mod quarters;
 pub mod splay;
 pub mod subword;
 mod types;

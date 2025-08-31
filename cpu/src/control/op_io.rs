@@ -1,6 +1,6 @@
 use std::ops::BitAnd;
 
-use base::bitselect::{Quarter, QuarterBit, bit_select};
+use base::bitselect::{BitPos, BitSelector, bit_select};
 use base::prelude::*;
 
 use tracing::{Level, event};
@@ -76,8 +76,20 @@ impl ControlUnit {
         // of an AOP instruction specify an invalid opcode, OCSAL is
         // raised.  But that text doesn't cover the case where
         // N2.8==1, since that isn't the AOP case.
-        let b7: bool = bit_select(self.regs.n.bits(), Quarter::Q2, QuarterBit::B7);
-        if bit_select(self.regs.n.bits(), Quarter::Q2, QuarterBit::B8) {
+        let b7: bool = bit_select(
+            self.regs.n.bits(),
+            BitSelector {
+                quarter: Quarter::Q2,
+                bitpos: BitPos::B7,
+            },
+        );
+        if bit_select(
+            self.regs.n.bits(),
+            BitSelector {
+                quarter: Quarter::Q2,
+                bitpos: BitPos::B8,
+            },
+        ) {
             // This is the "undefined" case from the table above.  The
             // documentation doesn't explicitly state that OCSAL
             // should be raised for this case, but it is a reasonably
