@@ -1,12 +1,12 @@
 //! Implementations of "Index Register Class" opcodes
-//! - RSX [`ControlUnit::op_rsx`]
-//! - DPX: [`ControlUnit::op_dpx`]
-//! - EXX (unimplemented)
-//! - AUX [`ControlUnit::op_aux`]
-//! - ADX (unimplemented)
-//! - SKX: [`ControlUnit::op_skx`]
-//! - JPX: [`ControlUnit::op_jpx`]
-//! - JNX: [`ControlUnit::op_jnx`]
+//! - RSX
+//! - DPX
+//! - EXX
+//! - AUX
+//! - ADX
+//! - SKX
+//! - JPX
+//! - JNX
 
 use tracing::{Level, event};
 
@@ -20,18 +20,8 @@ use super::control::{
 };
 use super::memory::{MemoryUnit, MetaBitChange};
 
-/// ## "Index Register Class" opcodes
-///
-/// - RSX: [`ControlUnit::op_rsx`]
-/// - DPX: [`ControlUnit::op_dpx`]
-/// - AUX [`ControlUnit::op_aux`]
-/// - ADX (unimplemented)
-/// - SKX: [`ControlUnit::op_skx`]
-/// - JPX: [`ControlUnit::op_jpx`]
-/// - JNX: [`ControlUnit::op_jnx`]
-///
 impl ControlUnit {
-    /// Implements the DPX instruction (Opcode 016, User Handbook,
+    /// Implements the `DPX` instruction (Opcode 016, User Handbook,
     /// page 3-16).
     pub(crate) fn op_dpx(
         &mut self,

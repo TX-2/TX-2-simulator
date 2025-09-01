@@ -16,13 +16,6 @@ use super::memory::MemoryUnit;
 
 use tracing::{Level, event};
 
-/// ## "Configuration Memory Class" opcodes
-///
-/// - SPF (unimplemented)
-/// - SPG: [`ControlUnit::op_spg`]
-/// - FLF (unimplemented)
-/// - FLG (unimplemented)
-///
 impl ControlUnit {
     /// Implements the SPG instruction.
     pub(crate) fn op_spg(

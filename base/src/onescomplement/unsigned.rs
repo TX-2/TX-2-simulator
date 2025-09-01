@@ -23,7 +23,7 @@ use super::{Signum, WordCommon};
 mod tests;
 
 /// This macro implements conversions from native types to Unsigned*Bit
-/// which are always possible (e.g. From<u8> for Unsigned9Bit).
+/// which are always possible (e.g. `From<u8> for Unsigned9Bit`).
 macro_rules! from_native_type_to_self {
     ($SelfT:ty, $($from:ty)*) => {
         $(
@@ -39,7 +39,7 @@ macro_rules! from_native_type_to_self {
 }
 
 /// This macro implements conversions from Unsigned*Bit to native
-/// types which are always possible (e.g. From<Unsigned9Bit> for i16).
+/// types which are always possible (e.g. `From<Unsigned9Bit> for i16`).
 macro_rules! from_self_to_native_type {
     ($SelfT:ty, $($to:ty)*) => {
         $(
@@ -62,7 +62,7 @@ macro_rules! from_self_to_native_type {
 
 /// This macro implements conversions from Unsigned*Bit to native
 /// types where the conversion may not always fit.  For example
-/// TryFrom<Unsigned18Bit> for u8.
+/// `TryFrom<Unsigned18Bit> for u8`.
 macro_rules! try_from_self_to_native_type {
     ($SelfT:ty, $($to:ty)*) => {
         $(
@@ -78,7 +78,7 @@ macro_rules! try_from_self_to_native_type {
 
 /// This macro implements a conversions from native types to
 /// Unsigned*Bit where the conversion may not always fit.  For example
-/// TryFrom<u64> for Unsigned36Bit.
+/// `TryFrom<u64> for Unsigned36Bit`.
 macro_rules! try_from_native_type_to_self {
     ($SelfT:ty, $InnerT:ty, $($from:ty)*) => {
         $(

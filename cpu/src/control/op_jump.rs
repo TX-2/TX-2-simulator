@@ -1,3 +1,4 @@
+/// ## "Jump Skip Class" opcodes
 use base::prelude::*;
 use base::subword;
 
@@ -10,13 +11,6 @@ use super::super::exchanger::exchanged_value_for_load_without_sign_extension;
 use super::super::memory::{BitChange, MemoryMapped, MemoryOpFailure, MemoryUnit, WordChange};
 
 /// ## "Jump Skip Class" opcodes
-///
-/// - JMP: [`ControlUnit::op_jmp`]
-/// - JPA (unimplemented)
-/// - JNA (unimplemented)
-/// - JOV (unimplemented)
-/// - SKM: [`ControlUnit::op_skm`]
-/// - SED: [`ControlUnit::op_sed`]
 impl ControlUnit {
     /// Implements the JMP opcode and its variations (all of which are unconditional jumps).
     pub(crate) fn op_jmp(
@@ -104,15 +98,15 @@ impl ControlUnit {
         })
     }
 
-    /// Implement the SKM instruction.  This has a number of
-    /// supernumerary mnemonics.  The index address field of the
-    /// instruction identifies which bit (within the target word) to
-    /// operate on, and the instruction configuration value determines
-    /// both how to manipulate that bit, and what to do on the basis
-    /// of its original value.
+    /// The SKM instruction.  This has a number of supernumerary
+    /// mnemonics.  The index address field of the instruction
+    /// identifies which bit (within the target word) to operate on,
+    /// and the instruction configuration value determines both how to
+    /// manipulate that bit, and what to do on the basis of its
+    /// original value.
     ///
     /// The SKM instruction is documented on pages 7-34 and 7-35 of
-    /// the User Handbook.
+    /// the TX-2 User Handbook.
     pub(crate) fn op_skm(
         &mut self,
         ctx: &Context,
