@@ -27,7 +27,8 @@ copy of that.
 
 ## S Memory
 
-65536 words (according to the WJCC papers, 1957).
+Mapped at 0 to 177777 octal, so 65536 words (according to the WJCC
+papers, 1957).
 
 ## T Memory
 
