@@ -64,6 +64,10 @@ Items which we think are good choices for fist-time contributors are
 [marked with the "good first issue"
 tag](https://github.com/TX-2/TX-2-simulator/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22).
 
+To get started you might want to learn something about the TX-2
+computer; you could start with our overview of the
+[TX-2 Computer](https://tx-2.github.io/commentary/tx2).
+
 #### Assembler Improvements
 
 Our assembler runs on a modern computer but produces code for the
