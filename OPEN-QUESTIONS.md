@@ -4,6 +4,9 @@
 
 1. Are registers N, P, Q, K, F, FA memory-mapped?
    (I have found no evidene of this being the case so far)
+   (Note that configuration value 10 of the JMP instruction causes
+   the value in the Q register to be saved in L(E), so the Q register
+   must be emulated, see https://github.com/TX-2/TX-2-simulator/issues/149).
 2. If a program manually raises the flag for sequence 0, from where
    does sequence 0 begin executing?  (See also the question about the
    TSP and index register 0, below).
