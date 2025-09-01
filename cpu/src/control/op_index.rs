@@ -146,6 +146,18 @@ impl ControlUnit {
         // placeholder for use with TRAP 42.
         let operand = inst.operand_address_and_defer_bit();
         let config = u8::from(inst.configuration());
+        // NOTE: when we come to implement other configuration values,
+        // we may need to pay closer attention to the ordering of flag
+        // changes, since the TX-2 performed flag lowering and raising
+        // in that order.  For example (text is from section 7-8.3 of
+        // the TX-2 Technical Manual, Volume 1),
+        //
+        // if the CF4 bit is set in an SKX instruction, the flag of
+        // sequence J is raised (if such a flag exists).  Since flag
+        // raising occurs after a flag lowering caused by a dismiss,
+        // an SKX operaiton which dismisses and raises the flag of its
+        // own sequence will have no apparent effect on the flag.
+        //
         match config {
             0o0 | 0o10 => {
                 if j != 0 {
@@ -158,6 +170,10 @@ impl ControlUnit {
                 }
                 Ok(OpcodeResult::default())
             }
+            // See comment above for config value 0o30 where the J
+            // bits indicate the current sequence (which the case
+            // where this instruction both lowers and raises the same
+            // flag in the same instruction).
             0o1 => {
                 if j != 0 {
                     // Xj is fixed at 0.
