@@ -6,9 +6,8 @@
 //! significant).  Bit 2.3 would have the value 02000 (octal).
 use std::fmt::{Display, Write};
 
-/// `Quarter` describes which quarter of a word an SKM instruction
-/// will operate on.  See the [`index_address_to_bit_selection`]
-/// function.
+/// `Quarter` identifies a quarter within a TX-2 word.  Q1 is the
+/// least-significant 9 bits and Q4 is the most-significant 9 bits.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Quarter {
     Q1 = 0,
