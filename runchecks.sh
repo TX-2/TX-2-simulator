@@ -9,9 +9,13 @@ then
 fi
 
 rust_checks() {
-    cargo fmt --check &&
-        cargo test &&
-        cargo clippy
+    # We use --no-deps for clippy and when generating documentation
+    # because we don't want our CI pipeline to fail just because we
+    # depend on a crate with faulty documentation.
+    cargo fmt --all --check &&
+        cargo test --workspace &&
+        cargo clippy --workspace --no-deps -- -D warnings &&
+        cargo doc --workspace --no-deps
 }
 
 npm_checks() {
