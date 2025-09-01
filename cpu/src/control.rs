@@ -269,10 +269,10 @@ pub struct ControlRegisters {
     pub q: Address,
 
     /// The k register (User guide 4-3.1) holds the current sequence
-    /// number (User guide 5-24).  k is Option<SequenceNumber> in order
-    /// to allow the (emulated) control unit to recognise a CODABO
-    /// button as indicating a need to change sequence from the control
-    /// unit's initial state to sequence 0.
+    /// number (User guide 5-24).  k is `Option<SequenceNumber>` in
+    /// order to allow the (emulated) control unit to recognise a
+    /// CODABO button as indicating a need to change sequence from the
+    /// control unit's initial state to sequence 0.
     ///
     /// This likely doesn't reflect the actual operation of the TX-2
     /// very well, and better understanding of the real operation of
