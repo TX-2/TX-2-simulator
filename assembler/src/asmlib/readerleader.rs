@@ -28,7 +28,8 @@ fn test_bit_index() {
 }
 
 /// Returns the standard reader leader.  The listing for this is given
-/// on page 5-26 of the User Handbook.
+/// on page 5-26 of the User Handbook
+/// (https://archive.org/details/tx-2-users-handbook-nov-63/page/n150/mode/1up).
 ///
 /// This program is superficially similar to Program VI ("A Binary
 /// Read-In Routine") in Lincoln Lab Memorandum 6M-5780 ("Some
