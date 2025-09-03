@@ -34,6 +34,8 @@ fn assemble_check_symbols(
         assemble_nonempty_valid_input(input);
 
     for (name, expected_value) in expected.iter() {
+        use crate::eval::ScopeIdentifier;
+
         let sym = SymbolName {
             canonical: name.to_string(),
         };
@@ -51,8 +53,8 @@ fn assemble_check_symbols(
             rc_updater: &mut rc_block,
             lookup_operation: Default::default(),
         };
-
-        match symbol_name_lookup(&sym, Script::Normal, span, &mut ctx) {
+        let scope = ScopeIdentifier::global();
+        match symbol_name_lookup(&sym, Script::Normal, span, &mut ctx, scope) {
             Ok(got) => {
                 if got != *expected_value {
                     panic!(

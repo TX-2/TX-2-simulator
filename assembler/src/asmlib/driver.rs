@@ -17,6 +17,7 @@ use super::collections::OneOrMore;
 use super::directive::Directive;
 use super::eval::Evaluate;
 use super::eval::HereValue;
+use super::eval::ScopeIdentifier;
 use super::eval::{EvaluationContext, RcBlock, extract_final_equalities};
 use super::lexer;
 use super::listing::*;
@@ -359,7 +360,8 @@ fn assemble_pass2<'s>(
             rc_updater: &mut no_rc_allocation,
             lookup_operation: Default::default(),
         };
-        match block_position.evaluate(&mut ctx) {
+        let scope = ScopeIdentifier::global();
+        match block_position.evaluate(&mut ctx, scope) {
             Ok(value) => {
                 if !ctx.index_register_assigner.is_empty() {
                     return Err(AssemblerFailure::InternalError(format!(

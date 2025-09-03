@@ -8,6 +8,7 @@ use chumsky::Parser;
 
 use super::super::{
     ast::{Atom, HoldBit, InstructionFragment, LiteralValue, Origin, TaggedProgramInstruction},
+    eval::ScopeIdentifier,
     eval::{Evaluate, EvaluationContext, HereValue, make_empty_rc_block_for_test},
     lexer::Token,
     manuscript::{ManuscriptBlock, ManuscriptMetaCommand, SourceFile},
@@ -1410,8 +1411,10 @@ fn program_instruction_with_opcode() {
         rc_updater: &mut rc_block,
         lookup_operation: Default::default(),
     };
+    let scope = ScopeIdentifier::global();
+
     assert_eq!(
-        parse_tagged_instruction(input).evaluate(&mut ctx),
+        parse_tagged_instruction(input).evaluate(&mut ctx, scope),
         Ok(u36!(0o210452_030106))
     );
     assert!(

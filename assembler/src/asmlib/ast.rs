@@ -27,7 +27,8 @@ use base::u18;
 
 use super::collections::OneOrMore;
 use super::eval::{
-    Evaluate, EvaluationContext, HereValue, SymbolLookupFailure, symbol_name_lookup,
+    Evaluate, EvaluationContext, HereValue, ScopeIdentifier, SymbolLookupFailure,
+    symbol_name_lookup,
 };
 use super::glyph;
 use super::listing::{Listing, ListingLine};
@@ -422,8 +423,9 @@ fn fold_step<R: RcUpdater>(
     acc: Unsigned36Bit,
     (binop, right): &(Operator, SignedAtom),
     ctx: &mut EvaluationContext<R>,
+    scope: ScopeIdentifier,
 ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-    let right: Unsigned36Bit = right.evaluate(ctx)?;
+    let right: Unsigned36Bit = right.evaluate(ctx, scope)?;
     Ok(ArithmeticExpression::eval_binop(acc, binop, right))
 }
 
@@ -1880,7 +1882,8 @@ impl InstructionSequence {
                 rc_updater: rc_allocator,
                 lookup_operation: Default::default(),
             };
-            match instruction.evaluate(&mut ctx) {
+            let scope = ScopeIdentifier::global();
+            match instruction.evaluate(&mut ctx, scope) {
                 Ok(word) => {
                     listing.push_line(ListingLine {
                         span: Some(instruction.span),

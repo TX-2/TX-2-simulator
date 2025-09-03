@@ -247,7 +247,7 @@ impl<R: RcUpdater> EvaluationContext<'_, R> {
                             origin: None,
                             ..block_position
                         };
-                        match position_without_origin.evaluate(self) {
+                        match position_without_origin.evaluate(self, ScopeIdentifier::global()) {
                             Ok(value) => {
                                 let address: Address = subword::right_half(value).into();
                                 match self.implicit_symtab.record_deduced_origin_value(
@@ -357,10 +357,11 @@ fn can_deduce_address_of_origin_with_previous_forward_reference() {
         rc_updater: &mut rc_block,
         lookup_operation: LookupOperation::default(),
     };
+    let scope = ScopeIdentifier::global();
 
     // Assign an address for block 0 as part of the scenario setup.
     let block0_addr = block0_pos
-        .evaluate(&mut context)
+        .evaluate(&mut context, scope)
         .expect("should be able to assign an address to the first block");
     drop(context); // no longer want an immutable borrow on memory_map.
     memory_map.set_block_position(
@@ -406,12 +407,22 @@ impl<R: RcUpdater> EvaluationContext<'_, R> {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Hash, Ord, PartialOrd, Copy)]
+pub(super) struct ScopeIdentifier(());
+
+impl ScopeIdentifier {
+    pub(super) fn global() -> ScopeIdentifier {
+        ScopeIdentifier(())
+    }
+}
+
 pub(super) trait Evaluate: Spanned {
     // By separating the RcUpdater and RcAllocator traits we ensure
     // that evaluation cannot allocate more RC words.
     fn evaluate<R: RcUpdater>(
         &self,
         ctx: &mut EvaluationContext<R>,
+        scope: ScopeIdentifier,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure>;
 }
 
@@ -492,6 +503,7 @@ pub(crate) fn symbol_name_lookup<R: RcUpdater>(
     elevation: Script,
     span: Span,
     ctx: &mut EvaluationContext<R>,
+    scope: ScopeIdentifier,
 ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
     ctx.lookup_operation.deps_in_order.push(name.clone());
     if !ctx.lookup_operation.depends_on.insert(name.clone()) {
@@ -512,7 +524,7 @@ pub(crate) fn symbol_name_lookup<R: RcUpdater>(
 
     let result = if let Some(def) = ctx.explicit_symtab.get(name) {
         let what: (&Span, &SymbolName, &ExplicitDefinition) = (&span, name, def);
-        what.evaluate(ctx)
+        what.evaluate(ctx, scope)
     } else {
         ctx.fetch_or_assign_default(name)
     }
@@ -545,8 +557,9 @@ pub(super) fn extract_final_equalities<R: RcUpdater>(
             rc_updater: rc_allocator,
             lookup_operation: Default::default(),
         };
+        let scope = ScopeIdentifier::global();
 
-        match eq.value.evaluate(&mut ctx) {
+        match eq.value.evaluate(&mut ctx, scope) {
             Ok(value) => {
                 final_symbols.define(
                     eq.name.clone(),
@@ -607,11 +620,12 @@ impl Evaluate for BlockPosition {
     fn evaluate<R: RcUpdater>(
         &self,
         ctx: &mut EvaluationContext<R>,
+        scope: ScopeIdentifier,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         // Resolve the address of this block by evaluating its origin
         // specification if it has one.
         if let Some(origin) = self.origin.as_ref() {
-            return origin.evaluate(ctx);
+            return origin.evaluate(ctx, scope);
         }
 
         // If it has no origin specification, we can deduce the
@@ -672,6 +686,7 @@ impl Evaluate for (&Span, &SymbolName, &ExplicitDefinition) {
     fn evaluate<R: RcUpdater>(
         &self,
         ctx: &mut EvaluationContext<R>,
+        scope: ScopeIdentifier,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         let (_span, name, def): (&Span, &SymbolName, &ExplicitDefinition) = *self;
         match def {
@@ -694,7 +709,7 @@ impl Evaluate for (&Span, &SymbolName, &ExplicitDefinition) {
             }) => {
                 if let Some(block_position) = ctx.memory_map.get(block_id).cloned() {
                     let block_origin: Address =
-                        subword::right_half(block_position.evaluate(ctx)?).into();
+                        subword::right_half(block_position.evaluate(ctx, scope)?).into();
                     match offset_from_origin(&block_origin, *block_offset) {
                         Ok(computed_address) => Ok(computed_address.into()),
                         Err(_overflow_error) => Err(SymbolLookupFailure::BlockTooLarge(
@@ -712,7 +727,7 @@ impl Evaluate for (&Span, &SymbolName, &ExplicitDefinition) {
                     );
                 }
             }
-            ExplicitDefinition::Equality(expression) => expression.evaluate(ctx),
+            ExplicitDefinition::Equality(expression) => expression.evaluate(ctx, scope),
         }
     }
 }

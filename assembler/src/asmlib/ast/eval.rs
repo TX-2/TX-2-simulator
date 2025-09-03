@@ -1,10 +1,11 @@
-use super::super::eval::Evaluate;
+use super::super::eval::{Evaluate, ScopeIdentifier};
 use super::*;
 
 impl Evaluate for LiteralValue {
     fn evaluate<R: RcUpdater>(
         &self,
         _ctx: &mut EvaluationContext<R>,
+        _scope: ScopeIdentifier,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         Ok(self.value())
     }
@@ -14,8 +15,9 @@ impl Evaluate for SignedAtom {
     fn evaluate<R: RcUpdater>(
         &self,
         ctx: &mut EvaluationContext<R>,
+        scope: ScopeIdentifier,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-        self.magnitude.evaluate(ctx).map(|magnitude| {
+        self.magnitude.evaluate(ctx, scope).map(|magnitude| {
             if self.negated {
                 let s36 = magnitude.reinterpret_as_signed();
                 let signed_result = Signed36Bit::ZERO.wrapping_sub(s36);
@@ -31,12 +33,13 @@ impl Evaluate for ArithmeticExpression {
     fn evaluate<R: RcUpdater>(
         &self,
         ctx: &mut EvaluationContext<R>,
+        scope: ScopeIdentifier,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-        let first: Unsigned36Bit = self.first.evaluate(ctx)?;
+        let first: Unsigned36Bit = self.first.evaluate(ctx, scope)?;
         let result: Result<Unsigned36Bit, SymbolLookupFailure> = self
             .tail
             .iter()
-            .try_fold(first, |acc, curr| fold_step(acc, curr, ctx));
+            .try_fold(first, |acc, curr| fold_step(acc, curr, ctx, scope));
         result
     }
 }
@@ -45,13 +48,14 @@ impl Evaluate for ConfigValue {
     fn evaluate<R: RcUpdater>(
         &self,
         ctx: &mut EvaluationContext<R>,
+        scope: ScopeIdentifier,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         // The `expr` member was either originally in superscript (in
         // which case the `evaluate` value will already have been
         // shifted into the correct position in the word, or in normal
         // script (in which case we need to shift it ourselves).
         let shift = if self.already_superscript { 0 } else { 30u32 };
-        self.expr.evaluate(ctx).map(|value| value.shl(shift))
+        self.expr.evaluate(ctx, scope).map(|value| value.shl(shift))
     }
 }
 
@@ -59,6 +63,7 @@ impl Evaluate for RegistersContaining {
     fn evaluate<R: RcUpdater>(
         &self,
         ctx: &mut EvaluationContext<R>,
+        scope: ScopeIdentifier,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         let mut first_addr: Option<Unsigned36Bit> = None;
         for rc_word in self.words() {
@@ -67,8 +72,10 @@ impl Evaluate for RegistersContaining {
             // we can't pass None, and so instead we pass NotAllowed
             // so that if a bug is introduced we will see a failure
             // rather than an incorrect result.
-            let address: Unsigned36Bit =
-                ctx.for_target_address(HereValue::NotAllowed, |newctx| rc_word.evaluate(newctx))?;
+            let address: Unsigned36Bit = ctx
+                .for_target_address(HereValue::NotAllowed, |newctx| {
+                    rc_word.evaluate(newctx, scope)
+                })?;
             if first_addr.is_none() {
                 first_addr = Some(address);
             }
@@ -89,6 +96,7 @@ impl Evaluate for RegisterContaining {
         // an RC-word, `#` refers to the adddress of the RC-word, not
         // the address of the instruction which refers to it.
         ctx: &mut EvaluationContext<R>,
+        scope: ScopeIdentifier,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         match self {
             RegisterContaining::Unallocated(_) => {
@@ -144,7 +152,7 @@ impl Evaluate for RegisterContaining {
                 // evaluation process.
                 let rc_word_value: Unsigned36Bit = ctx
                     .for_target_address(HereValue::Address(*rc_word_addr), |newctx| {
-                        inst.evaluate(newctx)
+                        inst.evaluate(newctx, scope)
                     })?;
                 ctx.rc_updater.update(*rc_word_addr, rc_word_value);
                 Ok(Unsigned36Bit::from(rc_word_addr))
@@ -157,11 +165,12 @@ impl Evaluate for Atom {
     fn evaluate<R: RcUpdater>(
         &self,
         ctx: &mut EvaluationContext<R>,
+        scope: ScopeIdentifier,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         match self {
-            Atom::SymbolOrLiteral(value) => value.evaluate(ctx),
-            Atom::Parens(_span, _script, expr) => expr.evaluate(ctx),
-            Atom::RcRef(_span, registers_containing) => registers_containing.evaluate(ctx),
+            Atom::SymbolOrLiteral(value) => value.evaluate(ctx, scope),
+            Atom::Parens(_span, _script, expr) => expr.evaluate(ctx, scope),
+            Atom::RcRef(_span, registers_containing) => registers_containing.evaluate(ctx, scope),
         }
     }
 }
@@ -170,12 +179,13 @@ impl Evaluate for SymbolOrLiteral {
     fn evaluate<R: RcUpdater>(
         &self,
         ctx: &mut EvaluationContext<R>,
+        scope: ScopeIdentifier,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         match self {
             SymbolOrLiteral::Symbol(script, symbol_name, span) => {
-                symbol_name_lookup(symbol_name, *script, *span, ctx)
+                symbol_name_lookup(symbol_name, *script, *span, ctx, scope)
             }
-            SymbolOrLiteral::Literal(literal_value) => literal_value.evaluate(ctx),
+            SymbolOrLiteral::Literal(literal_value) => literal_value.evaluate(ctx, scope),
             SymbolOrLiteral::Here(script, span) => ctx
                 .here
                 .get_address(span)
@@ -189,12 +199,13 @@ impl Evaluate for InstructionFragment {
     fn evaluate<R: RcUpdater>(
         &self,
         ctx: &mut EvaluationContext<R>,
+        scope: ScopeIdentifier,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         match self {
             InstructionFragment::Null(_) => Ok(Unsigned36Bit::ZERO),
-            InstructionFragment::Arithmetic(expr) => expr.evaluate(ctx),
+            InstructionFragment::Arithmetic(expr) => expr.evaluate(ctx, scope),
             InstructionFragment::DeferredAddressing(_) => Ok(DEFER_BIT),
-            InstructionFragment::Config(value) => value.evaluate(ctx),
+            InstructionFragment::Config(value) => value.evaluate(ctx, scope),
             InstructionFragment::PipeConstruct {
                 index: p,
                 rc_word_span: _,
@@ -210,8 +221,8 @@ impl Evaluate for InstructionFragment {
                 // of Q and ₜ were combined into the two parts of the
                 // rc_word_value tuple.  We evaluate Qₜ as
                 // rc_word_val.
-                let p_value: Unsigned36Bit = p.item.evaluate(ctx)?;
-                let rc_word_addr: Unsigned36Bit = rc_word_value.evaluate(ctx)?;
+                let p_value: Unsigned36Bit = p.item.evaluate(ctx, scope)?;
+                let rc_word_addr: Unsigned36Bit = rc_word_value.evaluate(ctx, scope)?;
                 Ok(combine_fragment_values(
                     combine_fragment_values(p_value, rc_word_addr),
                     DEFER_BIT,
@@ -225,13 +236,14 @@ impl Evaluate for Origin {
     fn evaluate<R: RcUpdater>(
         &self,
         ctx: &mut EvaluationContext<R>,
+        scope: ScopeIdentifier,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         match self {
             Origin::Deduced(_span, _, address) | Origin::Literal(_span, address) => {
                 Ok(address.into())
             }
             Origin::Symbolic(span, symbol_name) => {
-                symbol_name_lookup(symbol_name, Script::Normal, *span, ctx)
+                symbol_name_lookup(symbol_name, Script::Normal, *span, ctx, scope)
             }
         }
     }
@@ -285,9 +297,10 @@ impl Evaluate for CommaDelimitedFragment {
     fn evaluate<R: RcUpdater>(
         &self,
         ctx: &mut EvaluationContext<R>,
+        scope: ScopeIdentifier,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         self.fragment
-            .evaluate(ctx)
+            .evaluate(ctx, scope)
             .map(|word| {
                 // TODO: issue a diagnostic if there are inconsistent
                 //  values for the hold bit.  We will need to decide
@@ -318,10 +331,12 @@ impl Evaluate for UntaggedProgramInstruction {
     fn evaluate<R: RcUpdater>(
         &self,
         ctx: &mut EvaluationContext<R>,
+        scope: ScopeIdentifier,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
         fn evaluate_and_combine_values<'a, R, E, I>(
             mut items: I,
             ctx: &mut EvaluationContext<R>,
+            scope: ScopeIdentifier,
         ) -> Result<Unsigned36Bit, SymbolLookupFailure>
         where
             R: RcUpdater,
@@ -329,7 +344,7 @@ impl Evaluate for UntaggedProgramInstruction {
             I: Iterator<Item = &'a E>,
         {
             items.try_fold(Unsigned36Bit::ZERO, |acc, item| {
-                item.evaluate(ctx)
+                item.evaluate(ctx, scope)
                     .map(|value| combine_fragment_values(acc, value))
             })
         }
@@ -338,7 +353,7 @@ impl Evaluate for UntaggedProgramInstruction {
         // (b) in section 6-2.4, "NUMERICAL FORMAT - USE OF COMMAS" of
         // the Users Handbook.  The initial value is zero (as
         // specified in item (a) in the same place).
-        evaluate_and_combine_values(self.fragments.iter(), ctx)
+        evaluate_and_combine_values(self.fragments.iter(), ctx, scope)
     }
 }
 
@@ -346,8 +361,9 @@ impl Evaluate for EqualityValue {
     fn evaluate<R: RcUpdater>(
         &self,
         ctx: &mut EvaluationContext<R>,
+        scope: ScopeIdentifier,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-        self.inner.evaluate(ctx)
+        self.inner.evaluate(ctx, scope)
     }
 }
 
@@ -355,8 +371,9 @@ impl Evaluate for TaggedProgramInstruction {
     fn evaluate<R: RcUpdater>(
         &self,
         ctx: &mut EvaluationContext<R>,
+        scope: ScopeIdentifier,
     ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
-        self.instruction.evaluate(ctx)
+        self.instruction.evaluate(ctx, scope)
     }
 }
 
