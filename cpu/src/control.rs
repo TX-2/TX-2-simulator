@@ -852,6 +852,10 @@ impl ControlUnit {
                 }
             }
             ProgramCounterChange::CounterUpdate => {
+                // Discussion: does this change the top bit (2.9)?
+                //
+                // Reasons for the answer "no"
+                // --------------------------
                 // Volume 2 of the Technical Manual (section 12-2.3 "P
                 // REGISTER DRIVER LOGIC") states, """Information can
                 // be transferred into the P register only from the X
@@ -874,6 +878,28 @@ impl ControlUnit {
                 // plugboard configurations.  According to the
                 // Technical Manual, page 12-6, change of seqeuence is
                 // the only time in which P₂.₉ is altered.
+                //
+                //
+                // Reasons for the answer "yes"
+                // ---------------------------
+                //
+                // The Instruction Execution chart on page 3-71 of the
+                // Users Handbook shows that the P register is updated
+                // to P+1 (see top row of table) and there is a
+                // reference to note 1.  This note is on page 3073
+                // (section 3-3.3) and it says:
+                //
+                // In all expressions P + 1, P + 2, sums are reducible 2¹⁸.
+                // (777777 + 1) mod 2¹⁸ = 0.
+                //
+                // This seems to directly contradict section 12-2.3 of
+                // the Technical Manual (which we referenced in the
+                // "no" section above).
+                //
+                // This seems a clear statement that bit 2.9 is used
+                // as the most significant bit.  It also seems to
+                // imply that if P=377777, P+1 will increment it to
+                // 400000.
                 let (_old_physical, old_mark) = self.regs.p.split();
                 let new_p = self.regs.p.successor(); // p now points at the next instruction.
                 let (_new_physical, new_mark) = new_p.split();
