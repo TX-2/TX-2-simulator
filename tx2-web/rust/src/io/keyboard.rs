@@ -630,11 +630,8 @@ impl HtmlCanvas2DPainter {
         }
         let x_midline = (bbox.left() + bbox.right()) / 2.0;
         let y_midline = (bbox.top() + bbox.bottom()) / 2.0;
-        fn even(n: usize) -> bool {
-            n % 2 == 0
-        }
         fn yi(i: usize, n: usize, y_midline: f64, a: f64, d: f64) -> f64 {
-            let ashift: f64 = if even(n) { a } else { 0.0 };
+            let ashift: f64 = if n.is_multiple_of(2) { a } else { 0.0 };
             fn f(x: usize) -> f64 {
                 f64::value_from(x).unwrap_or(f64::MAX)
             }
