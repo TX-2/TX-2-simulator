@@ -22,4 +22,4 @@ mod types;
 
 pub use driver::*;
 pub use readerleader::*;
-pub use types::Fail;
+pub use types::AssemblerFailure;

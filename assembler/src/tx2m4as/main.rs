@@ -1,4 +1,6 @@
+use std::error::Error;
 use std::ffi::OsString;
+use std::fmt::{self, Display, Formatter};
 use std::path::PathBuf;
 
 use clap::ArgAction::{Set, SetTrue};
@@ -31,6 +33,24 @@ struct Cli {
     list: bool,
 }
 
+#[derive(Debug)]
+enum Fail {
+    /// We iniitialised the assembler but then it fails.
+    AsmFail(AssemblerFailure),
+    /// We were not able to correctly initialise the assembler.
+    InitialisationFailure(String),
+}
+
+impl Display for Fail {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        match self {
+            Fail::AsmFail(assembler_failure) => assembler_failure.fmt(f),
+            Fail::InitialisationFailure(msg) => f.write_str(msg.as_str()),
+        }
+    }
+}
+
+impl Error for Fail {}
 fn run_asembler() -> Result<(), Fail> {
     let cli = Cli::parse();
 

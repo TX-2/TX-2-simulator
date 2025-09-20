@@ -1,4 +1,3 @@
-use std::error::Error;
 use std::ffi::OsStr;
 use std::fmt::{self, Display, Formatter};
 use std::io::Error as IoError;
@@ -13,6 +12,17 @@ use super::source::{LineAndColumn, WithLocation};
 use super::span::{Span, Spanned};
 use super::symbol::SymbolName;
 
+/// The TX-2 Users Handbook describes a section of source code
+/// beginning with an optional origin as a "block".  See, for example
+/// section 6-2.5 and section 6-3.4 (specifically, page 6-23).
+///
+/// This is not the same way in which "block" is used in more modern
+/// programming languages (for example, C), where a block is normally
+/// associated with a scope.  While TX-2's assembler does have scopes
+/// (in macro bodies) these are are a concept.
+///
+/// We assign blocks unique identifiers, which are values of type
+/// `BlockIdentifier`.
 #[derive(Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord)]
 pub struct BlockIdentifier(usize);
 
@@ -40,13 +50,21 @@ impl Display for BlockIdentifier {
     }
 }
 
+/// Indicates that some hardware limit of the machine has been
+/// exceeded by the program we are currently trying to assemble.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum MachineLimitExceededFailure {
+    /// When an undefined Symex is used in an index context, it is
+    /// allocated a default value which has not yet been used.  When
+    /// there are no more available index registers, this allocation
+    /// fails and we signal this with
+    /// `MachineLimitExceededFailure::RanOutOfIndexRegisters`.
     RanOutOfIndexRegisters(Span, SymbolName),
     /// BlockTooLarge is used to report blocks whose length is not
     /// representable in an 18-bit halfword, or whose length is
     /// representable but whose start address wouild put the end of
-    /// the block outside physical memory.
+    /// the block outside physical memory.  Programs for which this
+    /// happens cannot fit into the TX-2's memory.
     BlockTooLarge {
         span: Span,
         block_id: BlockIdentifier,
@@ -86,25 +104,46 @@ impl Display for MachineLimitExceededFailure {
     }
 }
 
+/// This error indicates that the program we are trying to assemble is
+/// not valid.  Not all of these failure cases were detected by the
+/// TX-2's original assembler, M4.
 #[derive(Debug, PartialEq, Eq)]
 pub enum ProgramError {
+    /// A tag identifier was defined in two different places (within
+    /// the same scope).
     InconsistentTag {
         name: SymbolName,
         span: Span,
         msg: String,
     },
+    /// A symbol's definition refers to the definition of the symbol
+    /// itself.  The Users Handbook states that M4 didn't reject this
+    /// but indicated that the output would be incorrect for this
+    /// case.
     SymbolDefinitionLoop {
         symbol_names: OneOrMore<SymbolName>,
         span: Span,
     },
-    SyntaxError {
-        msg: String,
-        span: Span,
-    },
+
+    /// Indicates that the assembler could not parse the input, or
+    /// that a syntactical element (such as "#") was used in a context
+    /// where it was not allowed.
+    SyntaxError { msg: String, span: Span },
+
+    /// As for `MachineLimitExceededFailure::RanOutOfIndexRegisters`.
     BlockTooLong(Span, MachineLimitExceededFailure),
+
+    /// As for `MachineLimitExceededFailure::RanOutOfIndexRegisters`,
+    /// but specifically for the RC block.
     RcBlockTooLong(RcWordSource),
+
+    /// As for `MachineLimitExceededFailure::RanOutOfIndexRegisters`.
     FailedToAssignIndexRegister(Span, SymbolName),
 }
+// TODO: either refactor `BlockTooLong`, `RcBlockTooLong` and
+// `FailedToAssignIndexRegister` so that they just refer to
+// `MachineLimitExceededFailure` or explain in the doc comment why
+// these are separate.
 
 impl Spanned for ProgramError {
     fn span(&self) -> Span {
@@ -174,6 +213,7 @@ impl ProgramError {
     }
 }
 
+/// Indicates whether we are reading a file or writing to one.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub enum IoAction {
     Read,
@@ -205,6 +245,7 @@ impl Display for IoTarget {
     }
 }
 
+/// Describes a failure to perform I/O.
 #[derive(Debug)]
 pub struct IoFailed {
     pub action: IoAction,
@@ -234,6 +275,8 @@ impl PartialEq<IoFailed> for IoFailed {
 
 impl Eq for IoFailed {}
 
+/// Describes a failure by the assembler to complete its job.  This
+/// includes incorrect program input, but also other causes too.
 #[derive(Debug, PartialEq, Eq)]
 pub enum AssemblerFailure {
     InternalError(String),
@@ -244,6 +287,8 @@ pub enum AssemblerFailure {
     },
     Io(IoFailed), // not cloneable
     BadProgram(OneOrMore<WithLocation<ProgramError>>),
+
+    /// The input program exceeds a machine limit.
     MachineLimitExceeded(MachineLimitExceededFailure),
 }
 
@@ -287,20 +332,3 @@ impl Display for AssemblerFailure {
         }
     }
 }
-
-#[derive(Debug)]
-pub enum Fail {
-    AsmFail(AssemblerFailure),
-    InitialisationFailure(String),
-}
-
-impl Display for Fail {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        match self {
-            Fail::AsmFail(assembler_failure) => assembler_failure.fmt(f),
-            Fail::InitialisationFailure(msg) => f.write_str(msg.as_str()),
-        }
-    }
-}
-
-impl Error for Fail {}
