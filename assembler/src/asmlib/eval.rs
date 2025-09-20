@@ -541,11 +541,8 @@ pub(crate) fn make_empty_rc_block_for_test(location: Address) -> RcBlock {
     }
 }
 
-/// Evaluate a named symbol.  This factors out behaviour common to the
-/// evaluation of both symbolic origins and general symbols.
-pub(crate) fn evaluate_symbol<R: RcUpdater>(
+fn evaluate_normal_symbol<R: RcUpdater>(
     name: &SymbolName,
-    elevation: Script,
     span: Span,
     ctx: &mut EvaluationContext<R>,
     scope: ScopeIdentifier,
@@ -572,14 +569,31 @@ pub(crate) fn evaluate_symbol<R: RcUpdater>(
         what.evaluate(ctx, scope)
     } else {
         ctx.fetch_or_assign_default(name)
-    }
-    .map(|value| value.shl(elevation.shift()));
+    };
 
     ctx.lookup_operation.deps_in_order.pop();
     ctx.lookup_operation.depends_on.remove(name);
     result
 }
 
+/// Evaluate a named symbol.  This factors out behaviour common to the
+/// evaluation of both symbolic origins and general symbols.
+pub(crate) fn evaluate_symbol<R: RcUpdater>(
+    name: &SymbolName,
+    elevation: Script,
+    span: Span,
+    ctx: &mut EvaluationContext<R>,
+    scope: ScopeIdentifier,
+) -> Result<Unsigned36Bit, EvaluationFailure> {
+    evaluate_normal_symbol(name, span, ctx, scope).map(|value| value.shl(elevation.shift()))
+}
+
+/// Determine the numerical value of all equalities, where they have
+/// one.  We do this in order to identify problems with symbol
+/// definitons and to generate information that we may need to emit
+/// into the ouptut listing.
+///
+/// This function isn't actually needed to generate the output binary.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn extract_final_equalities<R: RcUpdater>(
     equalities: &[Equality],
