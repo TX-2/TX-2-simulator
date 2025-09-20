@@ -451,6 +451,8 @@ pub(crate) enum ManuscriptMetaCommand {
     // TODO: implement the T= metacommand.
     // TODO: implement the RC metacommand.
     BaseChange(NumeralMode),
+
+    /// A ☛☛PUNCH meta command.
     Punch(PunchCommand),
     Macro(MacroDefinition),
 }

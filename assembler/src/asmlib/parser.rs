@@ -707,6 +707,7 @@ where
 enum Metacommand {
     Decimal,
     Octal,
+    /// A ☛☛PUNCH meta command.
     Punch,
     DefineMacro,
     EndMacroDefinition,

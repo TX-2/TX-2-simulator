@@ -57,6 +57,7 @@ pub enum DirectiveMetaCommand {
     BaseChange(NumeralMode),
 }
 
+/// Indicates what kind of output the user wants.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct OutputOptions {
     // TODO: implement arguments of the LIST, PLIST, TYPE

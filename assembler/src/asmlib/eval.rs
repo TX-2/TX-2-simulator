@@ -31,12 +31,15 @@ use crate::symtab::{
     LookupOperation, TagDefinition, record_undefined_symbol_or_return_failure,
 };
 
+/// We ran out of index registers when trying to perform default
+/// assignment of a symbol name.
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub(crate) struct ExhaustedIndexRegisters {
     span: Span,
     name: SymbolName,
 }
 
+/// We failed while looking up or evaluating a symbol.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum SymbolLookupFailure {
     Loop {
