@@ -1,6 +1,8 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
+/// Indicates  failure  of  an  attempt   to  create  an  instance  of
+/// `OneOrMore<T>` when there are zero items to construct it from.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct NoItems {}
 
@@ -24,18 +26,23 @@ pub struct OneOrMore<T> {
 }
 
 impl<T> OneOrMore<T> {
+    /// Create an instance of `OneOrMore<T>` from a single `T`.
     pub fn new(head: T) -> OneOrMore<T> {
         OneOrMore::with_tail(head, Vec::new())
     }
 
+    /// Create an instance of `OneOrMore<T>` from a single `T` value
+    /// and zero or more additional `T` values.
     pub fn with_tail(head: T, tail: Vec<T>) -> OneOrMore<T> {
         OneOrMore { head, tail }
     }
 
+    /// Return a reference to the first item.
     pub fn first(&self) -> &T {
         &self.head
     }
 
+    /// Return a reference to the last item.
     pub fn last(&self) -> &T {
         match self.tail.last() {
             Some(b) => b,
@@ -43,16 +50,20 @@ impl<T> OneOrMore<T> {
         }
     }
 
+    /// Append an item.
     pub fn push(&mut self, item: T) {
         self.tail.push(item);
     }
 
+    /// Return an iterator for the collection.
     pub fn iter(&self) -> OneOrMoreIter<'_, T> {
         OneOrMoreIter {
             inner: std::iter::once(&self.head).chain(self.tail.iter()),
         }
     }
 
+    /// Convert the collection into an iterator over the items of the
+    /// collection.
     pub fn into_iter(self) -> OneOrMoreIntoIter<T> {
         let Self { head, tail } = self;
         OneOrMoreIntoIter {
@@ -60,16 +71,21 @@ impl<T> OneOrMore<T> {
         }
     }
 
+    /// Return a iterator for the collection which allows the items
+    /// within it (but not the number of items) to be modified.
     pub fn iter_mut(&mut self) -> OneOrMoreIterMut<'_, T> {
         OneOrMoreIterMut {
             inner: std::iter::once(&mut self.head).chain(self.tail.iter_mut()),
         }
     }
 
+    /// Return the number of items in the collection.
     pub fn len(&self) -> usize {
         self.tail.len() + 1
     }
 
+    /// Build an instance of `OneOrMore<T>` from a sequence of items,
+    /// or fail (because there were no items).
     pub fn try_from_iter<I: Iterator<Item = T>>(mut it: I) -> Result<Self, NoItems> {
         match it.next() {
             Some(head) => Ok(Self {
@@ -80,10 +96,13 @@ impl<T> OneOrMore<T> {
         }
     }
 
+    /// Append a (possibly empty) sequence of items.
     pub fn extend<I: Iterator<Item = T>>(&mut self, items: I) {
         self.tail.extend(items)
     }
 
+    /// Attempt to convert an instance of `OneOrMore<T>` from a
+    /// `Vec<T>`.  This fails if the vector is empty.
     pub fn try_from_vec(mut value: Vec<T>) -> Result<OneOrMore<T>, NoItems> {
         if value.is_empty() {
             Err(NoItems {})
@@ -96,10 +115,14 @@ impl<T> OneOrMore<T> {
         }
     }
 
+    /// Return a reference the head of the collection (i.e. the first
+    /// item) and a reference to the remaining items.
     pub fn as_parts(&self) -> (&T, &Vec<T>) {
         (&self.head, &self.tail)
     }
 
+    /// Create a non-empty collection by computing a mapping on the
+    /// items on this collection.
     pub fn map<U, F: FnMut(&T) -> U>(&self, mut f: F) -> OneOrMore<U> {
         OneOrMore {
             head: f(&self.head),
@@ -107,6 +130,8 @@ impl<T> OneOrMore<T> {
         }
     }
 
+    /// Create a non-empty collection by computing a mapping on the
+    /// items on this collection; this collection is dropped.
     pub fn into_map<U, F: FnMut(T) -> U>(self, mut f: F) -> OneOrMore<U> {
         OneOrMore {
             head: f(self.head),
