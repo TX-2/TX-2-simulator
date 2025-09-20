@@ -29,6 +29,7 @@ pub enum RcWordKind {
     DefaultAssignment,
 }
 
+/// Indicates why we allocated an RC-word.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct RcWordSource {
     pub span: Span,

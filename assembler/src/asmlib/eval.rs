@@ -39,15 +39,25 @@ pub(crate) struct ExhaustedIndexRegisters {
     name: SymbolName,
 }
 
-/// We failed while looking up or evaluating a symbol.
+/// We failed while evaluating the value of a word (typically, the
+/// value of a word in the final assembled output).
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum SymbolLookupFailure {
-    Loop {
+    /// Evaluation failed because there was a loop in the definition
+    /// of a symbol (i.e. in one of the equaities we needed to
+    /// evaluate to determine the final result).
+    SymbolDefinitionLoop {
         span: Span,
         deps_in_order: OneOrMore<SymbolName>,
     },
+    /// A block of the program is too large.
     BlockTooLarge(Span, MachineLimitExceededFailure),
+    /// More index values needed to be default-assigned than there are
+    /// index registers in the TX-2 architecture.
     FailedToAssignIndexRegister(ExhaustedIndexRegisters),
+
+    /// We could not evaluate something because `#` was used in a
+    /// context in which it was not allowed (an origin value).
     HereIsNotAllowedHere(Span),
 }
 
@@ -59,7 +69,7 @@ impl Spanned for SymbolLookupFailure {
                 span,
                 ..
             })
-            | SymbolLookupFailure::Loop { span, .. }
+            | SymbolLookupFailure::SymbolDefinitionLoop { span, .. }
             | SymbolLookupFailure::BlockTooLarge(span, _) => *span,
         }
     }
@@ -69,7 +79,7 @@ impl Display for SymbolLookupFailure {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         use SymbolLookupFailure::*;
         match self {
-            Loop {
+            SymbolDefinitionLoop {
                 deps_in_order,
                 span: _,
             } => {
@@ -98,6 +108,9 @@ impl Display for SymbolLookupFailure {
 }
 
 impl SymbolLookupFailure {
+    /// Convert an instance of `EvaluationFailure` (which describes
+    /// why an evaluation failed) into an instance of [`ProgramError`]
+    /// (which describes why the user's program cannot be assembled).
     pub(crate) fn into_program_error(self) -> ProgramError {
         match self {
             SymbolLookupFailure::FailedToAssignIndexRegister(ExhaustedIndexRegisters {
@@ -105,7 +118,7 @@ impl SymbolLookupFailure {
                 name,
             }) => ProgramError::FailedToAssignIndexRegister(span, name),
             SymbolLookupFailure::BlockTooLarge(span, mle) => ProgramError::BlockTooLong(span, mle),
-            SymbolLookupFailure::Loop {
+            SymbolLookupFailure::SymbolDefinitionLoop {
                 deps_in_order,
                 span,
             } => ProgramError::SymbolDefinitionLoop {
@@ -122,7 +135,8 @@ impl SymbolLookupFailure {
 
 impl std::error::Error for SymbolLookupFailure {}
 
-/// HereValue specifies the value used for '#'
+/// HereValue specifies the value used for `#`.  A `#` always
+/// signifies the address of the word we are trying to assemble.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub(crate) enum HereValue {
     /// '#' refers to an address
@@ -142,8 +156,7 @@ impl HereValue {
 }
 
 /// Assign a default value for a symbol, using the rules from
-/// section 6-2.2 of the Users Handbook ("SYMEX DEFINITON - TAGS -
-/// EQUALITIES - AUTOMATIC ASSIGNMENT").
+/// [section 6-2.2 of the Users Handbook, "SYMEX DEFINITON - TAGS - EQUALITIES - AUTOMATIC ASSIGNMENT"](https://archive.org/details/tx-2-users-handbook-nov-63/page/n157/mode/1up).
 fn assign_default_value(
     index_register_assigner: &mut IndexRegisterAssigner,
     name: &SymbolName,
@@ -201,16 +214,27 @@ fn assign_default_value(
 /// definition.  It can also update RC-words in-place.
 #[derive(Debug)]
 pub(crate) struct EvaluationContext<'s, R: RcUpdater> {
+    /// Defines how to evaluate `#`.
     pub(crate) here: HereValue,
+    /// Definitions of tags, origins and equalities.
     pub(crate) explicit_symtab: &'s ExplicitSymbolTable,
+    /// Implicit symbol definitions and information about how these
+    /// symbols have been used.
     pub(crate) implicit_symtab: &'s mut ImplicitSymbolTable,
+    /// Assigns default values to symbols used in an index context.
     pub(crate) index_register_assigner: &'s mut IndexRegisterAssigner,
+    /// Memory locations of the program's blocks.
     pub(crate) memory_map: &'s MemoryMap,
+    /// Performs in-place updates of the values of RC-words.
     pub(crate) rc_updater: &'s mut R,
+    /// The current lookup operation; this is used to detect loops.
     pub(crate) lookup_operation: LookupOperation,
 }
 
 impl<R: RcUpdater> EvaluationContext<'_, R> {
+    /// For a symbol lacking an explicit definition, look up the
+    /// default value we assigned to it, or if we didn't assign a
+    /// value yet, assign a default value now and record it.
     pub(super) fn fetch_or_assign_default(
         &mut self,
         name: &SymbolName,
@@ -220,8 +244,8 @@ impl<R: RcUpdater> EvaluationContext<'_, R> {
             None => {
                 // In order to assign a default value for a symbol, we
                 // need to know the contexts in which it is used (see
-                // assign_default_value()) and so not having recorded
-                // that information is an internal error.
+                // [`assign_default_value()`]) and so not having
+                // recorded that information is an internal error.
                 panic!("attempted to assign a default value for an entirely unknown symbol {name}");
             }
         };
@@ -410,6 +434,11 @@ impl<R: RcUpdater> EvaluationContext<'_, R> {
     }
 }
 
+/// Identifies a scope in which a tag name can be looked up.  Macro
+/// bodies can contain "local" tags and so in general a tag's
+/// definition will be local to the scope in which the definition is
+/// made.  However, this is not yet implemented and so for the moment,
+/// `ScopeIdentifier` just contains a unit value.
 #[derive(Debug, PartialEq, Eq, Clone, Hash, Ord, PartialOrd, Copy)]
 pub(super) struct ScopeIdentifier(());
 
@@ -419,6 +448,12 @@ impl ScopeIdentifier {
     }
 }
 
+/// The `Evaluate` trait is implemented by any element of the program
+/// that can evaluate to a 36-bit word value.
+///
+/// This includes octal constants, full instructions and also parts of
+/// instructions (e.g. the index value, configuration value,
+/// instruction opcodes, `#`, RC-word references and so forth.
 pub(super) trait Evaluate: Spanned {
     // By separating the RcUpdater and RcAllocator traits we ensure
     // that evaluation cannot allocate more RC words.
@@ -429,9 +464,14 @@ pub(super) trait Evaluate: Spanned {
     ) -> Result<Unsigned36Bit, SymbolLookupFailure>;
 }
 
+// Represents the RC-block; see [section 6-2.6 of the Users
+// Handbook](https://archive.org/details/tx-2-users-handbook-nov-63/page/n161/mode/1up).
 #[derive(Debug, Default, Clone)]
 pub(crate) struct RcBlock {
+    /// The address of the RC-block.
     pub(crate) address: Address,
+    /// The contents of the RC-block, along with information about why
+    /// each of the RC-words was allocated.
     pub(crate) words: Vec<(RcWordSource, Unsigned36Bit)>,
 }
 
@@ -514,7 +554,7 @@ pub(crate) fn symbol_name_lookup<R: RcUpdater>(
         // we have a loop.
         match OneOrMore::try_from_vec(ctx.lookup_operation.deps_in_order.clone()) {
             Ok(deps_in_order) => {
-                return Err(SymbolLookupFailure::Loop {
+                return Err(SymbolLookupFailure::SymbolDefinitionLoop {
                     span,
                     deps_in_order,
                 });

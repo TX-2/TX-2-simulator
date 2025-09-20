@@ -36,6 +36,10 @@ impl IndexRegisterAssigner {
     }
 }
 
+/// Implicit definitions (e.g. index, configuration and address
+/// values), including information about the usage of symbols for
+/// which we have not yet assigned a default value.
+///
 /// The rules for how symbols which have references but no explicit
 /// definition are assigned values are indicated in "Unassigned
 /// Symexes" in section 6-2.2 of the User Handbook.
@@ -468,7 +472,7 @@ pub(super) fn record_undefined_symbol_or_return_failure(
 ) -> Result<(), AssemblerFailure> {
     use SymbolLookupFailure::*;
     match e {
-        Loop {
+        SymbolDefinitionLoop {
             span,
             deps_in_order,
             ..
