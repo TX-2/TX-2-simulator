@@ -27,7 +27,7 @@ use base::u18;
 
 use super::collections::OneOrMore;
 use super::eval::{
-    Evaluate, EvaluationContext, EvaluationFailure, HereValue, ScopeIdentifier, symbol_name_lookup,
+    Evaluate, EvaluationContext, EvaluationFailure, HereValue, ScopeIdentifier, evaluate_symbol,
 };
 use super::glyph;
 use super::listing::{Listing, ListingLine};

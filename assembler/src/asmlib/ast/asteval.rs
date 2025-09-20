@@ -183,7 +183,7 @@ impl Evaluate for SymbolOrLiteral {
     ) -> Result<Unsigned36Bit, EvaluationFailure> {
         match self {
             SymbolOrLiteral::Symbol(script, symbol_name, span) => {
-                symbol_name_lookup(symbol_name, *script, *span, ctx, scope)
+                evaluate_symbol(symbol_name, *script, *span, ctx, scope)
             }
             SymbolOrLiteral::Literal(literal_value) => literal_value.evaluate(ctx, scope),
             SymbolOrLiteral::Here(script, span) => ctx
@@ -243,7 +243,7 @@ impl Evaluate for Origin {
                 Ok(address.into())
             }
             Origin::Symbolic(span, symbol_name) => {
-                symbol_name_lookup(symbol_name, Script::Normal, *span, ctx, scope)
+                evaluate_symbol(symbol_name, Script::Normal, *span, ctx, scope)
             }
         }
     }

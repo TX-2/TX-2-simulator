@@ -541,7 +541,9 @@ pub(crate) fn make_empty_rc_block_for_test(location: Address) -> RcBlock {
     }
 }
 
-pub(crate) fn symbol_name_lookup<R: RcUpdater>(
+/// Evaluate a named symbol.  This factors out behaviour common to the
+/// evaluation of both symbolic origins and general symbols.
+pub(crate) fn evaluate_symbol<R: RcUpdater>(
     name: &SymbolName,
     elevation: Script,
     span: Span,
