@@ -42,7 +42,7 @@ pub(crate) struct ExhaustedIndexRegisters {
 /// We failed while evaluating the value of a word (typically, the
 /// value of a word in the final assembled output).
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) enum SymbolLookupFailure {
+pub(crate) enum EvaluationFailure {
     /// Evaluation failed because there was a loop in the definition
     /// of a symbol (i.e. in one of the equaities we needed to
     /// evaluate to determine the final result).
@@ -61,23 +61,23 @@ pub(crate) enum SymbolLookupFailure {
     HereIsNotAllowedHere(Span),
 }
 
-impl Spanned for SymbolLookupFailure {
+impl Spanned for EvaluationFailure {
     fn span(&self) -> Span {
         match self {
-            SymbolLookupFailure::HereIsNotAllowedHere(span)
-            | SymbolLookupFailure::FailedToAssignIndexRegister(ExhaustedIndexRegisters {
+            EvaluationFailure::HereIsNotAllowedHere(span)
+            | EvaluationFailure::FailedToAssignIndexRegister(ExhaustedIndexRegisters {
                 span,
                 ..
             })
-            | SymbolLookupFailure::SymbolDefinitionLoop { span, .. }
-            | SymbolLookupFailure::BlockTooLarge(span, _) => *span,
+            | EvaluationFailure::SymbolDefinitionLoop { span, .. }
+            | EvaluationFailure::BlockTooLarge(span, _) => *span,
         }
     }
 }
 
-impl Display for SymbolLookupFailure {
+impl Display for EvaluationFailure {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        use SymbolLookupFailure::*;
+        use EvaluationFailure::*;
         match self {
             SymbolDefinitionLoop {
                 deps_in_order,
@@ -107,25 +107,25 @@ impl Display for SymbolLookupFailure {
     }
 }
 
-impl SymbolLookupFailure {
+impl EvaluationFailure {
     /// Convert an instance of `EvaluationFailure` (which describes
     /// why an evaluation failed) into an instance of [`ProgramError`]
     /// (which describes why the user's program cannot be assembled).
     pub(crate) fn into_program_error(self) -> ProgramError {
         match self {
-            SymbolLookupFailure::FailedToAssignIndexRegister(ExhaustedIndexRegisters {
+            EvaluationFailure::FailedToAssignIndexRegister(ExhaustedIndexRegisters {
                 span,
                 name,
             }) => ProgramError::FailedToAssignIndexRegister(span, name),
-            SymbolLookupFailure::BlockTooLarge(span, mle) => ProgramError::BlockTooLong(span, mle),
-            SymbolLookupFailure::SymbolDefinitionLoop {
+            EvaluationFailure::BlockTooLarge(span, mle) => ProgramError::BlockTooLong(span, mle),
+            EvaluationFailure::SymbolDefinitionLoop {
                 deps_in_order,
                 span,
             } => ProgramError::SymbolDefinitionLoop {
                 symbol_names: deps_in_order,
                 span,
             },
-            SymbolLookupFailure::HereIsNotAllowedHere(span) => ProgramError::SyntaxError {
+            EvaluationFailure::HereIsNotAllowedHere(span) => ProgramError::SyntaxError {
                 span,
                 msg: "# is not allowed in this context".to_string(),
             },
@@ -133,7 +133,7 @@ impl SymbolLookupFailure {
     }
 }
 
-impl std::error::Error for SymbolLookupFailure {}
+impl std::error::Error for EvaluationFailure {}
 
 /// HereValue specifies the value used for `#`.  A `#` always
 /// signifies the address of the word we are trying to assemble.
@@ -147,10 +147,10 @@ pub(crate) enum HereValue {
 }
 
 impl HereValue {
-    pub(crate) fn get_address(&self, span: &Span) -> Result<Address, SymbolLookupFailure> {
+    pub(crate) fn get_address(&self, span: &Span) -> Result<Address, EvaluationFailure> {
         match self {
             HereValue::Address(addr) => Ok(*addr),
-            HereValue::NotAllowed => Err(SymbolLookupFailure::HereIsNotAllowedHere(*span)),
+            HereValue::NotAllowed => Err(EvaluationFailure::HereIsNotAllowedHere(*span)),
         }
     }
 }
@@ -238,7 +238,7 @@ impl<R: RcUpdater> EvaluationContext<'_, R> {
     pub(super) fn fetch_or_assign_default(
         &mut self,
         name: &SymbolName,
-    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+    ) -> Result<Unsigned36Bit, EvaluationFailure> {
         let existing_def: &mut ImplicitDefinition = match self.implicit_symtab.get_mut(name) {
             Some(def) => def,
             None => {
@@ -305,7 +305,7 @@ impl<R: RcUpdater> EvaluationContext<'_, R> {
                             *existing_def = ImplicitDefinition::DefaultAssigned(value, context);
                             Ok(value)
                         }
-                        Err(e) => Err(SymbolLookupFailure::FailedToAssignIndexRegister(e)),
+                        Err(e) => Err(EvaluationFailure::FailedToAssignIndexRegister(e)),
                     }
                 }
             }
@@ -461,7 +461,7 @@ pub(super) trait Evaluate: Spanned {
         &self,
         ctx: &mut EvaluationContext<R>,
         scope: ScopeIdentifier,
-    ) -> Result<Unsigned36Bit, SymbolLookupFailure>;
+    ) -> Result<Unsigned36Bit, EvaluationFailure>;
 }
 
 // Represents the RC-block; see [section 6-2.6 of the Users
@@ -547,14 +547,14 @@ pub(crate) fn symbol_name_lookup<R: RcUpdater>(
     span: Span,
     ctx: &mut EvaluationContext<R>,
     scope: ScopeIdentifier,
-) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+) -> Result<Unsigned36Bit, EvaluationFailure> {
     ctx.lookup_operation.deps_in_order.push(name.clone());
     if !ctx.lookup_operation.depends_on.insert(name.clone()) {
         // `name` was already in `depends_on`; in other words,
         // we have a loop.
         match OneOrMore::try_from_vec(ctx.lookup_operation.deps_in_order.clone()) {
             Ok(deps_in_order) => {
-                return Err(SymbolLookupFailure::SymbolDefinitionLoop {
+                return Err(EvaluationFailure::SymbolDefinitionLoop {
                     span,
                     deps_in_order,
                 });
@@ -611,7 +611,7 @@ pub(super) fn extract_final_equalities<R: RcUpdater>(
                     FinalSymbolDefinition::PositionIndependent(value),
                 );
             }
-            Err(SymbolLookupFailure::HereIsNotAllowedHere(_)) => {
+            Err(EvaluationFailure::HereIsNotAllowedHere(_)) => {
                 // The value of this equality would depend on the
                 // address at which it is evaluated, so it has no
                 // single final value.  This is OK.
@@ -664,7 +664,7 @@ impl Evaluate for BlockPosition {
         &self,
         ctx: &mut EvaluationContext<R>,
         scope: ScopeIdentifier,
-    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+    ) -> Result<Unsigned36Bit, EvaluationFailure> {
         // Resolve the address of this block by evaluating its origin
         // specification if it has one.
         if let Some(origin) = self.origin.as_ref() {
@@ -712,7 +712,7 @@ impl Evaluate for BlockPosition {
                 // of the address of the previous block and
                 // the size of the previous block which is the
                 // problem.
-                Err(SymbolLookupFailure::BlockTooLarge(
+                Err(EvaluationFailure::BlockTooLarge(
                     prev_span,
                     MachineLimitExceededFailure::BlockTooLarge {
                         span: prev_span,
@@ -730,7 +730,7 @@ impl Evaluate for (&Span, &SymbolName, &ExplicitDefinition) {
         &self,
         ctx: &mut EvaluationContext<R>,
         scope: ScopeIdentifier,
-    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+    ) -> Result<Unsigned36Bit, EvaluationFailure> {
         let (_span, name, def): (&Span, &SymbolName, &ExplicitDefinition) = *self;
         match def {
             ExplicitDefinition::Origin(Origin::Symbolic(_span, name), _block_id) => {
@@ -755,7 +755,7 @@ impl Evaluate for (&Span, &SymbolName, &ExplicitDefinition) {
                         subword::right_half(block_position.evaluate(ctx, scope)?).into();
                     match offset_from_origin(&block_origin, *block_offset) {
                         Ok(computed_address) => Ok(computed_address.into()),
-                        Err(_overflow_error) => Err(SymbolLookupFailure::BlockTooLarge(
+                        Err(_overflow_error) => Err(EvaluationFailure::BlockTooLarge(
                             *span,
                             MachineLimitExceededFailure::BlockTooLarge {
                                 span: *span,

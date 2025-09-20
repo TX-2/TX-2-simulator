@@ -6,7 +6,7 @@ use base::prelude::*;
 
 use super::ast::{EqualityValue, Origin};
 use super::collections::OneOrMore;
-use super::eval::SymbolLookupFailure;
+use super::eval::EvaluationFailure;
 use super::memorymap::{RcAllocator, RcWordAllocationFailure, RcWordKind, RcWordSource};
 use super::source::Source;
 use super::span::*;
@@ -467,10 +467,10 @@ pub(super) fn assign_default_rc_word_tags<R: RcAllocator>(
 
 pub(super) fn record_undefined_symbol_or_return_failure(
     source_file_body: &Source<'_>,
-    e: SymbolLookupFailure,
+    e: EvaluationFailure,
     undefined_symbols: &mut BTreeMap<SymbolName, ProgramError>,
 ) -> Result<(), AssemblerFailure> {
-    use SymbolLookupFailure::*;
+    use EvaluationFailure::*;
     match e {
         SymbolDefinitionLoop {
             span,

@@ -6,7 +6,7 @@ impl Evaluate for LiteralValue {
         &self,
         _ctx: &mut EvaluationContext<R>,
         _scope: ScopeIdentifier,
-    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+    ) -> Result<Unsigned36Bit, EvaluationFailure> {
         Ok(self.value())
     }
 }
@@ -16,7 +16,7 @@ impl Evaluate for SignedAtom {
         &self,
         ctx: &mut EvaluationContext<R>,
         scope: ScopeIdentifier,
-    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+    ) -> Result<Unsigned36Bit, EvaluationFailure> {
         self.magnitude.evaluate(ctx, scope).map(|magnitude| {
             if self.negated {
                 let s36 = magnitude.reinterpret_as_signed();
@@ -34,9 +34,9 @@ impl Evaluate for ArithmeticExpression {
         &self,
         ctx: &mut EvaluationContext<R>,
         scope: ScopeIdentifier,
-    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+    ) -> Result<Unsigned36Bit, EvaluationFailure> {
         let first: Unsigned36Bit = self.first.evaluate(ctx, scope)?;
-        let result: Result<Unsigned36Bit, SymbolLookupFailure> = self
+        let result: Result<Unsigned36Bit, EvaluationFailure> = self
             .tail
             .iter()
             .try_fold(first, |acc, curr| fold_step(acc, curr, ctx, scope));
@@ -49,7 +49,7 @@ impl Evaluate for ConfigValue {
         &self,
         ctx: &mut EvaluationContext<R>,
         scope: ScopeIdentifier,
-    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+    ) -> Result<Unsigned36Bit, EvaluationFailure> {
         // The `expr` member was either originally in superscript (in
         // which case the `evaluate` value will already have been
         // shifted into the correct position in the word, or in normal
@@ -64,7 +64,7 @@ impl Evaluate for RegistersContaining {
         &self,
         ctx: &mut EvaluationContext<R>,
         scope: ScopeIdentifier,
-    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+    ) -> Result<Unsigned36Bit, EvaluationFailure> {
         let mut first_addr: Option<Unsigned36Bit> = None;
         for rc_word in self.words() {
             // Evaluation of the RegisterContaining value will compute
@@ -97,7 +97,7 @@ impl Evaluate for RegisterContaining {
         // the address of the instruction which refers to it.
         ctx: &mut EvaluationContext<R>,
         scope: ScopeIdentifier,
-    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+    ) -> Result<Unsigned36Bit, EvaluationFailure> {
         match self {
             RegisterContaining::Unallocated(_) => {
                 unreachable!(
@@ -166,7 +166,7 @@ impl Evaluate for Atom {
         &self,
         ctx: &mut EvaluationContext<R>,
         scope: ScopeIdentifier,
-    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+    ) -> Result<Unsigned36Bit, EvaluationFailure> {
         match self {
             Atom::SymbolOrLiteral(value) => value.evaluate(ctx, scope),
             Atom::Parens(_span, _script, expr) => expr.evaluate(ctx, scope),
@@ -180,7 +180,7 @@ impl Evaluate for SymbolOrLiteral {
         &self,
         ctx: &mut EvaluationContext<R>,
         scope: ScopeIdentifier,
-    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+    ) -> Result<Unsigned36Bit, EvaluationFailure> {
         match self {
             SymbolOrLiteral::Symbol(script, symbol_name, span) => {
                 symbol_name_lookup(symbol_name, *script, *span, ctx, scope)
@@ -200,7 +200,7 @@ impl Evaluate for InstructionFragment {
         &self,
         ctx: &mut EvaluationContext<R>,
         scope: ScopeIdentifier,
-    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+    ) -> Result<Unsigned36Bit, EvaluationFailure> {
         match self {
             InstructionFragment::Null(_) => Ok(Unsigned36Bit::ZERO),
             InstructionFragment::Arithmetic(expr) => expr.evaluate(ctx, scope),
@@ -237,7 +237,7 @@ impl Evaluate for Origin {
         &self,
         ctx: &mut EvaluationContext<R>,
         scope: ScopeIdentifier,
-    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+    ) -> Result<Unsigned36Bit, EvaluationFailure> {
         match self {
             Origin::Deduced(_span, _, address) | Origin::Literal(_span, address) => {
                 Ok(address.into())
@@ -298,7 +298,7 @@ impl Evaluate for CommaDelimitedFragment {
         &self,
         ctx: &mut EvaluationContext<R>,
         scope: ScopeIdentifier,
-    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+    ) -> Result<Unsigned36Bit, EvaluationFailure> {
         self.fragment
             .evaluate(ctx, scope)
             .map(|word| {
@@ -332,12 +332,12 @@ impl Evaluate for UntaggedProgramInstruction {
         &self,
         ctx: &mut EvaluationContext<R>,
         scope: ScopeIdentifier,
-    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+    ) -> Result<Unsigned36Bit, EvaluationFailure> {
         fn evaluate_and_combine_values<'a, R, E, I>(
             mut items: I,
             ctx: &mut EvaluationContext<R>,
             scope: ScopeIdentifier,
-        ) -> Result<Unsigned36Bit, SymbolLookupFailure>
+        ) -> Result<Unsigned36Bit, EvaluationFailure>
         where
             R: RcUpdater,
             E: Evaluate + 'a,
@@ -362,7 +362,7 @@ impl Evaluate for EqualityValue {
         &self,
         ctx: &mut EvaluationContext<R>,
         scope: ScopeIdentifier,
-    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+    ) -> Result<Unsigned36Bit, EvaluationFailure> {
         self.inner.evaluate(ctx, scope)
     }
 }
@@ -372,7 +372,7 @@ impl Evaluate for TaggedProgramInstruction {
         &self,
         ctx: &mut EvaluationContext<R>,
         scope: ScopeIdentifier,
-    ) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+    ) -> Result<Unsigned36Bit, EvaluationFailure> {
         self.instruction.evaluate(ctx, scope)
     }
 }

@@ -27,8 +27,7 @@ use base::u18;
 
 use super::collections::OneOrMore;
 use super::eval::{
-    Evaluate, EvaluationContext, HereValue, ScopeIdentifier, SymbolLookupFailure,
-    symbol_name_lookup,
+    Evaluate, EvaluationContext, EvaluationFailure, HereValue, ScopeIdentifier, symbol_name_lookup,
 };
 use super::glyph;
 use super::listing::{Listing, ListingLine};
@@ -424,7 +423,7 @@ fn fold_step<R: RcUpdater>(
     (binop, right): &(Operator, SignedAtom),
     ctx: &mut EvaluationContext<R>,
     scope: ScopeIdentifier,
-) -> Result<Unsigned36Bit, SymbolLookupFailure> {
+) -> Result<Unsigned36Bit, EvaluationFailure> {
     let right: Unsigned36Bit = right.evaluate(ctx, scope)?;
     Ok(ArithmeticExpression::eval_binop(acc, binop, right))
 }
