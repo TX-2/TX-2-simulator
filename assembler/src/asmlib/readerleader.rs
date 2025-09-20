@@ -2,9 +2,10 @@ use base::instruction::{Instruction, Opcode, OperandAddress, SymbolicInstruction
 use base::prelude::*;
 
 /// Convert a bit designator (as described in the documentation for
-/// the SKM opcode on page 3-34 of the User Handbook) into an
-/// Unsigned6Bit field (suitable for use as the index portion of an
-/// instruction word).
+/// the SKM opcode on [page 3-34 of the User
+/// Handbook](https://archive.org/details/tx-2-users-handbook-nov-63/page/n35/mode/1up))
+/// into an Unsigned6Bit field (suitable for use as the index portion
+/// of an instruction word).
 fn bit_index(q: u8, bitnum: u8) -> Unsigned6Bit {
     let quarter = match q {
         1..=3 => q,
@@ -28,12 +29,14 @@ fn test_bit_index() {
 }
 
 /// Returns the standard reader leader.  The listing for this is given
-/// on page 5-26 of the User Handbook
-/// (https://archive.org/details/tx-2-users-handbook-nov-63/page/n150/mode/1up).
+/// on [page 5-26 of the User
+/// Handbook](https://archive.org/details/tx-2-users-handbook-nov-63/page/n150/mode/1up).
 ///
 /// This program is superficially similar to Program VI ("A Binary
-/// Read-In Routine") in Lincoln Lab Memorandum 6M-5780 ("Some
-/// Examples of TX-2 Programming"), but it is different in detail.
+/// Read-In Routine") in [Lincoln Lab Memorandum 6M-5780 ("Some
+/// Examples of TX-2
+/// Programming")](http://www.bitsavers.org/pdf/mit/tx-2/6M-5780_Some_Examples_of_TX-2_Programming_Jul1958.pdf),
+/// but it is different in detail.
 ///
 /// ## Disassembly
 ///
@@ -146,30 +149,37 @@ fn test_bit_index() {
 /// ## Start Address
 ///
 /// Notice that the disassembly above shows that address 27 contains
-/// `¹IOS₅₂` 20000.  This is taken from the listing on page 5-26 of
-/// the Users Handbook.  That apparently contraditcs the commentary on
-/// page 6-23 of the same document, which states that the `IOS`
-/// instruction is at location 26.  However, this difference is not
-/// material.
+/// `¹IOS₅₂` 20000.  This is taken from the listing on [page 5-26 of
+/// the Users
+/// Handbook](https://archive.org/details/tx-2-users-handbook-nov-63/page/n150/mode/1up).
+/// That apparently contraditcs the commentary on [page 6-23 of the
+/// same
+/// document](https://archive.org/details/tx-2-users-handbook-nov-63/page/n175/mode/1up),
+/// which states that the `IOS` instruction is at location 26.
+/// However, this difference is not material.
 ///
-/// If we follow the advice given on page 6-23 for the last word of a
-/// block, we would set it to checksum,,26 meaning that the reader
-/// leader at locaiton 16 will jump to location 26.  The instruction
-/// at 26 (which is `¹⁵BPQ₅₄ 0`) will jump to the location in X₅₄.  That
-/// will (I think) have been set to 27 by the previous execution of
-/// `¹⁵BPQ₅₄ 0`.  So jump to location 26 has the effect of
-/// jumping to location 27 but also sets X₅₄ (again) to 27.  This
-/// seems indistinguishable from setting the R(last) to 27, because in
-/// that case we begin execution at 27 with X₅₄ set to 27.
+/// If we follow the advice given on [page
+/// 6-23](https://archive.org/details/tx-2-users-handbook-nov-63/page/n175/mode/1up)
+/// for the last word of a block, we would set it to checksum,,26
+/// meaning that the reader leader at locaiton 16 will jump to
+/// location 26.  The instruction at 26 (which is `¹⁵BPQ₅₄ 0`) will
+/// jump to the location in X₅₄.  That will (I think) have been set to
+/// 27 by the previous execution of `¹⁵BPQ₅₄ 0`.  So jump to location
+/// 26 has the effect of jumping to location 27 but also sets X₅₄
+/// (again) to 27.  This seems indistinguishable from setting the
+/// R(last) to 27, because in that case we begin execution at 27 with
+/// X₅₄ set to 27.
 ///
 /// When the execution address of the last block is not either 26 or
 /// 27, the user's program will need to disconnect the paper tape
 /// reader if it doesn't require it.  This conclusion appears to
-/// contradict the guidance on page 6-23. The apparent contradition
-/// would be resolved if it were the case the M4 assembler adds a
-/// special first block containing a jump at location 28, when the
-/// `☛☛PUNCH` directive includes a start address.  This may in fact be
-/// the case shown in the diagram on page 6-23.
+/// contradict the guidance on [page
+/// 6-23](https://archive.org/details/tx-2-users-handbook-nov-63/page/n175/mode/1up). The
+/// apparent contradition would be resolved if it were the case the M4
+/// assembler adds a special first block containing a jump at location
+/// 28, when the `☛☛PUNCH` directive includes a start address.  This
+/// may in fact be the case shown in the diagram on [page
+/// 6-23](https://archive.org/details/tx-2-users-handbook-nov-63/page/n175/mode/1up).
 pub fn reader_leader() -> Vec<Unsigned36Bit> {
     ([
         // These instructions are taken from the middle column of
@@ -179,8 +189,6 @@ pub fn reader_leader() -> Vec<Unsigned36Bit> {
         // at 0o377760, see listing in section 5-5.2 of the Users
         // Handbook).  The active sequence is 0o52, with X₅₂ =
         // 0o377763, X₅₃ = 0, X₅₄ = 0.
-        //
-        // ¹²³⁴⁵⁶⁷ ₀₁₂₃₃₄₅₆₇
         SymbolicInstruction {
             // 003: ¹RSX₅₄ 5   ** set X₅₄=-5
             held: false,
