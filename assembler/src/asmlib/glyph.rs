@@ -2,6 +2,29 @@
 //! Unicode input files the characters that ther TX-2 supports but
 //! which Unicode does not.  For example, @sub_A@ which represents a
 //! subscripted letter A.
+//!
+//! We use the word "glyph" to denote the characters in the source
+//! code.  This includes spacing characters (Tab, Backspace, Space but
+//! not carriage return) but not shift codes (COLOR BLACK, SUPER,
+//! NORMAL, SUB, COLOR RED) or special keys which would not appear in
+//! source code (WORD EXAM, LINE FEED DOWN, LINE FEED UP, LOWER CASE,
+//! UPPER CASE, STOP).
+//!
+//! We also do not include the NULLIFY character.  This would
+//! certainly have been used in the input to the TX-2 assembler ("M4")
+//! to indicate that a character on the paper tape was deleted (but
+//! punching out all the holes, setting all the bits to 1).  But this
+//! would have no role in the preparation of source code on a modern
+//! computer system (e.g. with a text editor) so we don't currently
+//! support this in the input.
+//!
+//! Due to the complexities of lexing and representing the TX-2's compound characters
+//! (see for example [section 6-2.3 of the Users Handbook, "RULES FOR SYMEX FORMATION"](https://archive.org/details/tx-2-users-handbook-nov-63/page/n158/mode/1up)) we might later include additinal glyphs to represent compound characters.
+//!
+//! The [`base::charset`] module deals with similar things, but this
+//! module deals with concerns that are unique to the assembler itself
+//! (that is, are not relevant to the implementation of the TX-2
+//! emulator).
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{self, Debug, Display, Formatter, Write};
@@ -10,9 +33,17 @@ use std::sync::OnceLock;
 
 use base::charset::{Script, subscript_char, superscript_char};
 
+/// Indicates that some part of the input source code would be
+/// unrepresentable in the TX-2's character set for program input
+/// (which is the same as the character set of the Lincoln Writer,
+/// except for characters that appear only in comments or
+/// annotations).
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub(crate) enum Unrecognised {
+    /// A Unicode character is unknown on the TX-2.
     InvalidChar(char),
+    /// `@foo@` was used but we did not recognise `foo` as the name of
+    /// a known glyph.
     UnrecognisedGlyph(String),
 }
 
@@ -32,6 +63,9 @@ impl Display for Unrecognised {
 
 impl Error for Unrecognised {}
 
+/// `Elevated<T>` indicates that a `T` appears in superscript,
+/// subscript or normal script.  This changes the meaning (and
+/// numerical value) of that item in the TX-2 assembly language.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct Elevated<T> {
     inner: T,
@@ -124,25 +158,40 @@ impl<T> From<(Script, T)> for Elevated<T> {
     }
 }
 
+/// Create an instance of [`Elevated<T>`].
 pub(crate) fn elevate<T>(script: Script, inner: T) -> Elevated<T> {
     Elevated { script, inner }
 }
 
+/// A character which might appear in source code.
+///
+/// We include mappings to Unicode representation where this exists.
+/// However, there are also cases where more than one Unicode
+/// character (in the assembler input) might get mapped to the same
+/// Glyph; see [`canonicalise_char`].
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct Glyph {
+    /// Indicates the shape of the glyph without regard to its
+    /// (superscript/subscript/normal) position with respect to the
+    /// character baseline.
     pub(crate) shape: GlyphShape,
+    /// The name of the glyph as we would use it inside `@...@`.
     pub(crate) name: &'static str,
+    /// The Unicode representation of this glyph when in normal
+    /// script.
     pub(crate) normal: Option<char>,
+    /// The Unicode representation of this glyph when in superscript.
     pub(crate) superscript: Option<char>,
+    /// The Unicode representation of this glyph when in subscript.
     pub(crate) subscript: Option<char>,
-    // When advance is false, this glyph does not advance the
-    // carriage.  This appears to be true for character codes 0o12 and
-    // 0o13 (in both upper and lower case).  We should provide a
-    // reference for this, but just now I'm taking this info from the
-    // code in base/src/charset.rs which deals with these character
-    // codes.
-    //
-    // We try to use combining characters for these.
+    /// When advance is false, this glyph does not advance the Lincoln
+    /// Writer's print carriage.  This appears to be true for
+    /// character codes 0o12 (underbar, overbar) and 0o13 (circle,
+    /// square).  We should provide a reference for this, but just now
+    /// I'm taking this info from the code in base/src/charset.rs
+    /// which deals with these character codes.
+    ///
+    /// We try to use combining characters for these.
     pub(crate) advance: bool,
 }
 
