@@ -22,7 +22,7 @@ use super::super::types::*;
 use super::super::{Alarm, AlarmDetails};
 use base::charset::LincolnStateTextInfo;
 #[cfg(test)]
-use base::charset::LwCase;
+use base::charset::LwKeyboardCase;
 use base::charset::{LincolnState, lincoln_char_to_described_char, lincoln_writer_state_update};
 use base::prelude::*;
 use tracing::{Level, event};
@@ -302,7 +302,7 @@ fn lw_output_space() {
             unicode_representation: Some(' '),
             attributes: LincolnState {
                 script: Script::Normal,
-                case: LwCase::Lower,
+                case: LwKeyboardCase::Lower,
                 colour: Colour::Black,
             },
             advance: true,
@@ -326,7 +326,7 @@ fn lw_output_cr_resets_state() {
         &None,     // no output for this char
         &LincolnState {
             script: Script::Super,
-            case: LwCase::Lower,
+            case: LwKeyboardCase::Lower,
             colour: Colour::Black,
         },
         &state,
@@ -338,7 +338,7 @@ fn lw_output_cr_resets_state() {
         &None,     // no output for this char
         &LincolnState {
             script: Script::Super, // unchanged
-            case: LwCase::Lower,
+            case: LwKeyboardCase::Lower,
             colour: Colour::Red,
         },
         &state,
@@ -352,7 +352,7 @@ fn lw_output_cr_resets_state() {
             unicode_representation: Some('ᴳ'),
             attributes: LincolnState {
                 script: Script::Super,
-                case: LwCase::Lower,
+                case: LwKeyboardCase::Lower,
                 colour: Colour::Red,
             },
             advance: true,
@@ -360,7 +360,7 @@ fn lw_output_cr_resets_state() {
         }),
         &LincolnState {
             script: Script::Super,
-            case: LwCase::Lower,
+            case: LwKeyboardCase::Lower,
             colour: Colour::Red,
         },
         &state,
@@ -377,7 +377,7 @@ fn lw_output_cr_resets_state() {
             unicode_representation: Some('\r'),
             attributes: LincolnState {
                 script: Script::Normal,
-                case: LwCase::Lower,
+                case: LwKeyboardCase::Lower,
                 // colour is not reset, per the Users Guide
                 // (in the description of sequences 65,66).
                 colour: Colour::Red,
@@ -387,7 +387,7 @@ fn lw_output_cr_resets_state() {
         }),
         &LincolnState {
             script: Script::Normal,
-            case: LwCase::Lower,
+            case: LwKeyboardCase::Lower,
             colour: Colour::Red,
         },
         &state,

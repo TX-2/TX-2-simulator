@@ -4,6 +4,31 @@ use web_sys::Document;
 use base::Unsigned6Bit;
 use base::charset::{Colour, DescribedChar, LincolnChar, LincolnState, Script};
 
+/// Generate HTML corresponding to Lincoln Writer character (in the given state).
+///
+/// While currently we use sup/sub elements here, this does not quite
+/// correspond with the way the Lincoln Writer generated
+/// superscript/subscript letters.  For the LW, these corresponded to
+/// half-line movements of the platen (see pages 9-11) of "The Lincoln
+/// Writer" (Lincoln Lab Group Report 51-8).
+///
+/// Also, the "line feed up" and "line feed down" characters don't
+/// affect the script in effect.  Per page 10 of "The Lincoln Writer"
+/// (i.e. the same document mentioned above):
+///
+/// > The line feed selectors do not affect the last remembered script
+/// > position of the typewriter. Therefore after one or more line feed selections,
+/// > care must be taken to return the typewriter platen to its original
+/// > position by the selection of the opposite line feed. For example, if the
+/// > typewriter platen were in normal script position and a line feed-up were
+/// > selected - followed by printable characters, the printed result would be
+/// > the same as if a superscript had been selected. However, if this were to
+/// > be followed by a normal script selection there would be no change since
+/// > the typewriter would act as if it was already in normal script, (since
+/// > no other script had been selected). Consequently the line feed selections
+/// > should be used for situations like superscripting a superscript or
+/// > subscripting a subscript, etc. On these occasions the opposite line feed
+/// > should be used to return the typewriter to its original script position.
 fn generate_html_for_char(uch: char, attributes: &LincolnState, _advance: bool) -> String {
     let colour_class = match attributes.colour {
         // These styles are defined in index.html, not in CSS files

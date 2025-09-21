@@ -25,26 +25,64 @@
 //! "UPPER CASE" (075) code if pressed at (for example) the beginning
 //! of a line.
 //!
+//! NOTE: In "The Lincoln Writer" (Lincoln Laboratory Group report
+//! 51-8), the authors state that "The lower case keyboard was almost
+//! standard (our capital letters were put on the lower case)" (p8).
+//!
+//! Also on p. 8 of the same document: "The keyboard is actually two
+//! separate Soroban coding keyboards mounted on the same block.  The
+//! lower keyboard contains the buttons for all the lower case
+//! characters and the typewriter functions.  Thew upper board
+//! contains the buttons for upper case character and a few special;
+//! codes."
+//!
 //! Lincoln Writer codes are not unique without knowing the
 //! upper/lower case state.  For example, code 26 is sent for both "G"
 //! and "w".
 //!
-//! This interpretation may be wrong.  To make the code in this module
-//! slightly less confusing, especially if this interpretation is
-//! wrong, we refer to the two keyboards as "Far" and "Near".
-//! Assuming a case change is needed, "G" would be sent as 074 026
-//! (074 signifying LOWER CASE) and "w" would be sent as 075 026 (075
-//! signifying UPPER CASE).  The documentation describes a hardware
-//! interlock which keeps a key pressed down while a shift code is
-//! sent, so I assume that shift code are only sent when necessary
-//! (e.g. "wGG" would be sent as 075 026 075 026 026).
+//! To make the code in this module slightly less confusing, we refer
+//! to the two keyboards as "Far" and "Near".  Assuming a case change
+//! is needed, "G" would be sent as 074 026 (074 signifying LOWER
+//! CASE) and "w" would be sent as 075 026 (075 signifying UPPER
+//! CASE).  The documentation describes a hardware interlock which
+//! keeps a key pressed down while a shift code is sent, so I assume
+//! that shift code are only sent when necessary (e.g. "wGG" would be
+//! sent as 075 026 075 026 026).  This is consistent with the
+//! description in "The Lincoln Writer" (Group Repport 51-8).
+//!
+//! Some changes to the keyboard happened between Lincoln Lab Division
+//! 6 Quarterly Progress Report, 15 June 1958 ("PR") and Group Report
+//! 51-8 ("GR").  Specifically, CONTINUE and HALT were removed and
+//! LINE FEED UP and LINE FEED DOWN were added.  The order of the
+//! function keys was changed from:
+//!
+//! - DELETE
+//! - STOP
+//! - YES
+//! - NO
+//! - WORD EXAM
+//! - CONTINUE
+//! - HALT
+//! - BEGIN
+//! - READ IN
+//!
+//! to:
+//!
+//! - DELETE
+//! - STOP
+//! - LINE FEED UP
+//! - LINE FEED DOWN
+//! - WORD EXAM
+//! - YES
+//! - NO
+//! - BEGIN
+//! - READ IN
+//!
+//! Accordingly, CONTINUE is also not listed in Table 7-6 of the
+//! Technical Manual.
 //!
 //! The documentation is inconsistent about the codes of some of the
 //! keys.  These keys are:
-//!
-//! CONTINUE: 17 according to the Progress Report ("PR" below) of 15
-//! June 1958, but not listed in Table 7-6 of the Technical Manual
-//! ("TM" below), which assigns code 17 to YES.
 //!
 //! YES: 73 according to the PR, 17 according to the TM.
 //!
@@ -55,13 +93,6 @@
 //! LINE FEED DOWN: not listed in the PR, 72 according to the TM.
 //!
 //! The DELETE key in the PR is listed as NULLIFY in the TM.
-//!
-//! HALT: The label on the top-row hey HALT is hard to read in the PR,
-//! but the second digit looks like a 6.  While we might assume code
-//! 76 (which is described as STOP in the Technical Manual) that
-//! cannot be correct, as there is already a separate key labled STOP.
-//! Both are on the top row.  Therefore currently HALT does not
-//! generate a character code when pressed.
 //!
 //! The top-row keys READ IN (14) BEGIN (15), STOP (76), WORD EXAM
 //! (71) are coded consistently between the PR and the TM.
@@ -85,6 +116,21 @@
 //! Gap b/w upper and lower keyboards: 1.9
 //! Whole unit (incl indicators): 23.8*14.5
 //!
+//! An additional reference on the Lincoln Writer is
+//! [The Lincoln Writer](https://apps.dtic.mil/sti/trecms/pdf/AD0235247.pdf).
+//! J. T. Glmore, Jr., R. E. Sewell.  Lincoln Laboratory Group report
+//! 51-8.  October 6, 1959.
+//!
+//! This states a number of things that are perhaps not yet reflected in this code:
+//!
+//! 1. The box character just fits inside of the printing rectangle
+//!    and can contain any other character (p7)
+//! 1. The capital letters are larger than the numerals and small characters (p7)
+//! 1. The numerals are slanted (p7).
+//! 1. With the exception of the capital letters and a few punctuation characters,
+//!    all characters can be circled (p7).   (I interpret this as meaning that all
+//!    characters can be combined with a circle, but the circle is not large enough
+//!    to contain some of the characters.
 
 use core::fmt::{Debug, Display};
 #[cfg(test)]
@@ -99,7 +145,7 @@ use web_sys::{CanvasRenderingContext2d, TextMetrics};
 use base::Unsigned6Bit;
 #[cfg(test)]
 use base::charset::{
-    Colour, DescribedChar, LincolnState, LwCase, Script, lincoln_char_to_described_char,
+    Colour, DescribedChar, LincolnState, LwKeyboardCase, Script, lincoln_char_to_described_char,
 };
 
 // Horizontal gap between LHS of unit and the first key of each row:
@@ -796,29 +842,25 @@ fn row0() -> &'static [Key] {
             },
             code: Code::Far(0o76),
         },
-        Key /* YES */ {
+        Key /* LINE FEED UP */ {
             left: HPOS_YES,
             top: 0.0,
             shape: KeyShape::Tall,
             colour: KeyColour::Black,
             label: KeyLabel {
-                text: &["YES"],
+                text: &["LINE", "FEED", "UP"],
             },
-            code: Code::Far(0o17),
+            code: Code::Far(0o73),
         },
-        Key /* NO */ {
+        Key /* LINE FEED DOWN */ {
             left: HPOS_YES + TALL_KEY_AND_GAP_WIDTH,
             top: 0.0,
             shape: KeyShape::Tall,
             colour: KeyColour::Black,
             label: KeyLabel {
-                text: &["NO"],
+                text: &["LINE", "FEED", "DOWN"],
             },
-            // References TM and PR are inconsistent about the coding
-            // of this key, we follow the TM, because it is the later
-            // document (this page labelled October 1961), but still
-            // prior to development of Sketchpad (1963).
-            code: Code::Far(0o16),
+            code: Code::Far(0o72),
         },
         Key /* WORD EXAM */ {
             left: HPOS_YES + TALL_KEY_AND_GAP_WIDTH * 2.0,
@@ -830,35 +872,25 @@ fn row0() -> &'static [Key] {
             },
             code: Code::Far(0o71),
         },
-        Key /* CONTINUE */ {
+        Key /* YES */ {
             left: HPOS_YES + TALL_KEY_AND_GAP_WIDTH * 3.0,
             top: 0.0,
             shape: KeyShape::Tall,
             colour: KeyColour::Black,
             label: KeyLabel {
-                text: &["CON", "TIN", "UE"],
+                text: &["YES"],
             },
-            // The diagram I have seems to show code 0o17 for
-            // CONTINUE, but this is not consistent with the LW
-            // character set in table 7-6 of the Technical Manual
-            // (which says 17 is YES) .  See comment at the top of
-            // this file.
-            code: Code::Unknown,
+            code: Code::Far(0o17),
         },
-        Key /* HALT */ {
+        Key /* NO */ {
             left: HPOS_YES + TALL_KEY_AND_GAP_WIDTH * 4.0,
             top: 0.0,
             shape: KeyShape::Tall,
             colour: KeyColour::Black,
             label: KeyLabel {
-                text: &["HALT"],
+                text: &["NO"],
             },
-            // I can't read the code on the Progress Report diagram
-            // for this key.  The second digit may be 6,but the code
-            // cannot be 76 as that is the code for STOP which is also
-            // shown on the top row in the Progress Report.  So we
-            // currently generate not code for HALT.
-            code: Code::Unknown,
+            code: Code::Far(0o16),
         },
         Key /* BEGIN */ {
             left: HPOS_YES + TALL_KEY_AND_GAP_WIDTH * 5.0,
@@ -1985,8 +2017,8 @@ fn known_keys_consistent_with_base_charset() {
     // lincoln_char_to_described_char().
     for key in all_keys() {
         let (case, code) = match key.code {
-            Code::Near(code) => (LwCase::Lower, code),
-            Code::Far(code) => (LwCase::Upper, code),
+            Code::Near(code) => (LwKeyboardCase::Lower, code),
+            Code::Far(code) => (LwKeyboardCase::Upper, code),
             Code::Unknown => {
                 event!(
                     Level::WARN,

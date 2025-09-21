@@ -18,6 +18,10 @@
 //! tape.  On start, reading begins immediately at full speed, and on
 //! stop, the tape movement stops immediately.  This will likely
 //! change in the future.
+//!
+//! Lincoln Lab Group Report 51-8 "The Lincoln Writer" states (page
+//! 13) that the "END MARK" punched by the LW is the 6-bit code octal
+//! 72 without a 7th hole punched on the tape.
 use std::fmt::Write;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::time::Duration;

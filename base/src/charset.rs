@@ -24,6 +24,9 @@
 //!   do not advance the print carriage.
 //! - The Lincoln Lab Division 6 Quarterly Progress Report (15 June
 //!   1958).
+//! - [The Lincoln Writer](https://apps.dtic.mil/sti/trecms/pdf/AD0235247.pdf).
+//!   J. T. Glmore, Jr., R. E. Sewell.  Lincoln Laboratory Group report
+//!   51-8.  October 6, 1959.
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
@@ -186,17 +189,30 @@ pub enum Colour {
     Red,
 }
 
+/// Indicates which keyboard case is currently selected.  The
+/// terminology used around the Lincoln Writer is very confusing
+/// because of the way the LW is designed.  Specifically (per page 8
+/// of "The Lincoln Writer", Lincoln Laboratory Group Report 51-8):
+///
+/// > The keyboard is actually two separate Soroban coding keyboards
+/// > mounted on the same block. The lower keyboard contains the buttons
+/// > for all the lower case characters and the typewriter
+/// > functions. The upper board contains the buttons for upper case
+/// > characters and a few special codes.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
-pub enum LwCase {
+pub enum LwKeyboardCase {
+    /// Lower keyboard case (which contains capital letters)
     Lower,
+    /// Upper keyboard case (which contains small letters, Greek
+    /// letters, etc.)
     Upper,
 }
 
-impl LwCase {
+impl LwKeyboardCase {
     fn as_str(&self) -> &'static str {
         match self {
-            LwCase::Lower => "lower",
-            LwCase::Upper => "upper",
+            LwKeyboardCase::Lower => "lower",
+            LwKeyboardCase::Upper => "upper",
         }
     }
 }
@@ -204,7 +220,7 @@ impl LwCase {
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct LincolnState {
     pub script: Script,
-    pub case: LwCase,
+    pub case: LwKeyboardCase,
     pub colour: Colour,
 }
 
@@ -217,12 +233,14 @@ pub struct LincolnStateTextInfo {
 
 impl Default for LincolnState {
     fn default() -> Self {
-        // Carriage return sets the LW to lower case and normal script
-        // so those are the defaults.  See pages 4-37 to 4-42 of the
-        // User Handbook.
+        // Carriage return sets the LW to lower case (which contains
+        // the capital letters!) and normal script so those are the
+        // defaults.  See pages 4-37 to 4-42 of the User Handbook, and
+        // page 8 of "The Lincoln Writer" (Lincoln Laboratory Group
+        // Report 51-8).
         Self {
             script: Script::Normal,
-            case: LwCase::Lower,
+            case: LwKeyboardCase::Lower,
             colour: Colour::Black,
         }
     }
@@ -230,20 +248,25 @@ impl Default for LincolnState {
 
 impl LincolnState {
     /// CARRIAGE RETURN also has the side effect of setting the
-    /// "keyboard" to lower case and "normal script".  This statement
-    /// appears in the description if the Lincoln Writer in the Users
-    /// Handbook (page 4-37 and again on 4-41).  The document
-    /// explicitly states that a write of this code (from the TX-2 to
-    /// the Lincoln Writer) also affects the state of the keyboard. On
-    /// page 4-41 the document also states that carriage return
-    /// written by the TX-2 to the Lincoln Writer has the same effect.
+    /// "keyboard" to lower case (i.e. capital letters!) and "normal
+    /// script".  This statement appears in the description if the
+    /// Lincoln Writer in the Users Handbook (page 4-37 and again on
+    /// 4-41).  The document explicitly states that a write of this
+    /// code (from the TX-2 to the Lincoln Writer) also affects the
+    /// state of the keyboard. On page 4-41 the document also states
+    /// that carriage return written by the TX-2 to the Lincoln Writer
+    /// has the same effect.
+    ///
+    /// Page 8 of "The Lincoln Writer" (Lincoln Laboratory Group
+    /// Report 51-8) points out that the "lower case" has the capital
+    /// letters on it.
     ///
     /// XXX: both of the previous two statements describe the TX2->LW
     /// direction, re-check the documentation for what happens in the
     /// other direction.
     fn on_carriage_return(&mut self) {
         self.script = Script::Normal;
-        self.case = LwCase::Lower;
+        self.case = LwKeyboardCase::Lower;
     }
 }
 
@@ -309,8 +332,8 @@ fn unprintable(c: Unsigned6Bit, state: LincolnState) -> DescribedChar {
 }
 fn bycase(lower: char, upper: char, state: &LincolnState) -> Option<char> {
     Some(match state.case {
-        LwCase::Upper => upper,
-        LwCase::Lower => lower,
+        LwKeyboardCase::Upper => upper,
+        LwKeyboardCase::Lower => lower,
     })
 }
 
@@ -336,10 +359,10 @@ pub fn lincoln_writer_state_update(lin_ch: Unsigned6Bit, state: &mut LincolnStat
             state.colour = Colour::Red;
         }
         0o74 => {
-            state.case = LwCase::Lower;
+            state.case = LwKeyboardCase::Lower;
         }
         0o75 => {
-            state.case = LwCase::Upper;
+            state.case = LwKeyboardCase::Upper;
         }
         _ => (),
     }
@@ -372,7 +395,13 @@ pub fn lincoln_writer_state_update(lin_ch: Unsigned6Bit, state: &mut LincolnStat
 ///    upper keyboard contains minuscule letters (e.g. "q", "k").
 ///    This idea is based on the Lincoln Writer diagram on page 24 of
 ///    the Lincoln Lab Division 6 Quarterly Progress Report (15 June
-///    1958).
+///    1958).  Figure 9 in in the later (1959-10-06) document Group
+///    Report 51-8 (a photograph) is mostly consistent but shows the
+///    CONTINUE and HALT keys to have been removed and LINE FEED UP
+///    and LINE FEED DOWN have been added.
+/// 3. Page 8 of "The Lincoln Writer" (Lincoln Lab Group Report 51-8)
+///    says: The lower case keyboard was almost standard (our capital
+///    letters were put on the lower case).
 pub fn lincoln_char_to_described_char(
     lin_ch: Unsigned6Bit,
     state: &mut LincolnState,
@@ -459,8 +488,8 @@ pub fn lincoln_char_to_described_char(
         0o67 => None,             // COLOR RED; state change already done
         0o70 => Some(' '),        // space
         0o71 => return Some(unprintable(lin_ch, *state)), // WORD EXAM
-        0o72 => Some('\n'),       // LINE FEED
-        0o73 => Some('\u{008D}'), // Reverse line feed
+        0o72 => Some('\n'),       // LINE FEED UP
+        0o73 => Some('\u{008D}'), // LINE FEED DOWN
         0o74 => None,             // LOWER CASE; state change already done
         0o75 => None,             // UPPER CASE; state change already done
         0o76 => return Some(unprintable(lin_ch, *state)), // STOP
@@ -626,7 +655,7 @@ impl UnicodeToLincolnMapping {
     pub fn new() -> UnicodeToLincolnMapping {
         let mut m: HashMap<char, LincChar> = HashMap::new();
         for script in [Script::Normal, Script::Super, Script::Sub] {
-            for case in [LwCase::Lower, LwCase::Upper] {
+            for case in [LwKeyboardCase::Lower, LwKeyboardCase::Upper] {
                 for value in 0..=0o77 {
                     if let Ok(ch) = Unsigned6Bit::try_from(value) {
                         let mut state = LincolnState {
@@ -658,7 +687,7 @@ impl UnicodeToLincolnMapping {
         s: &str,
     ) -> Result<Vec<Unsigned6Bit>, UnicodeToLincolnConversionFailure> {
         let mut result: Vec<Unsigned6Bit> = Vec::with_capacity(s.len());
-        let mut current_case: Option<LwCase> = None;
+        let mut current_case: Option<LwKeyboardCase> = None;
         let mut current_script: Option<Script> = None;
 
         for ch in s.chars() {
@@ -671,8 +700,8 @@ impl UnicodeToLincolnMapping {
                         // Nothing to do
                     } else {
                         result.push(match lch.state.case {
-                            LwCase::Upper => u6!(0o75),
-                            LwCase::Lower => u6!(0o74),
+                            LwKeyboardCase::Upper => u6!(0o75),
+                            LwKeyboardCase::Lower => u6!(0o74),
                         });
                         current_case = Some(lch.state.case);
                     }
