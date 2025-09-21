@@ -4,11 +4,11 @@
 //! (consider for example that the TSD instruction specifies no
 //! direction - it is implicit).
 //!
-//! I am not sure about the timing characteristics of this
-//! device.  For now we'll simply assume the output speed is
-//! comparable with that of the IBM Selectric typewriter, which is
-//! 14.8 characters per second.  This works out at roughly 68
-//! milliseconds per character.
+//! The Lincoln Writer (Lincoln Lab Group Report 51-8) states on page
+//! 10 that the Lincoln Writer prints about about 10 characters per
+//! second (i.e. slightly slower than the IBM Selectric typewriter's
+//! 14.8 characters per scond).
+
 use std::cell::RefCell;
 use std::fmt::Debug;
 use std::rc::Rc;
@@ -30,7 +30,7 @@ use tracing::{Level, event};
 #[cfg(test)]
 use base::charset::{Colour, DescribedChar, LincolnChar, Script};
 
-const CHAR_TRANSMIT_TIME: Duration = Duration::from_millis(68);
+const CHAR_TRANSMIT_TIME: Duration = Duration::from_millis(100);
 const LATER: Duration = Duration::from_secs(300);
 
 #[derive(Debug)]
