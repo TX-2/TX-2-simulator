@@ -79,6 +79,14 @@ W1-> 036056070046
 W2-> 036041033023
 W3-> 060000000000
 
+** The above scheme for storing text is not quite the same as the one
+** described in L. Fleck and L. Roberts' memo of 30 September 1964, in
+** which they describe the text as starting in quarter 1.  See
+** www.bitsavers.org/pdf/mit/tx-2/rcsri.org_library_tx2/TX2-Memos-General_196407.pdf
+** (physical page 4 of the PDF).  The system described there also uses
+** bits beyond bits 1 to 6; bit 7 indicates upper case and bit 8 red
+** colour (shown as some kind of underlining on the Xerox printer).
+
 ** Indicate to the assembler that it should generate a punched tape
 ** output (with the standard header) and that the header should begin
 ** the program by juming to location 100.
