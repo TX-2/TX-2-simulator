@@ -85,6 +85,10 @@ pub(crate) enum ProgramCounterChange {
 /// The flag for sequences 76 and 77 may only be raised/lowered by
 /// program control.
 ///
+/// The Lincoln Laboratory book "MIT Lincoln Laboratory: Technology in
+/// Support of National Security" states (on page 462) that The Xerox
+/// Alto also used sequences for I/O.  See also
+/// https://en.wikipedia.org/wiki/Xerox_Alto#Architecture
 #[derive(Debug)]
 struct SequenceFlags {
     flag_values: u64,
