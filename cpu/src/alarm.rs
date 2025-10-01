@@ -196,6 +196,10 @@ pub enum AlarmDetails {
     // Mousetrap Alarm: stops the computer when there is a malfunction
     // in the setting of the S-memory flip-flops.  We don't have those
     // in the simulator.
+    //
+    // L. G. Roberts memo of 1965-01-07 seems to indicate that another
+    // alarm, SPAL, was introduced later; see
+    // www.bitsavers.org/pdf/mit/tx-2/rcsri.org_library_tx2/TX2-Memos-General_196407.pdf.
 
     // The following alarms didn't exist in the real TX-2:
     /// Something is not implemented
