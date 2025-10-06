@@ -391,7 +391,8 @@ impl ManuscriptBlock {
                     Ok(more_symbols) => match local_symbols.merge(more_symbols) {
                         Ok(()) => (),
                         Err(e) => {
-                            errors.extend(e.into_iter().map(SymbolTableBuildFailure::BadDefinition))
+                            errors
+                                .extend(e.into_iter().map(SymbolTableBuildFailure::BadDefinition));
                         }
                     },
                     Err(e) => {

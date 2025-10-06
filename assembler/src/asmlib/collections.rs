@@ -98,7 +98,7 @@ impl<T> OneOrMore<T> {
 
     /// Append a (possibly empty) sequence of items.
     pub fn extend<I: Iterator<Item = T>>(&mut self, items: I) {
-        self.tail.extend(items)
+        self.tail.extend(items);
     }
 
     /// Attempt to convert an instance of `OneOrMore<T>` from a
@@ -355,7 +355,7 @@ mod one_or_more_tests {
         assert_eq!(
             OneOrMore::with_tail(1, vec![2]).map(|x| -x),
             OneOrMore::with_tail(-1, vec![-2])
-        )
+        );
     }
 
     #[test]
@@ -363,6 +363,6 @@ mod one_or_more_tests {
         assert_eq!(
             OneOrMore::with_tail(1, vec![2]).into_map(|x| -x),
             OneOrMore::with_tail(-1, vec![-2])
-        )
+        );
     }
 }

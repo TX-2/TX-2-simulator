@@ -50,7 +50,7 @@ impl PartialEq for SymbolName {
 
 impl Hash for SymbolName {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.canonical.hash(state)
+        self.canonical.hash(state);
     }
 }
 

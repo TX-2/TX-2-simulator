@@ -510,7 +510,7 @@ fn test_empty_manuscript() {
             macros: Default::default(),
             punch: None,
         }
-    )
+    );
 }
 
 #[test]
@@ -523,7 +523,7 @@ fn test_blank_lines_manuscript() {
             macros: Default::default(),
             punch: None,
         }
-    )
+    );
 }
 
 #[test]
@@ -548,7 +548,7 @@ fn test_comments_only_manuscript() {
             macros: Default::default(),
             punch: None,
         }
-    )
+    );
 }
 
 #[test]
@@ -1093,7 +1093,7 @@ fn test_assignment_literal() {
                 span(0..(*begin + 1)),
                 LiteralValue::from((span(*begin..(*begin + 1)), Script::Normal, u36!(2))),
             )
-        )
+        );
     }
 }
 
@@ -1159,7 +1159,7 @@ fn test_assignment_subscript() {
                 LiteralValue::from((span(*val_begin..*val_end), Script::Sub, u36!(3))),
             ),
             "Incorrect parse of input {input:?}"
-        )
+        );
     }
 }
 
@@ -2143,7 +2143,7 @@ fn test_comments_without_newline_manuscript() {
             macros: Default::default(),
             punch: None,
         }
-    )
+    );
 }
 
 #[test]
@@ -2301,7 +2301,7 @@ mod comma_tests {
 
     #[test]
     fn test_instructions_with_comma_counts_len_0_with_0_instructions() {
-        assert_eq!(instructions_with_comma_counts(Vec::new()), brieflyh(vec![]))
+        assert_eq!(instructions_with_comma_counts(Vec::new()), brieflyh(vec![]));
     }
 
     #[test]

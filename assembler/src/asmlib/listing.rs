@@ -19,11 +19,11 @@ impl Listing {
     }
 
     pub(super) fn push_line(&mut self, line: ListingLine) {
-        self.output.push(line)
+        self.output.push(line);
     }
 
     pub(super) fn push_rc_line(&mut self, line: ListingLine) {
-        self.rc_block.push(line)
+        self.rc_block.push(line);
     }
 
     fn format_symbol_table(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

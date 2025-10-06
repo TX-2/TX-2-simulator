@@ -240,11 +240,11 @@ impl Binary {
     }
 
     fn set_entry_point(&mut self, address: Address) {
-        self.entry_point = Some(address)
+        self.entry_point = Some(address);
     }
 
     pub fn add_chunk(&mut self, chunk: BinaryChunk) {
-        self.chunks.push(chunk)
+        self.chunks.push(chunk);
     }
 
     fn chunks(&self) -> &[BinaryChunk] {

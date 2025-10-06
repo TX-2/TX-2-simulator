@@ -1,6 +1,19 @@
 #![deny(unreachable_pub)]
 #![deny(unsafe_code)]
 #![warn(clippy::must_use_candidate)]
+#![warn(clippy::manual_string_new)]
+//#![warn(clippy::clone_on_ref_ptr)]
+//#![warn(clippy::unreadable_literal)]
+#![warn(clippy::semicolon_if_nothing_returned)]
+//#![warn(clippy::return_self_not_must_use)]
+//#![warn(clippy::match_same_arms)]
+//#![warn(clippy::missing_errors_doc)]
+//#![warn(clippy::items_after_statements)]
+//#![warn(clippy::manual_string_new)]
+//#![warn(clippy::wildcard_imports)]
+//#![warn(clippy::explicit_iter_loop)]
+//#![warn(clippy::bool_to_int_with_if)]
+//#![warn(clippy::must_use_candidate)]
 
 mod ast;
 mod collections;

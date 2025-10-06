@@ -96,7 +96,7 @@ impl<'src> State<'src> {
 
     pub(crate) fn define_macro(&mut self, definition: MacroDefinition) {
         // TODO: provide a diagnostic when a macro is redefined.
-        self.macros.insert(definition.name.clone(), definition)
+        self.macros.insert(definition.name.clone(), definition);
     }
 
     pub(crate) fn get_macro_definition(&self, name: &SymbolName) -> Option<&MacroDefinition> {
@@ -125,6 +125,6 @@ impl<'src, I: Input<'src>> Inspector<'src, I> for State<'src> {
         &mut self,
         marker: &chumsky::input::Checkpoint<'src, 'parse, I, Self::Checkpoint>,
     ) {
-        self.macros.truncate(*marker.inspector())
+        self.macros.truncate(*marker.inspector());
     }
 }

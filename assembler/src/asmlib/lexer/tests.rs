@@ -879,7 +879,7 @@ fn test_pipe() {
             Token::SymexSyllable(Script::Normal, "START".to_string()),
             Token::Pipe(Script::Normal),
         ])
-    )
+    );
 }
 
 #[test]
@@ -1747,7 +1747,7 @@ fn merge_makes_bit_selector() {
             Token::BitPosition(Script::Sub, "4".to_string(), "1".to_string()),
             0..23
         )
-    )
+    );
 }
 
 #[test]
@@ -1760,7 +1760,7 @@ fn merge_another_dot_onto_bit_selector() {
     assert_eq!(
         merge_tokens((left, 0..23), (right, 23..32)),
         TokenMergeResult::Merged(Token::SymexSyllable(Script::Sub, "4·1·".to_string()), 0..32)
-    )
+    );
 }
 
 #[test]
@@ -1773,5 +1773,5 @@ fn merge_letter_onto_bit_selector() {
     assert_eq!(
         merge_tokens((left, 0..23), (right, 23..30)),
         TokenMergeResult::Merged(Token::SymexSyllable(Script::Sub, "4·1C".to_string()), 0..30)
-    )
+    );
 }
