@@ -601,7 +601,7 @@ fn assemble_pass3(
                 address: directive_block.location,
                 words,
             });
-        };
+        }
     }
 
     // If the RC-word block is non-empty, emit it.

@@ -36,8 +36,6 @@
 #![allow(clippy::map_unwrap_or)] // fix soon
 #![allow(clippy::trivially_copy_pass_by_ref)] // fix soon
 #![allow(clippy::unnecessary_wraps)] // fix soon
-#![allow(clippy::unnecessary_semicolon)] // fix soon
-#![warn(clippy::single_match_else)] // fix soon
 
 mod ast;
 mod collections;
