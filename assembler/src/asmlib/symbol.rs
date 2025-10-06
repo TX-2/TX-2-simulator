@@ -455,7 +455,7 @@ fn test_origin_cannot_be_used_as_an_index_value() {
     let expected_msg = "symbols (in this case BEGIN) cannot be used as an index value (though using it as a configuration value would also be incorrect)";
     let mut fwd = make_origin_context();
     match fwd.merge(&name, make_index_context()) {
-        Ok(_) => {
+        Ok(()) => {
             panic!(
                 "failed to detect incompatibility in the use of a symbol as both origin and index"
             );
@@ -467,7 +467,7 @@ fn test_origin_cannot_be_used_as_an_index_value() {
 
     let mut rev = make_index_context();
     match rev.merge(&name, make_origin_context()) {
-        Ok(_) => {
+        Ok(()) => {
             panic!(
                 "failed to detect incompatibility in the use of a symbol as both origin and index"
             );
@@ -503,7 +503,7 @@ fn test_origin_cannot_be_used_as_a_configuration_value() {
     let expected_msg = "symbols (in this case BEGIN) cannot be used as a configuration value (though using it as an index value would also be incorrect)";
     let mut fwd = make_origin_context();
     match fwd.merge(&name, make_configuration_context()) {
-        Ok(_) => {
+        Ok(()) => {
             panic!(
                 "failed to detect incompatibility in the use of a symbol as both origin and index"
             );
@@ -515,7 +515,7 @@ fn test_origin_cannot_be_used_as_a_configuration_value() {
 
     let mut rev = make_configuration_context();
     match rev.merge(&name, make_origin_context()) {
-        Ok(_) => {
+        Ok(()) => {
             panic!(
                 "failed to detect incompatibility in the use of a symbol as both origin and configuration value"
             );

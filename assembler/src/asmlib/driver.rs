@@ -289,7 +289,7 @@ fn initial_symbol_table<'a>(
         match r {
             Ok((symbol, span, definition)) => {
                 match explicit_symbols.define(symbol.clone(), definition.clone()) {
-                    Ok(_) => (),
+                    Ok(()) => (),
                     Err(e) => {
                         errors.push(Rich::custom(
                             span,
