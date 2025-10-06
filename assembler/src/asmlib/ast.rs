@@ -257,7 +257,7 @@ pub(crate) struct ArithmeticExpression {
 impl std::fmt::Display for ArithmeticExpression {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.first)?;
-        for (op, atom) in self.tail.iter() {
+        for (op, atom) in &self.tail {
             write!(f, "{op}{atom}")?;
         }
         Ok(())
@@ -388,7 +388,7 @@ impl ArithmeticExpression {
             None => None,
             Some(first) => {
                 let mut tail: Vec<(Operator, SignedAtom)> = Vec::with_capacity(self.tail.len());
-                for (op, atom) in self.tail.iter() {
+                for (op, atom) in &self.tail {
                     match atom.substitute_macro_parameters(param_values, on_missing, macros) {
                         Some(atom) => {
                             tail.push((*op, atom));
@@ -411,7 +411,7 @@ impl ArithmeticExpression {
     ) -> Result<(), RcWordAllocationFailure> {
         self.first
             .allocate_rc_words(explicit_symtab, implicit_symtab, rc_allocator)?;
-        for (_op, atom) in self.tail.iter_mut() {
+        for (_op, atom) in &mut self.tail {
             atom.allocate_rc_words(explicit_symtab, implicit_symtab, rc_allocator)?;
         }
         Ok(())
@@ -726,7 +726,7 @@ impl RegisterContaining {
         match self {
             RegisterContaining::Unallocated(mut tpibox) => {
                 let address: Address = rc_allocator.allocate(source, Unsigned36Bit::ZERO)?;
-                for tag in tpibox.tags.iter() {
+                for tag in &tpibox.tags {
                     eprintln!(
                         "assigning RC-word at address {address} serves as defnition of tag {}",
                         &tag.name
@@ -1806,7 +1806,7 @@ impl InstructionSequence {
         implicit_symtab: &mut ImplicitSymbolTable,
         rc_allocator: &mut R,
     ) -> Result<(), RcWordAllocationFailure> {
-        for ref mut statement in self.instructions.iter_mut() {
+        for ref mut statement in &mut self.instructions {
             statement.allocate_rc_words(explicit_symtab, implicit_symtab, rc_allocator)?;
         }
         Ok(())
@@ -1856,7 +1856,7 @@ impl InstructionSequence {
                 .and_then(|offset| offset.checked_add(start_offset))
                 .expect("assembled code block should fit within physical memory");
             let address: Address = location.index_by(offset);
-            for tag in instruction.tags.iter() {
+            for tag in &instruction.tags {
                 final_symbols.define(
                     tag.name.clone(),
                     FinalSymbolType::Tag,

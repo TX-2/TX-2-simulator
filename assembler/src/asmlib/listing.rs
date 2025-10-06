@@ -102,13 +102,13 @@ impl Display for ListingWithBody<'_, '_> {
         writeln!(f)?;
 
         writeln!(f, "Directive:")?;
-        for line in self.listing.output.iter() {
+        for line in &self.listing.output {
             write_listing_line(f, self.body, line)?;
         }
 
         if !self.listing.rc_block.is_empty() {
             writeln!(f, "☛☛RC")?;
-            for line in self.listing.rc_block.iter() {
+            for line in &self.listing.rc_block {
                 write_listing_line(f, self.body, line)?;
             }
         }

@@ -440,7 +440,7 @@ pub(super) fn assign_default_rc_word_tags<R: RcAllocator>(
     rcblock: &mut R,
     final_symbols: &mut FinalSymbolTable,
 ) -> Result<(), RcWordAllocationFailure> {
-    for (name, def) in implicit_symtab.definitions.iter_mut() {
+    for (name, def) in &mut implicit_symtab.definitions {
         if let ImplicitDefinition::Undefined(context) = def
             && context.requires_rc_word_allocation()
         {

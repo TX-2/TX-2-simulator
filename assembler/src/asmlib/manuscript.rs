@@ -385,7 +385,7 @@ impl ManuscriptBlock {
         block_identifier: BlockIdentifier,
     ) -> Result<(), OneOrMore<SymbolTableBuildFailure>> {
         let mut errors: Vec<SymbolTableBuildFailure> = Vec::new();
-        for seq in self.sequences.iter_mut() {
+        for seq in &mut self.sequences {
             if let Some(local_symbols) = seq.local_symbols.as_mut() {
                 match build_local_symbol_table(block_identifier, seq.instructions.iter()) {
                     Ok(more_symbols) => match local_symbols.merge(more_symbols) {
@@ -512,7 +512,7 @@ impl MacroDefinition {
     ) -> InstructionSequence {
         let mut local_symbols = ExplicitSymbolTable::default();
         let mut instructions: Vec<TaggedProgramInstruction> = Vec::with_capacity(self.body.len());
-        for body_line in self.body.iter() {
+        for body_line in &self.body {
             match body_line {
                 MacroBodyLine::Expansion(_macro_invocation) => {
                     unimplemented!("recursive macros are not yet supported")

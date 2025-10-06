@@ -189,7 +189,7 @@ impl Display for ProgramError {
                 )?;
                 if !tail.is_empty() {
                     write!(f, ": {head}")?;
-                    for name in tail.iter() {
+                    for name in tail {
                         write!(f, "->{name}")?;
                     }
                 }

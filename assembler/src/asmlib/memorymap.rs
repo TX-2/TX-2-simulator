@@ -182,7 +182,7 @@ impl LocatedBlock {
         implicit_symtab: &mut ImplicitSymbolTable,
         rc_allocator: &mut R,
     ) -> Result<(), RcWordAllocationFailure> {
-        for seq in self.sequences.iter_mut() {
+        for seq in &mut self.sequences {
             seq.allocate_rc_words(explicit_symtab, implicit_symtab, rc_allocator)?;
         }
         Ok(())
@@ -208,7 +208,7 @@ impl LocatedBlock {
             .map(|seq| usize::from(seq.emitted_word_count()))
             .sum();
         let mut result: Vec<Unsigned36Bit> = Vec::with_capacity(word_count);
-        for seq in self.sequences.iter() {
+        for seq in &self.sequences {
             let current_block_len: Unsigned18Bit = result
                 .len()
                 .try_into()

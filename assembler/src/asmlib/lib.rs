@@ -10,8 +10,8 @@
 #![warn(clippy::match_same_arms)]
 #![warn(clippy::missing_errors_doc)]
 #![warn(clippy::items_after_statements)]
+#![warn(clippy::explicit_iter_loop)]
 //#![warn(clippy::unreadable_literal)]
-//#![warn(clippy::explicit_iter_loop)]
 
 mod ast;
 mod collections;

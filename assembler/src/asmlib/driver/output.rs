@@ -111,7 +111,7 @@ fn create_tape_block(
     block.push(join_halves(encoded_len, end));
     block.extend(code);
 
-    for w in block.iter() {
+    for w in &block {
         checksum = update_checksum(checksum, *w);
     }
     let next: Unsigned18Bit = { if last { 0o27_u8 } else { 0o3_u8 }.into() };
@@ -205,7 +205,7 @@ pub fn write_user_program<W: Write>(
     // with the beginnng of the tape file) so we don't need to
     // write it.
     write_data(writer, output_file_name, &reader_leader())?;
-    for chunk in binary.chunks().iter() {
+    for chunk in binary.chunks() {
         if chunk.is_empty() {
             event!(
                 Level::ERROR,

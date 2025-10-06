@@ -33,7 +33,7 @@ fn assemble_check_symbols(
     let (_directive, mut explicit_symbols, mut implicit_symbols, mut memory_map, _) =
         assemble_nonempty_valid_input(input);
 
-    for (name, expected_value) in expected.iter() {
+    for (name, expected_value) in expected {
         use crate::eval::ScopeIdentifier;
 
         let sym = SymbolName {
