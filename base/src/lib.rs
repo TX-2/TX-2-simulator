@@ -20,6 +20,7 @@
 #![warn(clippy::semicolon_if_nothing_returned)]
 #![warn(clippy::return_self_not_must_use)]
 #![warn(clippy::match_same_arms)]
+#![warn(clippy::missing_errors_doc)]
 #![warn(clippy::items_after_statements)]
 #![allow(clippy::cast_possible_wrap)]
 #![allow(clippy::cast_sign_loss)]
@@ -28,6 +29,7 @@
 #![allow(clippy::missing_panics_doc)] // fix these later
 #![allow(clippy::unnecessary_wraps)] // fix these later
 #![allow(clippy::explicit_deref_methods)] // fix these later
+#![allow(clippy::too_many_lines)] // fix these later
 
 pub mod bitselect;
 pub mod charset;

@@ -79,6 +79,13 @@ where
             .map(|rd| rd.inner)
     }
 
+    /// Update the priority of a item (identified by `key`) in the
+    /// priority queue.
+    ///
+    /// # Errors
+    ///
+    /// Err(KeyedReversePriorityQueue) is returned when the indicated
+    /// key is not present.
     pub fn set_priority(
         &mut self,
         key: &K,

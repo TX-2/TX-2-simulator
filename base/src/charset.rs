@@ -595,6 +595,15 @@ pub enum LincolnToUnicodeStrictConversionFailure {
 /// Convert a stream of Lincoln Writer codes to a Unicode string.
 /// Lincoln Writer codes are 6 bits, and these are assumed to be in
 /// the lower 6 bits of the input values.
+///
+/// # Errors
+///
+/// If an input character is printable on the Lincoln Writer
+/// (i.e. would make a mark on the paper) but has no Unicode
+/// representation (e.g. because the LW is in superscript mode and
+/// there is no Unicode superscript character to represent the
+/// incoming LW character) then
+/// `Err(LincolnToUnicodeStrictConversionFailure)` is returned.
 pub fn lincoln_to_unicode_strict(
     input: &[Unsigned6Bit],
 ) -> Result<String, LincolnToUnicodeStrictConversionFailure> {
@@ -706,6 +715,13 @@ impl UnicodeToLincolnMapping {
         UnicodeToLincolnMapping { m }
     }
 
+    /// Convert a Unicode string to a sequence of Lincoln Writer codes.
+    ///
+    /// # Errors
+    ///
+    /// `Err(UnicodeToLincolnconversionfailure)` is returned when one
+    /// of the Unicode characters in the input cannot be converted to
+    /// a Lincoln Writer code.
     pub fn to_lincoln(
         &self,
         s: &str,

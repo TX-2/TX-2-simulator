@@ -692,10 +692,15 @@ impl TryFrom<&Instruction> for SymbolicInstruction {
     }
 }
 
-// disassemble_word is intended to be used in the emulator's UI to
-// show what the program counter is pointing at, and to show the next
-// instruction to be emulated etc.  Since this is not yet implemented,
-// right now the only callers are unit tests.
+/// `disassemble_word` is intended to be used in the emulator's UI to
+/// show what the program counter is pointing at, and to show the next
+/// instruction to be emulated etc.  Since this is not yet implemented,
+/// right now the only callers are unit tests.
+///
+/// # Errors
+///
+/// `DisassemblyFailure` indicates that the word is not a valid
+/// instruction (for example because it contains an invalid opcode).
 #[cfg(test)]
 pub fn disassemble_word(w: Unsigned36Bit) -> Result<SymbolicInstruction, DisassemblyFailure> {
     let inst: Instruction = Instruction(w);
