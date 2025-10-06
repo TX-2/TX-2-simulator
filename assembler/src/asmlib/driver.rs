@@ -197,6 +197,7 @@ pub struct BinaryChunk {
 }
 
 impl BinaryChunk {
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.words.is_empty()
     }

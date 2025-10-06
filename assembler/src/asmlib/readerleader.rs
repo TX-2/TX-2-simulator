@@ -180,6 +180,7 @@ fn test_bit_index() {
 /// 28, when the `☛☛PUNCH` directive includes a start address.  This
 /// may in fact be the case shown in the diagram on [page
 /// 6-23](https://archive.org/details/tx-2-users-handbook-nov-63/page/n175/mode/1up).
+#[must_use]
 pub fn reader_leader() -> Vec<Unsigned36Bit> {
     ([
         // These instructions are taken from the middle column of
