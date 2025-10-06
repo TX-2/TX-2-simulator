@@ -268,9 +268,9 @@ impl Evaluate for Origin {
 /// just implementing the logic here, so we just implement it here in
 /// order to avoid the dependency.
 fn comma_transformation(
-    leading_commas: &Option<Commas>,
+    leading_commas: Option<&Commas>,
     value: Unsigned36Bit,
-    trailing_commas: &Option<Commas>,
+    trailing_commas: Option<&Commas>,
 ) -> Unsigned36Bit {
     // Re-ordering these cases to bring similar bodies togather would
     // make the code harder to read.
@@ -324,7 +324,13 @@ impl Evaluate for CommaDelimitedFragment {
                     HoldBit::Unspecified => word,
                 }
             })
-            .map(|value| comma_transformation(&self.leading_commas, value, &self.trailing_commas))
+            .map(|value| {
+                comma_transformation(
+                    self.leading_commas.as_ref(),
+                    value,
+                    self.trailing_commas.as_ref(),
+                )
+            })
     }
 }
 
@@ -399,7 +405,7 @@ mod comma_tests {
     #[test]
     fn test_comma_transformation_0_0() {
         assert_eq!(
-            comma_transformation(&None, u36!(0o444_333_222_111), &None),
+            comma_transformation(None, u36!(0o444_333_222_111), None),
             u36!(0o444_333_222_111)
         );
     }
@@ -420,9 +426,9 @@ mod comma_tests {
         // Span 15..18 is the trailing commas (or spaces).
         assert_eq!(
             comma_transformation(
-                &None,
+                None,
                 u36!(0o444_333_222_111),
-                &Some(Commas::One(span(15..16)))
+                Some(&Commas::One(span(15..16)))
             ),
             u36!(0o111_000_000_000)
         );
@@ -444,9 +450,9 @@ mod comma_tests {
         // Span 15..18 is the trailing commas (or spaces).
         assert_eq!(
             comma_transformation(
-                &None,
+                None,
                 u36!(0o444_333_222_111),
-                &Some(Commas::Two(span(15..17)))
+                Some(&Commas::Two(span(15..17)))
             ),
             u36!(0o222_111_000_000)
         );
@@ -468,9 +474,9 @@ mod comma_tests {
         // Span 15..18 is the trailing commas (or spaces).
         assert_eq!(
             comma_transformation(
-                &None,
+                None,
                 u36!(0o444_333_222_111),
-                &Some(Commas::Three(span(15..18)))
+                Some(&Commas::Three(span(15..18)))
             ),
             u36!(0o333_222_111_000)
         );
@@ -492,9 +498,9 @@ mod comma_tests {
         // Span 15..18 is the trailing commas (or spaces).
         assert_eq!(
             comma_transformation(
-                &Some(Commas::One(span(2..3))),
+                Some(&Commas::One(span(2..3))),
                 u36!(0o444_333_222_111),
-                &None,
+                None,
             ),
             u36!(0o000_000_000_111)
         );
@@ -516,9 +522,9 @@ mod comma_tests {
         // Span 15..18 is the trailing commas (or spaces).
         assert_eq!(
             comma_transformation(
-                &Some(Commas::One(span(2..3))),
+                Some(&Commas::One(span(2..3))),
                 u36!(0o444_333_222_111),
-                &Some(Commas::One(span(15..16))),
+                Some(&Commas::One(span(15..16))),
             ),
             u36!(0o000_222_111_000)
         );
@@ -540,9 +546,9 @@ mod comma_tests {
         // Span 15..18 is the trailing commas (or spaces).
         assert_eq!(
             comma_transformation(
-                &Some(Commas::One(span(2..3))),
+                Some(&Commas::One(span(2..3))),
                 u36!(0o444_333_222_111),
-                &Some(Commas::Two(span(15..17))),
+                Some(&Commas::Two(span(15..17))),
             ),
             u36!(0o000_111_000_000)
         );
@@ -564,9 +570,9 @@ mod comma_tests {
         // Span 15..18 is the trailing commas (or spaces).
         assert_eq!(
             comma_transformation(
-                &Some(Commas::One(span(2..3))),
+                Some(&Commas::One(span(2..3))),
                 u36!(0o444_333_222_111),
-                &Some(Commas::Three(span(15..18))),
+                Some(&Commas::Three(span(15..18))),
             ),
             u36!(0o444_333_222_000)
         );
@@ -588,9 +594,9 @@ mod comma_tests {
         // Span 15..18 is the trailing commas (or spaces).
         assert_eq!(
             comma_transformation(
-                &Some(Commas::Two(span(1..3))),
+                Some(&Commas::Two(span(1..3))),
                 u36!(0o444_333_222_111),
-                &None,
+                None,
             ),
             u36!(0o000_000_222_111)
         );
@@ -612,9 +618,9 @@ mod comma_tests {
         // Span 15..18 is the trailing commas (or spaces).
         assert_eq!(
             comma_transformation(
-                &Some(Commas::Two(span(1..3))),
+                Some(&Commas::Two(span(1..3))),
                 u36!(0o444_333_222_111),
-                &Some(Commas::One(span(15..16))),
+                Some(&Commas::One(span(15..16))),
             ),
             u36!(0o000_000_111_000)
         );
@@ -636,9 +642,9 @@ mod comma_tests {
         // Span 15..18 is the trailing commas (or spaces).
         assert_eq!(
             comma_transformation(
-                &Some(Commas::Two(span(1..3))),
+                Some(&Commas::Two(span(1..3))),
                 u36!(0o444_333_222_111),
-                &Some(Commas::Two(span(15..17))),
+                Some(&Commas::Two(span(15..17))),
             ),
             u36!(0o222_111_444_333)
         );
@@ -660,9 +666,9 @@ mod comma_tests {
         // Span 15..18 is the trailing commas (or spaces).
         assert_eq!(
             comma_transformation(
-                &Some(Commas::Two(span(1..3))),
+                Some(&Commas::Two(span(1..3))),
                 u36!(0o444_333_222_111),
-                &Some(Commas::Three(span(15..18))),
+                Some(&Commas::Three(span(15..18))),
             ),
             u36!(0o000_000_444_333)
         );
@@ -684,9 +690,9 @@ mod comma_tests {
         // Span 15..18 is the trailing commas (or spaces).
         assert_eq!(
             comma_transformation(
-                &Some(Commas::Three(span(0..3))),
+                Some(&Commas::Three(span(0..3))),
                 u36!(0o444_333_222_111),
-                &None,
+                None,
             ),
             u36!(0o000_000_000_111)
         );
@@ -708,9 +714,9 @@ mod comma_tests {
         // Span 15..18 is the trailing commas (or spaces).
         assert_eq!(
             comma_transformation(
-                &Some(Commas::Three(span(0..3))),
+                Some(&Commas::Three(span(0..3))),
                 u36!(0o444_333_222_111),
-                &Some(Commas::One(span(15..16))),
+                Some(&Commas::One(span(15..16))),
             ),
             u36!(0o000_000_000_444)
         );
@@ -732,9 +738,9 @@ mod comma_tests {
         // Span 15..18 is the trailing commas (or spaces).
         assert_eq!(
             comma_transformation(
-                &Some(Commas::Three(span(0..3))),
+                Some(&Commas::Three(span(0..3))),
                 u36!(0o444_333_222_111),
-                &Some(Commas::Two(span(15..17))),
+                Some(&Commas::Two(span(15..17))),
             ),
             u36!(0o000_444_000_000)
         );
@@ -756,9 +762,9 @@ mod comma_tests {
         // Span 15..18 is the trailing commas (or spaces).
         assert_eq!(
             comma_transformation(
-                &Some(Commas::Three(span(0..3))),
+                Some(&Commas::Three(span(0..3))),
                 u36!(0o444_333_222_111),
-                &Some(Commas::Three(span(15..18))),
+                Some(&Commas::Three(span(15..18))),
             ),
             u36!(0o000_000_444_333)
         );
