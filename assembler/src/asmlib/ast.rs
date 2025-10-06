@@ -291,8 +291,7 @@ impl Spanned for ArithmeticExpression {
         let end = self
             .tail
             .last()
-            .map(|(_op, atom)| atom.span().end)
-            .unwrap_or(self.first.span().end);
+            .map_or(self.first.span().end, |(_op, atom)| atom.span().end);
         span(start..end)
     }
 }
