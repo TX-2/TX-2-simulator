@@ -195,6 +195,6 @@ fn missing_superscript() {
 fn no_mapping() {
     assert_eq!(
         lincoln_to_unicode_strict(&[u6!(0o14)]), // "READ IN"
-        Ok("".to_string()),
+        Ok(String::new())
     );
 }

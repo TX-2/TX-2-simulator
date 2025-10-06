@@ -22,6 +22,7 @@
 #![warn(clippy::match_same_arms)]
 #![warn(clippy::missing_errors_doc)]
 #![warn(clippy::items_after_statements)]
+#![warn(clippy::manual_string_new)]
 #![allow(clippy::cast_possible_wrap)]
 #![allow(clippy::cast_sign_loss)]
 #![allow(clippy::needless_continue)] // fix these later
