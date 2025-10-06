@@ -116,7 +116,7 @@ mod tests {
         assert_eq!(
             quarters(Unsigned36Bit::try_from(0o123_456_525_252_u64).unwrap()),
             [q(0o123), q(0o456), q(0o525), q(0o252)]
-        )
+        );
     }
 
     #[proptest]

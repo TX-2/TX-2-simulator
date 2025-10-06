@@ -280,7 +280,7 @@ fn all_bit_selectors() -> Vec<BitSelector> {
             BitPos::B8,
             BitPos::B9,
         ] {
-            result.push(BitSelector { quarter, bitpos })
+            result.push(BitSelector { quarter, bitpos });
         }
     }
     result

@@ -314,7 +314,7 @@ impl Hash for Address {
     where
         H: Hasher,
     {
-        self.0.hash(h)
+        self.0.hash(h);
     }
 }
 

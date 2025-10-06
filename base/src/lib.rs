@@ -16,6 +16,7 @@
 #![warn(clippy::clone_on_ref_ptr)]
 #![warn(clippy::cloned_instead_of_copied)]
 #![warn(clippy::unreadable_literal)]
+#![warn(clippy::semicolon_if_nothing_returned)]
 #![allow(clippy::cast_possible_wrap)]
 #![allow(clippy::cast_sign_loss)]
 #![allow(clippy::needless_continue)] // fix these later
