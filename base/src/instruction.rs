@@ -450,6 +450,7 @@ impl TryFrom<u8> for Opcode {
     type Error = DisassemblyFailure;
     fn try_from(opcode: u8) -> Result<Opcode, DisassemblyFailure> {
         use Opcode::*;
+        #[allow(clippy::match_same_arms)] // numerical order
         match opcode {
             // TODO: change these opcode values to octal.
             0 | 1 => Err(DisassemblyFailure::InvalidOpcode(opcode)),

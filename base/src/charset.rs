@@ -425,6 +425,10 @@ pub fn lincoln_char_to_described_char(
     lincoln_writer_state_update(lin_ch, state);
     let advance: bool = lin_ch != 0o12 && lin_ch != 0o13;
     let by_case = |lower, upper: char| -> Option<char> { Some(bycase(lower, upper, *state)) };
+
+    // It's more important for the cases to be in numerical order than
+    // it is to avoid identical bodies.
+    #[allow(clippy::match_same_arms)]
     let base_char: Option<char> = match u8::from(lin_ch) {
         0o00 => by_case('0', '☛'), // \U261B, black hand pointing right
         0o01 => by_case('1', 'Σ'), // \U03A3, Greek capital letter Sigma
@@ -547,8 +551,11 @@ pub fn lincoln_char_to_described_char(
         // Non-carriage-advancing characters don't strictly match the
         // key label, because we represent them as combining
         // characters and so there's a space in the key label too.
-        let label_matches_unicode = advance
-            && match display {
+        let label_matches_unicode = if advance {
+            true
+        } else {
+            #[allow(clippy::match_same_arms)]
+            match display {
                 None => false,
                 Some(' ') => {
                     // Here the mapping is to ' ' but in the keyboard
@@ -565,7 +572,8 @@ pub fn lincoln_char_to_described_char(
                     false
                 }
                 Some(_) => true,
-            };
+            }
+        };
         Some(DescribedChar {
             base_char: LincolnChar::UnicodeBaseChar(base),
             unicode_representation: display,
