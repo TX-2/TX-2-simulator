@@ -4,7 +4,7 @@ use chumsky::input::ValueInput;
 use chumsky::prelude::*;
 
 use super::super::lexer::{DOT_CHAR, DOT_STR};
-use super::super::span::*;
+use super::super::span::Span;
 use super::super::symbol::SymbolName;
 use super::helpers::{self};
 use super::{ExtraWithoutContext, Tok, opcode_code};

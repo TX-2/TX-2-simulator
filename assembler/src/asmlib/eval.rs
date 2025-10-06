@@ -12,13 +12,15 @@ use base::{
 #[cfg(test)]
 use base::{u18, u36};
 
-use super::ast::*;
+use super::ast::{Equality, Origin, RcUpdater};
 use super::collections::OneOrMore;
 use super::memorymap::{
     BlockPosition, MemoryMap, RcAllocator, RcWordAllocationFailure, RcWordSource,
 };
 use super::source::Source;
-use super::span::*;
+#[cfg(test)]
+use super::span::{OrderableSpan, span};
+use super::span::{Span, Spanned};
 #[cfg(test)]
 use super::symbol::AddressUse;
 use super::symbol::{ConfigUse, IndexUse, OriginUse, SymbolName};

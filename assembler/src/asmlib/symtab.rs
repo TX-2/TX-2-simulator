@@ -9,7 +9,7 @@ use super::collections::OneOrMore;
 use super::eval::EvaluationFailure;
 use super::memorymap::{RcAllocator, RcWordAllocationFailure, RcWordKind, RcWordSource};
 use super::source::Source;
-use super::span::*;
+use super::span::{Span, Spanned};
 use super::symbol::{InconsistentSymbolUse, SymbolContext, SymbolName};
 use super::types::{AssemblerFailure, BlockIdentifier, ProgramError};
 

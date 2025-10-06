@@ -24,14 +24,19 @@ use chumsky::select;
 
 use crate::collections::OneOrMore;
 
-use super::ast::*;
+use super::ast::{
+    ArithmeticExpression, Atom, CommaDelimitedFragment, Commas, CommasOrInstruction, ConfigValue,
+    Equality, EqualityValue, FragmentWithHold, HoldBit, InstructionFragment, LiteralValue,
+    Operator, Origin, RegisterContaining, RegistersContaining, SignedAtom, SpannedSymbolOrLiteral,
+    SymbolOrLiteral, Tag, TaggedProgramInstruction, UntaggedProgramInstruction,
+};
 use super::lexer::{self};
 use super::manuscript::{
     MacroBodyLine, MacroDefinition, MacroDummyParameters, MacroInvocation, MacroParameter,
     MacroParameterBindings, MacroParameterValue, ManuscriptLine, ManuscriptMetaCommand, SourceFile,
     manuscript_lines_to_source_file,
 };
-use super::span::*;
+use super::span::{Span, Spanned, span};
 use super::state::{NumeralMode, State};
 use super::symbol::SymbolName;
 use base::charset::Script;

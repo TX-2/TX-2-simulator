@@ -3,7 +3,7 @@ use std::num::IntErrorKind;
 
 use base::prelude::*;
 
-use super::super::{ast::*, manuscript::PunchCommand, state::NumeralMode};
+use super::super::{ast::LiteralValue, manuscript::PunchCommand, state::NumeralMode};
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub(crate) enum Sign {

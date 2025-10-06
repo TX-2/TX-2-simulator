@@ -6,8 +6,12 @@ use std::ops::Range;
 
 use chumsky::Parser;
 
+#[cfg(test)]
+use super::super::ast::InstructionSequence;
+use super::super::ast::{
+    Atom, HoldBit, InstructionFragment, LiteralValue, Origin, TaggedProgramInstruction,
+};
 use super::super::{
-    ast::{Atom, HoldBit, InstructionFragment, LiteralValue, Origin, TaggedProgramInstruction},
     eval::ScopeIdentifier,
     eval::{Evaluate, EvaluationContext, HereValue, make_empty_rc_block_for_test},
     lexer::Token,
@@ -2719,8 +2723,9 @@ fn test_make_bit_designator_literal() {
 }
 
 mod macro_tests {
+    use super::super::super::ast::InstructionSequence;
+    use super::super::super::ast::{Atom, HoldBit, InstructionFragment, TaggedProgramInstruction};
     use super::super::super::{
-        ast::{Atom, HoldBit, InstructionFragment, TaggedProgramInstruction},
         lexer::Token,
         manuscript::ManuscriptBlock,
         symbol::SymbolName,

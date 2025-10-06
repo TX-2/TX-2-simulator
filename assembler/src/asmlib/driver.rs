@@ -12,7 +12,12 @@ use std::path::{Path, PathBuf};
 use chumsky::error::Rich;
 use tracing::{Level, event, span};
 
-use super::ast::*;
+#[cfg(test)]
+use super::ast::{
+    ArithmeticExpression, Atom, CommaDelimitedFragment, HoldBit, InstructionFragment,
+    InstructionSequence, LiteralValue, TaggedProgramInstruction, UntaggedProgramInstruction,
+};
+use super::ast::{Origin, RcUpdater};
 use super::collections::OneOrMore;
 use super::directive::Directive;
 use super::eval::Evaluate;
@@ -20,7 +25,7 @@ use super::eval::HereValue;
 use super::eval::ScopeIdentifier;
 use super::eval::{EvaluationContext, RcBlock, extract_final_equalities};
 use super::lexer;
-use super::listing::*;
+use super::listing::{Listing, ListingLine, ListingWithBody};
 #[cfg(test)]
 use super::manuscript::ManuscriptBlock;
 #[cfg(test)]
@@ -32,14 +37,16 @@ use super::memorymap::{
 use super::parser::parse_source_file;
 use super::source::Source;
 use super::source::{LineAndColumn, WithLocation};
-use super::span::*;
+#[cfg(test)]
+use super::span::span;
+use super::span::{Span, Spanned};
 use super::state::{NumeralMode, State};
 use super::symbol::SymbolName;
 use super::symtab::{
     ExplicitSymbolTable, FinalSymbolDefinition, FinalSymbolTable, FinalSymbolType,
     ImplicitSymbolTable, IndexRegisterAssigner, assign_default_rc_word_tags,
 };
-use super::types::*;
+use super::types::{AssemblerFailure, IoAction, IoFailed, IoTarget, ProgramError};
 use base::prelude::{Address, IndexBy, Unsigned18Bit, Unsigned36Bit};
 use base::subword;
 pub use output::write_user_program;

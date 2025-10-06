@@ -1,5 +1,11 @@
 use super::super::eval::{Evaluate, ScopeIdentifier};
-use super::*;
+use super::{
+    Address, ArithmeticExpression, Atom, CommaDelimitedFragment, Commas, ConfigValue, DEFER_BIT,
+    EqualityValue, EvaluationContext, EvaluationFailure, HereValue, HoldBit, InstructionFragment,
+    LiteralValue, Origin, RcUpdater, RegisterContaining, RegistersContaining, Script, Shl, Shr,
+    Signed36Bit, SignedAtom, SymbolOrLiteral, TaggedProgramInstruction, Unsigned36Bit,
+    UntaggedProgramInstruction, evaluate_symbol, fold_step, u36,
+};
 
 impl Evaluate for LiteralValue {
     fn evaluate<R: RcUpdater>(
@@ -379,6 +385,7 @@ impl Evaluate for TaggedProgramInstruction {
 
 #[cfg(test)]
 mod comma_tests {
+    use super::super::span;
     use super::comma_transformation;
     use super::*;
     use base::u36;

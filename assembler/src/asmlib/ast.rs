@@ -37,14 +37,14 @@ use super::memorymap::RcAllocator;
 use super::memorymap::RcWordAllocationFailure;
 use super::memorymap::{RcWordKind, RcWordSource};
 use super::source::Source;
-use super::span::*;
+use super::span::{Span, Spanned, span};
 use super::symbol::{InconsistentSymbolUse, SymbolContext, SymbolName};
 use super::symtab::{
     BadSymbolDefinition, ExplicitDefinition, ExplicitSymbolTable, FinalSymbolDefinition,
     FinalSymbolTable, FinalSymbolType, ImplicitSymbolTable, IndexRegisterAssigner, TagDefinition,
     record_undefined_symbol_or_return_failure,
 };
-use super::types::*;
+use super::types::{AssemblerFailure, BlockIdentifier, ProgramError};
 mod asteval;
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
