@@ -978,15 +978,12 @@ impl<'a> Lexer<'a> {
     fn get_next(&mut self) -> Option<Token> {
         use lower::Lexeme;
         if let Some(upper_lexer) = self.upper.as_mut() {
-            match upper_lexer.get_next_spanned_token() {
-                Some((r, span)) => {
-                    self.upper_span = Some(span);
-                    return Some(r);
-                }
-                None => {
-                    // We have no more input from the upper lexer,
-                    // fetch more from the lower one.
-                }
+            if let Some((r, span)) = upper_lexer.get_next_spanned_token() {
+                self.upper_span = Some(span);
+                return Some(r);
+            } else {
+                // We have no more input from the upper lexer,
+                // fetch more from the lower one.
             }
         }
 

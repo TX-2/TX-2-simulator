@@ -705,18 +705,15 @@ pub(crate) fn assemble_source(
             panic!("assembly pass1 generated no errors, a directive should have been returned");
         }
         AssemblerPass1Or2Output::Success(errors, output_options, p2output) => {
-            match OneOrMore::try_from_vec(errors) {
-                Ok(errors) => {
-                    return Err(AssemblerFailure::BadProgram(fail_with_diagnostics(
-                        &source_file_body,
-                        errors,
-                    )));
-                }
-                Err(_) => {
-                    // No errors.
-                    options = options.merge(output_options);
-                    p2output
-                }
+            if let Ok(errors) = OneOrMore::try_from_vec(errors) {
+                return Err(AssemblerFailure::BadProgram(fail_with_diagnostics(
+                    &source_file_body,
+                    errors,
+                )));
+            } else {
+                // No errors.
+                options = options.merge(output_options);
+                p2output
             }
         }
     };
