@@ -65,6 +65,9 @@ pub fn unsplay(source: Unsigned36Bit) -> [Unsigned6Bit; 6] {
         b4: Unsigned36Bit,
         b5: Unsigned36Bit,
     ) -> Unsigned6Bit {
+        // We want to treat the b0 case (i.e. 1) consistently with the
+        // others, so we turn off the bool_to_int_with_if lint here.
+        #[allow(clippy::bool_to_int_with_if)]
         let result: u8 = (if b0 == 0 { 0 } else { 0o01 })
             | (if b1 == 0 { 0 } else { 0o02 })
             | (if b2 == 0 { 0 } else { 0o04 })
