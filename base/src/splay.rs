@@ -23,7 +23,7 @@ pub fn cycle_and_splay(target: Unsigned36Bit, bits: Unsigned6Bit) -> Unsigned36B
     // bit 5 (4 counting from 0) goes to 3.7 = 1 << 24 (dec)
     // bit 6 (5 counting from 0) goes to 4.4 = 1 << 30 (dec)
     let src = u64::from(bits);
-    let lowest_bits = Unsigned36Bit::from(0o010101010101_u32);
+    let lowest_bits = Unsigned36Bit::from(0o010_101_010_101_u32);
     let newbits: u64 = (src & 1)
         | ((src & 0o2) << 5)
         | ((src & 0o4) << 10)
@@ -177,7 +177,7 @@ fn test_round_trip_selected() {
         Unsigned36Bit::from(0o77_u32),
         Unsigned36Bit::from(0o7700_u32),
         Unsigned36Bit::MAX,
-        Unsigned36Bit::from(0o23574373_u32),
+        Unsigned36Bit::from(0o23_574_373_u32),
     ] {
         if let Err(e) = round_trip(value) {
             panic!("round_trip failed for {value:012o}: {e}");

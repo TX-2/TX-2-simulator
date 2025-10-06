@@ -51,7 +51,14 @@ impl Display for NoSubscriptKnown {
 
 impl Error for NoSubscriptKnown {}
 
-pub fn subscript_char(ch: char) -> Result<char, NoSubscriptKnown> {
+/// Return the corresponding subscript representation for `ch`.
+///
+/// # Errors
+/// `NoSubscriptKnown` when no corresponding subscript is known,
+pub const fn subscript_char(ch: char) -> Result<char, NoSubscriptKnown> {
+    // The cases here are ordered so as to make it obvious when an
+    // item is missing, and so we expect that some of the failure
+    // cases will have the same bodies.
     match ch {
         '0' => Ok('\u{2080}'), // ₀
         '1' => Ok('\u{2081}'), // ₁
@@ -85,7 +92,15 @@ impl Display for NoSuperscriptKnown {
 
 impl Error for NoSuperscriptKnown {}
 
+/// Return the corresponding superscript representation for `ch`.
+///
+/// # Errors
+/// `NoSuperscriptKnown` when no corresponding superscript is known,
 pub fn superscript_char(ch: char) -> Result<char, NoSuperscriptKnown> {
+    // The cases here are ordered so as to make it obvious when an
+    // item is missing, and so we expect that some of the failure
+    // cases will have the same bodies.
+    #[allow(clippy::match_same_arms)]
     match ch {
         '0' => Ok('\u{2070}'),
         '1' => Ok('\u{00B9}'),
@@ -174,6 +189,7 @@ pub enum Script {
 }
 
 impl Script {
+    #[must_use]
     pub fn shift(&self) -> u32 {
         match self {
             Script::Super => 30, // This is a config value.
@@ -209,7 +225,7 @@ pub enum LwKeyboardCase {
 }
 
 impl LwKeyboardCase {
-    fn as_str(&self) -> &'static str {
+    fn as_str(self) -> &'static str {
         match self {
             LwKeyboardCase::Lower => "lower",
             LwKeyboardCase::Upper => "upper",
@@ -305,7 +321,7 @@ pub struct DescribedChar {
     /// or normal character, and what colour it is.
     pub base_char: LincolnChar,
     /// If the character has a direct Unicode translation, that is in
-    /// unicode_representation.  Some characters, for example
+    /// `unicode_representation`.  Some characters, for example
     /// superscript Y, have no Unicode representation.
     pub unicode_representation: Option<char>,
     /// Specifies whether the character is upper-case, lower-case
@@ -330,7 +346,7 @@ fn unprintable(c: Unsigned6Bit, state: LincolnState) -> DescribedChar {
         label_matches_unicode: false,
     }
 }
-fn bycase(lower: char, upper: char, state: &LincolnState) -> Option<char> {
+const fn bycase(lower: char, upper: char, state: LincolnState) -> Option<char> {
     Some(match state.case {
         LwKeyboardCase::Upper => upper,
         LwKeyboardCase::Lower => lower,
@@ -408,7 +424,7 @@ pub fn lincoln_char_to_described_char(
 ) -> Option<DescribedChar> {
     lincoln_writer_state_update(lin_ch, state);
     let advance: bool = lin_ch != 0o12 && lin_ch != 0o13;
-    let by_case = |lower, upper: char| -> Option<char> { bycase(lower, upper, state) };
+    let by_case = |lower, upper: char| -> Option<char> { bycase(lower, upper, *state) };
     let base_char: Option<char> = match u8::from(lin_ch) {
         0o00 => by_case('0', '☛'), // \U261B, black hand pointing right
         0o01 => by_case('1', 'Σ'), // \U03A3, Greek capital letter Sigma

@@ -405,7 +405,7 @@ fn test_signed18bit_checked_add() {
     assert!(dbg!(minus_one) < Signed18Bit::ZERO);
     assert_eq!(
         i32::from(Signed18Bit::MAX.checked_add(minus_one).unwrap()),
-        0o377776_i32
+        0o377_776_i32
     );
     assert_eq!(Signed18Bit::ZERO.checked_add(minus_one).unwrap(), minus_one);
 }
@@ -442,7 +442,7 @@ fn test_signed18bit_checked_sub() {
 
     assert_eq!(
         i32::from(Signed18Bit::MAX.checked_sub(Signed18Bit::ONE).unwrap()),
-        0o377776_i32
+        0o377_776_i32
     );
     assert_eq!(
         Signed18Bit::ZERO.checked_sub(Signed18Bit::ONE).unwrap(),

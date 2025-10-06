@@ -342,7 +342,7 @@ mod tests {
     #[test]
     fn test_display_jmp() {
         let sinst = SymbolicInstruction {
-            operand_address: OperandAddress::direct(Address::from(u18!(0o0377750))),
+            operand_address: OperandAddress::direct(Address::from(u18!(0o0_377_750))),
             index: Unsigned6Bit::ZERO,
             opcode: Opcode::Jmp,
             configuration: Unsigned5Bit::ZERO,
@@ -401,7 +401,7 @@ mod tests {
 
         // Example from Program I, address 377 765, instruction word 36 06 01 377 751.
         let sinst1 = SymbolicInstruction {
-            operand_address: OperandAddress::direct(Address::from(u18!(0o0377751))),
+            operand_address: OperandAddress::direct(Address::from(u18!(0o0_377_751))),
             index: Unsigned6Bit::ONE,
             opcode: Opcode::Jpx,
             // 036 = 30 decimal = 0b11110, which is one's complement -1.
@@ -427,7 +427,7 @@ mod tests {
 
         // Example from Program II ("Inchworm"), address 15, instruction word not stated,
         let sinst2 = SymbolicInstruction {
-            operand_address: OperandAddress::direct(Address::from(u18!(0o0377752))),
+            operand_address: OperandAddress::direct(Address::from(u18!(0o0_377_752))),
             index: Unsigned6Bit::try_from(3_u8).unwrap(),
             opcode: Opcode::Jpx,
             // In the Program II example, the configuration value is
@@ -447,7 +447,7 @@ mod tests {
         // indicating the hold bit.  We use 'h' instead since ':' is
         // not actually part of the Lincoln Writer character set.
         let sinst = SymbolicInstruction {
-            operand_address: OperandAddress::direct(Address::from(u18!(0o377762))),
+            operand_address: OperandAddress::direct(Address::from(u18!(0o377_762))),
             index: Unsigned6Bit::try_from(0o71_u8).unwrap(),
             opcode: Opcode::Rsx,
             configuration: config_value(0o34),

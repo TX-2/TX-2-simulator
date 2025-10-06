@@ -712,7 +712,7 @@ mod tests {
 
     #[test]
     fn test_instruction_jmp() {
-        let inst = Instruction(Unsigned36Bit::from(0o0500377750_u32));
+        let inst = Instruction(Unsigned36Bit::from(0o0_500_377_750_u32));
         assert_eq!(
             inst.operand_address(),
             OperandAddress::direct(Address::from(u18!(0o377_750u32))),
@@ -750,7 +750,7 @@ mod tests {
         assert_eq!(
             disassemble_word(u36!(0o000_500_377_750)),
             Ok(SymbolicInstruction {
-                operand_address: OperandAddress::direct(Address::from(u18!(0o0377750))),
+                operand_address: OperandAddress::direct(Address::from(u18!(0o_377_750))),
                 index: Unsigned6Bit::ZERO,
                 opcode: Opcode::Jmp,
                 configuration: config_value(0),
@@ -767,7 +767,7 @@ mod tests {
                     .expect("test data should be in range")
             ),
             Ok(SymbolicInstruction {
-                operand_address: OperandAddress::direct(Address::from(u18!(0o0377752))),
+                operand_address: OperandAddress::direct(Address::from(u18!(0o0_377_752))),
                 index: Unsigned6Bit::try_from(3_u8).unwrap(),
                 opcode: Opcode::Jpx,
                 configuration: config_value(24), // -7
@@ -781,7 +781,7 @@ mod tests {
                     .expect("test data should be in range")
             ),
             Ok(SymbolicInstruction {
-                operand_address: OperandAddress::direct(Address::from(u18!(0o0377751))),
+                operand_address: OperandAddress::direct(Address::from(u18!(0o0_377_751))),
                 index: Unsigned6Bit::ONE,
                 opcode: Opcode::Jpx,
                 configuration: config_value(30),

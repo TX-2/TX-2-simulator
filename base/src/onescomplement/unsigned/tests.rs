@@ -649,7 +649,7 @@ mod u18_proptests {
 
     #[derive(Debug, Arbitrary)]
     struct U18SubtractionTestInput {
-        #[strategy(0..0o1000000u32)]
+        #[strategy(0..0o1_000_000u32)]
         greater: u32,
         #[strategy(0..=#greater)]
         lesser: u32,
@@ -692,7 +692,7 @@ mod u36_proptests {
 
     #[derive(Debug, Arbitrary)]
     struct U36SubtractionTestInput {
-        #[strategy(0..0o1000000000000u64)]
+        #[strategy(0..0o1_000_000_000_000u64)]
         greater: u64,
         #[strategy(0..=#greater)]
         lesser: u64,

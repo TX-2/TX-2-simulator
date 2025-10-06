@@ -548,7 +548,7 @@ pub struct Unsigned12Bit {
 #[cfg_attr(test, derive(Arbitrary))]
 #[derive(Clone, Copy, Serialize)]
 pub struct Unsigned18Bit {
-    #[cfg_attr(test, strategy(0..262143u32))]
+    #[cfg_attr(test, strategy(0..262_143u32))]
     pub(crate) bits: u32,
 }
 
@@ -559,7 +559,7 @@ pub struct Unsigned18Bit {
 #[cfg_attr(test, derive(Arbitrary))]
 #[derive(Clone, Copy, Serialize)]
 pub struct Unsigned36Bit {
-    #[cfg_attr(test, strategy(0..68719476735u64))]
+    #[cfg_attr(test, strategy(0..68_719_476_735u64))]
     pub(crate) bits: u64,
 }
 

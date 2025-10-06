@@ -6,6 +6,21 @@
 #![deny(unreachable_pub)]
 #![deny(unsafe_code)]
 #![deny(unused_crate_dependencies)]
+//#![warn(clippy::as_conversions)]
+//#![warn(clippy::cast_lossless)]
+//#![warn(clippy::pedantic)] // enable later
+#![warn(clippy::cast_possible_truncation)]
+#![warn(clippy::cast_possible_wrap)]
+#![warn(clippy::cast_precision_loss)]
+#![warn(clippy::cast_ptr_alignment)]
+#![warn(clippy::clone_on_ref_ptr)]
+#![warn(clippy::cloned_instead_of_copied)]
+#![warn(clippy::unreadable_literal)]
+#![allow(clippy::cast_possible_wrap)]
+#![allow(clippy::cast_sign_loss)]
+#![allow(clippy::needless_continue)] // fix these later
+#![allow(clippy::redundant_else)] // fix these later
+#![allow(clippy::missing_panics_doc)] // fix these later
 
 pub mod bitselect;
 pub mod charset;

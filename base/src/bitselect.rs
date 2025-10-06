@@ -45,11 +45,13 @@ pub struct BitSelector {
 }
 
 impl BitSelector {
+    #[must_use]
     pub const fn raw_mask(&self) -> u64 {
         let shift = (self.quarter as u32) * 9 + (self.bitpos as u32);
         1_u64 << shift
     }
 
+    #[must_use]
     pub fn mask(&self) -> Unsigned36Bit {
         Unsigned36Bit::try_from(self.raw_mask())
             .expect("bit selector mask values cannot be outside the range of Unsigned36Bit")
@@ -284,6 +286,7 @@ fn all_bit_selectors() -> Vec<BitSelector> {
     result
 }
 
+#[must_use]
 pub const fn bit_select(value: Unsigned36Bit, selector: BitSelector) -> bool {
     value.bits & selector.raw_mask() != 0
 }
