@@ -11,7 +11,7 @@
 #![warn(clippy::missing_errors_doc)]
 #![warn(clippy::items_after_statements)]
 #![warn(clippy::explicit_iter_loop)]
-//#![warn(clippy::unreadable_literal)]
+#![warn(clippy::unreadable_literal)]
 
 mod ast;
 mod collections;

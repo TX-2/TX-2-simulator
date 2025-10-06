@@ -417,7 +417,7 @@ fn can_deduce_address_of_origin_with_previous_forward_reference() {
         }
         Ok(default_value) => {
             let expected: Unsigned36Bit =
-                u36!(0o200000).wrapping_add(Unsigned36Bit::from(BLOCK0_SIZE));
+                u36!(0o200_000).wrapping_add(Unsigned36Bit::from(BLOCK0_SIZE));
             assert_eq!(default_value, expected);
         }
     }

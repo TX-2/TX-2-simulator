@@ -278,8 +278,8 @@ fn comma_transformation(
     match (leading_commas, trailing_commas) {
         (None, None) => value,
         (None, Some(Commas::One(_))) => value.and(0o777).shl(27),
-        (None, Some(Commas::Two(_))) => value.and(0o777777).shl(18),
-        (None, Some(Commas::Three(_))) => value.and(0o777777777).shl(9),
+        (None, Some(Commas::Two(_))) => value.and(0o777_777).shl(18),
+        (None, Some(Commas::Three(_))) => value.and(0o777_777_777).shl(9),
 
         (Some(Commas::One(_)), None) => value.and(0o777),
         (Some(Commas::One(_)), Some(Commas::One(_))) => value.and(0o777_777).shl(9),

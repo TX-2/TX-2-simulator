@@ -315,7 +315,7 @@ pub fn reader_leader() -> Vec<Unsigned36Bit> {
             configuration: u5!(0),
             opcode: Opcode::Jnx,
             index: u6!(0o56),
-            operand_address: OperandAddress::direct(Address::from(u18!(0o377760))),
+            operand_address: OperandAddress::direct(Address::from(u18!(0o377_760))),
         },
         SymbolicInstruction {
             // 016: ¹⁴JPQ 27

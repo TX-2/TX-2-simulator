@@ -375,7 +375,7 @@ fn test_assemble_octal_literal() {
         InstructionFragment::from((
             span(1..7),
             Script::Normal,
-            Unsigned36Bit::from(0o177777_u32)
+            Unsigned36Bit::from(0o177_777_u32)
         )),
     );
 }
@@ -1419,7 +1419,7 @@ fn program_instruction_with_opcode() {
 
     assert_eq!(
         parse_tagged_instruction(input).evaluate(&mut ctx, scope),
-        Ok(u36!(0o210452_030106))
+        Ok(u36!(0o210_452_030_106))
     );
     assert!(
         index_register_assigner.is_empty(),
@@ -1815,7 +1815,7 @@ fn test_asterisk_for_deferred_addressing() {
                 ))))
             }),
             InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::from(
-                LiteralValue::from((span(7..10), Script::Normal, u36!(0o1600000000)))
+                LiteralValue::from((span(7..10), Script::Normal, u36!(0o001_600_000_000)))
             ))),
             InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::from(
                 LiteralValue::from((span(10..17), Script::Sub, Unsigned36Bit::ZERO))

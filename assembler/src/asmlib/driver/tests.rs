@@ -220,7 +220,7 @@ fn test_assignment_rhs_is_instruction() {
         Address::ZERO,
         // Then we should see that the symbol was assigned the value
         // corresponding to the assembled value of that instruction.
-        &[("FOO", u36!(0o210452_030106))],
+        &[("FOO", u36!(0o210_452_030_106))],
     );
 }
 
@@ -295,8 +295,8 @@ fn test_assign_hash_value() {
     assert_eq!(program.chunks[0].address, Address::from(u18!(0o100)));
     // Then we should see that the value of the assigned symbol
     // depends on the address at which it is used.
-    assert_eq!(program.chunks[0].words[0], u36!(0o10000000100));
-    assert_eq!(program.chunks[0].words[1], u36!(0o20000000101));
+    assert_eq!(program.chunks[0].words[0], u36!(0o010_000_000_100));
+    assert_eq!(program.chunks[0].words[1], u36!(0o020_000_000_101));
 }
 
 #[test]
@@ -525,7 +525,7 @@ fn test_200_200_200_200_with_no_commas() {
     // Then we should see the that the word is evaluated as the
     // correct value.
     assert_eq!(program.chunks.len(), 1); // one chunk (no RC-block needed).
-    assert_eq!(program.chunks[0].words[0], u36!(0o200200200200));
+    assert_eq!(program.chunks[0].words[0], u36!(0o200_200_200_200));
 }
 
 #[test]
@@ -551,7 +551,7 @@ fn test_200_200_200_200_with_commas() {
     // Then we should see that the comma expression is correctly
     // evaluated
     assert_eq!(program.chunks.len(), 1); // one chunk (no RC-block needed).
-    assert_eq!(program.chunks[0].words[0], u36!(0o200200200200));
+    assert_eq!(program.chunks[0].words[0], u36!(0o200_200_200_200));
 }
 
 #[test]
@@ -565,7 +565,7 @@ fn test_440_330_220_110_with_commas() {
 
     // Then we should see that the comma expression was correctly evaluated
     assert_eq!(program.chunks.len(), 1); // one chunk (no RC-block needed).
-    assert_eq!(program.chunks[0].words[0], u36!(0o440330220110));
+    assert_eq!(program.chunks[0].words[0], u36!(0o440_330_220_110));
 }
 
 #[test]
@@ -579,7 +579,7 @@ fn test_alternate_base_with_commas() {
         Ok(Binary {
             entry_point: None,
             chunks: vec![BinaryChunk {
-                address: Address::from(u18!(0o00200000)),
+                address: Address::from(u18!(0o00_200_000)),
                 // Then the assembled value should show that the
                 // conversions were carried out in the correct bases.
                 words: vec![u36!(0o012_013_012_015)]
@@ -602,7 +602,7 @@ fn test_440_330_220_110_with_commas_in_rc_word() {
     // put in the braces.
     assert_eq!(program.chunks.len(), 2); // one regular chunk plus RC-block
     assert_eq!(program.chunks[0].words[0], program.chunks[1].address); // point to first word in RC-block
-    assert_eq!(program.chunks[1].words[0], u36!(0o440330220110));
+    assert_eq!(program.chunks[1].words[0], u36!(0o440_330_220_110));
 }
 
 #[test]
