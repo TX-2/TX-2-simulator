@@ -140,13 +140,13 @@ fn test_try_from_i8_unsigned9bit() {
 #[test]
 fn test_unsigned9bit_zero_values() {
     const ZERO: Unsigned9Bit = Unsigned9Bit { bits: 0_u16 };
-    assert_eq!(u16::from(ZERO), 0, "zero should convert to 0_u16");
-    assert_eq!(u8::try_from(ZERO), Ok(0), "zero should convert to 0_u8");
-
     // The value that would be +0 in Signed9Bit is just a large value in Unsigned9Bit.
     const CAREFUL_NOW: Unsigned9Bit = Unsigned9Bit {
         bits: 0b111_111_111_u16,
     };
+    assert_eq!(u16::from(ZERO), 0, "zero should convert to 0_u16");
+    assert_eq!(u8::try_from(ZERO), Ok(0), "zero should convert to 0_u8");
+
     assert_eq!(u16::from(CAREFUL_NOW), 0o777);
 }
 

@@ -20,6 +20,7 @@
 #![warn(clippy::semicolon_if_nothing_returned)]
 #![warn(clippy::return_self_not_must_use)]
 #![warn(clippy::match_same_arms)]
+#![warn(clippy::items_after_statements)]
 #![allow(clippy::cast_possible_wrap)]
 #![allow(clippy::cast_sign_loss)]
 #![allow(clippy::needless_continue)] // fix these later

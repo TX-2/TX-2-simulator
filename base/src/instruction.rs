@@ -811,6 +811,7 @@ mod tests {
     fn test_assemble_rsx() {
         // This instruction is taken from position 0o3 of the standard
         // reader leader on page 5-26 of the Users Handbook.
+        const EXPECTED: u64 = 0o011_154_000_005_u64;
         let sym = SymbolicInstruction {
             held: false,
             configuration: Unsigned5Bit::try_from(1_u8).expect("valid configuraiton field"),
@@ -819,7 +820,6 @@ mod tests {
             operand_address: OperandAddress::direct(Address::from(u18!(5))),
         };
         let got: u64 = u64::from(Instruction::from(&sym).bits());
-        const EXPECTED: u64 = 0o011_154_000_005_u64;
         assert_eq!(
             got, EXPECTED,
             "Mismatch in assembly of {:?}: expected 0o{:012o}, got 0o{:012o}",

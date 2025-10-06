@@ -184,6 +184,7 @@ macro_rules! signed_ones_complement_impl {
 
             #[must_use]
             pub fn wrapping_add(self, rhs: $SelfT) -> $SelfT {
+                const MODULUS: $SignedInnerT = 1 << ($BITS - 1);
                 let left = <$SignedInnerT>::from(self);
                 let right = <$SignedInnerT>::from(rhs);
                 let (result, overflow) = left.overflowing_add(right);
@@ -192,7 +193,6 @@ macro_rules! signed_ones_complement_impl {
                         "bug: $SignedInnerT is not wide enough to perform no-overflow arithmetic"
                     );
                 }
-                const MODULUS: $SignedInnerT = 1 << ($BITS - 1);
                 Self {
                     bits: Self::convert_to_ones_complement(result % MODULUS),
                 }
@@ -200,6 +200,7 @@ macro_rules! signed_ones_complement_impl {
 
             #[must_use]
             pub fn wrapping_sub(self, rhs: $SelfT) -> $SelfT {
+                const MODULUS: $SignedInnerT = 1 << ($BITS - 1);
                 let left = <$SignedInnerT>::from(self);
                 let right = <$SignedInnerT>::from(rhs);
                 let (result, overflow) = left.overflowing_sub(right);
@@ -208,7 +209,6 @@ macro_rules! signed_ones_complement_impl {
                         "bug: $SignedInnerT is not wide enough to perform no-overflow arithmetic"
                     );
                 }
-                const MODULUS: $SignedInnerT = 1 << ($BITS - 1);
                 Self {
                     bits: Self::convert_to_ones_complement(result % MODULUS),
                 }

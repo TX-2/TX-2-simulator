@@ -120,14 +120,14 @@ fn test_signed9bit_zero_values() {
     const MINUS_ZERO: Signed9Bit = Signed9Bit {
         bits: 0b111_111_111_u16,
     };
+    const PLUS_ZERO: Signed9Bit = Signed9Bit {
+        bits: 0b000_000_000_u16,
+    };
     assert_eq!(
         i8::try_from(MINUS_ZERO),
         Ok(0_i8),
         "-0 should convert to 0_i8"
     );
-    const PLUS_ZERO: Signed9Bit = Signed9Bit {
-        bits: 0b000_000_000_u16,
-    };
     assert_eq!(
         i8::try_from(PLUS_ZERO),
         Ok(0_i8),

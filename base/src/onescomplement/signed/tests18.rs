@@ -250,14 +250,14 @@ fn test_signed18bit_zero_values() {
     const MINUS_ZERO: Signed18Bit = Signed18Bit {
         bits: (1 << 18) - 1_u32,
     };
+    const PLUS_ZERO: Signed18Bit = Signed18Bit {
+        bits: 0b000_000_000_u32,
+    };
     assert_eq!(
         i8::try_from(MINUS_ZERO),
         Ok(0_i8),
         "-0 should convert to 0_i8"
     );
-    const PLUS_ZERO: Signed18Bit = Signed18Bit {
-        bits: 0b000_000_000_u32,
-    };
     assert_eq!(
         i8::try_from(PLUS_ZERO),
         Ok(0_i8),
