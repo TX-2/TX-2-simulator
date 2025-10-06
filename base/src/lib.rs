@@ -7,7 +7,7 @@
 #![deny(unsafe_code)]
 #![deny(unused_crate_dependencies)]
 //#![warn(clippy::as_conversions)]
-//#![warn(clippy::cast_lossless)]
+#![warn(clippy::cast_lossless)]
 //#![warn(clippy::pedantic)] // enable later
 #![warn(clippy::cast_possible_truncation)]
 #![warn(clippy::cast_possible_wrap)]
@@ -23,10 +23,12 @@
 #![warn(clippy::missing_errors_doc)]
 #![warn(clippy::items_after_statements)]
 #![warn(clippy::manual_string_new)]
+#![warn(clippy::wildcard_imports)]
 #![warn(clippy::explicit_iter_loop)]
 #![allow(clippy::cast_possible_wrap)]
 #![allow(clippy::cast_sign_loss)]
 #![allow(clippy::cast_lossless)]
+#![allow(clippy::enum_glob_use)] // probably not useful for this code.
 #![allow(clippy::needless_continue)] // fix these later
 #![allow(clippy::redundant_else)] // fix these later
 #![allow(clippy::missing_panics_doc)] // fix these later

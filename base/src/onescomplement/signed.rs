@@ -3,7 +3,9 @@ use std::fmt::{self, Debug, Formatter, Octal};
 use std::hash::{Hash, Hasher};
 
 use super::error::ConversionFailed;
-use super::unsigned::*;
+use super::unsigned::{
+    Unsigned5Bit, Unsigned6Bit, Unsigned9Bit, Unsigned12Bit, Unsigned18Bit, Unsigned36Bit,
+};
 use super::{Signum, WordCommon};
 
 #[cfg(test)]

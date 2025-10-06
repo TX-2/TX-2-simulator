@@ -15,7 +15,7 @@ use test_strategy::Arbitrary;
 
 use super::super::subword::{right_half, split_halfword, split_halves};
 use super::error::ConversionFailed;
-use super::signed::*;
+use super::signed::{Signed5Bit, Signed6Bit, Signed9Bit, Signed12Bit, Signed18Bit, Signed36Bit};
 use super::{Signum, WordCommon};
 
 #[cfg(test)]
