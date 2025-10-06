@@ -551,8 +551,8 @@ pub fn lincoln_char_to_described_char(
         // Non-carriage-advancing characters don't strictly match the
         // key label, because we represent them as combining
         // characters and so there's a space in the key label too.
-        let label_matches_unicode = if advance {
-            true
+        let label_matches_unicode = if !advance {
+            false
         } else {
             #[allow(clippy::match_same_arms)]
             match display {
