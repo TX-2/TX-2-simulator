@@ -807,6 +807,12 @@ fn test_assemble_pass1() {
     assert!(errors.is_empty());
 }
 
+/// Assemble a file or assembly source code.  A tape image
+/// is written to the output file.
+///
+/// # Errors
+/// - The program is invalid
+/// - The output file could not be written
 pub fn assemble_file(
     input_file_name: &OsStr,
     output_file_name: &Path,

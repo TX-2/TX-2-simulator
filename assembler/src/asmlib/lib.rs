@@ -8,8 +8,8 @@
 #![warn(clippy::bool_to_int_with_if)]
 #![warn(clippy::clone_on_ref_ptr)]
 #![warn(clippy::match_same_arms)]
+#![warn(clippy::missing_errors_doc)]
 //#![warn(clippy::unreadable_literal)]
-//#![warn(clippy::missing_errors_doc)]
 //#![warn(clippy::items_after_statements)]
 //#![warn(clippy::explicit_iter_loop)]
 

@@ -178,6 +178,18 @@ fn create_begin_block(
     create_tape_block(location, &code, !empty_program)
 }
 
+/// Write the user's program as a tape image file.
+///
+/// # Errors
+///
+/// - A tape block is longer than will fit into an
+///   18-bit offset value
+/// - The program is larger than the TX-2's physical
+///   memory
+/// - A block's origin and length mean that it would
+///   extend past the end of ther TX-2's physical
+///   memory.
+/// - Failure to write the output file.
 pub fn write_user_program<W: Write>(
     binary: &Binary,
     writer: &mut W,
