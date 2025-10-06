@@ -16,6 +16,7 @@
 #![warn(clippy::clone_on_ref_ptr)]
 #![warn(clippy::cloned_instead_of_copied)]
 #![warn(clippy::unreadable_literal)]
+#![warn(clippy::doc_markdown)]
 #![warn(clippy::semicolon_if_nothing_returned)]
 #![warn(clippy::return_self_not_must_use)]
 #![allow(clippy::cast_possible_wrap)]
@@ -23,6 +24,8 @@
 #![allow(clippy::needless_continue)] // fix these later
 #![allow(clippy::redundant_else)] // fix these later
 #![allow(clippy::missing_panics_doc)] // fix these later
+#![allow(clippy::unnecessary_wraps)] // fix these later
+#![allow(clippy::explicit_deref_methods)] // fix these later
 
 pub mod bitselect;
 pub mod charset;

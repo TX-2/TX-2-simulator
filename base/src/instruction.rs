@@ -527,7 +527,7 @@ impl TryFrom<u8> for Opcode {
     }
 }
 
-/// OperandAddress represents the least-significant 18 bits of an
+/// `OperandAddress` represents the least-significant 18 bits of an
 /// instruction word.  If the top bit is set, this indicates the use
 /// of deferred addressing (i.e. this bit has the same significance as
 /// it does in TX-2 instructions).

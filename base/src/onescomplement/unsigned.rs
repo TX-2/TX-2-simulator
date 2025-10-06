@@ -1,9 +1,8 @@
-//! This is an implementation of unsigned types of various bit
-//! widths which accompanies the SignedXXBit one's-complement types.
-//! Since these types are unsigned, there is no sign bit and they
-//! aren't really one's-complement types.  But the interface to these
-//! is mostly similar to that of the signed (real one's-complement)
-//! types.
+//! This is an implementation of unsigned types of various bit widths
+//! which accompanies the signed one's-complement types.  Since these
+//! types are unsigned, there is no sign bit and they aren't really
+//! one's-complement types.  But the interface to these is mostly
+//! similar to that of the signed (real one's-complement) types.
 
 use std::cmp::Ordering;
 use std::fmt::{self, Debug, Display, Formatter, Octal};
@@ -123,7 +122,7 @@ macro_rules! try_from_native_type_to_self {
 /// we are defining.  `InnerT` is the name of the native type which
 /// will store those bits.  `SignedPeerT` is the name of the
 /// equivalent signed type having the same width (e.g. for
-/// `Unsigned18Bit` this should be `Signed`8Bit`).
+/// `Unsigned18Bit` this should be `Signed18Bit`).
 macro_rules! unsigned_ones_complement_impl {
     ($SelfT:ty, $BITS:expr_2021, $InnerT:ty, $SignedPeerT:ty) => {
         impl $SelfT {

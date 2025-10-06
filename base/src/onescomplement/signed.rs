@@ -338,7 +338,7 @@ macro_rules! signed_ones_complement_impl {
 // Signed5Bit
 ////////////////////////////////////////////////////////////////////////
 
-/// Signed5Bit is somewhat special-purpose for instructions such as
+/// `Signed5Bit` is somewhat special-purpose for instructions such as
 /// JPX which use the instruction's configuration value as a 5-bit
 /// signed integer.
 #[derive(Clone, Copy)]
@@ -358,8 +358,8 @@ try_from_self_to_native_type!(Signed5Bit, u8, i8, u8 u16 u32 u64 usize);
 // Signed6Bit
 ////////////////////////////////////////////////////////////////////////
 
-/// Signed6Bit is somewhat special-purpose as the signed counterpart
-/// for Unsigned6Bit, which is for handlng index register numbers and
+/// `Signed6Bit` is somewhat special-purpose as the signed counterpart
+/// for `Unsigned6Bit`, which is for handlng index register numbers and
 /// sequence numbers.
 #[derive(Clone, Copy)]
 pub struct Signed6Bit {

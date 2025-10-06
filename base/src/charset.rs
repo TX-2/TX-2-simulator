@@ -346,11 +346,11 @@ fn unprintable(c: Unsigned6Bit, state: LincolnState) -> DescribedChar {
         label_matches_unicode: false,
     }
 }
-const fn bycase(lower: char, upper: char, state: LincolnState) -> Option<char> {
-    Some(match state.case {
+const fn bycase(lower: char, upper: char, state: LincolnState) -> char {
+    match state.case {
         LwKeyboardCase::Upper => upper,
         LwKeyboardCase::Lower => lower,
-    })
+    }
 }
 
 /// Perform any state changes implied by a character code.
@@ -390,7 +390,7 @@ pub fn lincoln_writer_state_update(lin_ch: Unsigned6Bit, state: &mut LincolnStat
 /// In the success case we return None when the only effect of this
 /// Lincoln Writer character is to change mode (e.g. to upper case)
 /// and `Some(DescribedChar)` when there is something to print.  In
-/// the `Some(DescribedChar)` case, the DescribedChar instance
+/// the `Some(DescribedChar)` case, the `DescribedChar` instance
 /// describes what is to be printed and provides a Unicode
 /// approximation to it, if there is one.
 ///
@@ -424,7 +424,7 @@ pub fn lincoln_char_to_described_char(
 ) -> Option<DescribedChar> {
     lincoln_writer_state_update(lin_ch, state);
     let advance: bool = lin_ch != 0o12 && lin_ch != 0o13;
-    let by_case = |lower, upper: char| -> Option<char> { bycase(lower, upper, *state) };
+    let by_case = |lower, upper: char| -> Option<char> { Some(bycase(lower, upper, *state)) };
     let base_char: Option<char> = match u8::from(lin_ch) {
         0o00 => by_case('0', '☛'), // \U261B, black hand pointing right
         0o01 => by_case('1', 'Σ'), // \U03A3, Greek capital letter Sigma

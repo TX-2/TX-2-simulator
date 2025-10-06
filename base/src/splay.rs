@@ -55,7 +55,7 @@ fn test_cycle_and_splay() {
 }
 
 /// This function reverses the effect of perfoming six calls to
-/// cycle_and_splay().
+/// `cycle_and_splay()`.
 pub fn unsplay(source: Unsigned36Bit) -> [Unsigned6Bit; 6] {
     fn bits(
         b0: Unsigned36Bit,

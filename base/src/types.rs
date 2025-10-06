@@ -1,4 +1,4 @@
-/// The TX-2 uses 36-bit words.  We use Unsigned36Bit (defined in
+/// The TX-2 uses 36-bit words.  We use `Unsigned36Bit` (defined in
 /// onescomplement/unsigned.rs) to represent this.  As stored in
 /// memory, there are two additional bits; these are implemented in
 /// the CPU emulation, not here.
@@ -35,8 +35,8 @@ use super::onescomplement::{Signum, WordCommon};
 /// > set the X Adder carry circuit at the time that XAC would
 /// > ordinarily have been used to clear it.
 ///
-/// IndexBy is also used to increment the program counter, and on the
-/// real TX2 this was done by a special circuit, not an adder.
+/// `IndexBy` is also used to increment the program counter, and on
+/// the real TX2 this was done by a special circuit, not an adder.
 /// Volume 2 of the Technical Manual (section 12-2.3 "P REGISTER
 /// DRIVER LOGIC") states,
 ///
@@ -52,7 +52,7 @@ pub trait IndexBy<T> {
 /// An address has 17 normal value bits.  There are 18 bits for the
 /// operand base address in the instruction word, but the topmost bit
 /// signals a deferred (i.e. indirect) access, so we should never see
-/// a memory access to an address with the 0o400_000 bit set.
+/// a memory access to an address with the `0o400_000` bit set.
 ///
 /// The program counter can also have its top bit set.  This signals
 /// that in the TX-2 hardware, the associated sequence should be
@@ -136,7 +136,7 @@ impl Address {
     /// among other things, to increment the program counter.
     ///
     /// The simulator relies on the fact that (as in the hardware TX-2
-    /// P register) this calculation will wrap from 0o377_777 to 0.
+    /// P register) this calculation will wrap from `0o377_777` to 0.
     #[must_use]
     pub fn successor(&self) -> Address {
         self.index_by(1_u8)
