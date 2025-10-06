@@ -160,7 +160,7 @@ impl<T> From<(Script, T)> for Elevated<T> {
 
 /// Create an instance of [`Elevated<T>`].
 pub(crate) fn elevate<T>(script: Script, inner: T) -> Elevated<T> {
-    Elevated { script, inner }
+    Elevated { inner, script }
 }
 
 /// A character which might appear in source code.
