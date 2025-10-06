@@ -79,6 +79,7 @@ impl Address {
     pub const ZERO: Address = Address(Unsigned18Bit::ZERO);
     pub const MAX: Address = Address(Unsigned18Bit::MAX);
 
+    #[must_use]
     pub const fn new(a: Unsigned18Bit) -> Address {
         Address(a)
     }
@@ -94,6 +95,7 @@ impl Address {
     }
 
     /// Extract the placeholder mark bit.
+    #[must_use]
     pub fn mark_bit(&self) -> Unsigned18Bit {
         self.0 & PLACEHOLDER_MARK_BIT
     }
@@ -103,6 +105,7 @@ impl Address {
     /// instruction also marks the operand as using deferred
     /// addressing.  We should choose more neutral naming to avoid
     /// confusion.
+    #[must_use]
     pub fn is_marked_placeholder(&self) -> bool {
         self.0 & PLACEHOLDER_MARK_BIT != 0_u16
     }
@@ -113,6 +116,7 @@ impl Address {
     /// when fetching operands, and to flag a sequence for tracing
     /// with trap 42 (in this context is is called a "placeholder mark
     /// bit").  The `split` method is the opposite of `join`.
+    #[must_use]
     pub fn split(&self) -> (Unsigned18Bit, bool) {
         let without_mark: Unsigned18Bit = self.0 & !PLACEHOLDER_MARK_BIT;
         (without_mark, self.is_marked_placeholder())
@@ -122,6 +126,7 @@ impl Address {
     /// possilbe mark bit, `mark`.  If `mark` is false, the resulting
     /// address will have a zero-valued top bit, no matter what is in
     /// `addr`.  This is the opposite of `split`.
+    #[must_use]
     pub fn join(addr: Unsigned18Bit, mark: bool) -> Address {
         let markbit: Unsigned18Bit = if mark {
             PLACEHOLDER_MARK_BIT

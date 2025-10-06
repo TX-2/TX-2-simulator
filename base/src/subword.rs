@@ -5,27 +5,32 @@ use std::ops::Shl;
 use super::onescomplement::unsigned::{Unsigned9Bit, Unsigned18Bit, Unsigned36Bit};
 
 /// Split a 36-bit word into two 18-bit values.
+#[must_use]
 pub fn split_halves(w: Unsigned36Bit) -> (Unsigned18Bit, Unsigned18Bit) {
     (left_half(w), right_half(w))
 }
 
 /// Join two 18-bit values into a 36-bit word.
+#[must_use]
 pub fn join_halves(left: Unsigned18Bit, right: Unsigned18Bit) -> Unsigned36Bit {
     Unsigned36Bit::from(left).shl(18) | Unsigned36Bit::from(right)
 }
 
 /// Join two quarters into a halfword.
+#[must_use]
 pub fn join_quarters(left: Unsigned9Bit, right: Unsigned9Bit) -> Unsigned18Bit {
     Unsigned18Bit::from(left).shl(9) | Unsigned18Bit::from(right)
 }
 
 /// Extract the right (more-significant) halfword from a full word.
+#[must_use]
 pub fn right_half(word: Unsigned36Bit) -> Unsigned18Bit {
     let bits: u64 = u64::from(word);
     Unsigned18Bit::try_from(bits & 0o777_777).unwrap()
 }
 
 /// Extract the right (less-significant) halfword from a full word.
+#[must_use]
 pub fn left_half(word: Unsigned36Bit) -> Unsigned18Bit {
     let bits: u64 = u64::from(word) >> 18;
     Unsigned18Bit::try_from(bits & 0o777_777).unwrap()
@@ -34,6 +39,7 @@ pub fn left_half(word: Unsigned36Bit) -> Unsigned18Bit {
 /// Split a halfword into left (more significant) and right (less
 /// significant) 9-bit quarters (in the sense that they are quarters
 /// of the original 26-bit full word).
+#[must_use]
 pub fn split_halfword(halfword: Unsigned18Bit) -> (Unsigned9Bit, Unsigned9Bit) {
     let bits: u32 = u32::from(halfword);
     (
@@ -45,6 +51,7 @@ pub fn split_halfword(halfword: Unsigned18Bit) -> (Unsigned9Bit, Unsigned9Bit) {
 /// Split a 36-bit word into four 9-bit quarters.  The result is a
 /// tuple which contains the quarters ordered from most-significant
 /// (Q4) to least-significant (Q1).
+#[must_use]
 pub fn quarters(word: Unsigned36Bit) -> [Unsigned9Bit; 4] {
     let (left, right) = split_halves(word);
     let (q4, q3) = split_halfword(left);

@@ -685,6 +685,7 @@ impl Display for UnicodeToLincolnConversionFailure {
 }
 
 impl UnicodeToLincolnMapping {
+    #[must_use]
     pub fn new() -> UnicodeToLincolnMapping {
         let mut m: HashMap<char, LincChar> = HashMap::new();
         for script in [Script::Normal, Script::Super, Script::Sub] {

@@ -14,6 +14,7 @@ use super::u36;
 /// that operation 6 times, you will load bits into all the positions
 /// in a word.  This funciton performs this operation once (i.e. loads
 /// 6 bits).
+#[must_use]
 pub fn cycle_and_splay(target: Unsigned36Bit, bits: Unsigned6Bit) -> Unsigned36Bit {
     // The data goes into the following bit positions:
     // bit 1 (0 counting from 0) goes to 1.1 = 1 <<  0 (dec)
@@ -56,6 +57,7 @@ fn test_cycle_and_splay() {
 
 /// This function reverses the effect of perfoming six calls to
 /// `cycle_and_splay()`.
+#[must_use]
 pub fn unsplay(source: Unsigned36Bit) -> [Unsigned6Bit; 6] {
     fn bits(
         b0: Unsigned36Bit,

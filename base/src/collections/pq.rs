@@ -59,12 +59,14 @@ where
     K: Hash + Eq + Ord,
     P: Ord,
 {
+    #[must_use]
     pub fn new() -> KeyedReversePriorityQueue<K, P> {
         KeyedReversePriorityQueue {
             items: KeyedPriorityQueue::<K, ReverseOrdered<P>>::new(),
         }
     }
 
+    #[must_use]
     pub fn peek(&self) -> Option<(&K, &P)> {
         self.items.peek().map(|(k, p)| (k, &p.inner))
     }
@@ -97,10 +99,12 @@ where
         }
     }
 
+    #[must_use]
     pub fn len(&self) -> usize {
         self.items.len()
     }
 
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.items.is_empty()
     }

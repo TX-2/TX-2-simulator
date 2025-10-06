@@ -26,6 +26,7 @@
 #![warn(clippy::wildcard_imports)]
 #![warn(clippy::explicit_iter_loop)]
 #![warn(clippy::bool_to_int_with_if)]
+#![warn(clippy::must_use_candidate)]
 #![allow(clippy::cast_possible_wrap)]
 #![allow(clippy::cast_sign_loss)]
 #![allow(clippy::cast_lossless)]

@@ -177,6 +177,7 @@ impl Display for SkmBitSelector {
 }
 
 impl SkmBitSelector {
+    #[must_use]
     pub fn to_value_bit(self) -> Option<BitSelector> {
         match self.bitpos {
             SkmBitPos::Value(b) => Some(BitSelector {
@@ -190,6 +191,7 @@ impl SkmBitSelector {
 
 /// Convert the index address field of an SKM instruction into a
 /// `BitSelector` struct describing which bit we will operate on.
+#[must_use]
 pub fn index_address_to_bit_selection(index_address: Unsigned6Bit) -> SkmBitSelector {
     let j: u8 = u8::from(index_address);
     let bitpos: SkmBitPos = match j & 0b1111_u8 {
@@ -229,10 +231,12 @@ pub struct Instruction(Unsigned36Bit);
 
 impl Instruction {
     /// Returns an unspecified invalid instruction.
+    #[must_use]
     pub fn invalid() -> Instruction {
         Instruction(Unsigned36Bit::ZERO)
     }
 
+    #[must_use]
     pub fn bits(&self) -> Unsigned36Bit {
         self.0
     }
@@ -437,10 +441,12 @@ pub enum Opcode {
 }
 
 impl Opcode {
+    #[must_use]
     pub fn number(&self) -> u8 {
         *self as u8
     }
 
+    #[must_use]
     pub fn hold_is_implicit(&self) -> bool {
         matches!(self, Opcode::Lde | Opcode::Ite | Opcode::Jpx | Opcode::Jnx)
     }
@@ -543,26 +549,31 @@ impl Default for OperandAddress {
 }
 
 impl OperandAddress {
+    #[must_use]
     pub fn is_deferred(&self) -> bool {
         let (_, deferred) = self.0.split();
         deferred
     }
 
+    #[must_use]
     pub fn split(&self) -> (bool, Address) {
         let (physical, deferred) = self.0.split();
         (deferred, Address::from(physical))
     }
 
+    #[must_use]
     pub fn bits(&self) -> Unsigned18Bit {
         Unsigned18Bit::from(self.0)
     }
 
+    #[must_use]
     pub fn direct(address: Address) -> OperandAddress {
         let (_, defer) = address.split();
         assert!(!defer);
         Self(address)
     }
 
+    #[must_use]
     pub fn deferred(address: Address) -> OperandAddress {
         let (bits, _) = address.split();
         Self(Address::join(bits, true))
@@ -585,6 +596,7 @@ pub struct SymbolicInstruction {
 }
 
 impl SymbolicInstruction {
+    #[must_use]
     pub fn opcode(&self) -> Opcode {
         self.opcode
     }
