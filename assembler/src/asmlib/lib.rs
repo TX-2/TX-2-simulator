@@ -23,7 +23,6 @@
 #![allow(clippy::verbose_bit_mask)] // fix later
 #![allow(clippy::redundant_closure_for_method_calls)] // fix later
 #![allow(clippy::inconsistent_struct_constructor)] // fix soon
-#![allow(clippy::needless_continue)] // fix soon
 #![allow(clippy::manual_assert)] // fix soon
 #![allow(clippy::if_not_else)] // fix soon
 #![allow(clippy::doc_markdown)] // fix soon

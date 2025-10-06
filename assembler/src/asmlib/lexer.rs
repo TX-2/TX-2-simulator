@@ -838,7 +838,6 @@ impl<'a> GlyphTokenizer<'a> {
                     match merge_tokens((current, current_span), (newtoken, newtoken_span)) {
                         TokenMergeResult::Merged(merged, merged_span) => {
                             self.current = Some((merged, merged_span));
-                            continue;
                         }
                         TokenMergeResult::Failed {
                             current,
