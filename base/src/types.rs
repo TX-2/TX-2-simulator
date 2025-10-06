@@ -88,6 +88,7 @@ impl Address {
     /// const.  Implementing this const methods allows us to form
     /// address constants at compile time with code like `Address::MAX
     /// & 0o03400`.
+    #[must_use]
     pub const fn and(&self, mask: u32) -> Address {
         Address(self.0.and(mask)) // use same hack in Unsigned18Bit.
     }
@@ -136,6 +137,7 @@ impl Address {
     ///
     /// The simulator relies on the fact that (as in the hardware TX-2
     /// P register) this calculation will wrap from 0o377_777 to 0.
+    #[must_use]
     pub fn successor(&self) -> Address {
         self.index_by(1_u8)
     }

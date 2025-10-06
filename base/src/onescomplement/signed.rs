@@ -182,6 +182,7 @@ macro_rules! signed_ones_complement_impl {
                 }
             }
 
+            #[must_use]
             pub fn wrapping_add(self, rhs: $SelfT) -> $SelfT {
                 let left = <$SignedInnerT>::from(self);
                 let right = <$SignedInnerT>::from(rhs);
@@ -197,6 +198,7 @@ macro_rules! signed_ones_complement_impl {
                 }
             }
 
+            #[must_use]
             pub fn wrapping_sub(self, rhs: $SelfT) -> $SelfT {
                 let left = <$SignedInnerT>::from(self);
                 let right = <$SignedInnerT>::from(rhs);
@@ -225,6 +227,7 @@ macro_rules! signed_ones_complement_impl {
                 }
             }
 
+            #[must_use]
             pub const fn abs(self) -> Self {
                 if self.is_zero() {
                     Self::ZERO

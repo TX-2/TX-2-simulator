@@ -175,6 +175,7 @@ macro_rules! unsigned_ones_complement_impl {
                 T { bits: self.bits }
             }
 
+            #[must_use]
             pub fn wrapping_add(self, rhs: $SelfT) -> $SelfT {
                 let left = <$InnerT>::from(self);
                 let right = <$InnerT>::from(rhs);
@@ -182,6 +183,7 @@ macro_rules! unsigned_ones_complement_impl {
                 Self::try_from(in_range_value).unwrap()
             }
 
+            #[must_use]
             pub fn wrapping_sub(self, rhs: $SelfT) -> $SelfT {
                 let left = <$InnerT>::from(self);
                 let right = <$InnerT>::from(rhs);
@@ -207,6 +209,7 @@ macro_rules! unsigned_ones_complement_impl {
                 }
             }
 
+            #[must_use]
             pub fn wrapping_mul(self, rhs: $SelfT) -> $SelfT {
                 let left = <$InnerT>::from(self);
                 let right = <$InnerT>::from(rhs);
@@ -232,6 +235,7 @@ macro_rules! unsigned_ones_complement_impl {
                 }
             }
 
+            #[must_use]
             pub const fn abs(self) -> Self {
                 self
             }
@@ -243,6 +247,7 @@ macro_rules! unsigned_ones_complement_impl {
             // We cannot call std::ops::And in a const because trait
             // methods cannot be const.  So we have this work-alike in
             // impl, since it can be called in a const context.
+            #[must_use]
             pub const fn and(self, mask: $InnerT) -> Self {
                 Self {
                     bits: self.bits & mask,
@@ -252,6 +257,7 @@ macro_rules! unsigned_ones_complement_impl {
             // We cannot call std::ops::BitOr in a const because trait
             // methods cannot be const.  So we have this work-alike in
             // impl, since it can be called in a const context.
+            #[must_use]
             pub const fn bitor(self, mask: $InnerT) -> Self {
                 Self {
                     bits: self.bits | mask,
