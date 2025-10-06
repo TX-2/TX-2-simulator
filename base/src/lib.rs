@@ -23,8 +23,10 @@
 #![warn(clippy::missing_errors_doc)]
 #![warn(clippy::items_after_statements)]
 #![warn(clippy::manual_string_new)]
+#![warn(clippy::explicit_iter_loop)]
 #![allow(clippy::cast_possible_wrap)]
 #![allow(clippy::cast_sign_loss)]
+#![allow(clippy::cast_lossless)]
 #![allow(clippy::needless_continue)] // fix these later
 #![allow(clippy::redundant_else)] // fix these later
 #![allow(clippy::missing_panics_doc)] // fix these later

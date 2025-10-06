@@ -609,7 +609,7 @@ pub fn lincoln_to_unicode_strict(
 ) -> Result<String, LincolnToUnicodeStrictConversionFailure> {
     let mut result = String::with_capacity(input.len());
     let mut state: LincolnState = LincolnState::default();
-    for byte in input.iter() {
+    for byte in input {
         match lincoln_char_to_described_char(*byte, &mut state) {
             Some(DescribedChar {
                 base_char: LincolnChar::Unprintable(_),
