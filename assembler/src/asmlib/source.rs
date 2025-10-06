@@ -49,7 +49,7 @@ impl<'s> Source<'s> {
             Some(n) => n + 1,
         };
         let prefix = &self.body[line_start..pos];
-        if prefix.chars().all(|ch| ch.is_whitespace()) {
+        if prefix.chars().all(char::is_whitespace) {
             prefix
         } else {
             ""

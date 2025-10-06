@@ -94,7 +94,7 @@ impl SourceFile {
         let uses_in_global_assignments = self
             .global_equalities
             .iter()
-            .flat_map(|eq| eq.symbol_uses());
+            .flat_map(Equality::symbol_uses);
         uses_in_instructions.chain(uses_in_global_assignments)
     }
 
@@ -410,7 +410,7 @@ impl ManuscriptBlock {
     pub(crate) fn instruction_count(&self) -> Unsigned18Bit {
         self.sequences
             .iter()
-            .map(|seq| seq.emitted_word_count())
+            .map(InstructionSequence::emitted_word_count)
             .sum()
     }
 

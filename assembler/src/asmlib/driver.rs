@@ -239,7 +239,7 @@ pub struct Binary {
 
 impl Binary {
     fn count_words(&self) -> usize {
-        self.chunks().iter().map(|chunk| chunk.count_words()).sum()
+        self.chunks().iter().map(BinaryChunk::count_words).sum()
     }
 
     fn entry_point(&self) -> Option<Address> {

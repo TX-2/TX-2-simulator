@@ -549,7 +549,7 @@ impl RegistersContaining {
         let tmp_rc: OneOrMore<Option<RegisterContaining>> = self
             .0
             .map(|rc| rc.substitute_macro_parameters(param_values, on_missing, macros));
-        if tmp_rc.iter().all(|maybe_rc| maybe_rc.is_some()) {
+        if tmp_rc.iter().all(Option::is_some) {
             Some(RegistersContaining(tmp_rc.into_map(|maybe_rc| {
                 maybe_rc.expect("we already checked this wasn't None")
             })))
@@ -1389,9 +1389,9 @@ impl CommaDelimitedFragment {
     ) -> Self {
         let span: Span = {
             let spans: [Option<Span>; 3] = [
-                leading_commas.as_ref().map(|c| c.span()),
+                leading_commas.as_ref().map(Spanned::span),
                 Some(instruction.span),
-                trailing_commas.as_ref().map(|c| c.span()),
+                trailing_commas.as_ref().map(Spanned::span),
             ];
             match spans {
                 [_, None, _] => {
@@ -1496,7 +1496,7 @@ impl UntaggedProgramInstruction {
         let tmp_frags: OneOrMore<Option<CommaDelimitedFragment>> = self
             .fragments
             .map(|frag| frag.substitute_macro_parameters(param_values, on_missing, macros));
-        if tmp_frags.iter().any(|frag| frag.is_none()) {
+        if tmp_frags.iter().any(Option::is_none) {
             None
         } else {
             Some(UntaggedProgramInstruction {
@@ -1830,7 +1830,9 @@ impl InstructionSequence {
     }
 
     pub(crate) fn emitted_word_count(&self) -> Unsigned18Bit {
-        self.iter().map(|st| st.emitted_word_count()).sum()
+        self.iter()
+            .map(TaggedProgramInstruction::emitted_word_count)
+            .sum()
     }
 
     #[allow(clippy::too_many_arguments)]

@@ -168,7 +168,7 @@ impl LocatedBlock {
     pub(super) fn emitted_word_count(&self) -> Unsigned18Bit {
         self.sequences
             .iter()
-            .map(|seq| seq.emitted_word_count())
+            .map(InstructionSequence::emitted_word_count)
             .sum()
     }
 

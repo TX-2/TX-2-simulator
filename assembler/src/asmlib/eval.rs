@@ -85,7 +85,7 @@ impl Display for EvaluationFailure {
                 deps_in_order,
                 span: _,
             } => {
-                let names: Vec<String> = deps_in_order.iter().map(|dep| dep.to_string()).collect();
+                let names: Vec<String> = deps_in_order.iter().map(ToString::to_string).collect();
                 write!(
                     f,
                     "definition of {} has a dependency loop ({})",
