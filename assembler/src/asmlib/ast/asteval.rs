@@ -272,6 +272,9 @@ fn comma_transformation(
     value: Unsigned36Bit,
     trailing_commas: &Option<Commas>,
 ) -> Unsigned36Bit {
+    // Re-ordering these cases to bring similar bodies togather would
+    // make the code harder to read.
+    #[allow(clippy::match_same_arms)]
     match (leading_commas, trailing_commas) {
         (None, None) => value,
         (None, Some(Commas::One(_))) => value.and(0o777).shl(27),

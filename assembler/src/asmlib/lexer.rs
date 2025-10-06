@@ -467,6 +467,7 @@ fn tokenise_single_glyph(g: Elevated<&'static Glyph>) -> Option<Token> {
     // In the grammar described in section 6 of the Users Handbook,
     // space and tab are not handled in quite the same way.  Space is
     // allowed in symexes, but tab is not (tab terminates a symex).
+    #[allow(clippy::match_same_arms)] // easier to read in existing order
     let output: Option<Token> = match g.get().shape() {
         GlyphShape::Space | GlyphShape::Tab => None,
         GlyphShape::Digit0 => Some(make_num('0')),

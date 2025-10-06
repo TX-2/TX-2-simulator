@@ -1375,6 +1375,8 @@ pub(crate) fn glyph_from_name(name: &str) -> Option<Elevated<&'static Glyph>> {
 /// Specified in Users Handbook section 6-2.3 item 6.
 pub(crate) fn is_allowed_in_symex(g: GlyphShape) -> bool {
     match g {
+        // Eeasier to understand if we don't re-order the match arms.
+        #![allow(clippy::match_same_arms)]
         GlyphShape::Digit0 |
         GlyphShape::Digit1 |
         GlyphShape::Digit2 |

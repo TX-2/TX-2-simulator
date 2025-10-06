@@ -620,8 +620,7 @@ impl Spanned for RegisterContaining {
 impl RegisterContaining {
     fn instruction(&self) -> &TaggedProgramInstruction {
         match self {
-            RegisterContaining::Unallocated(tpi) => tpi,
-            RegisterContaining::Allocated(_, tpi) => tpi,
+            RegisterContaining::Unallocated(tpi) | RegisterContaining::Allocated(_, tpi) => tpi,
         }
     }
 
@@ -1023,9 +1022,8 @@ impl SymbolOrLiteral {
 impl Spanned for SymbolOrLiteral {
     fn span(&self) -> Span {
         match self {
-            SymbolOrLiteral::Symbol(_, _, span) => *span,
             SymbolOrLiteral::Literal(literal_value) => literal_value.span,
-            SymbolOrLiteral::Here(_, span) => *span,
+            SymbolOrLiteral::Symbol(_, _, span) | SymbolOrLiteral::Here(_, span) => *span,
         }
     }
 }
@@ -1100,7 +1098,6 @@ impl Spanned for InstructionFragment {
     fn span(&self) -> Span {
         match self {
             InstructionFragment::Arithmetic(arithmetic_expression) => arithmetic_expression.span(),
-            InstructionFragment::DeferredAddressing(span) => *span,
             InstructionFragment::Config(config_value) => config_value.span(),
             InstructionFragment::PipeConstruct {
                 index,
@@ -1111,7 +1108,9 @@ impl Spanned for InstructionFragment {
                 let end = rc_word_span.end;
                 span(start..end)
             }
-            InstructionFragment::Null(span) => *span,
+            InstructionFragment::DeferredAddressing(span) | InstructionFragment::Null(span) => {
+                *span
+            }
         }
     }
 }
@@ -1126,11 +1125,10 @@ impl InstructionFragment {
         let mut uses: Vec<Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> =
             Vec::new();
         match self {
-            InstructionFragment::Null(_) => (),
             InstructionFragment::Arithmetic(expr) => {
                 uses.extend(expr.symbol_uses(block_id, block_offset));
             }
-            InstructionFragment::DeferredAddressing(_) => (),
+            InstructionFragment::Null(_) | InstructionFragment::DeferredAddressing(_) => (),
             InstructionFragment::Config(value) => {
                 uses.extend(value.symbol_uses(block_id, block_offset));
             }

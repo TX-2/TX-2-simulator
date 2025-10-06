@@ -9,8 +9,7 @@ fn fail_if_error_token(
     token: Token,
 ) -> Result<Vec<Token>, ErrorTokenKind> {
     match (accumulator, token) {
-        (Err(e), _) => Err(e),
-        (Ok(_), Token::Error(e)) => Err(e),
+        (Err(e), _) | (Ok(_), Token::Error(e)) => Err(e),
         (Ok(mut tokens), non_error) => {
             tokens.push(non_error);
             Ok(tokens)
@@ -29,8 +28,7 @@ fn scan_slices(input: &str) -> Result<Vec<(Token, &str)>, ErrorTokenKind> {
         token_and_str: (Token, &'a str),
     ) -> Result<Vec<(Token, &'a str)>, ErrorTokenKind> {
         match (accumulator, token_and_str) {
-            (Err(e), _) => Err(e),
-            (Ok(_), (Token::Error(e), _)) => Err(e),
+            (Err(e), _) | (Ok(_), (Token::Error(e), _)) => Err(e),
             (Ok(mut tokens), non_error) => {
                 tokens.push(non_error);
                 Ok(tokens)

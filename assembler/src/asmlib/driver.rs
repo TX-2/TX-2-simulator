@@ -159,7 +159,7 @@ pub(crate) fn assemble_nonempty_valid_input(
             panic!("pass 1 failed with diagnostics: {errors:?}");
         }
         AssemblerPass1Or2Output::Pass2Failed(e) => {
-            panic!("pass 1 failed with an error result: {e}");
+            panic!("pass 2 failed with an error result: {e}");
         }
         AssemblerPass1Or2Output::Success(errors, _output_options, p2output) => {
             if errors.is_empty() {
@@ -686,16 +686,13 @@ pub(crate) fn assemble_source(
 ) -> Result<Binary, AssemblerFailure> {
     let source_file_body = Source::new(source_file_body);
     let mut p2output = match assemble_nonempty_input(&source_file_body) {
-        AssemblerPass1Or2Output::Pass1Failed(Err(e)) => {
-            return Err(e);
-        }
         AssemblerPass1Or2Output::Pass1Failed(Ok(errors)) => {
             return Err(AssemblerFailure::BadProgram(fail_with_diagnostics(
                 &source_file_body,
                 errors,
             )));
         }
-        AssemblerPass1Or2Output::Pass2Failed(e) => {
+        AssemblerPass1Or2Output::Pass1Failed(Err(e)) | AssemblerPass1Or2Output::Pass2Failed(e) => {
             return Err(e);
         }
         AssemblerPass1Or2Output::Success(
