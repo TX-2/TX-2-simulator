@@ -671,12 +671,6 @@ fn test_here_in_nested_rc_word_careful() {
     // See also test_here_in_nested_rc_word_simplistic() which is a
     // version of this test which is easier to understand but might
     // reject some correct implementations.
-
-    // Given a program which contains an RC-word nested inside another
-    // RC-word, and in which the inner RC-word refers to its own
-    // address.
-    let input = "100|{{#+400}}\n";
-
     fn rc_word_at_addr(addr: Unsigned36Bit, rcwords: &BinaryChunk) -> Option<&Unsigned36Bit> {
         match addr.checked_sub(rcwords.address.into()) {
             None => {
@@ -693,6 +687,11 @@ fn test_here_in_nested_rc_word_careful() {
             },
         }
     }
+
+    // Given a program which contains an RC-word nested inside another
+    // RC-word, and in which the inner RC-word refers to its own
+    // address.
+    let input = "100|{{#+400}}\n";
 
     // When we assemble that program
     let program = assemble_source(input, Default::default()).expect("program is valid");

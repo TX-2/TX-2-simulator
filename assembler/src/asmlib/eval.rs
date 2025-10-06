@@ -164,13 +164,13 @@ fn assign_default_value(
     name: &SymbolName,
     contexts_used: &SymbolContext,
 ) -> Result<Unsigned36Bit, ExhaustedIndexRegisters> {
+    use ConfigUse::*;
+    use IndexUse::*;
     event!(
         Level::DEBUG,
         "assigning default value for {name} used in contexts {contexts_used:?}"
     );
     let span: Span = *contexts_used.any_span();
-    use ConfigUse::*;
-    use IndexUse::*;
     match &contexts_used.origin {
         OriginUse::IncludesOrigin(_block, _origin) => {
             unreachable!(
@@ -320,10 +320,10 @@ fn can_deduce_address_of_origin_with_previous_forward_reference() {
     // GIVEN a program containing two blocks, in whicht the second block has a
     // symbolic origin and where there is a forward reference within the first
     // block to the address of the second block
-    let origin_name = SymbolName::from("INPUT");
-    let origin_def = Origin::Symbolic(span(2455..2461), origin_name.clone());
     const BLOCK0_SIZE: Unsigned18Bit = u18!(4);
     const BLOCK1_SIZE: Unsigned18Bit = u18!(3);
+    let origin_name = SymbolName::from("INPUT");
+    let origin_def = Origin::Symbolic(span(2455..2461), origin_name.clone());
     let block0_pos = BlockPosition {
         block_identifier: BlockIdentifier::from(0),
         // The first reference to block 1 is inside block 1, so the

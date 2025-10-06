@@ -792,8 +792,6 @@ where
     I: Iterator<Item = CommasOrInstruction>,
 {
     use CommasOrInstruction::*;
-    let mut it = it.peekable();
-
     /// Fold operation which estabishes an alternating pattern of
     /// commas and instructions.
     ///
@@ -843,6 +841,8 @@ where
         assert!(matches!(acc.last(), Some(C(_))));
         acc
     }
+
+    let mut it = it.peekable();
 
     let initial_accumulator: Vec<CommasOrInstruction> = vec![CommasOrInstruction::C({
         match it.peek() {
@@ -959,6 +959,8 @@ fn grammar<'a: 'b, 'b, I>() -> Grammar<'a, 'b, I>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
+    const ALLOW_SPACES: bool = true;
+
     let mut comma_delimited_instructions = Recursive::declare();
     let tagged_program_instruction = (tag_definition()
         .repeated()
@@ -1210,8 +1212,6 @@ where
 
     let tagged_program_instruction = tagged_program_instruction.clone();
 
-    const ALLOW_SPACES: bool = true;
-
     Grammar {
         assignment: assignment.boxed(),
         tagged_program_instruction: tagged_program_instruction.boxed(),
@@ -1394,6 +1394,49 @@ pub(crate) fn source_file<'a, I>() -> impl Parser<'a, I, SourceFile, ExtraWithou
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
+    fn inconsistency_error<'src>(
+        span: Span,
+        name: &SymbolName,
+        what: &str,
+    ) -> chumsky::error::Rich<'src, lexer::Token> {
+        Rich::custom(
+            span,
+            format!("internal error: inconsistent parser state for macro {name}: {what}"),
+        )
+    }
+
+    fn check_consistent<'a>(
+        sf: Option<&MacroDefinition>,
+        st: Option<&MacroDefinition>,
+    ) -> Result<(), chumsky::error::Rich<'a, lexer::Token>> {
+        match (sf, st) {
+            (None, None) => {
+                panic!("all_name is incorrect");
+            }
+            (None, Some(st_def)) => Err(inconsistency_error(
+                st_def.span,
+                &st_def.name,
+                "missing from SourceFile output",
+            )),
+            (Some(sf_def), None) => Err(inconsistency_error(
+                sf_def.span,
+                &sf_def.name,
+                "missing from State",
+            )),
+            (Some(sf_def), Some(st_def)) => {
+                if sf_def != st_def {
+                    Err(inconsistency_error(
+                        sf_def.span,
+                        &sf_def.name,
+                        "inconsistently defined",
+                    ))
+                } else {
+                    Ok(())
+                }
+            }
+        }
+    }
+
     terminated_manuscript_line()
         .repeated()
         .collect()
@@ -1403,47 +1446,6 @@ where
             let source_file: SourceFile = manuscript_lines_to_source_file(lines)?;
             let state_macros: BTreeMap<SymbolName, MacroDefinition> =
                 extra.state().macros().clone();
-            fn inconsistency_error<'src>(
-                span: Span,
-                name: &SymbolName,
-                what: &str,
-            ) -> chumsky::error::Rich<'src, lexer::Token> {
-                Rich::custom(
-                    span,
-                    format!("internal error: inconsistent parser state for macro {name}: {what}"),
-                )
-            }
-            fn check_consistent<'a>(
-                sf: Option<&MacroDefinition>,
-                st: Option<&MacroDefinition>,
-            ) -> Result<(), chumsky::error::Rich<'a, lexer::Token>> {
-                match (sf, st) {
-                    (None, None) => {
-                        panic!("all_name is incorrect");
-                    }
-                    (None, Some(st_def)) => Err(inconsistency_error(
-                        st_def.span,
-                        &st_def.name,
-                        "missing from SourceFile output",
-                    )),
-                    (Some(sf_def), None) => Err(inconsistency_error(
-                        sf_def.span,
-                        &sf_def.name,
-                        "missing from State",
-                    )),
-                    (Some(sf_def), Some(st_def)) => {
-                        if sf_def != st_def {
-                            Err(inconsistency_error(
-                                sf_def.span,
-                                &sf_def.name,
-                                "inconsistently defined",
-                            ))
-                        } else {
-                            Ok(())
-                        }
-                    }
-                }
-            }
             let all_names: BTreeSet<&SymbolName> = source_file
                 .macros
                 .keys()

@@ -428,9 +428,6 @@ fn test_program_instruction_negative_config_value() {
 
 #[test]
 fn test_parse_multi_syllable_symex() {
-    let zero_or_more_symexes = parse_symex(SymexSyllableRule::Multiple, Script::Normal)
-        .repeated()
-        .collect();
     struct Case(&'static str, &'static [&'static str]);
 
     const TEST_CASES: &[Case] = &[
@@ -471,6 +468,9 @@ fn test_parse_multi_syllable_symex() {
         ),
         Case("F '", &["F'"]),
     ];
+    let zero_or_more_symexes = parse_symex(SymexSyllableRule::Multiple, Script::Normal)
+        .repeated()
+        .collect();
     for Case(input, expected) in TEST_CASES {
         let got: Vec<SymbolName> =
             parse_successfully_with(input, zero_or_more_symexes.clone(), no_state_setup);
@@ -483,9 +483,6 @@ fn test_parse_multi_syllable_symex() {
 
 #[test]
 fn test_parse_single_syllable_symex() {
-    let zero_or_more_symexes = parse_symex(SymexSyllableRule::OneOnly, Script::Normal)
-        .repeated()
-        .collect();
     struct Case(&'static str, &'static [&'static str]);
 
     const TEST_CASES: &[Case] = &[
@@ -494,6 +491,9 @@ fn test_parse_single_syllable_symex() {
         Case("A A", &["A", "A"]), // special symexes are never joined anyway
         Case("Q Q", &["Q", "Q"]), // Use of OneOnly forces these syllables not to be joined.
     ];
+    let zero_or_more_symexes = parse_symex(SymexSyllableRule::OneOnly, Script::Normal)
+        .repeated()
+        .collect();
     for Case(input, expected) in TEST_CASES {
         let got: Vec<SymbolName> =
             parse_successfully_with(input, zero_or_more_symexes.clone(), no_state_setup);

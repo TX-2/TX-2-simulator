@@ -18,11 +18,6 @@ fn fail_if_error_token(
 }
 
 fn scan_slices(input: &str) -> Result<Vec<(Token, &str)>, ErrorTokenKind> {
-    dbg!(input);
-    dbg!(input.len());
-
-    let mapping = |(t, span): (Token, Span)| -> (Token, &str) { (t, &input[span]) };
-
     fn fail_if_stringy_error_token<'a>(
         accumulator: Result<Vec<(Token, &'a str)>, ErrorTokenKind>,
         token_and_str: (Token, &'a str),
@@ -35,6 +30,11 @@ fn scan_slices(input: &str) -> Result<Vec<(Token, &str)>, ErrorTokenKind> {
             }
         }
     }
+
+    dbg!(input);
+    dbg!(input.len());
+
+    let mapping = |(t, span): (Token, Span)| -> (Token, &str) { (t, &input[span]) };
 
     Lexer::new(input)
         .spanned()

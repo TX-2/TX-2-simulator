@@ -626,11 +626,6 @@ fn expand_macro(
 pub(crate) fn manuscript_lines_to_source_file<'a>(
     lines: Vec<(Span, ManuscriptLine)>,
 ) -> Result<SourceFile, chumsky::error::Rich<'a, super::lexer::Token>> {
-    let mut blocks: Vec<ManuscriptBlock> = Vec::new();
-    let mut equalities: Vec<Equality> = Vec::new();
-    let mut macros: BTreeMap<SymbolName, MacroDefinition> = Default::default();
-    let mut maybe_punch: Option<PunchCommand> = None;
-
     fn get_or_create_output_block(result: &mut Vec<ManuscriptBlock>) -> &mut ManuscriptBlock {
         if result.is_empty() {
             result.push(ManuscriptBlock {
@@ -657,6 +652,11 @@ pub(crate) fn manuscript_lines_to_source_file<'a>(
         let alltags: Vec<Tag> = initial.drain(0..).chain(v.drain(0..)).collect();
         v.extend(alltags);
     }
+
+    let mut blocks: Vec<ManuscriptBlock> = Vec::new();
+    let mut equalities: Vec<Equality> = Vec::new();
+    let mut macros: BTreeMap<SymbolName, MacroDefinition> = Default::default();
+    let mut maybe_punch: Option<PunchCommand> = None;
 
     let mut pending_tags: Vec<Tag> = Vec::new();
 

@@ -85,10 +85,6 @@ fn assemble_pass1<'a, 'b: 'a>(
     source_file_body: &'b Source<'a>,
     errors: &mut Vec<Rich<'a, lexer::Token>>,
 ) -> Result<(Option<SourceFile>, OutputOptions), AssemblerFailure> {
-    let span = span!(Level::ERROR, "assembly pass 1");
-    let _enter = span.enter();
-    let options = OutputOptions { list: false };
-
     fn setup(state: &mut State) {
         // Octal is actually the default numeral mode, we just call
         // set_numeral_mode here to keep Clippy happy until we
@@ -96,6 +92,10 @@ fn assemble_pass1<'a, 'b: 'a>(
         state.numeral_mode.set_numeral_mode(NumeralMode::Decimal); // appease Clippy
         state.numeral_mode.set_numeral_mode(NumeralMode::Octal);
     }
+
+    let span = span!(Level::ERROR, "assembly pass 1");
+    let _enter = span.enter();
+    let options = OutputOptions { list: false };
 
     let (mut sf, mut new_errors) = parse_source_file(source_file_body.as_str(), setup);
     errors.append(&mut new_errors);
