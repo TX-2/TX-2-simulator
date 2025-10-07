@@ -36,9 +36,7 @@ fn assemble_check_symbols(
     for (name, expected_value) in expected {
         use crate::eval::ScopeIdentifier;
 
-        let sym = SymbolName {
-            canonical: name.to_string(),
-        };
+        let sym = SymbolName::from(*name);
         let span = span(0..(name.len()));
         let mut rc_block =
             make_empty_rc_block_for_test(Address::from(Unsigned18Bit::from(0o020_000u16)));
