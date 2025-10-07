@@ -26,7 +26,6 @@
 #![allow(clippy::doc_markdown)] // fix soon
 #![allow(clippy::needless_pass_by_value)] // fix soon
 #![allow(clippy::unused_self)] // fix soon
-#![allow(clippy::inline_always)] // fix soon
 #![allow(clippy::inefficient_to_string)] // fix soon
 #![allow(clippy::match_wildcard_for_single_variants)] // fix soon
 #![allow(clippy::trivially_copy_pass_by_ref)] // fix soon

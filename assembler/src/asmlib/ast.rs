@@ -1675,7 +1675,6 @@ impl TaggedProgramInstruction {
         }
     }
 
-    #[inline(always)]
     fn emitted_word_count(&self) -> Unsigned18Bit {
         Unsigned18Bit::ONE
     }
