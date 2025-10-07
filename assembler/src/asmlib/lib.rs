@@ -25,7 +25,6 @@
 #![allow(clippy::if_not_else)] // fix soon
 #![allow(clippy::doc_markdown)] // fix soon
 #![allow(clippy::needless_pass_by_value)] // fix soon
-#![allow(clippy::unused_self)] // fix soon
 #![allow(clippy::match_wildcard_for_single_variants)] // fix soon
 #![allow(clippy::trivially_copy_pass_by_ref)] // fix soon
 #![allow(clippy::unnecessary_wraps)] // fix soon

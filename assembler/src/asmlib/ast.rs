@@ -1014,6 +1014,9 @@ impl SymbolOrLiteral {
         _implicit_symtab: &mut ImplicitSymbolTable,
         _rc_allocator: &mut R,
     ) -> Result<(), RcWordAllocationFailure> {
+        // SymbolOrliteral doesn't contain anything that would reserve
+        // RC-words, so there is nothing to do here.
+        let _ = self; // placate the unused_self Clippy lint.
         Ok(())
     }
 }
@@ -1676,6 +1679,7 @@ impl TaggedProgramInstruction {
     }
 
     fn emitted_word_count(&self) -> Unsigned18Bit {
+        let _ = self;
         Unsigned18Bit::ONE
     }
 
