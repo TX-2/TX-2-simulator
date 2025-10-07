@@ -506,12 +506,11 @@ impl RcAllocator for RcBlock {
 
 impl RcUpdater for RcBlock {
     fn update(&mut self, address: Address, value: Unsigned36Bit) {
-        if address < self.address {
-            panic!(
-                "out of range access to address {address} of RC-block starting at {}",
-                self.address
-            );
-        }
+        assert!(
+            address >= self.address,
+            "out of range access to address {address} of RC-block starting at {}",
+            self.address
+        );
         match Unsigned18Bit::from(address).checked_sub(Unsigned18Bit::from(self.address)) {
             Some(offset) => match self.words.get_mut(usize::from(offset)) {
                 Some((_source, spot)) => {

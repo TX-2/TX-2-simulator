@@ -1870,7 +1870,7 @@ impl InstructionSequence {
             }
 
             if self.local_symbols.is_some() {
-                panic!(
+                unimplemented!(
                     "InstructionSequence::build_binary_block: evaluation with local symbol tables is not yet implemented"
                 );
             }

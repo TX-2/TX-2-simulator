@@ -14,9 +14,7 @@ fn bit_index(q: u8, bitnum: u8) -> Unsigned6Bit {
             panic!("invalid quarter number {q}");
         }
     };
-    if bitnum > 12 {
-        panic!("invalid bit number {bitnum}");
-    }
+    assert!(bitnum <= 12, "invalid bit number {bitnum}");
     Unsigned6Bit::try_from((quarter << 4) | bitnum).unwrap()
 }
 

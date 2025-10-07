@@ -146,7 +146,7 @@ fn create_begin_block(
             // should closely examine what appear to be the original
             // (TX-2 assembly language) programmer's assumptions about
             // what will happen.
-            panic!(
+            unimplemented!(
                 "PUNCH directive specifies deferred start address {start:o}; this is (deliberately) not yet supported - check carefully!"
             );
         }

@@ -1453,11 +1453,10 @@ fn test_subs() {
             parse_multi_syllable_symex(SymexSyllableRule::Multiple, Script::Normal),
             no_state_setup,
         );
-        if got != expected {
-            panic!(
-                "Parsing '{input}' with parse_multi_syllable_symex, expected '{expected}', got '{got}'"
-            );
-        }
+        assert_eq!(
+            got, expected,
+            "Parsing '{input}' with parse_multi_syllable_symex, expected '{expected}', got '{got}'"
+        );
     }
 
     check("@beta@", "β");
@@ -1485,11 +1484,10 @@ fn test_greek_letters() {
             parse_multi_syllable_symex(SymexSyllableRule::Multiple, Script::Normal),
             no_state_setup,
         );
-        if got != input {
-            panic!(
-                "Parsing '{input}' with parse_multi_syllable_symex, expected '{input}', got '{got}'"
-            );
-        }
+        assert_eq!(
+            got, input,
+            "Parsing '{input}' with parse_multi_syllable_symex, expected '{input}', got '{got}'"
+        );
     }
     check("β");
     check("γ");
@@ -2699,11 +2697,11 @@ fn test_make_bit_designator_literal() {
                     BitDesignatorValidation::Good(literal) => {
                         dbg!(&literal);
                         let n = literal.unshifted_value();
-                        if (n & (!MASK)) != 0 {
-                            panic!(
-                                "bit designator {what} produced output {n:o} but that has bits set outside the allowed mask {MASK:o}"
-                            );
-                        }
+                        assert_eq!(
+                            (n & (!MASK)),
+                            0,
+                            "bit designator {what} produced output {n:o} but that has bits set outside the allowed mask {MASK:o}"
+                        );
                         if let Some((prevq, prevb)) = seen.insert(n, (q, bit)) {
                             panic!(
                                 "two distinct bit designators both evaluate to {n}: {what} and {}",

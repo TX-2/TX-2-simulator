@@ -21,7 +21,6 @@
 #![allow(clippy::default_trait_access)] // fix later
 #![allow(clippy::match_wild_err_arm)] // fix later
 #![allow(clippy::verbose_bit_mask)] // fix later
-#![allow(clippy::manual_assert)] // fix soon
 #![allow(clippy::if_not_else)] // fix soon
 #![allow(clippy::doc_markdown)] // fix soon
 #![allow(clippy::needless_pass_by_value)] // fix soon

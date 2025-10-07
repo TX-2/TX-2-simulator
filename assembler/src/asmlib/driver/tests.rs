@@ -54,11 +54,10 @@ fn assemble_check_symbols(
         let scope = ScopeIdentifier::global();
         match evaluate_symbol(&sym, Script::Normal, span, &mut ctx, scope) {
             Ok(got) => {
-                if got != *expected_value {
-                    panic!(
-                        "incorrect value for symbol {name}; expected {expected_value:?}, got {got:?}"
-                    );
-                }
+                assert_eq!(
+                    got, *expected_value,
+                    "incorrect value for symbol {name}; expected {expected_value:?}, got {got:?}"
+                );
             }
             Err(e) => {
                 panic!("unexpected error looking up value for symbol {name}: {e:?}");
