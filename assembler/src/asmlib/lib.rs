@@ -21,7 +21,6 @@
 #![allow(clippy::similar_names)] // fix later
 #![allow(clippy::explicit_into_iter_loop)] // fix later
 #![allow(clippy::default_trait_access)] // fix later
-#![allow(clippy::match_wild_err_arm)] // fix later
 
 mod ast;
 mod collections;

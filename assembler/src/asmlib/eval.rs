@@ -552,16 +552,15 @@ fn evaluate_normal_symbol<R: RcUpdater>(
     if !ctx.lookup_operation.depends_on.insert(name.clone()) {
         // `name` was already in `depends_on`; in other words,
         // we have a loop.
-        match OneOrMore::try_from_vec(ctx.lookup_operation.deps_in_order.clone()) {
-            Ok(deps_in_order) => {
-                return Err(EvaluationFailure::SymbolDefinitionLoop {
-                    span,
-                    deps_in_order,
-                });
-            }
-            Err(_) => {
-                panic!("we know deps_in_order is non-empty because we just appended an item to it");
-            }
+        if let Ok(deps_in_order) =
+            OneOrMore::try_from_vec(ctx.lookup_operation.deps_in_order.clone())
+        {
+            return Err(EvaluationFailure::SymbolDefinitionLoop {
+                span,
+                deps_in_order,
+            });
+        } else {
+            panic!("we know deps_in_order is non-empty because we just appended an item to it");
         }
     }
 

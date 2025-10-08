@@ -672,15 +672,14 @@ fn test_here_in_nested_rc_word_careful() {
             None => {
                 panic!("failed to subtract {} from {addr}", rcwords.address);
             }
-            Some(x) => match Unsigned18Bit::try_from(x) {
-                Err(_) => {
-                    panic!("failed to convert {x} into an Unsigned18Bit value");
-                }
-                Ok(x) => {
+            Some(x) => {
+                if let Ok(x) = Unsigned18Bit::try_from(x) {
                     let offset: usize = x.into();
                     rcwords.words.get(offset)
+                } else {
+                    panic!("failed to convert {x} into an Unsigned18Bit value");
                 }
-            },
+            }
         }
     }
 
