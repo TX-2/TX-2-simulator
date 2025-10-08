@@ -18,7 +18,6 @@
 #![allow(clippy::enum_glob_use)] // fix later
 #![allow(clippy::redundant_else)] // fix later
 #![allow(clippy::too_many_lines)] // fix later
-#![allow(clippy::similar_names)] // fix later
 #![allow(clippy::explicit_into_iter_loop)] // fix later
 #![allow(clippy::default_trait_access)] // fix later
 

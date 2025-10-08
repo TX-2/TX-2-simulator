@@ -1061,15 +1061,15 @@ fn test_symbol_definition_loop_detection() {
                     // both of the problem symbols, indicating the
                     // dependency loop for each.
                     let (msg1, msg2) = (e1.to_string(), e2.to_string());
-                    let sa_msg =
+                    let a_msg =
                         "symbol SA is undefined because its definition forms a loop: SA->SB->SA";
-                    let sb_msg =
+                    let b_msg =
                         "symbol SB is undefined because its definition forms a loop: SB->SA->SB";
                     dbg!(&msg1);
                     dbg!(&msg2);
                     assert!(
-                        (msg1.contains(sa_msg) && msg2.contains(sb_msg))
-                            || (msg1.contains(sb_msg) && msg2.contains(sa_msg)),
+                        (msg1.contains(a_msg) && msg2.contains(b_msg))
+                            || (msg1.contains(b_msg) && msg2.contains(a_msg)),
                         "error messages did not include the expected text:\n{msg1}\n{msg2}"
                     );
                 }
