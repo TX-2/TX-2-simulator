@@ -26,7 +26,6 @@
 #![allow(clippy::doc_markdown)] // fix soon
 #![allow(clippy::match_wildcard_for_single_variants)] // fix soon
 #![allow(clippy::trivially_copy_pass_by_ref)] // fix soon
-#![warn(clippy::unnecessary_wraps)] // fix soon
 
 mod ast;
 mod collections;
