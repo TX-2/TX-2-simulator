@@ -654,19 +654,54 @@ fn assemble_pass3(
 }
 
 fn cleanup_control_chars(input: String) -> String {
-    let mut output: String = String::with_capacity(input.len());
-    for ch in input.chars() {
-        match ch {
-            '\'' | '"' => {
-                output.push(ch);
-            }
-            ch if ch.is_control() => output.extend(ch.escape_default()),
-            ch => {
+    fn needs_escape(ch: &char) -> bool {
+        *ch == '\\' || ch.is_control()
+    }
+    let extra = input.chars().filter(needs_escape).count();
+    if extra > 0 {
+        let mut output: String = String::with_capacity(input.len().saturating_add(extra));
+        for ch in input.chars() {
+            if needs_escape(&ch) {
+                output.extend(ch.escape_default());
+            } else {
                 output.push(ch);
             }
         }
+        output
+    } else {
+        // No need to escape anything, return the input unchanged.
+        input
     }
-    output
+}
+
+#[test]
+fn test_cleanup_control_chars_not_control() {
+    for input in &["", "hello", "12", "X Y"] {
+        let input = (*input).to_string();
+        let output = cleanup_control_chars(input.clone());
+        assert_eq!(output, input);
+    }
+}
+
+#[test]
+fn test_cleanup_control_chars_quotes() {
+    for input in &["They're", "\"hello\"", "\"\"", "''", "Un\"balanced"] {
+        let input = (*input).to_string();
+        let output = cleanup_control_chars(input.clone());
+        assert_eq!(output, input);
+    }
+}
+
+#[test]
+fn test_cleanup_control_chars_backslash() {
+    assert_eq!(
+        cleanup_control_chars(String::from("First line\nsecond line")),
+        String::from("First line\\nsecond line")
+    );
+    assert_eq!(
+        cleanup_control_chars(String::from("\\")),
+        String::from("\\\\")
+    );
 }
 
 fn fail_with_diagnostics(
