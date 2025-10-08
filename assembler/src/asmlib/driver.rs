@@ -364,7 +364,7 @@ fn assemble_pass2<'s>(
         why_blocked: "we don't expect origin computation to require RC-word allocation",
     };
     let tmp_blocks: Vec<BlockPosition> = memory_map.iter().cloned().collect();
-    for block_position in tmp_blocks.into_iter() {
+    for block_position in tmp_blocks {
         let mut ctx = EvaluationContext {
             explicit_symtab: &mut explicit_symbols,
             implicit_symtab: &mut implicit_symbols,
@@ -566,7 +566,7 @@ fn assemble_pass3(
     }
 
     // Emit the binary code.
-    for (block_id, directive_block) in blocks.into_iter() {
+    for (block_id, directive_block) in blocks {
         event!(
             Level::DEBUG,
             "{block_id} in output has address {0:#o} and length {1:#o}",

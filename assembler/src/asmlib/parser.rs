@@ -663,7 +663,7 @@ where
             MacroDummyParameters::OneOrMore(ref params) => params.clone(),
         };
         let mut param_values: MacroParameterBindings = Default::default();
-        for param_def in param_defs.into_iter() {
+        for param_def in param_defs {
             let before = inp.cursor();
             if let Some(got) = inp.next_maybe().as_deref() {
                 let span = inp.span_since(&before);
@@ -1451,7 +1451,7 @@ where
                 .keys()
                 .chain(state_macros.keys())
                 .collect();
-            for name in all_names.into_iter() {
+            for name in all_names {
                 check_consistent(
                     source_file.macros.get(name),
                     extra.state().macros().get(name),

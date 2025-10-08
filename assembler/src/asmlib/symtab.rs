@@ -97,7 +97,7 @@ impl ImplicitSymbolTable {
         &mut self,
         defs: I,
     ) {
-        for (name, definition) in defs.into_iter() {
+        for (name, definition) in defs {
             self.definitions.insert(name, definition);
         }
     }
@@ -156,7 +156,7 @@ impl ExplicitSymbolTable {
         other: ExplicitSymbolTable,
     ) -> Result<(), OneOrMore<BadSymbolDefinition>> {
         let mut errors: Vec<BadSymbolDefinition> = Vec::new();
-        for (name, def) in other.definitions.into_iter() {
+        for (name, def) in other.definitions {
             if let Err(e) = self.define(name, def) {
                 errors.push(e);
             }
