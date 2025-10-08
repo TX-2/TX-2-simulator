@@ -16,8 +16,8 @@
 #![warn(clippy::pedantic)]
 #![allow(clippy::verbose_bit_mask)] // because many of our types don't have trailing_zeros().
 #![allow(clippy::too_many_lines)] // fix later
-#![allow(clippy::explicit_into_iter_loop)] // fix later
 #![allow(clippy::default_trait_access)] // fix later
+#![warn(clippy::explicit_into_iter_loop)] // fix later
 
 mod ast;
 mod collections;
