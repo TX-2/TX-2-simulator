@@ -78,8 +78,7 @@ fn test_assemble_pass1() {
 
     // When we assemble it
     let mut errors = Vec::new();
-    let (source_file, _options) =
-        assemble_pass1(&input_source, &mut errors).expect("pass 1 should succeed");
+    let (source_file, _options) = assemble_pass1(&input_source, &mut errors);
 
     // Then we should see that it assembles without error, and...
     assert_eq!(errors.as_slice(), &[]);
@@ -1170,24 +1169,11 @@ fn test_diagnose_duplicate_tags_in_macro_body() {
     let mut errors = Default::default();
     let expected_msg = "T is defined more than once";
     let input_source = Source::new(input);
-    let r = dbg!(assemble_pass1(&input_source, &mut errors));
+    let (_source_file, _options) = dbg!(assemble_pass1(&input_source, &mut errors));
+    dbg!(&errors);
 
     // Then the assembly should fail with a message about the
     // duplicate tag.
-    match r {
-        Ok((_source_file, _options)) => {
-            dbg!(&errors);
-            assert!(!errors.is_empty());
-            assert!(errors.iter().any(|e| e.to_string().contains(expected_msg)));
-        }
-        Err(e) => {
-            dbg!(&errors);
-            dbg!(&e);
-            // Although the current implementation successfully parses
-            // the program but returns an error in `errors`, we also
-            // accept a hypothetical implementation in which
-            // assemble_pass1() returns Err.
-            assert!(e.to_string().contains(expected_msg));
-        }
-    }
+    assert!(!errors.is_empty());
+    assert!(errors.iter().any(|e| e.to_string().contains(expected_msg)));
 }

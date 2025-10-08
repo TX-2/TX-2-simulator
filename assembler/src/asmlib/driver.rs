@@ -89,7 +89,7 @@ impl OutputOptions {
 fn assemble_pass1<'a, 'b: 'a>(
     source_file_body: &'b Source<'a>,
     errors: &mut Vec<Rich<'a, lexer::Token>>,
-) -> Result<(Option<SourceFile>, OutputOptions), AssemblerFailure> {
+) -> (Option<SourceFile>, OutputOptions) {
     fn setup(state: &mut State) {
         // Octal is actually the default numeral mode, we just call
         // set_numeral_mode here to keep Clippy happy until we
@@ -114,7 +114,7 @@ fn assemble_pass1<'a, 'b: 'a>(
                 .map(|tag_err| Rich::custom(tag_err.span(), tag_err.to_string())),
         );
     }
-    Ok((sf, options))
+    (sf, options)
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -126,9 +126,9 @@ enum AssemblerPass1Or2Output<'a> {
 
 fn assemble_nonempty_input<'a, 'b: 'a>(input: &'b Source<'a>) -> AssemblerPass1Or2Output<'a> {
     let mut errors: Vec<Rich<'_, lexer::Token>> = Vec::new();
-    match assemble_pass1(input, &mut errors) {
-        Err(e) => AssemblerPass1Or2Output::Pass1Failed(Err(e)),
-        Ok((None, _output_options)) => match OneOrMore::try_from_vec(errors) {
+    let (maybe_source_file, output_options) = assemble_pass1(input, &mut errors);
+    match maybe_source_file {
+        None => match OneOrMore::try_from_vec(errors) {
             Ok(errors) => AssemblerPass1Or2Output::Pass1Failed(Ok(errors)),
             Err(_) => {
                 unreachable!(
@@ -136,7 +136,7 @@ fn assemble_nonempty_input<'a, 'b: 'a>(input: &'b Source<'a>) -> AssemblerPass1O
                 );
             }
         },
-        Ok((Some(source_file), output_options)) => match assemble_pass2(source_file, input) {
+        Some(source_file) => match assemble_pass2(source_file, input) {
             Err(e) => AssemblerPass1Or2Output::Pass2Failed(e),
             Ok(p2output) => AssemblerPass1Or2Output::Success(errors, output_options, p2output),
         },
@@ -830,7 +830,7 @@ fn test_assemble_pass1() {
     let mut errors = Vec::new();
     let input_source = Source::new(input);
     assert_eq!(
-        assemble_pass1(&input_source, &mut errors).expect("assembly should succeed"),
+        assemble_pass1(&input_source, &mut errors),
         (
             Some(SourceFile {
                 punch: Some(PunchCommand(expected_directive_entry_point)),

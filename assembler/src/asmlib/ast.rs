@@ -1014,6 +1014,9 @@ impl SymbolOrLiteral {
         _implicit_symtab: &mut ImplicitSymbolTable,
         _rc_allocator: &mut R,
     ) -> Result<(), RcWordAllocationFailure> {
+        // We use Result for consistency with the allocate_rc_words()
+        // methods of other AST elements.
+        #![allow(clippy::unnecessary_wraps)]
         // SymbolOrliteral doesn't contain anything that would reserve
         // RC-words, so there is nothing to do here.
         let _ = self; // placate the unused_self Clippy lint.
