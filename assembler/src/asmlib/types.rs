@@ -147,38 +147,36 @@ pub enum ProgramError {
 
 impl Spanned for ProgramError {
     fn span(&self) -> Span {
-        use ProgramError::*;
         match self {
-            RcBlockTooLong(RcWordSource { span, .. })
-            | FailedToAssignIndexRegister(span, _)
-            | BlockTooLong(span, _)
-            | InconsistentTag { span, .. }
-            | SymbolDefinitionLoop { span, .. }
-            | SyntaxError { span, .. } => *span,
+            ProgramError::RcBlockTooLong(RcWordSource { span, .. })
+            | ProgramError::FailedToAssignIndexRegister(span, _)
+            | ProgramError::BlockTooLong(span, _)
+            | ProgramError::InconsistentTag { span, .. }
+            | ProgramError::SymbolDefinitionLoop { span, .. }
+            | ProgramError::SyntaxError { span, .. } => *span,
         }
     }
 }
 
 impl Display for ProgramError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        use ProgramError::*;
         match self {
-            RcBlockTooLong(RcWordSource { kind, .. }) => {
+            ProgramError::RcBlockTooLong(RcWordSource { kind, .. }) => {
                 write!(f, "RC-word block grew too long to allocate {kind}")
             }
-            FailedToAssignIndexRegister(_span, symbol_name) => {
+            ProgramError::FailedToAssignIndexRegister(_span, symbol_name) => {
                 write!(
                     f,
                     "there are not enough index registers available to assign one for {symbol_name}"
                 )
             }
-            BlockTooLong(_span, mle) => {
+            ProgramError::BlockTooLong(_span, mle) => {
                 write!(f, "program block contains too many machine words: {mle}")
             }
-            InconsistentTag { name, span: _, msg } => {
+            ProgramError::InconsistentTag { name, span: _, msg } => {
                 write!(f, "inconsistent definitions for tag {name}: {msg}")
             }
-            SymbolDefinitionLoop {
+            ProgramError::SymbolDefinitionLoop {
                 symbol_names,
                 span: _,
             } => {
@@ -195,7 +193,7 @@ impl Display for ProgramError {
                 }
                 Ok(())
             }
-            SyntaxError { span: _, msg } => {
+            ProgramError::SyntaxError { span: _, msg } => {
                 write!(f, "{msg}")
             }
         }

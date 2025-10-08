@@ -1213,14 +1213,15 @@ impl InstructionFragment {
         implicit_symtab: &mut ImplicitSymbolTable,
         rc_allocator: &mut R,
     ) -> Result<(), RcWordAllocationFailure> {
-        use InstructionFragment::*;
         match self {
-            Null(_) | DeferredAddressing(_) => Ok(()),
-            Arithmetic(expr) => {
+            InstructionFragment::Null(_) | InstructionFragment::DeferredAddressing(_) => Ok(()),
+            InstructionFragment::Arithmetic(expr) => {
                 expr.allocate_rc_words(explicit_symtab, implicit_symtab, rc_allocator)
             }
-            Config(cfg) => cfg.allocate_rc_words(explicit_symtab, implicit_symtab, rc_allocator),
-            PipeConstruct {
+            InstructionFragment::Config(cfg) => {
+                cfg.allocate_rc_words(explicit_symtab, implicit_symtab, rc_allocator)
+            }
+            InstructionFragment::PipeConstruct {
                 index: _,
                 rc_word_span,
                 rc_word_value,

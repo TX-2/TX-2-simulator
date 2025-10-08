@@ -104,12 +104,11 @@ impl<'a> LowerLexer<'a> {
 
     pub(super) fn next(&mut self) -> Lexeme<'a> {
         use super::Token;
-        use Lexeme::*;
 
         loop {
             let tok = match self.inner.next() {
                 None => {
-                    return EndOfInput;
+                    return Lexeme::EndOfInput;
                 }
                 Some(Result::Err(())) => {
                     if self.state.in_comment {
@@ -136,7 +135,7 @@ impl<'a> LowerLexer<'a> {
                     // symbols across a space.  Per section 6-2.3 of
                     // the User Handbook, tab is not allowed inside a
                     // symex.
-                    return Tok(Token::Tab);
+                    return Lexeme::Tok(Token::Tab);
                 }
                 InnerToken::CommentStart => {
                     self.state.in_comment = true;
@@ -150,7 +149,7 @@ impl<'a> LowerLexer<'a> {
                     self.state.lbrace_count = self.state.lbrace_count.checked_add(1).expect(
                         "the number of '{' on one line should be countable without overflow",
                     );
-                    return Tok(Token::LeftBrace(Script::Normal));
+                    return Lexeme::Tok(Token::LeftBrace(Script::Normal));
                 }
                 InnerToken::RightBrace => {
                     match self.state.lbrace_count.checked_sub(1) {
@@ -163,12 +162,12 @@ impl<'a> LowerLexer<'a> {
                                 // the comment text.
                                 continue;
                             }
-                            return Tok(Token::RightBrace(Script::Normal));
+                            return Lexeme::Tok(Token::RightBrace(Script::Normal));
                         }
                         Some(reduced_count) => {
                             self.state.lbrace_count = reduced_count;
                             self.state.in_comment = false;
-                            return Tok(Token::RightBrace(Script::Normal));
+                            return Lexeme::Tok(Token::RightBrace(Script::Normal));
                         }
                     }
                 }
@@ -176,13 +175,13 @@ impl<'a> LowerLexer<'a> {
                     self.state.lbrace_count = 0;
                     self.state.in_comment = false;
                     self.state.check_set_up_for_start_of_line();
-                    return Tok(Token::Newline);
+                    return Lexeme::Tok(Token::Newline);
                 }
                 InnerToken::Text => {
                     if self.state.in_comment {
                         continue;
                     }
-                    return Text(self.inner.slice());
+                    return Lexeme::Text(self.inner.slice());
                 }
             }
         }

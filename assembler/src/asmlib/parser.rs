@@ -791,7 +791,6 @@ pub(crate) fn instructions_with_comma_counts<I>(it: I) -> Vec<CommaDelimitedFrag
 where
     I: Iterator<Item = CommasOrInstruction>,
 {
-    use CommasOrInstruction::*;
     /// Fold operation which estabishes an alternating pattern of
     /// commas and instructions.
     ///
@@ -834,11 +833,11 @@ where
                     acc.push(CommasOrInstruction::C(None));
                 }
             },
-            Some(I(_)) => unreachable!("invariant was broken"),
+            Some(CommasOrInstruction::I(_)) => unreachable!("invariant was broken"),
             None => unreachable!("invariant was not established"),
         }
-        assert!(matches!(acc.first(), Some(C(_))));
-        assert!(matches!(acc.last(), Some(C(_))));
+        assert!(matches!(acc.first(), Some(CommasOrInstruction::C(_))));
+        assert!(matches!(acc.last(), Some(CommasOrInstruction::C(_))));
         acc
     }
 
@@ -849,8 +848,8 @@ where
             None => {
                 return Vec::new();
             }
-            Some(I(_)) => None,
-            Some(C(maybe_commas)) => {
+            Some(CommasOrInstruction::I(_)) => None,
+            Some(CommasOrInstruction::C(maybe_commas)) => {
                 let c = maybe_commas.clone();
                 it.next();
                 c
@@ -868,7 +867,7 @@ where
             (None, _) => {
                 break;
             }
-            (Some(C(before_commas)), Some(I(inst))) => {
+            (Some(CommasOrInstruction::C(before_commas)), Some(CommasOrInstruction::I(inst))) => {
                 let after_commas: Option<Commas> = match it.peek() {
                     Some(CommasOrInstruction::C(commas)) => commas.clone(),
                     None => None,
@@ -882,11 +881,12 @@ where
                     after_commas,
                 ));
             }
-            (Some(C(_)), None) => {
+            (Some(CommasOrInstruction::C(_)), None) => {
                 // No instructions in the input.
                 break;
             }
-            (Some(I(_)), _) | (Some(C(_)), Some(C(_))) => {
+            (Some(CommasOrInstruction::I(_)), _)
+            | (Some(CommasOrInstruction::C(_)), Some(CommasOrInstruction::C(_))) => {
                 unreachable!("fold_step did not maintain its invariant");
             }
         }

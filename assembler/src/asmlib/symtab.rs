@@ -360,10 +360,9 @@ impl ImplicitDefinition {
 
 impl Display for ImplicitDefinition {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        use ImplicitDefinition::*;
         match self {
-            Undefined(_context) => f.write_str("undefined"),
-            DefaultAssigned(value, _) => {
+            ImplicitDefinition::Undefined(_context) => f.write_str("undefined"),
+            ImplicitDefinition::DefaultAssigned(value, _) => {
                 write!(f, "default-assigned as {value}")
             }
         }
@@ -470,9 +469,8 @@ pub(super) fn record_undefined_symbol_or_return_failure(
     e: EvaluationFailure,
     undefined_symbols: &mut BTreeMap<SymbolName, ProgramError>,
 ) -> Result<(), AssemblerFailure> {
-    use EvaluationFailure::*;
     match e {
-        SymbolDefinitionLoop {
+        EvaluationFailure::SymbolDefinitionLoop {
             span,
             deps_in_order,
             ..

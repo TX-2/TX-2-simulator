@@ -79,9 +79,8 @@ impl Spanned for EvaluationFailure {
 
 impl Display for EvaluationFailure {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        use EvaluationFailure::*;
         match self {
-            SymbolDefinitionLoop {
+            EvaluationFailure::SymbolDefinitionLoop {
                 deps_in_order,
                 span: _,
             } => {
@@ -93,16 +92,19 @@ impl Display for EvaluationFailure {
                     names.join("->")
                 )
             }
-            FailedToAssignIndexRegister(ExhaustedIndexRegisters { name, .. }) => {
+            EvaluationFailure::FailedToAssignIndexRegister(ExhaustedIndexRegisters {
+                name,
+                ..
+            }) => {
                 write!(
                     f,
                     "unable to assign index register as the default value for symbol {name} because there are not enough index registers"
                 )
             }
-            BlockTooLarge(_span, mle) => {
+            EvaluationFailure::BlockTooLarge(_span, mle) => {
                 write!(f, "program block too large: {mle}")
             }
-            HereIsNotAllowedHere(_) => {
+            EvaluationFailure::HereIsNotAllowedHere(_) => {
                 f.write_str("'#' (representing the current address) is not allowed here")
             }
         }
@@ -164,8 +166,6 @@ fn assign_default_value(
     name: &SymbolName,
     contexts_used: &SymbolContext,
 ) -> Result<Unsigned36Bit, ExhaustedIndexRegisters> {
-    use ConfigUse::*;
-    use IndexUse::*;
     event!(
         Level::DEBUG,
         "assigning default value for {name} used in contexts {contexts_used:?}"
@@ -178,7 +178,7 @@ fn assign_default_value(
             )
         }
         OriginUse::NotOrigin { config, index } => match (config, index) {
-            (NotConfig, NotIndex) => {
+            (ConfigUse::NotConfig, IndexUse::NotIndex) => {
                 if contexts_used.is_address() {
                     // Values which refer to addresses (and which
                     // therefore should point to a zero-initialised
@@ -193,8 +193,8 @@ fn assign_default_value(
                     )
                 }
             }
-            (IncludesConfig, _) => Ok(Unsigned36Bit::ZERO),
-            (NotConfig, IncludesIndex) => {
+            (ConfigUse::IncludesConfig, _) => Ok(Unsigned36Bit::ZERO),
+            (ConfigUse::NotConfig, IndexUse::IncludesIndex) => {
                 // Index but not also configuration. Assign the next
                 // index register.
                 match index_register_assigner.assign_index_register() {
