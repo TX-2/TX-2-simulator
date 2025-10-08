@@ -67,18 +67,18 @@ impl ImplicitSymbolTable {
 
     pub(crate) fn record_usage_context(
         &mut self,
-        name: SymbolName,
-        context: SymbolContext,
+        name: &SymbolName,
+        context: &SymbolContext,
     ) -> Result<(), InconsistentSymbolUse> {
         self.definitions
             .entry(name.clone())
             .or_insert_with(|| ImplicitDefinition::Undefined(context.clone()))
-            .merge_context(&name, context.clone())
+            .merge_context(name, context.clone())
     }
 
     pub(super) fn record_deduced_origin_value(
         &mut self,
-        name: SymbolName,
+        name: &SymbolName,
         value: Address,
         block_id: BlockIdentifier,
         span: Span,
@@ -87,7 +87,7 @@ impl ImplicitSymbolTable {
         self.definitions
             .entry(name.clone())
             .or_insert_with(|| ImplicitDefinition::DefaultAssigned(value.into(), context.clone()))
-            .merge_context(&name, context)
+            .merge_context(name, context)
     }
 
     #[cfg(test)]

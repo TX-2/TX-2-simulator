@@ -314,7 +314,7 @@ fn initial_symbol_table<'a>(
         match r {
             Ok((symbol, span, context)) => {
                 if !explicit_symbols.is_defined(&symbol)
-                    && let Err(e) = implicit_symbols.record_usage_context(symbol.clone(), context)
+                    && let Err(e) = implicit_symbols.record_usage_context(&symbol, &context)
                 {
                     errors.push(Rich::custom(span, e.to_string()));
                 }

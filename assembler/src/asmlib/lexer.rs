@@ -56,7 +56,7 @@ impl NumericLiteral {
         helpers::make_num(self.digits.as_str(), self.has_trailing_dot, mode)
     }
 
-    pub(crate) fn append_digits_of_literal(&mut self, other: NumericLiteral) {
+    pub(crate) fn append_digits_of_literal(&mut self, other: &NumericLiteral) {
         assert!(!other.has_trailing_dot);
         self.digits.push_str(&other.digits);
     }
@@ -674,7 +674,7 @@ fn merge_tokens(current: (Token, Span), incoming: (Token, Span)) -> TokenMergeRe
                     Token::Digits(incoming_script, incoming_name)
                         if existing_script == incoming_script =>
                     {
-                        existing_literal.append_digits_of_literal(incoming_name);
+                        existing_literal.append_digits_of_literal(&incoming_name);
                         TokenMergeResult::Merged(
                             Token::Digits(existing_script, existing_literal),
                             merged_span,

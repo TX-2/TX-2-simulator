@@ -23,11 +23,6 @@ fn is_reserved_identifier(ident: &str) -> bool {
     helpers::is_register_name(ident) || opcode_code(ident).is_some()
 }
 
-fn concat_strings(mut s: String, next: String) -> String {
-    s.push_str(&next);
-    s
-}
-
 // Compound chars are not supported at the moment, see docs/assembler/index.md.
 pub(super) fn digits_as_symex<'a, I>(
     script_required: Script,
@@ -117,6 +112,13 @@ pub(super) fn parse_multi_syllable_symex<'a: 'b, 'b, I>(
 where
     I: Input<'a, Token = Tok, Span = SimpleSpan> + ValueInput<'a>,
 {
+    // Pass by value here is harmless and simplifies the foldl below.
+    #[allow(clippy::needless_pass_by_value)]
+    fn concat_strings(mut s: String, next: String) -> String {
+        s.push_str(&next);
+        s
+    }
+
     match rule {
         SymexSyllableRule::OneOnly => symex_syllable(script_required)
             .labelled("single-syllable symex")

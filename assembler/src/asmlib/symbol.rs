@@ -263,7 +263,7 @@ impl SymbolContext {
     ) -> Result<(), InconsistentSymbolUse> {
         fn mix_err(
             name: &SymbolName,
-            origin: Origin,
+            origin: &Origin,
             _block_id: BlockIdentifier,
             configuration: ConfigUse,
             index: IndexUse,
@@ -328,7 +328,7 @@ impl SymbolContext {
                 OriginUse::NotOrigin { config, index },
             ) => {
                 if config == &ConfigUse::IncludesConfig || index == &IndexUse::IncludesIndex {
-                    return Err(mix_err(name, my_origin.clone(), *my_block, *config, *index));
+                    return Err(mix_err(name, my_origin, *my_block, *config, *index));
                 } else {
                     OriginUse::IncludesOrigin(*my_block, my_origin.clone())
                 }
@@ -338,13 +338,7 @@ impl SymbolContext {
                 OriginUse::IncludesOrigin(their_block, their_origin),
             ) => {
                 if config == &ConfigUse::IncludesConfig || index == &IndexUse::IncludesIndex {
-                    return Err(mix_err(
-                        name,
-                        their_origin.clone(),
-                        *their_block,
-                        *config,
-                        *index,
-                    ));
+                    return Err(mix_err(name, their_origin, *their_block, *config, *index));
                 } else {
                     OriginUse::IncludesOrigin(*their_block, their_origin.clone())
                 }
@@ -535,7 +529,7 @@ fn test_deduced_origin_merge() {
     }
     // Convenience function for creating the test input and expected output.
     fn make_symbolic_and_deduced_origin_contexts(
-        name: SymbolName,
+        name: &SymbolName,
         is_forward_reference: bool,
     ) -> Contexts {
         let block = BlockIdentifier::from(0);
@@ -599,8 +593,8 @@ fn test_deduced_origin_merge() {
     }
     let name = SymbolName::from("OGNX");
     // Set up contexts for the forward-reference and the backward-reference cases.
-    let contexts_backward_ref = make_symbolic_and_deduced_origin_contexts(name.clone(), false);
-    let contexts_forward_ref = make_symbolic_and_deduced_origin_contexts(name.clone(), true);
+    let contexts_backward_ref = make_symbolic_and_deduced_origin_contexts(&name, false);
+    let contexts_forward_ref = make_symbolic_and_deduced_origin_contexts(&name, true);
     // The value in expected_merge is not the same in each case, since
     // although the span of the origin definition is fixed, the span
     // of the reference to it is different for the forward-reference

@@ -280,7 +280,7 @@ impl<R: RcUpdater> EvaluationContext<'_, R> {
                             Ok(value) => {
                                 let address: Address = subword::right_half(value).into();
                                 match self.implicit_symtab.record_deduced_origin_value(
-                                    name.clone(),
+                                    name,
                                     address,
                                     *block_identifier,
                                     span,
