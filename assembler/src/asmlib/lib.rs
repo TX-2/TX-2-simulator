@@ -22,7 +22,6 @@
 #![allow(clippy::default_trait_access)] // fix later
 #![allow(clippy::match_wild_err_arm)] // fix later
 #![allow(clippy::verbose_bit_mask)] // fix later
-#![allow(clippy::if_not_else)] // fix soon
 #![allow(clippy::doc_markdown)] // fix soon
 #![allow(clippy::match_wildcard_for_single_variants)] // fix soon
 #![allow(clippy::trivially_copy_pass_by_ref)] // fix soon
