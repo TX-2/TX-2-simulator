@@ -1085,7 +1085,7 @@ pub(crate) enum InstructionFragment {
     /// allows them in subscript/superscript too.
     Arithmetic(ArithmeticExpression),
     /// Deferred addressing is normally specified as '*' but
-    /// PipeConstruct is a different way to indicate deferred
+    /// `PipeConstruct` is a different way to indicate deferred
     /// addressing.
     DeferredAddressing(Span),
     /// A configuration syllable (specified either in superscript or with a ‖).

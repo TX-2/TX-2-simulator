@@ -1,6 +1,6 @@
 //! This module implements the @...@ construct we use to represent in
 //! Unicode input files the characters that ther TX-2 supports but
-//! which Unicode does not.  For example, @sub_A@ which represents a
+//! which Unicode does not.  For example, `@sub_A@` which represents a
 //! subscripted letter A.
 //!
 //! We use the word "glyph" to denote the characters in the source

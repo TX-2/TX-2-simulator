@@ -480,9 +480,9 @@ pub(crate) struct MacroParameter {
 /// As defined with ☛☛DEF, a macro's name is followed by a terminator,
 /// or by a terminator and some arguments.  We model each argument as
 /// being introduced by its preceding terminator.  If there are no
-/// arguments, MacroArguments::Zero(token) represents that uses of the
-/// macro's name are followed by the indicated token (which terminates
-/// the macro name, not a dummy parameter).
+/// arguments, `MacroDummyparameters::Zero(token)` represents that uses
+/// of the macro's name are followed by the indicated token (which
+/// terminates the macro name, not a dummy parameter).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum MacroDummyParameters {
     Zero(Token),

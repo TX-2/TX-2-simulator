@@ -144,7 +144,7 @@ fn assemble_nonempty_input<'a, 'b: 'a>(input: &'b Source<'a>) -> AssemblerPass1O
 }
 
 /// This test helper is defined here so that we don't have to expose
-/// assemble_pass1, assemble_pass2.
+/// `assemble_pass1` or `assemble_pass2`.
 #[cfg(test)]
 pub(crate) fn assemble_nonempty_valid_input(
     input: &str,
@@ -334,7 +334,7 @@ fn initial_symbol_table<'a>(
 /// Pass 2 converts the abstract syntax representation into a
 /// `Directive`, which is closer to binary code.
 ///
-/// The source_file input is essentially an abstract syntax
+/// The `source_file` input is essentially an abstract syntax
 /// representation.  The output is a symbol table and a "directive"
 /// which is a sequence of blocks of code of known position and size
 /// (but the contents of which are not yet populated).

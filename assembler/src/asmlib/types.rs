@@ -60,7 +60,7 @@ pub enum MachineLimitExceededFailure {
     /// fails and we signal this with
     /// `MachineLimitExceededFailure::RanOutOfIndexRegisters`.
     RanOutOfIndexRegisters(Span, SymbolName),
-    /// BlockTooLarge is used to report blocks whose length is not
+    /// `BlockTooLarge` is used to report blocks whose length is not
     /// representable in an 18-bit halfword, or whose length is
     /// representable but whose start address wouild put the end of
     /// the block outside physical memory.  Programs for which this

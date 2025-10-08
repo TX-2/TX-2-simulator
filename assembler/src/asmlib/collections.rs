@@ -17,7 +17,7 @@ impl Error for NoItems {}
 /// A container for at least one item.  As a convenience, we don't
 /// implement methods that reduce the length of the container (so
 /// that, for example, we don't have to implement a fallible
-/// equivalent of pop()).  However, the container is mutable in the
+/// equivalent of `pop()`).  However, the container is mutable in the
 /// sense that the items stored in it can be mutated.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct OneOrMore<T> {

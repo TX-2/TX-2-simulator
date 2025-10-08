@@ -137,13 +137,13 @@ impl EvaluationFailure {
 
 impl std::error::Error for EvaluationFailure {}
 
-/// HereValue specifies the value used for `#`.  A `#` always
+/// `HereValue` specifies the value used for `#`.  A `#` always
 /// signifies the address of the word we are trying to assemble.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub(crate) enum HereValue {
     /// '#' refers to an address
     Address(Address),
-    /// NotAllowed is for when '#' is not allowed (this is used
+    /// `NotAllowed` is for when '#' is not allowed (this is used
     /// when evaluating an origin).
     NotAllowed,
 }

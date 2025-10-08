@@ -4,7 +4,7 @@ use base::prelude::*;
 /// Convert a bit designator (as described in the documentation for
 /// the SKM opcode on [page 3-34 of the User
 /// Handbook](https://archive.org/details/tx-2-users-handbook-nov-63/page/n35/mode/1up))
-/// into an Unsigned6Bit field (suitable for use as the index portion
+/// into an `Unsigned6Bit` field (suitable for use as the index portion
 /// of an instruction word).
 fn bit_index(q: u8, bitnum: u8) -> Unsigned6Bit {
     let quarter = match q {

@@ -6,7 +6,7 @@ use base::charset::Script;
 
 use super::super::glyph::Unrecognised;
 
-/// InnerToken is the result of a "partial" lexer which only
+/// `InnerToken` is the result of a "partial" lexer which only
 /// identifies enough tokens to determine whether we're inside an
 /// RC-block or a comment.  We do this in order to handle
 /// differing interpretations of '}' within a comment; if the
@@ -70,7 +70,7 @@ impl State {
     }
 }
 
-/// This is the output of LowerLexer.
+/// This is the output of `LowerLexer`.
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum Lexeme<'a> {
     EndOfInput,
@@ -79,7 +79,7 @@ pub(super) enum Lexeme<'a> {
     Err(Unrecognised),
 }
 
-/// LowerLexer uses a Logos-generated scanner to identify braces
+/// `LowerLexer` uses a Logos-generated scanner to identify braces
 /// and comments, and keeps track of whether we are in an RC-block
 /// or a comment.  Other text is returned as-is.
 #[derive(Debug, Clone)]

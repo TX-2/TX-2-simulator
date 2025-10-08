@@ -22,7 +22,6 @@
 #![allow(clippy::default_trait_access)] // fix later
 #![allow(clippy::match_wild_err_arm)] // fix later
 #![allow(clippy::verbose_bit_mask)] // fix later
-#![allow(clippy::doc_markdown)] // fix soon
 
 mod ast;
 mod collections;
