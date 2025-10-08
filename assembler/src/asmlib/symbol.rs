@@ -329,9 +329,8 @@ impl SymbolContext {
             ) => {
                 if config == &ConfigUse::IncludesConfig || index == &IndexUse::IncludesIndex {
                     return Err(mix_err(name, my_origin, *my_block, *config, *index));
-                } else {
-                    OriginUse::IncludesOrigin(*my_block, my_origin.clone())
                 }
+                OriginUse::IncludesOrigin(*my_block, my_origin.clone())
             }
             (
                 OriginUse::NotOrigin { config, index },
@@ -339,9 +338,8 @@ impl SymbolContext {
             ) => {
                 if config == &ConfigUse::IncludesConfig || index == &IndexUse::IncludesIndex {
                     return Err(mix_err(name, their_origin, *their_block, *config, *index));
-                } else {
-                    OriginUse::IncludesOrigin(*their_block, their_origin.clone())
                 }
+                OriginUse::IncludesOrigin(*their_block, their_origin.clone())
             }
         };
         let result = SymbolContext {

@@ -750,11 +750,10 @@ pub(crate) fn assemble_source(
                     &source_file_body,
                     errors,
                 )));
-            } else {
-                // No errors.
-                options = options.merge(output_options);
-                p2output
             }
+            // No errors.
+            options = options.merge(output_options);
+            p2output
         }
     };
 

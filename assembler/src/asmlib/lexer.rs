@@ -321,9 +321,8 @@ impl<'a> GlyphRecognizer<'a> {
             got_anything = true;
             if ch == '@' {
                 break;
-            } else {
-                name.push(ch);
             }
+            name.push(ch);
         }
 
         // If the input was @@, (that is, the glyph name is
@@ -820,16 +819,15 @@ impl<'a> GlyphTokenizer<'a> {
                                 continue;
                             }
                         }
-                    } else {
-                        let tok_start = self.inner.span().start;
-                        match tokenise_single_glyph(g) {
-                            Some(token) => {
-                                let span = tok_start..self.inner.span().end;
-                                Some((token, span))
-                            }
-                            None => {
-                                unimplemented!("unable) to convert glyph '{g:?}' to a token")
-                            }
+                    }
+                    let tok_start = self.inner.span().start;
+                    match tokenise_single_glyph(g) {
+                        Some(token) => {
+                            let span = tok_start..self.inner.span().end;
+                            Some((token, span))
+                        }
+                        None => {
+                            unimplemented!("unable) to convert glyph '{g:?}' to a token")
                         }
                     }
                 }
@@ -977,14 +975,12 @@ impl<'a> Lexer<'a> {
 
     fn get_next(&mut self) -> Option<Token> {
         use lower::Lexeme;
-        if let Some(upper_lexer) = self.upper.as_mut() {
-            if let Some((r, span)) = upper_lexer.get_next_spanned_token() {
-                self.upper_span = Some(span);
-                return Some(r);
-            } else {
-                // We have no more input from the upper lexer,
-                // fetch more from the lower one.
-            }
+        // If have more input from the upper lexer, use it.
+        if let Some(upper_lexer) = self.upper.as_mut()
+            && let Some((r, span)) = upper_lexer.get_next_spanned_token()
+        {
+            self.upper_span = Some(span);
+            return Some(r);
         }
 
         // Fetch more text from the lower lexer.

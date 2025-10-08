@@ -559,9 +559,8 @@ fn evaluate_normal_symbol<R: RcUpdater>(
                 span,
                 deps_in_order,
             });
-        } else {
-            panic!("we know deps_in_order is non-empty because we just appended an item to it");
         }
+        panic!("we know deps_in_order is non-empty because we just appended an item to it");
     }
 
     let result = if let Some(def) = ctx.explicit_symtab.get(name) {

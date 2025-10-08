@@ -115,14 +115,13 @@ impl<'a> LowerLexer<'a> {
                     if self.state.in_comment {
                         // Skip.
                         continue;
-                    } else {
-                        match self.inner.slice().chars().next() {
-                            Some(ch) => {
-                                return Lexeme::Err(Unrecognised::InvalidChar(ch));
-                            }
-                            None => {
-                                panic!("LowerLexer::next(): got error on zero-length content");
-                            }
+                    }
+                    match self.inner.slice().chars().next() {
+                        Some(ch) => {
+                            return Lexeme::Err(Unrecognised::InvalidChar(ch));
+                        }
+                        None => {
+                            panic!("LowerLexer::next(): got error on zero-length content");
                         }
                     }
                 }
