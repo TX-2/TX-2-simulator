@@ -73,6 +73,11 @@ pub struct OutputOptions {
 }
 
 impl OutputOptions {
+    // Merge two `OutputOptions` instances.  We deliberately consume
+    // both `self` and `other` in order to force the caller to use
+    // only the returned result.
+    #![allow(clippy::needless_pass_by_value)]
+    #[must_use]
     fn merge(self, other: OutputOptions) -> OutputOptions {
         OutputOptions {
             list: self.list || other.list,
