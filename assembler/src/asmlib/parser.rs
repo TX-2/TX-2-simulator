@@ -1406,32 +1406,32 @@ where
     }
 
     fn check_consistent<'a>(
-        sf: Option<&MacroDefinition>,
-        st: Option<&MacroDefinition>,
+        macro_def_in_source_file: Option<&MacroDefinition>,
+        macro_def_in_state: Option<&MacroDefinition>,
     ) -> Result<(), chumsky::error::Rich<'a, lexer::Token>> {
-        match (sf, st) {
+        match (macro_def_in_source_file, macro_def_in_state) {
             (None, None) => {
                 panic!("all_name is incorrect");
             }
-            (None, Some(st_def)) => Err(inconsistency_error(
-                st_def.span,
-                &st_def.name,
+            (None, Some(state_def)) => Err(inconsistency_error(
+                state_def.span,
+                &state_def.name,
                 "missing from SourceFile output",
             )),
-            (Some(sf_def), None) => Err(inconsistency_error(
-                sf_def.span,
-                &sf_def.name,
+            (Some(source_file_def), None) => Err(inconsistency_error(
+                source_file_def.span,
+                &source_file_def.name,
                 "missing from State",
             )),
-            (Some(sf_def), Some(st_def)) => {
-                if sf_def != st_def {
+            (Some(source_file_def), Some(state_def)) => {
+                if source_file_def == state_def {
+                    Ok(())
+                } else {
                     Err(inconsistency_error(
-                        sf_def.span,
-                        &sf_def.name,
+                        source_file_def.span,
+                        &source_file_def.name,
                         "inconsistently defined",
                     ))
-                } else {
-                    Ok(())
                 }
             }
         }

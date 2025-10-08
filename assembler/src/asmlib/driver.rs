@@ -182,9 +182,7 @@ pub(crate) fn assemble_nonempty_valid_input(
                         index_register_assigner,
                         errors,
                     } => {
-                        if !errors.is_empty() {
-                            panic!("input should be valid: {:?}", &errors);
-                        } else {
+                        if errors.is_empty() {
                             (
                                 directive,
                                 explicit_symbols,
@@ -192,6 +190,8 @@ pub(crate) fn assemble_nonempty_valid_input(
                                 memory_map,
                                 index_register_assigner,
                             )
+                        } else {
+                            panic!("input should be valid: {:?}", &errors);
                         }
                     }
                 }

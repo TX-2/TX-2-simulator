@@ -2710,7 +2710,7 @@ fn test_make_bit_designator_literal() {
                         }
                         assert_eq!(literal.span(), span);
                     }
-                    do_not_like => {
+                    do_not_like @ BitDesignatorValidation::Suspect(..) => {
                         panic!("unexpectedly suspect bit designator {what}: {do_not_like:?}");
                     }
                 }

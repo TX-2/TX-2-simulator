@@ -760,7 +760,7 @@ impl RegisterContaining {
                 let tpi: Box<TaggedProgramInstruction> = tpibox;
                 Ok(RegisterContaining::Allocated(address, tpi))
             }
-            other => Ok(other),
+            other @ RegisterContaining::Allocated(..) => Ok(other),
         }
     }
 }

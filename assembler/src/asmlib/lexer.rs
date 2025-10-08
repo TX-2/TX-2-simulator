@@ -670,7 +670,34 @@ fn merge_tokens(current: (Token, Span), incoming: (Token, Span)) -> TokenMergeRe
             },
         },
         Token::Digits(existing_script, mut existing_literal) => {
-            if !existing_literal.has_trailing_dot {
+            if existing_literal.has_trailing_dot {
+                // The left-hand literal has a dot.  So the valid
+                // cases are where we're part-way through a symex, or
+                // a bit position specification.
+                match incoming {
+                    Token::Digits(
+                        Script::Sub,
+                        NumericLiteral {
+                            digits: incoming_digit,
+                            has_trailing_dot: false,
+                        },
+                    ) if existing_script == Script::Sub => TokenMergeResult::Merged(
+                        Token::BitPosition(
+                            existing_script,
+                            existing_literal.digits,
+                            incoming_digit,
+                        ),
+                        merged_span,
+                    ),
+                    // Not valid for RHS to be Dot, as we already have one.
+                    other => TokenMergeResult::Failed {
+                        current: Token::Digits(existing_script, existing_literal),
+                        current_span,
+                        incoming: other,
+                        incoming_span,
+                    },
+                }
+            } else {
                 match incoming {
                     Token::Digits(incoming_script, incoming_name)
                         if existing_script == incoming_script =>
@@ -701,33 +728,6 @@ fn merge_tokens(current: (Token, Span), incoming: (Token, Span)) -> TokenMergeRe
                             merged_span,
                         )
                     }
-                    other => TokenMergeResult::Failed {
-                        current: Token::Digits(existing_script, existing_literal),
-                        current_span,
-                        incoming: other,
-                        incoming_span,
-                    },
-                }
-            } else {
-                // The left-hand literal has a dot.  So the valid
-                // cases are where we're part-way through a symex, or
-                // a bit position specification.
-                match incoming {
-                    Token::Digits(
-                        Script::Sub,
-                        NumericLiteral {
-                            digits: incoming_digit,
-                            has_trailing_dot: false,
-                        },
-                    ) if existing_script == Script::Sub => TokenMergeResult::Merged(
-                        Token::BitPosition(
-                            existing_script,
-                            existing_literal.digits,
-                            incoming_digit,
-                        ),
-                        merged_span,
-                    ),
-                    // Not valid for RHS to be Dot, as we already have one.
                     other => TokenMergeResult::Failed {
                         current: Token::Digits(existing_script, existing_literal),
                         current_span,

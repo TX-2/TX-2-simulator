@@ -80,12 +80,12 @@ pub(super) fn punch_address(a: Option<LiteralValue>) -> Result<PunchCommand, Str
                 )),
                 Ok(halfword) => {
                     let addr: Address = Address::from(halfword);
-                    if addr.mark_bit() != Unsigned18Bit::ZERO {
+                    if addr.mark_bit() == Unsigned18Bit::ZERO {
+                        Ok(PunchCommand(Some(addr)))
+                    } else {
                         Err(format!(
                             "PUNCH address value {addr:o} must not be a deferred address",
                         ))
-                    } else {
-                        Ok(PunchCommand(Some(addr)))
                     }
                 }
             }

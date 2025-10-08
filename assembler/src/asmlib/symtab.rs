@@ -423,12 +423,12 @@ impl ImplicitDefinition {
         match self {
             ImplicitDefinition::Undefined(current) => current.merge(name, context),
             ImplicitDefinition::DefaultAssigned(value, existing_context) => {
-                if &context != existing_context {
+                if &context == existing_context {
+                    Ok(())
+                } else {
                     panic!(
                         "attempting to change the recorded usage context for {name} after a default value {value:?} has been assigned; previous context was {existing_context:?}, new context is {context:?}"
                     );
-                } else {
-                    Ok(())
                 }
             }
         }
