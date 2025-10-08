@@ -14,6 +14,7 @@
 #![warn(clippy::unreadable_literal)]
 #![warn(clippy::redundant_closure_for_method_calls)]
 #![warn(clippy::pedantic)]
+#![allow(clippy::verbose_bit_mask)] // because many of our types don't have trailing_zeros().
 #![allow(clippy::enum_glob_use)] // fix later
 #![allow(clippy::redundant_else)] // fix later
 #![allow(clippy::too_many_lines)] // fix later
@@ -21,7 +22,6 @@
 #![allow(clippy::explicit_into_iter_loop)] // fix later
 #![allow(clippy::default_trait_access)] // fix later
 #![allow(clippy::match_wild_err_arm)] // fix later
-#![allow(clippy::verbose_bit_mask)] // fix later
 
 mod ast;
 mod collections;
