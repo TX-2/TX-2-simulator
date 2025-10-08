@@ -149,9 +149,9 @@ pub(crate) enum HereValue {
 }
 
 impl HereValue {
-    pub(crate) fn get_address(&self, span: &Span) -> Result<Address, EvaluationFailure> {
+    pub(crate) fn get_address(self, span: &Span) -> Result<Address, EvaluationFailure> {
         match self {
-            HereValue::Address(addr) => Ok(*addr),
+            HereValue::Address(addr) => Ok(addr),
             HereValue::NotAllowed => Err(EvaluationFailure::HereIsNotAllowedHere(*span)),
         }
     }
@@ -263,7 +263,7 @@ impl<R: RcUpdater> EvaluationContext<'_, R> {
                 // the rest of the work is carried out with
                 // index_register_assigner only.
                 if let Some((block_identifier, _origin)) = context.get_origin() {
-                    if let Some(block_position) = self.memory_map.get(block_identifier).cloned() {
+                    if let Some(block_position) = self.memory_map.get(&block_identifier).cloned() {
                         // If we simply try to pass the block's origin
                         // to evaluate() we will loop and diagnose
                         // this as an undefined symbol.  While the
@@ -282,7 +282,7 @@ impl<R: RcUpdater> EvaluationContext<'_, R> {
                                 match self.implicit_symtab.record_deduced_origin_value(
                                     name,
                                     address,
-                                    *block_identifier,
+                                    block_identifier,
                                     span,
                                 ) {
                                     Ok(()) => Ok(value),
@@ -668,11 +668,11 @@ impl Display for AddressOverflow {
     }
 }
 
-fn offset_from_origin(origin: &Address, offset: Unsigned18Bit) -> Result<Address, AddressOverflow> {
+fn offset_from_origin(origin: Address, offset: Unsigned18Bit) -> Result<Address, AddressOverflow> {
     let (physical, _mark) = origin.split();
     match physical.checked_add(offset) {
         Some(total) => Ok(Address::from(total)),
-        None => Err(AddressOverflow(*origin, offset)),
+        None => Err(AddressOverflow(origin, offset)),
     }
 }
 
@@ -721,7 +721,7 @@ impl Evaluate for BlockPosition {
         // Add the size of the previous block to its address, yielding
         // the address of the location following it; this is the
         // address at which we will locate the current block.
-        match offset_from_origin(&prev_addr, prev_size) {
+        match offset_from_origin(prev_addr, prev_size) {
             Ok(addr) => Ok(addr.into()),
             Err(_) => {
                 // The address of this block would be outside
@@ -770,7 +770,7 @@ impl Evaluate for (&Span, &SymbolName, &ExplicitDefinition) {
                 if let Some(block_position) = ctx.memory_map.get(block_id).cloned() {
                     let block_origin: Address =
                         subword::right_half(block_position.evaluate(ctx, scope)?).into();
-                    match offset_from_origin(&block_origin, *block_offset) {
+                    match offset_from_origin(block_origin, *block_offset) {
                         Ok(computed_address) => Ok(computed_address.into()),
                         Err(_overflow_error) => Err(EvaluationFailure::BlockTooLarge(
                             *span,

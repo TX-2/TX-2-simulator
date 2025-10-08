@@ -391,7 +391,7 @@ impl Error for NotInCharacterSet {}
 pub(crate) fn glyph_of_char(original: char) -> Result<Elevated<&'static Glyph>, Unrecognised> {
     let ch: char = canonicalise_char(original);
     let mapping = glyph_map();
-    match mapping.get(&ch) {
+    match mapping.get(ch) {
         Some(elevated) => Ok(elevated),
         None => Err(Unrecognised::InvalidChar(original)),
     }
@@ -1325,8 +1325,8 @@ impl Default for GlyphMapByChar {
 }
 
 impl GlyphMapByChar {
-    fn get(&self, ch: &char) -> Option<Elevated<&'static Glyph>> {
-        self.mapping.get(ch).copied()
+    fn get(&self, ch: char) -> Option<Elevated<&'static Glyph>> {
+        self.mapping.get(&ch).copied()
     }
 }
 

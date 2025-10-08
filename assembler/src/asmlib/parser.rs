@@ -176,7 +176,7 @@ where
 
         digits.try_map_with(move |digits_token_payload, extra| {
             let state: &State = extra.state();
-            let mode: &NumeralMode = &state.numeral_mode;
+            let mode: NumeralMode = state.numeral_mode;
             match digits_token_payload.make_num(mode) {
                 Ok(value) => Ok(LiteralValue::from((extra.span(), script_required, value))),
                 Err(e) => Err(Rich::custom(extra.span(), e.to_string())),

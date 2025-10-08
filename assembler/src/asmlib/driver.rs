@@ -654,14 +654,14 @@ fn assemble_pass3(
 }
 
 fn cleanup_control_chars(input: String) -> String {
-    fn needs_escape(ch: &char) -> bool {
-        *ch == '\\' || ch.is_control()
+    fn needs_escape(ch: char) -> bool {
+        ch == '\\' || ch.is_control()
     }
-    let extra = input.chars().filter(needs_escape).count();
+    let extra = input.chars().filter(|ch: &char| needs_escape(*ch)).count();
     if extra > 0 {
         let mut output: String = String::with_capacity(input.len().saturating_add(extra));
         for ch in input.chars() {
-            if needs_escape(&ch) {
+            if needs_escape(ch) {
                 output.extend(ch.escape_default());
             } else {
                 output.push(ch);

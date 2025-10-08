@@ -43,8 +43,8 @@ struct ListingLineWithBody<'a, 'b> {
     body: &'b Source<'a>,
 }
 
-fn write_address(f: &mut std::fmt::Formatter<'_>, addr: &Address) -> std::fmt::Result {
-    let addr_value: Unsigned18Bit = (*addr).into();
+fn write_address(f: &mut std::fmt::Formatter<'_>, addr: Address) -> std::fmt::Result {
+    let addr_value: Unsigned18Bit = addr.into();
     if addr_value & 0o7 == 0 {
         write!(f, "{addr_value:>06o}")
     } else {
@@ -76,7 +76,7 @@ impl Display for ListingLineWithBody<'_, '_> {
         if let Some((address, word)) = self.line.content.as_ref() {
             let (left, right) = split_halves(*word);
             write!(f, " |{left:06} {right:06}| ")?;
-            write_address(f, address)?;
+            write_address(f, *address)?;
         }
         Ok(())
     }

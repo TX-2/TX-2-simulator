@@ -14,7 +14,7 @@ pub enum NumeralMode {
 }
 
 impl NumeralMode {
-    pub(crate) fn radix(&self, alternate: bool) -> u32 {
+    pub(crate) fn radix(self, alternate: bool) -> u32 {
         match (&self, alternate) {
             (&NumeralMode::Octal, false) | (&NumeralMode::Decimal, true) => 8,
             (&NumeralMode::Decimal, false) | (&NumeralMode::Octal, true) => 10,

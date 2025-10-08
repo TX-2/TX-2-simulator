@@ -64,7 +64,7 @@ fn test_make_u36() {
 pub(crate) fn make_num(
     digits: &str,
     hasdot: bool,
-    state: &NumeralMode,
+    state: NumeralMode,
 ) -> Result<Unsigned36Bit, StringConversionFailed> {
     make_u36(digits, state.radix(hasdot))
 }

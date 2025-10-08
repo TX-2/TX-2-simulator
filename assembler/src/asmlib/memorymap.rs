@@ -112,6 +112,9 @@ pub(crate) struct MemoryMap {
 
 impl MemoryMap {
     pub(crate) fn get(&self, block: &BlockIdentifier) -> Option<&BlockPosition> {
+        // We use a reference here for consistency with the get()
+        // methods of other containers.
+        #![allow(clippy::trivially_copy_pass_by_ref)]
         let pos = usize::from(*block);
         self.blocks.get(pos)
     }

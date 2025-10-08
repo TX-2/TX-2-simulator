@@ -39,7 +39,7 @@ impl From<BlockIdentifier> for usize {
 }
 
 impl BlockIdentifier {
-    pub fn previous_block(&self) -> Option<BlockIdentifier> {
+    pub fn previous_block(self) -> Option<BlockIdentifier> {
         self.0.checked_sub(1).map(BlockIdentifier)
     }
 }

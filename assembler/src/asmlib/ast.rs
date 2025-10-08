@@ -101,11 +101,11 @@ impl From<(Span, Script, Unsigned36Bit)> for LiteralValue {
 impl std::fmt::Display for LiteralValue {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let s = self.value.to_string();
-        format_elevated_chars(f, &self.elevation, &s)
+        format_elevated_chars(f, self.elevation, &s)
     }
 }
 
-fn write_glyph_name(f: &mut Formatter<'_>, elevation: &Script, ch: char) -> fmt::Result {
+fn write_glyph_name(f: &mut Formatter<'_>, elevation: Script, ch: char) -> fmt::Result {
     let prefix: &'static str = match elevation {
         Script::Sub => "sub_",
         Script::Super => "sup_",
@@ -120,7 +120,7 @@ fn write_glyph_name(f: &mut Formatter<'_>, elevation: &Script, ch: char) -> fmt:
     write!(f, "@{prefix}{name}@")
 }
 
-fn format_elevated_chars(f: &mut Formatter<'_>, elevation: &Script, s: &str) -> fmt::Result {
+fn format_elevated_chars(f: &mut Formatter<'_>, elevation: Script, s: &str) -> fmt::Result {
     match elevation {
         Script::Normal => {
             f.write_str(s)?;
@@ -320,7 +320,7 @@ impl ArithmeticExpression {
         result.into_iter()
     }
 
-    fn eval_binop(left: Unsigned36Bit, binop: &Operator, right: Unsigned36Bit) -> Unsigned36Bit {
+    fn eval_binop(left: Unsigned36Bit, binop: Operator, right: Unsigned36Bit) -> Unsigned36Bit {
         match binop {
             Operator::Add => match left.checked_add(right) {
                 Some(result) => result,
@@ -424,7 +424,7 @@ fn fold_step<R: RcUpdater>(
     scope: ScopeIdentifier,
 ) -> Result<Unsigned36Bit, EvaluationFailure> {
     let right: Unsigned36Bit = right.evaluate(ctx, scope)?;
-    Ok(ArithmeticExpression::eval_binop(acc, binop, right))
+    Ok(ArithmeticExpression::eval_binop(acc, *binop, right))
 }
 
 /// A configuration syllable can be specified by putting it in a
@@ -902,7 +902,7 @@ impl From<(Span, Script, Unsigned36Bit)> for Atom {
     }
 }
 
-fn elevated_string<'a>(s: &'a str, elevation: &Script) -> Cow<'a, str> {
+fn elevated_string(s: &str, elevation: Script) -> Cow<'_, str> {
     match elevation {
         Script::Normal => Cow::Borrowed(s),
         Script::Super => Cow::Owned(
@@ -922,7 +922,7 @@ impl std::fmt::Display for Atom {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Atom::SymbolOrLiteral(value) => write!(f, "{value}"),
-            Atom::Parens(_span, script, expr) => elevated_string(&expr.to_string(), script).fmt(f),
+            Atom::Parens(_span, script, expr) => elevated_string(&expr.to_string(), *script).fmt(f),
             Atom::RcRef(_span, _rc_reference) => {
                 // The RcRef doesn't itself record the content of the
                 // {...} because that goes into the rc-block itself.
@@ -1042,7 +1042,7 @@ impl Display for SymbolOrLiteral {
                 Script::Sub => f.write_str("@sub_hash@"),
             },
             SymbolOrLiteral::Symbol(script, name, _) => {
-                elevated_string(&name.to_string(), script).fmt(f)
+                elevated_string(&name.to_string(), *script).fmt(f)
             }
             SymbolOrLiteral::Literal(value) => value.fmt(f),
         }

@@ -125,7 +125,7 @@ pub(crate) enum ConfigUse {
 }
 
 impl ConfigUse {
-    fn or(&self, other: &ConfigUse) -> ConfigUse {
+    fn or(self, other: ConfigUse) -> ConfigUse {
         match (self, other) {
             (ConfigUse::IncludesConfig, _) | (_, ConfigUse::IncludesConfig) => {
                 ConfigUse::IncludesConfig
@@ -143,7 +143,7 @@ pub(crate) enum IndexUse {
 }
 
 impl IndexUse {
-    fn or(&self, other: &IndexUse) -> IndexUse {
+    fn or(self, other: IndexUse) -> IndexUse {
         match (self, other) {
             (IndexUse::IncludesIndex, _) | (_, IndexUse::IncludesIndex) => IndexUse::IncludesIndex,
             _ => IndexUse::NotIndex,
@@ -159,7 +159,7 @@ pub(crate) enum AddressUse {
 }
 
 impl AddressUse {
-    fn or(&self, other: &AddressUse) -> AddressUse {
+    fn or(self, other: AddressUse) -> AddressUse {
         match (self, other) {
             (AddressUse::NotAddress, AddressUse::NotAddress) => AddressUse::NotAddress,
             _ => AddressUse::IncludesAddress,
@@ -231,9 +231,9 @@ impl SymbolContext {
         self.address == AddressUse::IncludesAddress
     }
 
-    pub(crate) fn get_origin(&self) -> Option<(&BlockIdentifier, &Origin)> {
+    pub(crate) fn get_origin(&self) -> Option<(BlockIdentifier, &Origin)> {
         match self.origin {
-            OriginUse::IncludesOrigin(ref block_identifier, ref origin) => {
+            OriginUse::IncludesOrigin(block_identifier, ref origin) => {
                 Some((block_identifier, origin))
             }
             OriginUse::NotOrigin { .. } => None,
@@ -294,8 +294,8 @@ impl SymbolContext {
                     index: their_index_use,
                 },
             ) => OriginUse::NotOrigin {
-                config: my_config_use.or(their_config_use),
-                index: my_index_use.or(their_index_use),
+                config: my_config_use.or(*their_config_use),
+                index: my_index_use.or(*their_index_use),
             },
             (
                 OriginUse::IncludesOrigin(my_block, my_origin),
@@ -345,7 +345,7 @@ impl SymbolContext {
             }
         };
         let result = SymbolContext {
-            address: self.address.or(&other.address),
+            address: self.address.or(other.address),
             origin,
             uses: {
                 let mut u = BTreeSet::new();
