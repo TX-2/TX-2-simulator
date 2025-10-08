@@ -44,7 +44,6 @@ use super::symtab::ExplicitDefinition;
 use super::symtab::ExplicitSymbolTable;
 #[cfg(test)]
 use super::symtab::TagDefinition;
-use super::types::AssemblerFailure;
 use super::types::BlockIdentifier;
 
 fn offset_to_block_id<T>((offset, item): (usize, T)) -> (BlockIdentifier, T) {
@@ -148,7 +147,7 @@ impl SourceFile {
         self.symbol_uses().filter_map(definitions_only)
     }
 
-    pub(crate) fn into_directive(self, mem_map: &MemoryMap) -> Result<Directive, AssemblerFailure> {
+    pub(crate) fn into_directive(self, mem_map: &MemoryMap) -> Directive {
         let SourceFile {
             punch,
             blocks: input_blocks,
@@ -211,7 +210,7 @@ impl SourceFile {
         // answers for right now.  For example, should the
         // existing program be cleared?  Should the symbol
         // table be cleared?
-        Ok(Directive::new(output_blocks, equalities, entry_point))
+        Directive::new(output_blocks, equalities, entry_point)
     }
 }
 

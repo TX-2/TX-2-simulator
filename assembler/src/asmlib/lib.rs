@@ -12,6 +12,7 @@
 #![warn(clippy::items_after_statements)]
 #![warn(clippy::explicit_iter_loop)]
 #![warn(clippy::unreadable_literal)]
+#![warn(clippy::redundant_closure_for_method_calls)]
 #![warn(clippy::pedantic)]
 #![allow(clippy::enum_glob_use)] // fix later
 #![allow(clippy::redundant_else)] // fix later
@@ -25,8 +26,7 @@
 #![allow(clippy::doc_markdown)] // fix soon
 #![allow(clippy::match_wildcard_for_single_variants)] // fix soon
 #![allow(clippy::trivially_copy_pass_by_ref)] // fix soon
-#![allow(clippy::unnecessary_wraps)] // fix soon
-#![warn(clippy::redundant_closure_for_method_calls)]
+#![warn(clippy::unnecessary_wraps)] // fix soon
 
 mod ast;
 mod collections;

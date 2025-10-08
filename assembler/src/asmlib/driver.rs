@@ -394,7 +394,7 @@ fn assemble_pass2<'s>(
         }
     }
 
-    let directive = source_file.into_directive(&memory_map)?;
+    let directive = source_file.into_directive(&memory_map);
     if let Some(instruction_count) = directive
         .blocks
         .values()

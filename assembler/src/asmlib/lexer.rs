@@ -247,6 +247,7 @@ impl Display for Token {
                 write!(f, "{q_string}{dotname}{bit_string}")
             }
             Token::SymexSyllable(script, name) => {
+                #[allow(clippy::unnecessary_wraps)]
                 fn nochange(ch: char) -> Result<char, ()> {
                     Ok(ch)
                 }
