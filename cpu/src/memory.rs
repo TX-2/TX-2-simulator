@@ -549,7 +549,7 @@ fn skm_bitop_write(mut target: MemoryWriteRef<'_>, op: &WordChange) -> Option<bo
                 Some(BitChange::Set) => target.set_meta_bit_to_value(true),
                 Some(BitChange::Flip) => {
                     let meta_bit_val: bool = target.get_meta_bit();
-                    target.set_meta_bit_to_value(!meta_bit_val)
+                    target.set_meta_bit_to_value(!meta_bit_val);
                 }
             }
         }

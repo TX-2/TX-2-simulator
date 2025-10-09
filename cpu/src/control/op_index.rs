@@ -469,7 +469,7 @@ mod tests {
             1usize,
         );
         assert_eq!(sum, Signed18Bit::try_from(0o250073).expect(COMPLAIN));
-        assert_eq!(e, minus_three)
+        assert_eq!(e, minus_three);
     }
 
     /// This test is derived from example 1 on page 3-20 of the Users

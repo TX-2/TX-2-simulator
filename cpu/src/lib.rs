@@ -7,6 +7,8 @@
 #![deny(unsafe_code)]
 #![deny(unused_crate_dependencies)]
 #![warn(clippy::must_use_candidate)]
+#![warn(clippy::manual_string_new)]
+#![warn(clippy::semicolon_if_nothing_returned)]
 
 mod alarm;
 mod alarmunit;

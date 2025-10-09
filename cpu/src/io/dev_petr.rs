@@ -268,11 +268,11 @@ impl Petr {
                 match self.direction {
                     Direction::Bin => {
                         event!(Level::TRACE, "motor running, doing rewind action");
-                        self.do_rewind()
+                        self.do_rewind();
                     }
                     Direction::Reel => {
                         event!(Level::TRACE, "motor running, doing read action");
-                        self.do_read()
+                        self.do_read();
                     }
                 }
                 // do_read may have stopped the motor, so take account

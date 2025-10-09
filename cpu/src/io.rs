@@ -340,7 +340,7 @@ impl AttachedUnit {
 
     pub fn connect(&self, ctx: &Context, mode: Unsigned12Bit) {
         // It's permissible to call connect() on an attached but not connected unit.
-        self.inner.borrow_mut().connect(ctx, mode)
+        self.inner.borrow_mut().connect(ctx, mode);
     }
 
     pub fn disconnect<A: Alarmer>(&self, ctx: &Context, _alarmer: &mut A) -> Result<(), Alarm> {

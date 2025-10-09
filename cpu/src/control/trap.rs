@@ -65,7 +65,7 @@ impl TrapCircuit {
     /// Change the (emulated) hardware switch setting which (when
     /// `disable` is true) would disable all setting of metabits.
     pub(crate) fn set_metabits_disabled(&mut self, disable: bool) {
-        self.set_metabits_disabled = disable
+        self.set_metabits_disabled = disable;
     }
 
     /// Indicate whether the machine should set the metabits of words
