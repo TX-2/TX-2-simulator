@@ -255,8 +255,8 @@ impl Tx2 {
                         event!(Level::DEBUG, "Leaving LIMBO");
                         self.set_next_execution_due(*now, Some(*now + Duration::from_nanos(1)));
                     }
-                    (old, new) => {
-                        assert_eq!(old, new);
+                    (old_run_mode, new_run_mode) => {
+                        assert_eq!(old_run_mode, new_run_mode);
                     }
                 }
                 self.run_mode = new_run_mode;

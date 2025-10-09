@@ -9,6 +9,9 @@
 #![warn(clippy::must_use_candidate)]
 #![warn(clippy::manual_string_new)]
 #![warn(clippy::semicolon_if_nothing_returned)]
+//#![warn(clippy::pedantic)]
+#![allow(clippy::unreadable_literal)] // fix later, there are many
+#![warn(clippy::similar_names)] // included in `pedantic`
 
 mod alarm;
 mod alarmunit;
