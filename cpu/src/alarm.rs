@@ -61,6 +61,7 @@ impl Display for AlarmKind {
 }
 
 impl AlarmKind {
+    #[must_use]
     pub fn maskable(&self) -> AlarmMaskability {
         match self {
             AlarmKind::BUGAL | AlarmKind::DEFERLOOPAL | AlarmKind::ROUNDTUITAL => {
@@ -70,6 +71,7 @@ impl AlarmKind {
         }
     }
 
+    #[must_use]
     pub const fn all_alarm_kinds() -> [AlarmKind; 8] {
         [
             AlarmKind::PSAL,
@@ -234,12 +236,14 @@ pub struct Alarm {
 }
 
 impl Alarm {
+    #[must_use]
     pub fn kind(&self) -> AlarmKind {
         self.details.kind()
     }
 }
 
 impl AlarmDetails {
+    #[must_use]
     pub fn kind(&self) -> AlarmKind {
         match self {
             AlarmDetails::PSAL(_, _) => AlarmKind::PSAL,

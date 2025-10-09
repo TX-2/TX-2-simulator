@@ -59,10 +59,12 @@ impl Tx2 {
         }
     }
 
+    #[must_use]
     pub fn get_status_of_alarm(&self, name: &str) -> Option<AlarmStatus> {
         self.control.get_status_of_alarm(name)
     }
 
+    #[must_use]
     pub fn get_alarm_statuses(&self) -> Vec<AlarmStatus> {
         self.control.get_alarm_statuses()
     }
@@ -153,6 +155,7 @@ impl Tx2 {
         }
     }
 
+    #[must_use]
     pub fn next_tick(&self) -> Duration {
         match (
             self.run_mode,
@@ -387,6 +390,7 @@ impl Tx2 {
         }
     }
 
+    #[must_use]
     pub fn unmasked_alarm_active(&self) -> bool {
         self.control.unmasked_alarm_active()
     }

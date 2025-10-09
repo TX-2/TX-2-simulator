@@ -373,6 +373,7 @@ pub struct MemoryConfiguration {
 }
 
 impl MemoryUnit {
+    #[must_use]
     pub fn new(ctx: &Context, config: &MemoryConfiguration) -> MemoryUnit {
         fn u32_to_usize(n: u32) -> usize {
             usize::try_from(n).expect("Only systems where u32 fits into usize are supported")
@@ -389,22 +390,27 @@ impl MemoryUnit {
         }
     }
 
+    #[must_use]
     pub fn get_a_register(&self) -> Unsigned36Bit {
         self.v_memory.get_a_register()
     }
 
+    #[must_use]
     pub fn get_b_register(&self) -> Unsigned36Bit {
         self.v_memory.get_b_register()
     }
 
+    #[must_use]
     pub fn get_c_register(&self) -> Unsigned36Bit {
         self.v_memory.get_c_register()
     }
 
+    #[must_use]
     pub fn get_d_register(&self) -> Unsigned36Bit {
         self.v_memory.get_d_register()
     }
 
+    #[must_use]
     pub fn get_e_register(&self) -> Unsigned36Bit {
         self.v_memory.get_e_register()
     }

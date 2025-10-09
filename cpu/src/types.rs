@@ -18,6 +18,7 @@ pub struct MaskedWord {
 }
 
 impl MaskedWord {
+    #[must_use]
     pub fn apply(&self, dest: Unsigned36Bit) -> Unsigned36Bit {
         (dest & !self.mask) | (self.bits & self.mask)
     }

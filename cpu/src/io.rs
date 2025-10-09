@@ -444,6 +444,7 @@ impl From<InputFlagRaised> for bool {
 }
 
 impl DeviceManager {
+    #[must_use]
     pub fn new() -> DeviceManager {
         DeviceManager {
             devices: BTreeMap::new(),
@@ -452,6 +453,7 @@ impl DeviceManager {
         }
     }
 
+    #[must_use]
     pub fn get(&self, unit_number: &Unsigned6Bit) -> Option<&AttachedUnit> {
         self.devices.get(unit_number)
     }

@@ -415,6 +415,7 @@ impl ControlRegisters {
         self.f_memory[pos]
     }
 
+    #[must_use]
     pub fn current_flag_state(&self, seq: &Unsigned6Bit) -> bool {
         self.flags.current_flag_state(seq)
     }
@@ -540,6 +541,7 @@ fn please_poll_soon(ctx: &Context, devices: &mut DeviceManager, seq: SequenceNum
 }
 
 impl ControlUnit {
+    #[must_use]
     pub fn new(
         panic_on_unmasked_alarm: PanicOnUnmaskedAlarm,
         configuration_memory_config: ConfigurationMemorySetup,
@@ -554,6 +556,7 @@ impl ControlUnit {
         }
     }
 
+    #[must_use]
     pub fn diagnostics(&self) -> &CurrentInstructionDiagnostics {
         &self.regs.diagnostic_only
     }
@@ -580,14 +583,17 @@ impl ControlUnit {
         }
     }
 
+    #[must_use]
     pub fn unmasked_alarm_active(&self) -> bool {
         self.alarm_unit.unmasked_alarm_active()
     }
 
+    #[must_use]
     pub fn get_status_of_alarm(&self, name: &str) -> Option<AlarmStatus> {
         self.alarm_unit.get_status_of_alarm(name)
     }
 
+    #[must_use]
     pub fn get_alarm_statuses(&self) -> Vec<AlarmStatus> {
         self.alarm_unit.get_alarm_statuses()
     }
@@ -1927,6 +1933,7 @@ impl ControlUnit {
         }
     }
 
+    #[must_use]
     pub fn current_flag_state(&self, unit: &SequenceNumber) -> bool {
         self.regs.current_flag_state(unit)
     }
@@ -1951,6 +1958,7 @@ impl ControlUnit {
             .collect()
     }
 
+    #[must_use]
     pub fn inspect_registers(&self) -> &ControlRegisters {
         &self.regs
     }

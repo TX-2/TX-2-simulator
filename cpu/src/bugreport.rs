@@ -16,6 +16,7 @@ pub enum IssueType {
     Opcode,
 }
 
+#[must_use]
 pub fn bug_report_url(title: &str, issue_type: Option<IssueType>) -> Url {
     bug_report_url_internal(title, issue_type).expect("bug-report URLs should always be valid")
 }

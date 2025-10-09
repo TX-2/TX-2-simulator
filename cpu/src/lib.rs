@@ -6,6 +6,7 @@
 #![deny(unreachable_pub)]
 #![deny(unsafe_code)]
 #![deny(unused_crate_dependencies)]
+#![warn(clippy::must_use_candidate)]
 
 mod alarm;
 mod alarmunit;

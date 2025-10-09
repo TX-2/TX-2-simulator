@@ -7,6 +7,7 @@ pub struct Context {
 }
 
 impl Context {
+    #[must_use]
     pub fn new(simulated_time: Duration, real_elapsed_time: Duration) -> Context {
         Context {
             simulated_time,
