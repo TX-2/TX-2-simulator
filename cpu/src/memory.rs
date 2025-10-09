@@ -1079,6 +1079,8 @@ impl VMemory {
     }
 
     fn update_rtc(&mut self, ctx: &Context) {
+        const RTC_MODULUS: u128 = 1 << 36;
+
         if ctx.real_elapsed_time >= self.rtc_start {
             // Page 5-19 of the Nov 1963 Users Handbook states that the
             // RTC has a period of 10 microseconds and will reset itself
@@ -1101,7 +1103,6 @@ impl VMemory {
             const TICK_MICROSEC: u128 = 10;
             let duration = ctx.real_elapsed_time - self.rtc_start;
             let tick_count = duration.as_micros() / TICK_MICROSEC;
-            const RTC_MODULUS: u128 = 1 << 36;
             assert!(u128::from(u64::from(Unsigned36Bit::MAX)) < RTC_MODULUS);
             match u64::try_from(tick_count % RTC_MODULUS) {
                 Ok(n) => match Unsigned36Bit::try_from(n) {
@@ -1199,6 +1200,29 @@ fn test_read_all_mem() {
     }
 }
 
+#[cfg(test)]
+fn set_metabit(context: &Context, mem: &mut MemoryUnit, addr: Address, value: bool) {
+    match mem.write_access(context, &addr) {
+        Ok(Some(mut word)) => word.set_meta_bit_to_value(value),
+        Ok(None) => {
+            panic!("AE register at {addr:o} is not mapped");
+        }
+        Err(e) => {
+            panic!("failed to write memory at {addr:o}: {e}");
+        }
+    }
+}
+
+#[cfg(test)]
+fn get_metabit(context: &Context, mem: &mut MemoryUnit, addr: Address) -> bool {
+    match mem.read_access(context, &addr) {
+        Ok(word) => word.get_meta_bit(),
+        Err(e) => {
+            panic!("failed to read memory at {addr:o}: {e}");
+        }
+    }
+}
+
 #[test]
 fn test_ae_registers_share_metabit() {
     // Registers ABCDE share a single metabit (the metabit of the M
@@ -1217,27 +1241,6 @@ fn test_ae_registers_share_metabit() {
     let d_addr: Address = Address::from(u18!(0o0377607));
     let e_addr: Address = Address::from(u18!(0o0377610));
     let ae_regs = [a_addr, b_addr, c_addr, d_addr, e_addr];
-
-    fn set_metabit(context: &Context, mem: &mut MemoryUnit, addr: Address, value: bool) {
-        match mem.write_access(context, &addr) {
-            Ok(Some(mut word)) => word.set_meta_bit_to_value(value),
-            Ok(None) => {
-                panic!("AE register at {addr:o} is not mapped");
-            }
-            Err(e) => {
-                panic!("failed to write memory at {addr:o}: {e}");
-            }
-        }
-    }
-
-    fn get_metabit(context: &Context, mem: &mut MemoryUnit, addr: Address) -> bool {
-        match mem.read_access(context, &addr) {
-            Ok(word) => word.get_meta_bit(),
-            Err(e) => {
-                panic!("failed to read memory at {addr:o}: {e}");
-            }
-        }
-    }
 
     for first in 0..ae_regs.len() {
         for second in 0..ae_regs.len() {

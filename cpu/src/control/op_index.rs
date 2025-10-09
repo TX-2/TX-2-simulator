@@ -685,8 +685,8 @@ mod tests {
     /// Test case taken from example 1 on page 3-14 of the Users Handbook.
     #[test]
     fn op_rsx_example_1() {
-        let context = make_ctx();
         const COMPLAIN: &str = "test data should be valid";
+        let context = make_ctx();
         let w: Unsigned36Bit = u36!(0o444_333_222_111);
         let (xj, e) = simulate_rsx(
             &context,

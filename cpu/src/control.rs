@@ -443,6 +443,7 @@ pub enum ResetMode {
 impl ResetMode {
     fn address(&self, ctx: &Context, mem: &mut MemoryUnit) -> Option<Address> {
         use ResetMode::*;
+        const PHYSICAL_ADDRESS_BITS: u32 = 0o377_777;
         match self {
             Reset0 | Reset1 | Reset2 | Reset3 | Reset4 | Reset5 | Reset6 | Reset7 => {
                 let loc: Address = Address::from(Unsigned18Bit::try_from(*self as u32).unwrap());
@@ -461,7 +462,6 @@ impl ResetMode {
                             );
                         }
                         // We assume that reset operations don't implement deferred addressing.
-                        const PHYSICAL_ADDRESS_BITS: u32 = 0o377_777;
                         let defer_bit = Unsigned18Bit::try_from(0o400_000).unwrap();
                         if right & defer_bit != 0 {
                             // issue warning but otherwise ignore
@@ -764,6 +764,10 @@ impl ControlUnit {
         prev_seq: Option<SequenceNumber>,
         mut next_seq: SequenceNumber,
     ) {
+        fn is_marked_placeholder(index_val: &Signed18Bit) -> bool {
+            index_val < &0
+        }
+
         // If the "Trap on Change Sequence" is enabled and the new
         // sequence is marked (bit 2.9 of its index register is set).
         // Activate unit 0o42, unless that's the unit which is giving
@@ -786,10 +790,6 @@ impl ControlUnit {
             "Changing sequence to {:>02o}",
             u8::from(next_seq),
         );
-
-        fn is_marked_placeholder(index_val: &Signed18Bit) -> bool {
-            index_val < &0
-        }
 
         let trap_seq = Self::trap_seq();
         let sequence_change_trap = self.trap.trap_on_changed_sequence()
@@ -1193,10 +1193,6 @@ impl ControlUnit {
         mem: &mut MemoryUnit,
         poll_order_change: &mut Option<SequenceNumber>,
     ) -> Result<(u64, RunMode, Option<OutputEvent>), (Alarm, Address)> {
-        if self.select_sequence(mem) == RunMode::InLimbo {
-            return Ok((0, RunMode::InLimbo, None));
-        }
-
         fn execute(
             ctx: &Context,
             prev_program_counter: Address,
@@ -1388,6 +1384,10 @@ impl ControlUnit {
                     },
                 }),
             }
+        }
+
+        if self.select_sequence(mem) == RunMode::InLimbo {
+            return Ok((0, RunMode::InLimbo, None));
         }
 
         let seq_desc = match self.regs.k {

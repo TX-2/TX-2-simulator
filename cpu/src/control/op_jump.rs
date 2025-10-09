@@ -931,9 +931,9 @@ mod tests {
     /// Users Handbook.   It's the skip-occurs case.
     #[test]
     fn test_sed_example_1_direct_skip() {
+        const INITIAL_E_REG_VALUE: Unsigned36Bit = u36!(0o444_444_444_444); // contents of E register
         let context = make_ctx();
         let j = u6!(0);
-        const INITIAL_E_REG_VALUE: Unsigned36Bit = u36!(0o444_444_444_444); // contents of E register
         let skipped = simulate_sed_no_alarm(
             &context,
             INITIAL_E_REG_VALUE,
@@ -959,9 +959,9 @@ mod tests {
     /// Users Handbook.   It's the no-skip-occurs case.
     #[test]
     fn test_sed_example_1_direct_noskip() {
+        const INITIAL_E_REG_VALUE: Unsigned36Bit = u36!(0o444_444_444_444); // contents of E register
         let context = make_ctx();
         let j = u6!(0);
-        const INITIAL_E_REG_VALUE: Unsigned36Bit = u36!(0o444_444_444_444); // contents of E register
         let skipped = simulate_sed_no_alarm(
             &context,
             INITIAL_E_REG_VALUE,
@@ -984,9 +984,9 @@ mod tests {
     /// Users Handbook.   It's the skip-occurs case.
     #[test]
     fn test_sed_example_2_direct_skip() {
+        const INITIAL_E_REG_VALUE: Unsigned36Bit = u36!(0o555_555_444_444); // contents of E register
         let context = make_ctx();
         let j = u6!(0);
-        const INITIAL_E_REG_VALUE: Unsigned36Bit = u36!(0o555_555_444_444); // contents of E register
         let skipped = simulate_sed_no_alarm(
             &context,
             // In configuration 2, SED compares the R(E)( with L(Tj).
@@ -1014,9 +1014,9 @@ mod tests {
     /// values being compared are equal).
     #[test]
     fn test_sed_example_2_direct_noskip() {
+        const INITIAL_E_REG_VALUE: Unsigned36Bit = u36!(0o070_070_333_333); // contents of E register
         let context = make_ctx();
         let j = u6!(0);
-        const INITIAL_E_REG_VALUE: Unsigned36Bit = u36!(0o070_070_333_333); // contents of E register
         let skipped = simulate_sed_no_alarm(
             &context,
             // In configuration 2, SED compares the R(E)( with L(Tj).
