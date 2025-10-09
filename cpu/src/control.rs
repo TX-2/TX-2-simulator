@@ -948,18 +948,18 @@ impl ControlUnit {
                     // 40000 ("LOWER FLAG J") had been issued.  In the
                     // latter case, the current sequence should continue
                     // to run until another sequence's flag is raised.
-                    if !self.regs.current_sequence_is_runnable {
-                        event!(
-                            Level::DEBUG,
-                            "No flags raised and current sequence is not runnable: in LIMBO"
-                        );
-                        RunMode::InLimbo
-                    } else {
+                    if self.regs.current_sequence_is_runnable {
                         event!(
                             Level::DEBUG,
                             "No flag is raised, but the current sequence is still runnable"
                         );
                         RunMode::Running
+                    } else {
+                        event!(
+                            Level::DEBUG,
+                            "No flags raised and current sequence is not runnable: in LIMBO"
+                        );
+                        RunMode::InLimbo
                     }
                 }
                 Some(seq) => {

@@ -229,14 +229,14 @@ impl ControlUnit {
         );
 
         Ok(OpcodeResult {
-            program_counter_change: if word != mem.get_e_register() {
+            program_counter_change: if word == mem.get_e_register() {
+                None
+            } else {
                 // The location of the currently executing instruction
                 // is referred to by M4 as '#'.  The next instruction
                 // would be '#+1' and that's where the P register
                 // currently points.  But "skip" means to set P=#+2.
                 Some(ProgramCounterChange::CounterUpdate)
-            } else {
-                None
             },
             poll_order_change: None,
             output: None,

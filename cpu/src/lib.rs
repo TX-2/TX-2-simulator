@@ -12,6 +12,7 @@
 //#![warn(clippy::pedantic)]
 #![allow(clippy::unreadable_literal)] // fix later, there are many
 #![warn(clippy::similar_names)] // included in `pedantic`
+#![warn(clippy::if_not_else)] // included in `pedantic`
 
 mod alarm;
 mod alarmunit;
