@@ -522,7 +522,7 @@ impl DeviceManager {
         control: &mut ControlUnit,
     ) -> Result<BTreeMap<Unsigned6Bit, ExtendedUnitState>, Alarm> {
         let mut result: BTreeMap<Unsigned6Bit, ExtendedUnitState> = BTreeMap::new();
-        for (unit, attached) in self.devices.iter() {
+        for (unit, attached) in &self.devices {
             let xreg_value = match control
                 .inspect_registers()
                 .index_regs
@@ -756,7 +756,7 @@ impl DeviceManager {
         alarmer: &mut A,
     ) -> Result<(), Alarm> {
         let mut changes: Vec<Unsigned6Bit> = Vec::with_capacity(self.devices.len());
-        for (_, attached) in self.devices.iter_mut() {
+        for attached in self.devices.values_mut() {
             if attached.connected {
                 changes.push(attached.unit);
                 attached.disconnect(ctx, alarmer)?;

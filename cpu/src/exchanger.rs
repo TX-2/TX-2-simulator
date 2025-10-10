@@ -1245,7 +1245,7 @@ mod tests {
             );
         }
 
-        for case in cases.iter() {
+        for case in cases {
             assert_eq!(
                 case.config.permutation(),
                 case.perm,

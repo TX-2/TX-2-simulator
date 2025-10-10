@@ -332,7 +332,7 @@ mod tests {
         } else {
             control.regs.set_index_register(j, &initial);
         }
-        for (address, value) in mem_setup.iter() {
+        for (address, value) in mem_setup {
             control
                 .memory_store_without_exchange(
                     ctx,
@@ -345,7 +345,7 @@ mod tests {
                 .expect(COMPLAIN);
         }
         if let Some(f_mem_setup) = f_memory_setup {
-            for (config_num, config) in f_mem_setup.iter() {
+            for (config_num, config) in f_mem_setup {
                 control.regs.f_memory[*config_num] = *config;
             }
         }
