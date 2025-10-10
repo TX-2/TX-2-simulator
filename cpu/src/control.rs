@@ -323,7 +323,7 @@ pub struct ControlRegisters {
     flags: SequenceFlags,
     current_sequence_is_runnable: bool,
 
-    /// prev_hold is set when the instruction we most previously
+    /// `prev_hold` is set when the instruction we most previously
     /// executed had the "hold" bit set.
     prev_hold: bool,
     // TODO: we may be able to eliminate prev_hold by moving the logic
@@ -486,7 +486,7 @@ impl ResetMode {
     }
 }
 
-/// ControlUnit simulates the operation of the Control Element of the TX-2 computer.
+/// `ControlUnit` simulates the operation of the Control Element of the TX-2 computer.
 ///
 #[derive(Debug)]
 pub struct ControlUnit {
@@ -1665,11 +1665,16 @@ impl ControlUnit {
     }
 
     /// Resolve the address of the operand of the current instruction,
-    /// leaving this address in the Q register.  If
-    /// `initial_index_override` is None, the final j bits are taken
-    /// from the initial contents of the N register.  Otherwise
-    /// (e.g. for JNX) they are taken to be the value in
-    /// initial_index_override.
+    /// leaving this address in the Q register.
+    ///
+    /// # Arguments
+    ///
+    /// * `ctx` - context data for the execution of the instruction.
+    /// * `mem` - the memory unit (which we would use for deferred indexing).
+    /// * `initial_index_override` - source of the j bits (index
+    ///   register number) to be used; this is specified when processing
+    ///   the `JNX` instruction for example.  If the value is `None`,
+    ///   the value is instead taken from the N register.
     fn resolve_operand_address(
         self: &mut ControlUnit,
         ctx: &Context,

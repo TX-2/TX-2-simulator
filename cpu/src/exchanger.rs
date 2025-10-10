@@ -98,12 +98,12 @@ pub(crate) enum SubwordForm {
     Quarters = 3, //
 }
 
-/// The SystemConfiguration value specifies a global state of the
-/// computer which determines how the AE (in modern wording,
-/// arithmetic unit) communicates with memory.  The basic outline is
-/// given in Fig. 9 (page 20) of "A Functional Description of the
-/// Lincoln TX-2 Computer" by John M. Frankovitch and H. Philip
-/// Peterson.  A more complete description (inclusing the
+/// The `SystemConfiguration` value specifies a global state of the
+/// computer which determines how the Arithmetic Element (in modern
+/// wording, arithmetic unit) communicates with memory.  The basic
+/// outline is given in Fig. 9 (page 20) of "A Functional Description
+/// of the Lincoln TX-2 Computer" by John M. Frankovitch and H. Philip
+/// Peterson.  A more complete description (including the
 /// corresponding F-memory values) is given in tables 7-2 and 7-2A of
 /// the TX-2 User's Handbook (pp 192-193 in my PDF copy).
 ///
@@ -113,7 +113,7 @@ pub(crate) enum SubwordForm {
 ///
 /// Figure 12-39 ("Configuration Block Diagram") (page 250) in Volume
 /// 2 of the TX-2 Technical manual describes how a word from the CF
-/// memory (a QKIRcf value) is decoded into permutation, activity
+/// memory (a `QKIRcf` value) is decoded into permutation, activity
 /// (which quarters are active) and fracture (which quarters are
 /// considered to be separate).
 #[derive(Clone, Copy, Debug)]
@@ -181,8 +181,8 @@ impl SystemConfiguration {
         }
     }
 
-    /// Extract a QuarterActivity value from the activity field of a system
-    /// configuration value.
+    /// Extract a `QuarterActivity` value from the activity field of a
+    /// system configuration value.
     ///
     /// Active quarters are signaled by a 0 in the appropriate bit
     /// position of the system configuration value.  A 1 signals that
@@ -194,8 +194,8 @@ impl SystemConfiguration {
     ///
     pub(crate) fn active_quarters(&self) -> QuarterActivity {
         // CF7 CF6 CF5 CF4
-        //   x   x   x   0 => ACT 1
-        //   x   x   0   x => ACT 2
+        //   x   x   x   0 => ACT1
+        //   x   x   0   x => ACT2
         //   x   0   x   x => ACT3
         //   0   x   x   x => ACT4
         //

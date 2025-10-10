@@ -1,28 +1,28 @@
-// This module emulates the TX-2's STUV memory.
-///
-/// STUV memory is memory-mapped.  That is, each location (which the
-/// documentation describes as a "register") has an address between 0
-/// and 377777 octal, inclusive.  Even registers that we would
-/// describe today as being "CPU registers" (i.e. registers A-E) have
-/// addresses.  See memorymap.rs for details of the memory map.
-///
-/// Other memories (for example X memory and F memory) are emulated in
-/// control.rs.
-///
-/// The TX-2 uses 36-bit words.  We use Unsigned36Bit (defined in
-/// onescomplement/unsigned.rs) to represent this.  The TX-2 has a
-/// number of memories which have differing widths.  Its STUV memory
-/// (which today we might describe as "main memory") has 38 bitplanes.
-/// 36 for each of the value bits, plus two more:
-///
-/// - Meta bit; this can be read or written using special
-///   memory-related instructions.  Programs can also set up a mode of
-///   operation in which various operations (e.g.  loading an operand
-///   or instruction) causes a meta bit to be set.
-/// - Parity bit: value maintained and checked by the system.
-///   Readable via the SKM instruction.  The emulator behaves as if
-///   parity errors never occur.
-///
+//! This module emulates the TX-2's STUV memory.
+//!
+//! STUV memory is memory-mapped.  That is, each location (which the
+//! documentation describes as a "register") has an address between 0
+//! and 377777 octal, inclusive.  Even registers that we would
+//! describe today as being "CPU registers" (i.e. registers A-E) have
+//! addresses.  See `memorymap.md` for details of the memory map.
+//!
+//! Other memories (for example X memory and F memory) are emulated in
+//! control.rs.
+//!
+//! The TX-2 uses 36-bit words.  We use [`Unsigned36Bit`] to represent
+//! this.  The TX-2 has a number of memories which have differing
+//! widths.  Its STUV memory (which today we might describe as "main
+//! memory") has 38 bitplanes.  36 for each of the value bits, plus
+//! two more:
+//!
+//! - Meta bit; this can be read or written using special
+//!   memory-related instructions.  Programs can also set up a mode of
+//!   operation in which various operations (e.g.  loading an operand
+//!   or instruction) causes a meta bit to be set.
+//! - Parity bit: value maintained and checked by the system.
+//!   Readable via the SKM instruction.  The emulator behaves as if
+//!   parity errors never occur.
+//!
 use core::time::Duration;
 use std::error;
 use std::fmt::{self, Debug, Display, Formatter};
@@ -81,9 +81,6 @@ pub(crate) enum MetaBitChange {
     None,
     Set,
 }
-
-// Clear,
-// Flip,                        // not used for fetch/store
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) enum BitChange {
@@ -178,14 +175,14 @@ impl Debug for MemoryWord {
     }
 }
 
-/// The mref module exists to hide the internals of MemoryWriteRef and
-/// MemoryReadRef.
-///
-/// We cannot simply use `&mut MemoryWord` because the arithmetic
-/// element's registers A-E share a metabit (the metabit of the M
-/// register).
-///
 mod mref {
+    //! The mref module exists to hide the internals of
+    //! [`MemoryWriteRef`] and [`MemoryReadRef`].
+    //!
+    //! We cannot simply use `&mut` [`MemoryWord`] because the
+    //! arithmetic element's registers A-E share a metabit (the
+    //! metabit of the M register).
+    //!
     use super::{ExtraBits, MemoryWord};
     use base::prelude::*;
 
@@ -201,7 +198,7 @@ mod mref {
         }
     }
 
-    /// MemoryReadRef logically represents a memory location
+    /// `MemoryReadRef` logically represents a memory location
     /// (register) which we can read.
     pub(super) struct MemoryReadRef<'a> {
         word: &'a Unsigned36Bit,
@@ -232,8 +229,8 @@ mod mref {
         }
     }
 
-    /// MemoryWriteRef logically represents a memory location
-    /// (register) which we can write to or read.
+    /// `MemoryWriteRef` logically represents a memory location
+    /// (register) which we can write to or read from.
     pub(super) struct MemoryWriteRef<'a> {
         word: &'a mut Unsigned36Bit,
         meta: &'a mut bool,
@@ -304,9 +301,15 @@ impl Memory {
 
 #[derive(Debug)]
 pub struct MemoryUnit {
+    /// The S-memory is core memory with transistorized logic.
     s_memory: Memory,
+    /// The T-memory is faster than S-memory, but smaller.
     t_memory: Memory,
+    /// The U-memory was supposed to be like the T-memory, but was not
+    /// fitted.
     u_memory: Option<Memory>,
+    /// The V-memory contains flip-flops (e.g. registers A-E, M),
+    /// memory-mapped hardware devices and the plugboards.
     v_memory: VMemory,
 }
 
@@ -368,6 +371,8 @@ fn decode(address: &Address) -> Option<MemoryDecode> {
     })
 }
 
+/// `MemoryConfiguration` indicates how the emulated TX-2's memory is
+/// configured.
 pub struct MemoryConfiguration {
     pub with_u_memory: bool,
 }
@@ -435,8 +440,8 @@ impl MemoryUnit {
         self.v_memory.set_e_register(value);
     }
 
-    /// Perform a memory read access.  Return a MemoryReadRef for the
-    /// memory word being accessed.
+    /// Perform a memory read access.  Return a [`MemoryReadRef`] for
+    /// the memory word being accessed.
     fn read_access<'a>(
         &'a mut self,
         ctx: &Context,
@@ -457,9 +462,9 @@ impl MemoryUnit {
         }
     }
 
-    /// Perform a memory write access.  Return a MemoryWriteRef for
-    /// the memory word being accessed.  If the memory location is
-    /// read-only, return Ok(None).
+    /// Perform a memory write access.  Return a [`MemoryWriteRef`]
+    /// for the memory word being accessed.  If the memory location is
+    /// read-only, return `Ok(None)`.
     fn write_access<'a>(
         &'a mut self,
         ctx: &Context,
@@ -481,9 +486,10 @@ impl MemoryUnit {
     }
 }
 
-/// Implement the heart of the change_bit() operation used by the SKM
-/// instruction.  Returns the value of the selected bit, or None if
-/// the bit selector indicates a nonexistent bit (e.g. 0.0, 1.0).
+/// Implement the heart of the [`MemoryMapped::change_bit()`]
+/// operation used by the SKM instruction.  Returns the value of the
+/// selected bit, or `None` if the bit selector indicates a
+/// nonexistent bit (e.g. 0.0, 1.0).
 fn skm_bitop_get<R: MemoryRead>(target_word: &R, op: &WordChange) -> Option<bool> {
     // As the documentation for the SKM instruction (user
     // handbook, page 3-35) explains, we perform the
@@ -502,9 +508,9 @@ fn skm_bitop_get<R: MemoryRead>(target_word: &R, op: &WordChange) -> Option<bool
             Some(target_word.get_meta_bit())
         }
         SkmBitPos::Parity | SkmBitPos::ParityCircuit => {
-            // 11 is the parity bit 12 is the computed parity (see SKM
-            // instruction description, page 3-34 of the Users
-            // Handbook).
+            // But 11 is the parity bit, 12 is the computed parity
+            // (see SKM instruction description, page 3-34 of the
+            // Users Handbook).
             //
             // Both are read-only, but I don't think an attempt to
             // modify them trips an alarm (at least, I can't see any
@@ -624,7 +630,6 @@ impl MemoryMapped for MemoryUnit {
             //
             // The User Handbook also states that V-memory locations
             // other than registers A-E cannot be written at all.
-            //return Err(MemoryOpFailure::ReadOnly);
             return Ok(()); // ignore the write.
         }
 
@@ -710,26 +715,27 @@ impl MemoryMapped for MemoryUnit {
     }
 }
 
+/// The TX-2's V-memory.
+/// Arithmetic registers have no meta bit.  Accesses which attempt
+/// to read the meta bit of registers A, B, , D, E actually return
+/// the meta bit in the M register.  This is briefly described on
+/// page 5-23 of the User Handbook.
+///
+/// It says,
+///
+/// "The data reference metabit (M^4.10) can be detected only when
+/// set (just as N^4.10 above).  Note that it can be changed
+/// without a memory reference for it serves as the metabit of the
+/// A, B, C, D, and E registers. (i.e., MKC_4.10 A or MKC_4.10 B
+/// will change bit 4.10 of M."
+///
+/// V memory in general does behave as if it has a meta bit.  For
+/// example, there is a push-button on the console that acts as the
+/// value of the meta bit of the shaft encoder register.
+///
+/// See also <https://github.com/TX-2/TX-2-simulator/issues/59>.
 #[derive(Debug)]
 struct VMemory {
-    // Arithmetic registers have no meta bit.  Accesses which attempt
-    // to read the meta bit of registers A, B, , D, E actually return
-    // the meta bit in the M register.  This is briefly described on
-    // page 5-23 of the User Handbook.
-    //
-    // It says,
-    //
-    // "The data reference metabit (M^4.10) can be detected only when
-    // set (just as N^4.10 above).  Note that it can be changed
-    // without a memory reference for it serves as the metabit of the
-    // A, B, C, D, and E registers. (i.e., MKC_4.10 A or MKC_4.10 B
-    // will change bit 4.10 of M."
-    //
-    // V memory in general does behave as if it has a meta bit.  For
-    // example, there is a push-button on the console that acts as the
-    // value of the meta bit of the shaft encoder register.
-    //
-    // See also https://github.com/TX-2/TX-2-simulator/issues/59.
     a_register: Unsigned36Bit,
     b_register: Unsigned36Bit,
     c_register: Unsigned36Bit,
@@ -745,9 +751,9 @@ struct VMemory {
     plugboard: [Unsigned36Bit; 32],
 
     /// Writes to unknown locations are required to be ignored, but
-    /// reads have to return a value.  If permit_unknown_reads is set,
-    /// a special value is returned.  If not, a QSAL alarm will be
-    /// raised (though that alarm may in turn be suppressed).
+    /// reads have to return a value.  If `permit_unknown`_reads is
+    /// set, a special value is returned.  If not, a QSAL alarm will
+    /// be raised (though that alarm may in turn be suppressed).
     permit_unknown_reads: bool,
     sacrificial_word_for_unknown_reads: MemoryWord,
 
@@ -756,12 +762,12 @@ struct VMemory {
     sacrificial_metabit: bool,
 }
 
+/// This is taken from the listing in section 5-5.2 (page 5-27) of
+/// the Users Handbook.
 const fn standard_plugboard_internal() -> [Unsigned36Bit; 32] {
     // This data has not yet been double-checked and no tests
     // validate it, so it might be quite wrong.
     //
-    // This is taken from the listing in section 5-5.2 (page 5-27) of
-    // the Users Handbook.
     [
         // Plugboard memory starts with Plugboard B at 0o3777740.
         //
@@ -1038,7 +1044,7 @@ impl VMemory {
 
     /// Perform a memory write.  Return a mutable reference to the
     /// memory word being accessed or, if this is an attempt to write
-    /// to a read-only location, return None.
+    /// to a read-only location, return `None`.
     fn write_access<'a>(
         &'a mut self,
         _ctx: &Context,

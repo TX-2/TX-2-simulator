@@ -7,8 +7,8 @@ use std::fmt::{Display, Formatter};
 use base::instruction::Instruction;
 use base::prelude::{Address, SymbolicInstruction};
 
-/// CurrentInstructionDiagnostics is only for generating debug
-/// information.  They must not be used for control/execution
+/// `CurrentInstructionDiagnostics` is only for generating debug
+/// information.  It must not be used for control/execution
 /// purposes.
 ///
 /// We sometimes clone this struct in cases where we are unlikely to
@@ -16,7 +16,12 @@ use base::prelude::{Address, SymbolicInstruction};
 /// unlikely) and so a clone of this struct needs to remain cheap.
 #[derive(Debug, Clone)]
 pub struct CurrentInstructionDiagnostics {
+    /// The instruction we are currently executing (which will not
+    /// always be the same as the contents of the N register).
     pub current_instruction: Instruction,
+    /// The address from which we fetched the current instruction
+    /// (which is not the same as the current value of the P register,
+    /// since that gets incremented after an instruction is fetched).
     pub instruction_address: Address,
 }
 

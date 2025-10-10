@@ -15,6 +15,7 @@
 #![warn(clippy::if_not_else)] // included in `pedantic`
 #![warn(clippy::items_after_statements)] // included in `pedantic`
 #![warn(clippy::explicit_iter_loop)] // included in `pedantic`
+#![warn(clippy::doc_markdown)] // included in `pedantic`
 
 mod alarm;
 mod alarmunit;

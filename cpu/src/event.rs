@@ -14,19 +14,19 @@ pub enum InputEvent {
 
 #[derive(Debug)]
 pub enum InputEventError {
-    /// BufferUnavailable simply means that an input event has
-    /// occurred on a device whose buffer is still being used by the
-    /// CPU.  Sometimes this can happen if the program running on the
-    /// TX-2 makes use of the hold bit too much in some sequence, with
-    /// the result that the sequence that should be reading the device
+    /// `BufferUnavailable` means that an input event has occurred on
+    /// a device whose buffer is still being used by the CPU.
+    /// Sometimes this can happen if the program running on the TX-2
+    /// makes use of the hold bit too much in some sequence, with the
+    /// result that the sequence that should be reading the device
     /// (and hence freeing the buffer) isn't getting a chance to do
     /// this.
     BufferUnavailable,
 
-    /// InputOnUnattachedUnit means that the user has generated input
-    /// on a unit which has not been attached.  That is, the simulator
-    /// does not believe that this hardware exists in the system at
-    /// all.  This would likely be due to some configuration
+    /// `InputOnUnattachedUnit` means that the user has generated
+    /// input on a unit which has not been attached.  That is, the
+    /// simulator does not believe that this hardware exists in the
+    /// system at all.  This would likely be due to some configuration
     /// inconsistency between the user interface and the simulator
     /// core.
     InputOnUnattachedUnit,
