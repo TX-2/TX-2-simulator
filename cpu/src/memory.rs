@@ -1,27 +1,88 @@
 //! This module emulates the TX-2's STUV memory.
 //!
+//! The TX2 has several different kinds of memory.  Some of it (known
+//! as S, T, U and V memories) are directly addressible.  These are
+//! described in Chapter 11 (Volume 2) of the Technical Manual.
+//!
+//! The locations of the S, U and T memories are taken from page 5-13
+//! of the Users Handbook (which describes memory alarms).  The
+//! location of V memory was deduced from the descrption of the
+//! plugboard in the user guide (which states that the plugboards end
+//! at 0377777).
+//!
 //! STUV memory is memory-mapped.  That is, each location (which the
 //! documentation describes as a "register") has an address between 0
 //! and 377777 octal, inclusive.  Even registers that we would
 //! describe today as being "CPU registers" (i.e. registers A-E) have
-//! addresses.  See `memorymap.md` for details of the memory map.
+//! addresses.
 //!
-//! Other memories (for example X memory and F memory) are emulated in
-//! control.rs.
+//! Other memories (for example X memory for index registers and F
+//! memory for configuration values) are emulated in the
+//! [`control`](crate::control) module and do not have addresses.
+//!
+//! # Storage of Words
 //!
 //! The TX-2 uses 36-bit words.  We use [`Unsigned36Bit`] to represent
 //! this.  The TX-2 has a number of memories which have differing
 //! widths.  Its STUV memory (which today we might describe as "main
 //! memory") has 38 bitplanes.  36 for each of the value bits, plus
-//! two more:
+//! two more, the meta bit and the parity bit.
 //!
-//! - Meta bit; this can be read or written using special
-//!   memory-related instructions.  Programs can also set up a mode of
-//!   operation in which various operations (e.g.  loading an operand
-//!   or instruction) causes a meta bit to be set.
-//! - Parity bit: value maintained and checked by the system.
-//!   Readable via the SKM instruction.  The emulator behaves as if
-//!   parity errors never occur.
+//! # Metabits
+//!
+//! The meta bit of a location can be read or written using special
+//! memory-related instructions.  Programs can also set up a mode of
+//! operation in which various operations (e.g.  loading an operand
+//! or instruction) causes a meta bit to be set.
+//!
+//! # Parity Bits
+//!
+//! Parity bits are maintained and checked by the system.  They are
+//! readable via the SKM instruction.  The TX-2 had two distinct
+//! meanings for parity bits: one which is stored with the data, and
+//! the other with is computed as-needed from the data itself.  When
+//! the stored and computed parity bits differ, this is a parity error
+//! (which might, for example, cause an alarm to be raised).
+//!
+//! The emulator behaves as if parity errors never occur.  Therefore
+//! in computes both the "stored" and "computed" parity bits
+//! on-the-fly as needed.
+//!
+//! # Memory Map
+//!
+//! | Address | Description                                                  |
+//! |---------| ------------------------------------------------------------- |
+//! | 0000000 | Start of S memory (Technical Manual Volume 2, sec 12-2.8)     |
+//! | 0177777 | Last word of S memory (WJCC paper gives size as 65536 words)  |
+//! | 0200000 | Start of T memory                                             |
+//! | 0207777 | Last location in T memory.                                    |
+//! | 0210000 | Start of U memory                                             |
+//! | 0217777 | Last location in U memory.                                    |
+//! | 0377600 | Start of V-memory.                                            |
+//! | 0377604 | A register                                                    |
+//! | 0377605 | B register                                                    |
+//! | 0377606 | C register                                                    |
+//! | 0377607 | D register                                                    |
+//! | 0377610 | E register                                                    |
+//! | 0377620 | Knob (Shaft Encoder) Register (User Handbook, 5-20)           |
+//! | 0377621 | External Input Register (User Handbook, 5-20)                 |
+//! | 0377630 | Real Time Clock                                               |
+//! | 0377710 | Location of CODABO start point 0                              |
+//! | 0377711 | Location of CODABO start point 1                              |
+//! | 0377712 | Location of CODABO start point 2                              |
+//! | 0377713 | Location of CODABO start point 3                              |
+//! | 0377714 | Location of CODABO start point 4                              |
+//! | 0377715 | Location of CODABO start point 5                              |
+//! | 0377716 | Location of CODABO start point 6                              |
+//! | 0377717 | Location of CODABO start point 7                              |
+//! | 0377740 | **Plugboard B memory start**. The plugboard program code is given in section 5-5.2 (page 5-27) of the User Handbook. |
+//! | 0377740 | 8 (Octal 10) words of data used by `SPG` instructions of the code at 0377750 to set the standard configuration in F-memory. |
+//! | 0377750 | Standard program, **Set Configuration**. Loads the standard configuration into F-memory.  Then proceed to 0377760. |
+//! | 0377757 | Last location in Plugboard B. |
+//! | 0377760 | Plugboard A memory start |
+//! | 0377760 | Standard program, **Read In Reader Leader**. Reads the first 21 words from paper tape into registers 3 through 24 of S-memory, then goes to register 3.  The 21 words would be the "standard reader leader" of binary paper tapes.  The code for the standard reader leader is given in the User Handbook, section 5-5.2. |
+//! | 0377770 | Standard program, **Clear Memory / Smear Memory**. Sets all of S, T, U memory to 0 on the left and the address of itself on the right. Meta bits are not affected (User Guide 5-25). Automatically proceeds to 037750 (Set Configuration). |
+//! | 0377777 | Plugboard A memory end; end of V memory; end of memory. |
 //!
 use core::time::Duration;
 use std::error;
@@ -716,6 +777,9 @@ impl MemoryMapped for MemoryUnit {
 }
 
 /// The TX-2's V-memory.
+///
+/// # Metabits
+///
 /// Arithmetic registers have no meta bit.  Accesses which attempt
 /// to read the meta bit of registers A, B, , D, E actually return
 /// the meta bit in the M register.  This is briefly described on
