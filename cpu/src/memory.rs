@@ -723,11 +723,11 @@ impl MemoryMapped for MemoryUnit {
 ///
 /// It says,
 ///
-/// "The data reference metabit (M^4.10) can be detected only when
-/// set (just as N^4.10 above).  Note that it can be changed
-/// without a memory reference for it serves as the metabit of the
-/// A, B, C, D, and E registers. (i.e., MKC_4.10 A or MKC_4.10 B
-/// will change bit 4.10 of M."
+/// > The data reference metabit (`M⁴˙¹⁰`) can be detected only when
+/// > set (just as `N⁴˙¹⁰` above).  Note that it can be changed
+/// > without a memory reference for it serves as the metabit of the
+/// > A, B, C, D, and E registers. (i.e., `MKC₄.₁₀ A` or `MKC₄.₁₀ B`
+/// > will change bit 4.10 of M)."
 ///
 /// V memory in general does behave as if it has a meta bit.  For
 /// example, there is a push-button on the console that acts as the
