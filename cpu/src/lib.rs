@@ -1,7 +1,32 @@
-//! This module decodes instructions and emulates the arithmetic unit,
+//! This crate decodes instructions and emulates the arithmetic unit,
 //! the exchange unit, memory and the CPU side of the I/O system.
 //!
 //! All the work is done in non-blocking function calls into this library.
+//!
+//! The modules within this crate do not directly map to the elements
+//! of the TX-2 machine.
+//!
+//!
+//! | TX-2 Element    | Feature | Implementation |
+//! |--- ------------ | ------  | -------------  |
+//! | Control Element | Start/Stop control, CODABO, STARTOVER, Sequencing the stages of instructions | [control]|
+//! | Control Element | Alarms  | [alarmunit]|
+//! | In/Out Element  | All     | [io]|
+//! | Program Element | Sequence flags, Index register storage, Instruction decoding, Instruction, executrion, Deferred addressing| [control]|
+//! | Program Element | Sequence selection and switching | [control]|
+//! | Program Element | Registers N, P, Q, K | [control]|
+//! | Program Element | Configuration memory | [control]|
+//! | Program Element | Jumps | [control]|
+//! | Arithmetic Element | Register A, B, C, D, Arithmetic operations,  | [control] |
+//! | Arithmetic Element | Registers Y and Z  |  Not yet implemented |
+//! | Exchange Element | Load/store process | [exchanger] |
+//! | Exchange Element | Register E |  [exchanger] |
+//! | Exchange Element | Register M |  [memory] |
+//! | Exchange Element | Quarter activity, subword form, sign extension  |  [exchanger] |
+//! | In/Out Element | Connecting/disconnecting peripherals, raising the flag of sequences for which I/O is ready | [io]|
+//! | Memory Element | Memory storage | [exchanger](crate::memory) |
+//! | Console           | Toggle Start Point Register  |  [control::ControlUnit] |
+//!
 #![crate_name = "cpu"]
 #![deny(unreachable_pub)]
 #![deny(unsafe_code)]
@@ -16,6 +41,7 @@
 #![warn(clippy::items_after_statements)] // included in `pedantic`
 #![warn(clippy::explicit_iter_loop)] // included in `pedantic`
 #![warn(clippy::doc_markdown)] // included in `pedantic`
+#![allow(rustdoc::private_intra_doc_links)]
 
 mod alarm;
 mod alarmunit;

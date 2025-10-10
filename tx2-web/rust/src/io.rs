@@ -26,7 +26,7 @@ pub fn tx2_load_tape(
     data: &[u8],
 ) -> bool {
     let context = make_context(simulated_time, elapsed_time_secs);
-    tx2.mount_tape(&context, data.to_vec()).map_or_else(
+    tx2.mount_paper_tape(&context, data.to_vec()).map_or_else(
         |e: InputEventError| {
             event!(Level::ERROR, "failed to load paper tape: {e}");
             false

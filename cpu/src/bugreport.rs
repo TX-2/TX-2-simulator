@@ -16,6 +16,11 @@ pub enum IssueType {
     Opcode,
 }
 
+/// Provide a URL at which a human can report a bug.
+///
+/// # Arguments
+/// * `title` - description of the problem
+/// * `issue_type` - what kind of issue this is, if known
 #[must_use]
 pub fn bug_report_url(title: &str, issue_type: Option<IssueType>) -> Url {
     bug_report_url_internal(title, issue_type).expect("bug-report URLs should always be valid")

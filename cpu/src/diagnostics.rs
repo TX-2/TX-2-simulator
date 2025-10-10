@@ -36,6 +36,7 @@ impl Display for &CurrentInstructionDiagnostics {
     }
 }
 
+/// Fetches diagnostics about the current instruction.
 pub trait DiagnosticFetcher {
     fn diagnostics(self) -> CurrentInstructionDiagnostics;
 }

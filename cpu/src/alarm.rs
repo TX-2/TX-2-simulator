@@ -10,9 +10,12 @@ use base::prelude::*;
 use super::bugreport::{IssueType, bug_report_url};
 use super::diagnostics::{CurrentInstructionDiagnostics, DiagnosticFetcher};
 
+/// A memory read or write failure.
 #[derive(Debug, Clone)]
 pub enum BadMemOp {
+    /// Describes a failure to read from an address.
     Read(Unsigned36Bit),
+    /// Describes a failure to write to an address.
     Write(Unsigned36Bit),
 }
 
@@ -25,13 +28,22 @@ impl Display for BadMemOp {
     }
 }
 
+/// Describes whether a particular kind of alarm can be masked.
 #[derive(Debug, PartialEq, Eq)]
 pub enum AlarmMaskability {
     Maskable,
     Unmaskable,
 }
 
-// These acrronyms are upper case to follow the names in the TX-2 documentation.
+/// Describes the kinds of alarm that exist in the TX-2.
+///
+/// Some alarms which cannot occur in the emulator (such as partity
+/// alarms in the X-memory or the STUV-memory) don't have an
+/// enumerator.
+///
+/// These acrronyms are upper case to follow the names in the TX-2
+/// documentation.  The meanings of the values are described in
+/// [`AlarmDetails`].
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, PartialOrd, Ord, Serialize)]
 pub enum AlarmKind {
@@ -61,6 +73,7 @@ impl Display for AlarmKind {
 }
 
 impl AlarmKind {
+    /// Indicates whether an alarm can be masked.
     #[must_use]
     pub fn maskable(&self) -> AlarmMaskability {
         match self {
@@ -133,30 +146,61 @@ fn test_alarm_kind_round_trip() {
 /// Indicates what the emulator was doing when a bug was discovered.
 #[derive(Debug, Clone)]
 pub enum BugActivity {
+    /// Indicates that the emulator was performing I/O at the point a
+    /// bug was discovered.
     Io,
+    /// Indicates that the emulator was executing an instruction at
+    /// the point a bug was discovered.
     Opcode,
+    /// Indicates that the emulator was performing an alarm
+    /// manipulation at the point a bug was discovered.
     AlarmHandling,
 }
 
-// Alarms from User's Handbook section 5-2.2; full names are taken
-// from section 10-2.5.1 (vol 2) of the Technical Manual.
-// These acrronyms are upper case to follow the names in the TX-2 documentation.
+/// `AlarmsDetails` variant names are from User's Handbook section
+/// 5-2.2; full names are taken from section 10-2.5.1 (vol 2) of the
+/// Technical Manual.
+///
+/// These acrronyms are upper case to follow the names in the TX-2 documentation.
+///
+/// # Unimplemented Alarms
+///
+/// Alarms we have not implemented:
+///
+/// | Mnemonic | Description | Reason why It's not Included |
+/// | -------- | ----------- | ---------------------------- |
+/// | SYAL1    | Sync System Alarm (see User Handbook page 5-21). | Not yet implemented. |
+/// | SYAL2    | Sync System Alarm (see User Handbook page 5-21). | Not yet implemented. |
+/// | MPAL     | M memory Parity Alarm | Parity errors are not emulated. |
+/// | NPAL     | N memory Parity Alarm | Parity errors are not emulated. |
+/// | FPAL     | F memory Parity Alarm | Parity errors are not emulated. |
+/// | XPAL     | X memory Parity Alarm | Parity errors are not emulated. |
+/// | TSAL     | T memory selection alarm | Indicates overcurrent in the T Memory.  We have no hardware, so no overcurrent. |
+/// | USAL     | U memory selection alarm | Indicates overcurrent in the T Memory.  We have no hardware, so no overcurrent. |
+/// | Mousetrap | Stops the computer when there is a malfunction in the setting of the S-memory flip-flops (or perhaps other reasons chosen by the system maintainers). |  Not required. |
+///
+/// L. G. Roberts memo of 1965-01-07 seems to indicate that another
+/// alarm, SPAL, was introduced later; see
+/// <http://www.bitsavers.org/pdf/mit/tx-2/rcsri.org_library_tx2/TX2-Memos-General_196407.pdf>.
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Debug, Clone)]
 pub enum AlarmDetails {
-    /// P Memory Cycle Selecttion Alarm.  This fires when we attempt
-    /// to fetch an instruction from an invalid address.
+    /// P Memory Cycle Selection Alarm.  This fires when we attempt to
+    /// fetch an instruction (but not an operand) from an invalid
+    /// address.
     PSAL(u32, String),
 
     /// Operation Code Alarm.  This fires when an instruction word
     /// containing an undefined operation code is read out of memory.
     ///
     /// Section 10-2.5.3 of the TX-2 Technical Manual (Volume 2)
-    /// states that this can also happen when an AOP instruction
-    /// specifies an undefined op code in bits N₂.₆-N₂.₁.  An AOP
+    /// states that this can also happen when an `AOP` instruction
+    /// specifies an undefined op code in bits N₂.₆-N₂.₁.  An `AOP`
     /// instruction is has opcode number 4, but with bits N₂.₈=0 and
     /// N₂.₇=1 (instead of 00 which is the case for an IOS
-    /// instruction).
+    /// instruction).  So far however, we have not found any further
+    /// information about the interpretation of bits N₂.₆-N₂.₁ for
+    /// `AOP`.
     OCSAL(Instruction, String),
 
     /// Q Memory Cycle Selecttion Alarm.  Q register (i.e. data fetch
@@ -178,40 +222,15 @@ pub enum AlarmDetails {
     /// too many hold bits.
     MISAL { affected_unit: Unsigned6Bit },
 
-    // Alarms we probably should implement but have not:
-    //
-    // SYAL: Sync System Alarm
-
-    // Not included here because the simulator pretends that parity
-    // checks always succeed:
-    //
-    // MPAL: M Parity Alarm
-    // NPAL: N Parity Alarm
-    // FPAL: F Parity Alarm
-    // XPAL: X Parity Alarm
-    //
-    // Not included here for other reasons:
-    //
-    // TSAL: T Memory Selection Alarm; indicates overcurrent in the T
-    // Memory.  We have no hardware, so no overcurrent.
-    //
-    // Mousetrap Alarm: stops the computer when there is a malfunction
-    // in the setting of the S-memory flip-flops.  We don't have those
-    // in the simulator.
-    //
-    // L. G. Roberts memo of 1965-01-07 seems to indicate that another
-    // alarm, SPAL, was introduced later; see
-    // www.bitsavers.org/pdf/mit/tx-2/rcsri.org_library_tx2/TX2-Memos-General_196407.pdf.
-
-    // The following alarms didn't exist in the real TX-2:
-    /// Something is not implemented
+    /// Indicates that something is not implemented in the emulator.
+    /// This alarm didn't exist in the real TX-2.
     ROUNDTUITAL {
         explanation: String,
         bug_report_url: &'static str,
     },
 
-    /// Loop in deferred addressing (detection of this is not a feature
-    /// of the TX-2).
+    /// Loop in deferred addressing (detection of this is not a
+    /// feature of the TX-2, this occurs only in the emulator).
     DEFERLOOPAL {
         /// address is some address within the loop.
         address: Unsigned18Bit,
@@ -228,6 +247,7 @@ pub enum AlarmDetails {
     },
 }
 
+/// Describes an alarm which is active.
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Debug, Clone)]
 pub struct Alarm {
@@ -348,6 +368,8 @@ impl Display for AlarmDetails {
 
 impl Error for Alarm {}
 
+/// Describes an alarm which is active and is not masked (meaning that
+/// it is actually firing).
 #[derive(Debug)]
 pub struct UnmaskedAlarm {
     pub alarm: Alarm,
@@ -366,11 +388,14 @@ impl Display for UnmaskedAlarm {
     }
 }
 
+/// A trait for objects which implement the firing of alarms.
 pub trait Alarmer {
+    /// Fire the indicated alarm if it is not masked.
     fn fire_if_not_masked<F: DiagnosticFetcher>(
         &mut self,
         alarm_instance: Alarm,
         get_diags: F,
     ) -> Result<(), Alarm>;
+    /// Unconditionally fire the indicated alarm.
     fn always_fire<F: DiagnosticFetcher>(&mut self, alarm_instance: Alarm, get_diags: F) -> Alarm;
 }

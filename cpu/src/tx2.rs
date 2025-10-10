@@ -1,3 +1,16 @@
+//! Emulation of the TX-2 computer.
+//!
+//! # Principles of Operation
+//!
+//! Calls are non-blocking and update the state of the emulated TX-2
+//! where necessary.
+//!
+//! # Timing
+//!
+//! Method calls return information about how much simulated time they
+//! would have taken up. The caller is responsible for snsuring that
+//! method calls are paced such that the overall execution speed
+//! is whatever it wants (for example 1x speed).
 use std::cmp::min;
 use std::collections::BTreeMap;
 use std::time::Duration;
@@ -20,6 +33,7 @@ use super::io::{DeviceManager, ExtendedUnitState, InputFlagRaised, set_up_periph
 use super::memory::{MemoryConfiguration, MemoryUnit};
 use super::{InputEventError, PanicOnUnmaskedAlarm};
 
+/// `Tx2` emulates the TX-2 computer, with peripherals.
 #[wasm_bindgen]
 pub struct Tx2 {
     control: ControlUnit,
@@ -31,6 +45,7 @@ pub struct Tx2 {
 }
 
 impl Tx2 {
+    /// Create a new instance.
     pub fn new(
         ctx: &Context,
         panic_on_unmasked_alarm: PanicOnUnmaskedAlarm,
@@ -77,6 +92,8 @@ impl Tx2 {
         self.run_mode = run_mode;
     }
 
+    /// Update the emulator's idea of when the next instruction should
+    /// begin execution.
     pub fn set_next_execution_due(&mut self, now: Duration, newval: Option<Duration>) {
         if let Some(t) = newval {
             assert!(now <= t);
@@ -90,6 +107,8 @@ impl Tx2 {
         self.next_execution_due = newval;
     }
 
+    /// Update the emulator's idea of when the next hardware state
+    /// change might be.
     fn set_next_hw_poll_due(&mut self, now: Duration, newval: Duration) {
         assert!(now <= newval);
         event!(
@@ -101,6 +120,7 @@ impl Tx2 {
         self.next_hw_poll_due = newval;
     }
 
+    /// Emulate the user pressing the CODABO key.
     pub fn codabo(&mut self, ctx: &Context, reset_mode: &ResetMode) -> Result<(), Alarm> {
         self.control
             .codabo(ctx, reset_mode, &mut self.devices, &mut self.mem)
@@ -124,7 +144,8 @@ impl Tx2 {
         }
     }
 
-    pub fn mount_tape(
+    /// Emulate the effect of the user mounting a paper tape.
+    pub fn mount_paper_tape(
         &mut self,
         ctx: &Context,
         data: Vec<u8>,
@@ -132,6 +153,8 @@ impl Tx2 {
         self.on_input_event(ctx, PETR, InputEvent::PetrMountPaperTape { data })
     }
 
+    /// Emulate the effect of the user pressing a key on one of the
+    /// Lincoln Writers.
     pub fn lw_input(
         &mut self,
         ctx: &Context,
@@ -155,6 +178,8 @@ impl Tx2 {
         }
     }
 
+    /// Return the time at which the emulator would like to next be
+    /// called.
     #[must_use]
     pub fn next_tick(&self) -> Duration {
         match (
@@ -281,6 +306,8 @@ impl Tx2 {
         }
     }
 
+    /// Perform whatever emulation action is due now.  If the TX-2
+    /// executes a TSD instruction, return the I/O data being emitted.
     pub fn tick(&mut self, ctx: &Context) -> Result<Option<OutputEvent>, UnmaskedAlarm> {
         let system_time = ctx.simulated_time;
         let tick_span = span!(Level::INFO, "tick", t=?system_time);

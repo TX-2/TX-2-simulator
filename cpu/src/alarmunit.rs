@@ -13,12 +13,15 @@ use crate::diagnostics::CurrentInstructionDiagnostics;
 #[cfg(test)]
 use base::Unsigned6Bit;
 
+/// The status of an alarm.
 #[derive(Debug, Serialize)]
 pub struct AlarmStatus {
     pub name: String,
     pub maskable: bool,
     pub masked: bool,
     pub active: bool,
+    /// An explanation for the current situation; this was not a
+    /// faature of the original TX-2.
     pub message: String,
 }
 
@@ -272,18 +275,3 @@ fn maskable_alarms_are_not_masked_by_default() {
     // this case because maskable but not actually masked) alarm is active.
     assert!(alarm_unit.unmasked_alarm_active());
 }
-
-// Alarm conditions we expect to use in the emulator but
-// which are not in use yet:
-// SYAL1,                       // Sync alarm 1 (see User Handbook page 5-21)
-// SYAL2,                       // Sync alarm 2 (see User Handbook page 5-21)
-
-// Alarm enumerators we don't expect to use:
-//
-// MPAL,                     // data parity error (in STUV)
-// NPAL,                     // instruction parity error (in STUV)
-// XPAL,                     // parity error in X-memory
-// FPAL,                     // parity error in F-memory
-// TSAL,                     // voltage issue; can't happen in an emulator.
-// USAL,                     // voltage issue; can't happen in an emulator.
-// Mouse-trap

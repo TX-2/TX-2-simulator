@@ -9,8 +9,9 @@ pub enum FlagChange {
     Raise(&'static str),
 }
 
-/// A value of which bits 0..width are significant (0 being the least significant bit).
-// Hence a six-bit value would be `MaskedWord { width: 6, value: u13!(0o77) }`
+/// A value of which bits 0..width are significant (0 being the least
+/// significant bit).  Hence a six-bit value would be `MaskedWord {
+/// width: 6, value: u13!(0o77) }`
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MaskedWord {
     pub bits: Unsigned36Bit,
@@ -24,6 +25,7 @@ impl MaskedWord {
     }
 }
 
+/// Determines how TSD instructions for Lincoln Writer seuenced behave.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransferMode {
     /// TSD instructions use the exchange unit (but not sign extension).

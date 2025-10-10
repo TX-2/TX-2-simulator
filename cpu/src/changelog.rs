@@ -1,6 +1,8 @@
 use serde::Serialize;
 use std::collections::BTreeSet;
 
+/// Efficiently accumulate as set of things and then return all the
+/// members of the set.
 #[derive(Debug, Serialize)]
 pub(crate) struct ChangeIndex<K: Ord + Serialize> {
     changes: BTreeSet<K>,

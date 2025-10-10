@@ -1,16 +1,24 @@
-//! Emulates the control unit of the TX-2.
+//! Emulates the principal central components of the TX-2.
 //!
-//! The control unit is conceptually similar to the CPU of a modern
-//! computer, except that the arithmetic unit and registers are
-//! separate.  Within this emulator, the control unit performs the
-//! following functions:
+//! # TX-2 Functionality implemented in this module
 //!
-//! - Instruction decoding
-//! - Handle CODABO and STARTOVER
-//! - Keep track of the flags of each sequence
-//! - Keep track of the placeholder of each sequence
-//! - Manage switching between sequences
+//! The functionality of this module is conceptually similar to the
+//! CPU of a modern computer, although on the real TX-2 these
+//! functions were split across several identifiably separate units
+//! ("elements").
+//!
+//!
+//!
+//! ## Functions of the In/Out Element
+//!
+//!
+//! Other functions of the In/Out element are implemented in the [io]
+//! module.
+//!
+//! # Functions of the Exchange Element
+//!
 //! - Remember the setting of the TSP (Toggle Start Point) register
+//!
 use std::collections::{BTreeMap, HashSet};
 use std::fmt::Write;
 use std::ops::BitAnd;
@@ -728,21 +736,27 @@ impl ControlUnit {
         self.change_sequence(mem, None, SequenceNumber::ZERO);
     }
 
-    /// Return the value in the Toggle Start Register.  It is possible
-    /// that this was memory-mapped in the real machine, but if that's
-    /// the case the user guide doesn't specify where.  For now, we
-    /// haven't made it configurable (i.e. have not emulated the
-    /// hardware) yet, either.
+    /// Return the value in the Toggle Start Register (TSP).
     ///
-    /// We just hard-code it to point at the F-memory confgiguration
-    /// routine (which does its job and then invokes the standard tape
-    /// reader).
+    /// The TSP is a set of toggle switches on the TX-2's console (see
+    /// the TX-2 Users Handbook section 4-2.2).
+    ///
+    /// For now, we haven't made it configurable (i.e. have not
+    /// emulated the hardware) yet. We just hard-code it to point at
+    /// the F-memory configuration routine (which does its job and
+    /// then invokes the standard tape reader).
+    ///
+    /// # Caveat
     ///
     /// We used to set this to point at the "Memory Clear / Memory
-    /// Smear" program in the plugboard, but that accesses addresses
-    /// which are not mapped (e.g. the gap between U-memory and
-    /// V-memory) and so should only be run qith QSAL disabled, which
-    /// is not our default config.
+    /// Smear" program in the plugboard (see
+    /// [`memory::get_standard_plugboard()`]), but that accesses
+    /// addresses which are not mapped (e.g. the gap between U-memory
+    /// and V-memory) and so should only be run qith QSAL disabled,
+    /// which is not our default config.
+    ///
+    /// We should double-check how the TX-2's TSP was normally set and
+    /// how the TX-2 behaved around this.
     fn tsp(&self) -> Address {
         // The operation of RESET (or CODABO) will copy this value
         // into the zeroth index register (which the program counter
@@ -836,6 +850,10 @@ impl ControlUnit {
                 // According to the Technical Manual, page 12-6,
                 // change of seqeuence is the only time in which P₂.₉
                 // is altered.
+                //
+                // However, see also the arm for the
+                // [`ProgramCounterChange::CounterUpdate`] case
+                // below.
                 if next_seq != 0 {
                     self.regs.p = self.regs.get_index_register_as_address(next_seq);
                     event!(
@@ -1841,9 +1859,9 @@ impl ControlUnit {
         };
         let delta = self.regs.get_index_register(j); // this is Xj.
 
-        // A number of things expect that the "most recent data (memory)
-        // reference" is saved in register Q.  14JMP (a.k.a. JPQ) makes
-        // use of this, for example.
+        // A number of things expect that the "most recent data
+        // (memory) reference" is saved in register Q.  `¹⁴JMP`
+        // (a.k.a. `JPQ`) makes use of this, for example.
         self.regs.q = physical_address.index_by(delta);
 
         // TODO: figure out if other parts of the system documentation
@@ -1905,7 +1923,7 @@ impl ControlUnit {
                 // BadMemOp::Read to BadMemOp::Write.
                 //
                 // If fire_details_if_not_masked() returns (), QSAL is
-                // masked, we just carry on (the DPX instruction has
+                // masked, we just carry on (the `DPX` instruction has
                 // no effect).
                 self.fire_details_if_not_masked(AlarmDetails::QSAL(
                     inst,
