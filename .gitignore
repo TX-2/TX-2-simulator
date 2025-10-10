@@ -3,3 +3,10 @@ Cargo.lock
 *~
 /*.tape
 /.dir-locals.el
+
+# We don't check the SBOM file in, we generate them.
+assembler/assembler.cdx.*
+base/base.cdx.*
+cli/cli.cdx.*
+cpu/cpu.cdx.*
+tx2-web/tx2-web.cdx.*
