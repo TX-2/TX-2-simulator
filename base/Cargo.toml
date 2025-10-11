@@ -27,7 +27,7 @@ test-strategy = "0.4.3"
 # that to work, we have to avoid using proptest when building in a
 # non-dev configuration.
 [dev-dependencies.proptest]
-version = "1.7.0"
+version = "1.8.0"
 # The default feature set includes things like process forking which are not
 # supported in Web Assembly.
 default-features = false
