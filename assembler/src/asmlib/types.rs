@@ -1,3 +1,4 @@
+//! Fundamental types and errors.
 use std::ffi::OsStr;
 use std::fmt::{self, Display, Formatter};
 use std::io::Error as IoError;
@@ -50,8 +51,7 @@ impl Display for BlockIdentifier {
     }
 }
 
-/// Indicates that some hardware limit of the machine has been
-/// exceeded by the program we are currently trying to assemble.
+/// A hardware limit was exceeded.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum MachineLimitExceededFailure {
     /// When an undefined Symex is used in an index context, it is
@@ -104,6 +104,8 @@ impl Display for MachineLimitExceededFailure {
     }
 }
 
+/// Failure to assemble a program.
+///
 /// This error indicates that the program we are trying to assemble is
 /// not valid.  Not all of these failure cases were detected by the
 /// TX-2's original assembler, M4.
@@ -130,11 +132,11 @@ pub enum ProgramError {
     /// where it was not allowed.
     SyntaxError { msg: String, span: Span },
 
-    /// As for `MachineLimitExceededFailure::RanOutOfIndexRegisters`.
+    /// As for [`MachineLimitExceededFailure::BlockTooLarge`].
     BlockTooLong(Span, MachineLimitExceededFailure),
 
-    /// As for `MachineLimitExceededFailure::RanOutOfIndexRegisters`,
-    /// but specifically for the RC block.
+    /// As for `MachineLimitExceededFailure::BlockTooLarge`, but
+    /// specifically for the RC block.
     RcBlockTooLong(RcWordSource),
 
     /// As for `MachineLimitExceededFailure::RanOutOfIndexRegisters`.
@@ -227,6 +229,7 @@ impl Display for IoAction {
     }
 }
 
+/// Describes the target of an I/O operation.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum IoTarget {
     File(PathBuf),
@@ -246,8 +249,11 @@ impl Display for IoTarget {
 /// Describes a failure to perform I/O.
 #[derive(Debug)]
 pub struct IoFailed {
+    /// Indicates the nature of the I/O operation we were attempting.
     pub action: IoAction,
+    /// Indiates what thing we were trying to perform the I/O operation on.
     pub target: IoTarget,
+    /// Indicates what, specifically, went wrong.
     pub error: IoError, // not cloneable, doesn't implement PartialEq
 }
 
@@ -273,23 +279,34 @@ impl PartialEq<IoFailed> for IoFailed {
 
 impl Eq for IoFailed {}
 
-/// Describes a failure by the assembler to complete its job.  This
-/// includes incorrect program input, but also other causes too.
+/// A failure to read the source and emit a binary.
+///
+/// This includes incorrect program input, but also other causes too.
 #[derive(Debug, PartialEq, Eq)]
 pub enum AssemblerFailure {
+    /// We encountered a bug in the assembler.
     InternalError(String),
+    /// A program block is too large to be represented in the output
+    /// format (and hence in any case is too large to be loaded into
+    /// the TX-2 machine).
     BadTapeBlock {
         address: Address,
         length: usize,
         msg: String,
     },
+    /// A failure to read or write data.
     Io(IoFailed), // not cloneable
+    /// A syntax or semantic error in the program source.
     BadProgram(OneOrMore<WithLocation<ProgramError>>),
-
     /// The input program exceeds a machine limit.
     MachineLimitExceeded(MachineLimitExceededFailure),
 }
 
+/// Writes an [`OsStr`] to stdout.
+///
+/// When the input contains unprintable (not validly encoded)
+/// characters, a warning is also written, but the function does not
+/// fail.
 fn write_os_string(f: &mut Formatter<'_>, s: &OsStr) -> Result<(), fmt::Error> {
     match s.to_str() {
         Some(unicode_name) => f.write_str(unicode_name),

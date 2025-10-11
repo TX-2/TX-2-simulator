@@ -1,3 +1,4 @@
+//! Decide final position of blocks of code and allocate RC-words.
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};

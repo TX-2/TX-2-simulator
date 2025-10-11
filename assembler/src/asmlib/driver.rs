@@ -1,3 +1,4 @@
+//! Invoke the various passes of the assembler.
 mod output;
 
 #[cfg(test)]
@@ -117,6 +118,8 @@ fn assemble_pass1<'a, 'b: 'a>(
     (sf, options)
 }
 
+/// Describes the result of running the first (and possibly the
+/// second) pass of the assembler.
 #[derive(Debug, PartialEq, Eq)]
 enum AssemblerPass1Or2Output<'a> {
     Pass1Failed(Result<OneOrMore<Rich<'a, lexer::Token>>, AssemblerFailure>),
@@ -124,6 +127,7 @@ enum AssemblerPass1Or2Output<'a> {
     Success(Vec<Rich<'a, lexer::Token>>, OutputOptions, Pass2Output<'a>),
 }
 
+/// Assemble a non-empty input.
 fn assemble_nonempty_input<'a, 'b: 'a>(input: &'b Source<'a>) -> AssemblerPass1Or2Output<'a> {
     let mut errors: Vec<Rich<'_, lexer::Token>> = Vec::new();
     let (maybe_source_file, output_options) = assemble_pass1(input, &mut errors);
@@ -202,9 +206,12 @@ pub(crate) fn assemble_nonempty_valid_input(
     }
 }
 
+/// A contiguous sequence of words at some starting address.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct BinaryChunk {
+    /// Starting address
     pub address: Address,
+    /// The words in the chunk.
     pub words: Vec<Unsigned36Bit>,
 }
 
@@ -236,6 +243,8 @@ impl From<RcBlock> for BinaryChunk {
     }
 }
 
+/// The assembled program; a sequence of [`BinaryChunk`] instances
+/// with an optional entry point.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Binary {
     entry_point: Option<Address>,
@@ -268,13 +277,23 @@ impl Binary {
     }
 }
 
+/// Output of pass 2 of the assembler.
 #[derive(Debug, PartialEq, Eq)]
 struct Pass2Output<'a> {
+    /// An abstract representation of the source code.
     directive: Option<Directive>,
+    /// Explicit symbol definitions ("equalities")
     explicit_symbols: ExplicitSymbolTable,
+    /// Information about symbols which are known but lack a definition.
     implicit_symbols: ImplicitSymbolTable,
+    /// Location of the blocks of the program.
     memory_map: MemoryMap,
+    /// Provides for default-assignment of symbols used only in an
+    /// index context.
     index_register_assigner: IndexRegisterAssigner, // not cloneable
+    /// Syntac or semantic errors diagnosed so far.  We use this
+    /// instead of `Result<T,E>` so that we can diagnose more than one
+    /// error.
     errors: Vec<Rich<'a, lexer::Token>>,
 }
 
@@ -417,6 +436,11 @@ fn assemble_pass2<'s>(
     })
 }
 
+/// Placeholder for the RC-block which will not allocate words.
+///
+/// The job of this struct is to prevent allocation of words in the
+/// RC-block while we are still trying to compute the origin of each
+/// block of the program.
 struct NoRcBlock {
     why_blocked: &'static str,
 }
@@ -653,6 +677,8 @@ fn assemble_pass3(
     }
 }
 
+/// Pass-through a `String` instance; the output quotes [control
+/// characters](char::is_control) and backslashes.
 fn cleanup_control_chars(input: String) -> String {
     fn needs_escape(ch: char) -> bool {
         ch == '\\' || ch.is_control()
@@ -704,6 +730,7 @@ fn test_cleanup_control_chars_backslash() {
     );
 }
 
+/// Convert raw parse errors into instances of `ProgramError`.
 fn fail_with_diagnostics(
     source_file_body: &Source,
     errors: OneOrMore<Rich<lexer::Token>>,
@@ -720,6 +747,20 @@ fn fail_with_diagnostics(
     })
 }
 
+/// Run all the passes of assembly, generating an output-ready
+/// [`Binary`].
+///
+/// # Arguments
+///
+/// - `source_file_body` - the contents (body) of the source file
+/// - `options` - what kind of output the user wants
+///
+/// # Errors
+///
+/// - [`AssemblerFailure::BadTapeBlock`] - output program block is too big
+/// - [`AssemblerFailure::BadProgram`] - Syntax or semantic error
+/// - [`AssemblerFailure::MachineLimitExceeded`] - Program is too large in some way
+/// - [`AssemblerFailure::InternalError`] - Encountered a bug in the parser
 pub(crate) fn assemble_source(
     source_file_body: &str,
     mut options: OutputOptions,
@@ -843,12 +884,23 @@ fn test_assemble_pass1() {
     assert!(errors.is_empty());
 }
 
-/// Assemble a file or assembly source code.  A tape image
-/// is written to the output file.
+/// Assemble input file, producing a tape image.
+///
+/// # Arguments
+///
+/// - `input_file_name` - name of the source code file
+/// - `outputoptions` - where to write the tape image
+/// - `options` - what kind of output the user wants (in
+///   addition to the tape image)
 ///
 /// # Errors
-/// - The program is invalid
-/// - The output file could not be written
+///
+/// - `AssemblerFailure::Io` - failed to read input / write output
+/// - [`AssemblerFailure::BadTapeBlock`] - output program block is too big
+/// - [`AssemblerFailure::BadProgram`] - Syntax or semantic error
+/// - [`AssemblerFailure::MachineLimitExceeded`] - Program is too large in some way
+/// - [`AssemblerFailure::InternalError`] - Encountered a bug in the parser
+///    -
 pub fn assemble_file(
     input_file_name: &OsStr,
     output_file_name: &Path,

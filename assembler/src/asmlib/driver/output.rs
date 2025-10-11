@@ -1,3 +1,4 @@
+//! Generate the output binary, as a tape image file.
 use std::io::Write;
 use std::path::Path;
 
@@ -12,6 +13,14 @@ use super::super::readerleader::reader_leader;
 use super::super::types::{AssemblerFailure, IoAction, IoFailed, IoTarget};
 use super::Binary;
 
+/// Write a sequence of 36-bit words in splayed/assembly mode.
+///
+/// We write the output in splayed mode simply because
+///
+/// - this is how the standard reader leader program expects to read it
+/// - the plugboard read-in program expects to read the standard
+///   reader-leader itself (from the tape) in that format.
+///
 fn write_data<W: Write>(
     writer: &mut W,
     output_file_name: &Path,
@@ -38,10 +47,12 @@ fn write_data<W: Write>(
     })
 }
 
+/// Update the checksum of an output block (incorporating an 18-bit value).
 fn update_checksum_by_halfword(sum: Signed18Bit, halfword: Signed18Bit) -> Signed18Bit {
     sum.wrapping_add(halfword)
 }
 
+/// Update the checksum of an output block (incorporating a 36-bit value).
 fn update_checksum(sum: Signed18Bit, word: Unsigned36Bit) -> Signed18Bit {
     let (l, r) = split_halves(word);
     update_checksum_by_halfword(

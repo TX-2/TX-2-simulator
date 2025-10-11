@@ -1,3 +1,41 @@
+//! Assembler for the TX-2.
+//!
+//! Accepts symbolic assembly source code for the TX-2.  Follows the
+//! syntax and behaviour of the TX-2's M4 assembler written by Larry
+//! Roberts.
+//!
+//! There are a number of differences between this assembler and M4.  These are:
+//!
+//! - This assembler's input is a Unicode text file, while M4's input
+//!   was a tape (or magnetic tape input) containing Lincoln Writer codes.
+//!   This has some consequences for how the input is represented (among
+//!   other reasons because the Lincoln Writer supported some superscript
+//!   and subscript characters which are not in Unicode).
+//! - M4's input includes editing commands; these are not needed on
+//!   modern systems, since they support files and editors which are
+//!   independent of the assembler.
+//! - M4 produced output directly on a paper tape; this assmebler
+//!   produces a tape image file (containing the same data).
+//! - Some features, notably support for local tag scope inside macro
+//!   bodies, are not yet implemented.
+//! - Tab characters are not supported in the input.
+//! - This assembler produces diagnositics for some kinds of erroneous
+//!   input that M4 accepted (see below).
+//!
+//! # Diagnostics
+//!
+//! This assembler produces diagnostics giving the line number (and
+//! often, the approximate column number) of errors.
+//!
+//! The M4 assembler accepted circular symbol definitions (for origins
+//! for example, see XXX) but this assembler detects this and generates
+//! an error message.
+//!
+//! There may be some cases in which M4 generated an error but were we
+//! either do not, or where we lack a test ensuring that the error
+//! message is correctly generated;
+//! <https://github.com/TX-2/TX-2-simulator/issues/159> enumerates
+//! these.
 #![deny(unreachable_pub)]
 #![deny(unsafe_code)]
 #![warn(clippy::must_use_candidate)]

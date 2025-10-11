@@ -1,3 +1,9 @@
+//! Represents the state of the source code parser.
+//!
+//! State information is:
+//!
+//! - Current numeric base (octal or decimal)
+//! - Currently-known macro definitions
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 

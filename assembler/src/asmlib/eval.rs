@@ -1,3 +1,9 @@
+//! Turn the symbolic program into a sequence of words in binary.
+//!
+//! We evaluate (i.e. generate binary from) high-level parts of the
+//! abstract syntax tree, including assignment of default values.
+//! Some of the evaluation of individual parts of the abstract
+//! representation is performed in [`super::ast`].
 use std::collections::BTreeMap;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::ops::Shl;
@@ -33,11 +39,16 @@ use crate::symtab::{
     LookupOperation, TagDefinition, record_undefined_symbol_or_return_failure,
 };
 
-/// We ran out of index registers when trying to perform default
-/// assignment of a symbol name.
+/// We ran out of index registers when assigning a default value.
+///
+/// Symbols used only in an index context but which have no definition
+/// are assigned the next available index register. This error
+/// indicates that we couldn't do that because we ran out.
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub(crate) struct ExhaustedIndexRegisters {
+    /// Location of the symbol we were trying to default-assign
     span: Span,
+    /// Name of the symbol we were trying to default-assign.
     name: SymbolName,
 }
 
@@ -209,6 +220,8 @@ fn assign_default_value(
     }
 }
 
+/// Context data used by symbol lookup and word value evaluation.
+///
 /// The word-value evaluation process does not modify the memory map
 /// or the symbol table (so those structs are shared references).  But
 /// it does modify the "implicit symbol table" which records
@@ -436,8 +449,9 @@ impl<R: RcUpdater> EvaluationContext<'_, R> {
     }
 }
 
-/// Identifies a scope in which a tag name can be looked up.  Macro
-/// bodies can contain "local" tags and so in general a tag's
+/// A scope in which a tag name can be looked up.
+///
+/// Macro bodies can contain "local" tags and so in general a tag's
 /// definition will be local to the scope in which the definition is
 /// made.  However, this is not yet implemented and so for the moment,
 /// `ScopeIdentifier` just contains a unit value.
@@ -466,8 +480,9 @@ pub(super) trait Evaluate: Spanned {
     ) -> Result<Unsigned36Bit, EvaluationFailure>;
 }
 
-// Represents the RC-block; see [section 6-2.6 of the Users
-// Handbook](https://archive.org/details/tx-2-users-handbook-nov-63/page/n161/mode/1up).
+/// Represents the RC-block.
+///
+/// See [section 6-2.6 of the Users Handbook](https://archive.org/details/tx-2-users-handbook-nov-63/page/n161/mode/1up).
 #[derive(Debug, Default, Clone)]
 pub(crate) struct RcBlock {
     /// The address of the RC-block.
@@ -542,6 +557,7 @@ pub(crate) fn make_empty_rc_block_for_test(location: Address) -> RcBlock {
     }
 }
 
+/// Compute the value of a symbol appearing in normal script.
 fn evaluate_normal_symbol<R: RcUpdater>(
     name: &SymbolName,
     span: Span,
@@ -575,9 +591,11 @@ fn evaluate_normal_symbol<R: RcUpdater>(
     result
 }
 
-/// Evaluate a named symbol.  This factors out behaviour common to the
-/// evaluation of both symbolic origins and general symbols.
-pub(crate) fn evaluate_symbol<R: RcUpdater>(
+/// Compute the value of a symbol in super/sub/normal script.
+///
+/// This factors out behaviour common to the evaluation of both
+/// symbolic origins and general symbols.
+pub(crate) fn evaluate_elevated_symbol<R: RcUpdater>(
     name: &SymbolName,
     elevation: Script,
     span: Span,
@@ -588,9 +606,11 @@ pub(crate) fn evaluate_symbol<R: RcUpdater>(
 }
 
 /// Determine the numerical value of all equalities, where they have
-/// one.  We do this in order to identify problems with symbol
-/// definitons and to generate information that we may need to emit
-/// into the ouptut listing.
+/// one.
+///
+/// We do this in order to identify problems with symbol definitons
+/// and to generate information that we may need to emit into the
+/// ouptut listing.
 ///
 /// This function isn't actually needed to generate the output binary.
 #[allow(clippy::too_many_arguments)]
@@ -651,6 +671,7 @@ impl Spanned for (&BlockIdentifier, &Option<Origin>, &Span) {
     }
 }
 
+/// Represents an overflow in adding an index value to an address.
 #[derive(Debug)]
 struct AddressOverflow(pub(crate) Address, pub(crate) Unsigned18Bit);
 
@@ -666,6 +687,7 @@ impl Display for AddressOverflow {
     }
 }
 
+/// Compute sum of an address and an unsigned offset.
 fn offset_from_origin(origin: Address, offset: Unsigned18Bit) -> Result<Address, AddressOverflow> {
     let (physical, _mark) = origin.split();
     match physical.checked_add(offset) {

@@ -1,3 +1,4 @@
+//! Representation of locations within the original source file.
 use chumsky::prelude::SimpleSpan;
 use std::ops::Range;
 

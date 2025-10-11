@@ -5,7 +5,9 @@ use super::super::ast::{
     InstructionSequence, LiteralValue, TaggedProgramInstruction, UntaggedProgramInstruction,
 };
 use super::super::collections::OneOrMore;
-use super::super::eval::{EvaluationContext, evaluate_symbol, make_empty_rc_block_for_test};
+use super::super::eval::{
+    EvaluationContext, evaluate_elevated_symbol, make_empty_rc_block_for_test,
+};
 use super::super::manuscript::{ManuscriptBlock, PunchCommand, SourceFile};
 use super::super::memorymap::LocatedBlock;
 use super::super::source::Source;
@@ -52,7 +54,7 @@ fn assemble_check_symbols(
             lookup_operation: Default::default(),
         };
         let scope = ScopeIdentifier::global();
-        match evaluate_symbol(&sym, Script::Normal, span, &mut ctx, scope) {
+        match evaluate_elevated_symbol(&sym, Script::Normal, span, &mut ctx, scope) {
             Ok(got) => {
                 assert_eq!(
                     got, *expected_value,

@@ -1,3 +1,4 @@
+//! Representation of the original input.
 use std::fmt::{self, Display, Formatter};
 use std::ops::Range;
 

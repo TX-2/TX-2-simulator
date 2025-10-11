@@ -27,7 +27,8 @@ use base::u18;
 
 use super::collections::OneOrMore;
 use super::eval::{
-    Evaluate, EvaluationContext, EvaluationFailure, HereValue, ScopeIdentifier, evaluate_symbol,
+    Evaluate, EvaluationContext, EvaluationFailure, HereValue, ScopeIdentifier,
+    evaluate_elevated_symbol,
 };
 use super::glyph;
 use super::listing::{Listing, ListingLine};
@@ -47,18 +48,25 @@ use super::symtab::{
 use super::types::{AssemblerFailure, BlockIdentifier, ProgramError};
 mod asteval;
 
+/// Indicates the action to be taken when a macro invocation does not
+/// specify a value for one of its dummy parameters.
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub(crate) enum OnUnboundMacroParameter {
     ElideReference,
     SubstituteZero,
 }
 
+/// Records a reference to or definition of a symbol.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub(crate) enum SymbolUse {
     Reference(SymbolContext),
     Definition(ExplicitDefinition),
 }
 
+/// Allows updates to the values of RC-words.
+///
+/// We use this to separate the activities of selecting addresses for
+/// RC-words, and determining their values.
 pub(crate) trait RcUpdater {
     fn update(&mut self, address: Address, value: Unsigned36Bit);
 }
@@ -105,6 +113,8 @@ impl std::fmt::Display for LiteralValue {
     }
 }
 
+/// Write the name of a glyph with optional superscript / subscript
+/// indicator.
 fn write_glyph_name(f: &mut Formatter<'_>, elevation: Script, ch: char) -> fmt::Result {
     let prefix: &'static str = match elevation {
         Script::Sub => "sub_",
@@ -120,7 +130,25 @@ fn write_glyph_name(f: &mut Formatter<'_>, elevation: Script, ch: char) -> fmt::
     write!(f, "@{prefix}{name}@")
 }
 
+/// Convert a normal string to subscript or superscript (or leave it as-is).
+fn elevated_string(s: &str, elevation: Script) -> Cow<'_, str> {
+    match elevation {
+        Script::Normal => Cow::Borrowed(s),
+        Script::Super => Cow::Owned(
+            s.chars()
+                .map(|ch| superscript_char(ch).unwrap_or(ch))
+                .collect(),
+        ),
+        Script::Sub => Cow::Owned(
+            s.chars()
+                .map(|ch| subscript_char(ch).unwrap_or(ch))
+                .collect(),
+        ),
+    }
+}
+/// Format a string in super/sub/normal script, using `@...@` where necessary.
 fn format_elevated_chars(f: &mut Formatter<'_>, elevation: Script, s: &str) -> fmt::Result {
+    // TODO: do we really need both this and elevated_string?
     match elevation {
         Script::Normal => {
             f.write_str(s)?;
@@ -247,7 +275,11 @@ impl std::fmt::Display for SignedAtom {
     }
 }
 
-/// A molecule is an arithmetic expression all in normal script.
+/// Represents an arithmetic expression.
+///
+/// In the TX-2's M4 assembly language, arithmetic expressions are
+/// constants.  In other words, the assembler evaluates them to a
+/// specific 36-bit value which is emitted into the output.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ArithmeticExpression {
     pub(crate) first: SignedAtom,
@@ -417,16 +449,8 @@ impl ArithmeticExpression {
     }
 }
 
-fn fold_step<R: RcUpdater>(
-    acc: Unsigned36Bit,
-    (binop, right): &(Operator, SignedAtom),
-    ctx: &mut EvaluationContext<R>,
-    scope: ScopeIdentifier,
-) -> Result<Unsigned36Bit, EvaluationFailure> {
-    let right: Unsigned36Bit = right.evaluate(ctx, scope)?;
-    Ok(ArithmeticExpression::eval_binop(acc, *binop, right))
-}
-
+/// An expression used to specify the configuration bits of an instruction.
+///
 /// A configuration syllable can be specified by putting it in a
 /// superscript, or by putting it in normal script after a ‖ symbol
 /// (‖x or ‖2, for example).  This is described in section 6-2.1 of
@@ -437,12 +461,14 @@ fn fold_step<R: RcUpdater>(
 /// specification that the configuration syllable cannot contain any
 /// spaces.  But this doesn't prevent the config syllable containing,
 /// say, an arithmetic expression.  Indeed, Leonard Kleinrock's
-/// program for network similation does exactly that (by using a
+/// program for network simulation does exactly that (by using a
 /// negated symbol as a configuration value).
 ///
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ConfigValue {
+    /// Indicates that the value was already in superscript.
     pub(crate) already_superscript: bool,
+    /// Holds the configuration syllable value.
     pub(crate) expr: ArithmeticExpression,
 }
 
@@ -596,6 +622,13 @@ impl Spanned for RegistersContaining {
     }
 }
 
+/// An RC-word.
+///
+/// See section 6-2.6 ("RC WORDS - RC BLOCK").
+///
+/// Section 6-4.7 ("Use of Macro Instructions") states that macro
+/// expansion may occur inside an RC-word (and expand to more than one
+/// word in the output binary) but this is not yet supported.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum RegisterContaining {
     Unallocated(Box<TaggedProgramInstruction>),
@@ -765,9 +798,10 @@ impl RegisterContaining {
     }
 }
 
-/// Eventually we will support real expressions, but for now we only
-/// suport literals and references to symbols ("equalities" in the
-/// User Handbook).
+/// A component of an arithmetic expression.
+///
+/// A symbol, numeric literal, address of an RC-word, or a
+/// parenthesised arithmetic expression.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Atom {
     SymbolOrLiteral(SymbolOrLiteral),
@@ -902,22 +936,6 @@ impl From<(Span, Script, Unsigned36Bit)> for Atom {
     }
 }
 
-fn elevated_string(s: &str, elevation: Script) -> Cow<'_, str> {
-    match elevation {
-        Script::Normal => Cow::Borrowed(s),
-        Script::Super => Cow::Owned(
-            s.chars()
-                .map(|ch| superscript_char(ch).unwrap_or(ch))
-                .collect(),
-        ),
-        Script::Sub => Cow::Owned(
-            s.chars()
-                .map(|ch| subscript_char(ch).unwrap_or(ch))
-                .collect(),
-        ),
-    }
-}
-
 impl std::fmt::Display for Atom {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -932,6 +950,7 @@ impl std::fmt::Display for Atom {
     }
 }
 
+/// Indicates how some particular macro parameter should be processed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum SymbolSubstitution<T> {
     AsIs(T),
@@ -940,6 +959,10 @@ pub(crate) enum SymbolSubstitution<T> {
     Zero(Span),
 }
 
+/// A symbol name or a numeric literal, or `#`.
+///
+/// A `#` represents the address of the program word whose value the
+/// assembler is currently trying to determine.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum SymbolOrLiteral {
     Symbol(Script, SymbolName, Span),
@@ -1078,15 +1101,23 @@ impl SpannedSymbolOrLiteral {
     }
 }
 
+/// Part of a TX-2 instruction.
+///
+/// In the M4 assembly language, each part is evaluated separately and
+/// then they are combined.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum InstructionFragment {
     /// Arithmetic expressions are permitted in normal case according
     /// to the Users Handbook, but currently this implementation
     /// allows them in subscript/superscript too.
     Arithmetic(ArithmeticExpression),
-    /// Deferred addressing is normally specified as '*' but
-    /// `PipeConstruct` is a different way to indicate deferred
-    /// addressing.
+    /// Insicates that the current instruction should use the deferred
+    /// addressing mode.
+    ///
+    /// The programmer indicates this with `*`.  The
+    /// programmer can also make use of deferred addressing by using
+    /// the "pipe construct" (which is represented by
+    /// [`InstructionFragment::PipeConstruct`])
     DeferredAddressing(Span),
     /// A configuration syllable (specified either in superscript or with a ‖).
     Config(ConfigValue),
@@ -1096,6 +1127,12 @@ pub(crate) enum InstructionFragment {
         rc_word_span: Span,
         rc_word_value: RegisterContaining,
     },
+    /// Purely an implementation artifact.
+    ///
+    /// Used by the assembler when parsing a
+    /// [`CommaDelimitedFragment`] to represent the commas at the
+    /// beginning or end of a part of the input program which gets
+    /// parsed as an [`UntaggedProgramInstruction`].
     Null(Span),
 }
 
@@ -1256,6 +1293,7 @@ impl From<ArithmeticExpression> for InstructionFragment {
     }
 }
 
+/// Represents the origin of a block of program code.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub(crate) enum Origin {
     /// An origin specified directly as a number.
@@ -1263,7 +1301,9 @@ pub(crate) enum Origin {
     /// An origin specified by name (which would refer to e.g. an
     /// equality).
     Symbolic(Span, SymbolName),
-    /// An origin which was intiially symbolic only, but whose location we deduced.
+    /// A symbolic origin where the symbol had no definition and
+    /// therefore the origin value had to be deduced (hence providing
+    /// an implicit definition for the symbol).
     Deduced(Span, SymbolName, Address),
 }
 
@@ -1344,13 +1384,26 @@ impl Octal for Origin {
     }
 }
 
+/// Indicates whether the hold bit is set, cleared or unspecified.
+///
+/// The hold bit is bit 4.9 of the instruction word (see section 6-2
+/// of the Users Handbook).
+///
+/// The effect of the hold bit is explained in section 4-3.2 of the
+/// Users Handbook.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub(crate) enum HoldBit {
+    /// The value of the hold bit was not specified.
     Unspecified,
+    /// The hold bit should be set.
     Hold,
+    /// The hold bit should be cleared.  The user might want to do
+    /// this because some opcodes (`LDE`, `ITE`, `JPX`, `JNX`) would
+    /// otherwise automatically set it.
     NotHold,
 }
 
+/// One, two or three commas.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Commas {
     One(Span),
@@ -1366,25 +1419,42 @@ impl Spanned for Commas {
     }
 }
 
+/// Part of a TX-2 instruction, convertible to a 36-bit value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct FragmentWithHold {
+    /// Location within the source code
     pub(super) span: Span,
+    /// Indicates that this fragment sets the hold bit.
     pub(super) holdbit: HoldBit,
+    /// The remaining value of the instruction fragment (without the
+    /// possible hold bit).
     pub(super) fragment: InstructionFragment,
 }
 
+/// An instruction fragment ([`FragmentWithHold`]) or one or more
+/// commas.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CommasOrInstruction {
     I(FragmentWithHold),
     C(Option<Commas>),
 }
 
+/// A component (usually a number) of an assembly-language instruction
+/// with possible leading or trailing commas.
+///
+/// These are described in section 6-2.4 of the Users Handbook.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct CommaDelimitedFragment {
+    /// Indicates where in the input we found it.
     pub(super) span: Span,
+    /// Indicates how many commas preceded it (if any).
     pub(super) leading_commas: Option<Commas>,
+    /// Indicates whether the item inside the commas includes a hold
+    /// bit.
     pub(super) holdbit: HoldBit,
+    /// The quantity itself, within the commas
     pub(super) fragment: InstructionFragment,
+    /// Indicates how many commas followed it (if any).
     pub(super) trailing_commas: Option<Commas>,
 }
 
@@ -1459,6 +1529,7 @@ impl Spanned for CommaDelimitedFragment {
     }
 }
 
+/// An instruction word in a TX-2 program.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct UntaggedProgramInstruction {
     pub(crate) fragments: OneOrMore<CommaDelimitedFragment>,
@@ -1523,9 +1594,32 @@ impl Spanned for UntaggedProgramInstruction {
     }
 }
 
+/// The right-hand-side of an [`Equality`].
+///
+/// In other words, the value being assigned.
+///
+/// Equalities are described in section 6-2.2 of the Users Handbook.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct EqualityValue {
+    // Implementation choices:
+    //
+    // The RHS of an equality can be "any 36-bit value" (see TX-2 Users
+    // Handbook, section 6-2.2, page 156 = 6-6).  Therefore it needs to
+    // be possible to specify the value of the hold bit (since that is
+    // one of those 36 bits).
+    //
+    // That means that if the right-hand-side of the assignment is
+    // symbolic, the user needs to be able to set the hold bit with "h",
+    // and we need to use in the representation something that records
+    // that the hold bit is set.
+    //
+    // Although a [`TaggedProgramInstruction`] meets this requirement,
+    // we do not use that, since we don't allow tags on the RHS, the
+    // value cannot be a [`TaggedProgramInstruction`].
+    //
+    /// Location in the source code.
     pub(super) span: Span,
+    /// The value which is assigned.
     pub(super) inner: UntaggedProgramInstruction,
 }
 
@@ -1620,10 +1714,14 @@ impl Ord for Tag {
     }
 }
 
+/// A TX-2 instruction with zero or more [`Tag`]s.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TaggedProgramInstruction {
+    /// Location in the program
     pub(crate) span: Span,
+    /// Tags which point to this instruction.
     pub(crate) tags: Vec<Tag>,
+    /// The instruction itself.
     pub(crate) instruction: UntaggedProgramInstruction,
 }
 
@@ -1752,6 +1850,8 @@ impl FromIterator<TaggedProgramInstruction> for InstructionSequence {
     }
 }
 
+/// Enumerate a sequence of items, decorating each with an
+/// `Unsigned18Bit` offset value.
 pub(crate) fn block_items_with_offset<T, I>(items: I) -> impl Iterator<Item = (Unsigned18Bit, T)>
 where
     I: Iterator<Item = T>,
@@ -1763,39 +1863,40 @@ where
     })
 }
 
+/// We failed to build a local symbol table.
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub(crate) enum SymbolTableBuildFailure {
+pub(crate) enum LocalSymbolTableBuildFailure {
     InconsistentUsage(InconsistentSymbolUse),
     BadDefinition(BadSymbolDefinition),
 }
 
-impl Spanned for SymbolTableBuildFailure {
+impl Spanned for LocalSymbolTableBuildFailure {
     fn span(&self) -> Span {
         match self {
-            SymbolTableBuildFailure::InconsistentUsage(inconsistent_symbol_use) => {
+            LocalSymbolTableBuildFailure::InconsistentUsage(inconsistent_symbol_use) => {
                 inconsistent_symbol_use.span()
             }
-            SymbolTableBuildFailure::BadDefinition(bad_symbol_definition) => {
+            LocalSymbolTableBuildFailure::BadDefinition(bad_symbol_definition) => {
                 bad_symbol_definition.span()
             }
         }
     }
 }
 
-impl Display for SymbolTableBuildFailure {
+impl Display for LocalSymbolTableBuildFailure {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            SymbolTableBuildFailure::InconsistentUsage(inconsistent_symbol_use) => {
+            LocalSymbolTableBuildFailure::InconsistentUsage(inconsistent_symbol_use) => {
                 write!(f, "{inconsistent_symbol_use}")
             }
-            SymbolTableBuildFailure::BadDefinition(bad_symbol_definition) => {
+            LocalSymbolTableBuildFailure::BadDefinition(bad_symbol_definition) => {
                 write!(f, "{bad_symbol_definition}")
             }
         }
     }
 }
 
-impl Error for SymbolTableBuildFailure {}
+impl Error for LocalSymbolTableBuildFailure {}
 
 impl InstructionSequence {
     pub(super) fn iter(&self) -> impl Iterator<Item = &TaggedProgramInstruction> {
@@ -1906,11 +2007,8 @@ impl InstructionSequence {
     }
 }
 
-// The RHS of an assignment can be "any 36-bit value" (see TX-2
-// Users Handbook, section 6-2.2, page 156 = 6-6).  Hence if the
-// RHS of the assignment is symbolic the user needs to be able to
-// set the hold bit with "h".  However, since we don't allow tags
-// on the RHS, the value cannot be a TaggedProgramInstruction.
+/// An "Equality" (modern term: assignment).
+///
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Equality {
     pub(crate) span: Span,

@@ -1,3 +1,4 @@
+//! Explicit and implicit symbol definitions.
 use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::fmt::{self, Debug, Display, Formatter};

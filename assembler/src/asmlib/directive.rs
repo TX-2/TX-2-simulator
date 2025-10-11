@@ -1,3 +1,7 @@
+//! Intermetiate representation of the assembly language input.
+//!
+//! This is arranged as a sequence of instruction (not scope) blocks,
+//! each with an optional origin.
 use std::collections::BTreeMap;
 
 use base::prelude::Address;

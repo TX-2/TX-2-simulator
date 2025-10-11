@@ -1,10 +1,12 @@
+//! Evaluate (i.e. generate binary data from) parts of the AST.
+
 use super::super::eval::{Evaluate, ScopeIdentifier};
 use super::{
     Address, ArithmeticExpression, Atom, CommaDelimitedFragment, Commas, ConfigValue, DEFER_BIT,
     EqualityValue, EvaluationContext, EvaluationFailure, HereValue, HoldBit, InstructionFragment,
-    LiteralValue, Origin, RcUpdater, RegisterContaining, RegistersContaining, Script, Shl, Shr,
-    Signed36Bit, SignedAtom, SymbolOrLiteral, TaggedProgramInstruction, Unsigned36Bit,
-    UntaggedProgramInstruction, evaluate_symbol, fold_step, u36,
+    LiteralValue, Operator, Origin, RcUpdater, RegisterContaining, RegistersContaining, Script,
+    Shl, Shr, Signed36Bit, SignedAtom, SymbolOrLiteral, TaggedProgramInstruction, Unsigned36Bit,
+    UntaggedProgramInstruction, evaluate_elevated_symbol, u36,
 };
 
 impl Evaluate for LiteralValue {
@@ -41,6 +43,16 @@ impl Evaluate for ArithmeticExpression {
         ctx: &mut EvaluationContext<R>,
         scope: ScopeIdentifier,
     ) -> Result<Unsigned36Bit, EvaluationFailure> {
+        fn fold_step<R: RcUpdater>(
+            acc: Unsigned36Bit,
+            (binop, right): &(Operator, SignedAtom),
+            ctx: &mut EvaluationContext<R>,
+            scope: ScopeIdentifier,
+        ) -> Result<Unsigned36Bit, EvaluationFailure> {
+            let right: Unsigned36Bit = right.evaluate(ctx, scope)?;
+            Ok(ArithmeticExpression::eval_binop(acc, *binop, right))
+        }
+
         let first: Unsigned36Bit = self.first.evaluate(ctx, scope)?;
         let result: Result<Unsigned36Bit, EvaluationFailure> = self
             .tail
@@ -189,7 +201,7 @@ impl Evaluate for SymbolOrLiteral {
     ) -> Result<Unsigned36Bit, EvaluationFailure> {
         match self {
             SymbolOrLiteral::Symbol(script, symbol_name, span) => {
-                evaluate_symbol(symbol_name, *script, *span, ctx, scope)
+                evaluate_elevated_symbol(symbol_name, *script, *span, ctx, scope)
             }
             SymbolOrLiteral::Literal(literal_value) => literal_value.evaluate(ctx, scope),
             SymbolOrLiteral::Here(script, span) => ctx
@@ -249,7 +261,7 @@ impl Evaluate for Origin {
                 Ok(address.into())
             }
             Origin::Symbolic(span, symbol_name) => {
-                evaluate_symbol(symbol_name, Script::Normal, *span, ctx, scope)
+                evaluate_elevated_symbol(symbol_name, Script::Normal, *span, ctx, scope)
             }
         }
     }

@@ -1,3 +1,8 @@
+//! The first part of the binary program output.
+//!
+//! The Reader Leader is a short piece of code which reads the rest of
+//! the tape and loads the program into memory at the spevcified
+//! locations.
 use base::instruction::{Instruction, Opcode, OperandAddress, SymbolicInstruction};
 use base::prelude::*;
 
@@ -26,8 +31,9 @@ fn test_bit_index() {
     );
 }
 
-/// Returns the standard reader leader.  The listing for this is given
-/// on [page 5-26 of the User
+/// Returns the standard reader leader.
+///
+/// The listing for this is given on [page 5-26 of the User
 /// Handbook](https://archive.org/details/tx-2-users-handbook-nov-63/page/n150/mode/1up).
 ///
 /// This program is superficially similar to Program VI ("A Binary

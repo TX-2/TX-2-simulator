@@ -1,3 +1,7 @@
+//! Symbol names and information about how these are used in the
+//! program.
+//!
+//! See [`super::symtab`] for the definitions of symbols.
 use std::collections::BTreeSet;
 use std::error::Error;
 use std::fmt::{self, Debug, Display, Formatter};

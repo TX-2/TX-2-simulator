@@ -1,7 +1,8 @@
-//! This module implements the @...@ construct we use to represent in
-//! Unicode input files the characters that ther TX-2 supports but
-//! which Unicode does not.  For example, `@sub_A@` which represents a
-//! subscripted letter A.
+//! Implement the `@...@` constructs in the source code.
+//!
+//! We use `@...@` to represent the characters that ther TX-2 supports
+//! but which Unicode does not.  For example, `@sub_A@` which
+//! represents a subscripted letter A.
 //!
 //! We use the word "glyph" to denote the characters in the source
 //! code.  This includes spacing characters (Tab, Backspace, Space but
@@ -23,8 +24,8 @@
 //!
 //! The [`base::charset`] module deals with similar things, but this
 //! module deals with concerns that are unique to the assembler itself
-//! (that is, are not relevant to the implementation of the TX-2
-//! emulator).
+//! (that is, concerns which are not relevant to the implementation of
+//! the TX-2 emulator).
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{self, Debug, Display, Formatter, Write};
@@ -33,11 +34,12 @@ use std::sync::OnceLock;
 
 use base::charset::{Script, subscript_char, superscript_char};
 
-/// Indicates that some part of the input source code would be
-/// unrepresentable in the TX-2's character set for program input
-/// (which is the same as the character set of the Lincoln Writer,
-/// except for characters that appear only in comments or
-/// annotations).
+/// Identifies a Unicode character or a `@...@` glyph in the input
+/// which does not correspond to something understood by the M4
+/// assembler.
+///
+/// We make an exception for characters that appear only in comments
+/// or annotations.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub(crate) enum Unrecognised {
     /// A Unicode character is unknown on the TX-2.
@@ -63,6 +65,8 @@ impl Display for Unrecognised {
 
 impl Error for Unrecognised {}
 
+/// Indicates the super/sub/normal script of something.
+///
 /// `Elevated<T>` indicates that a `T` appears in superscript,
 /// subscript or normal script.  This changes the meaning (and
 /// numerical value) of that item in the TX-2 assembly language.
@@ -266,12 +270,17 @@ fn test_glyph_names_do_not_contain_underscore() {
     }
 }
 
+// TODO: probably doesn't need to be a module.
 mod shape {
-    #![allow(non_camel_case_types)]
+    //! Used to limit effect of `allow(non_camel_case_types)`;
+    //! probably not needed.
 
+    /// Lincoln Writer character shapes.
+    ///
     /// All character shapes in the character set table from page 2 of
     /// the documentation on the Lincoln Writer channels (65, 66).
     /// TX-2 Users Handbook, July 1961.
+    #[allow(non_camel_case_types)]
     #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
     pub(crate) enum GlyphShape {
         Digit0,
@@ -373,6 +382,7 @@ mod shape {
 }
 pub(crate) use shape::GlyphShape;
 
+/// Indicates that a Unicode character does not exist in the TX-2 character set.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub(crate) struct NotInCharacterSet(pub char);
 
@@ -388,6 +398,8 @@ impl Display for NotInCharacterSet {
 
 impl Error for NotInCharacterSet {}
 
+/// Convert a superscript/subscript/normal Unicode character, if we
+/// recognise it, into [`Elevated<&'static Glyph>`].
 pub(crate) fn glyph_of_char(original: char) -> Result<Elevated<&'static Glyph>, Unrecognised> {
     let ch: char = canonicalise_char(original);
     let mapping = glyph_map();
@@ -555,6 +567,8 @@ fn test_glyph_of_dot() {
 //    }
 //}
 
+/// Used to save typing to provide defaults in the definitions in
+/// [`ALL_GLYPHS`].
 const GDEF: Glyph = Glyph {
     shape: GlyphShape::Hand,
     name: "",
@@ -564,10 +578,13 @@ const GDEF: Glyph = Glyph {
     advance: true,
 };
 
+/// Symbols understood by the M4 assembler (other than compound
+/// symbols).
+///
+/// Information taken from the character set table from page 2 of
+/// the documentation on the Lincoln Writer channels (65, 66).
+/// TX-2 Users Handbook, July 1961.
 const ALL_GLYPHS: &[Glyph] = &[
-    // Information taken from the character set table from page 2 of
-    // the documentation on the Lincoln Writer channels (65, 66).
-    // TX-2 Users Handbook, July 1961.
     Glyph {
         shape: GlyphShape::Digit0,
         name: "0",
@@ -1293,11 +1310,13 @@ const ALL_GLYPHS: &[Glyph] = &[
     // Code points 0o60 to 0o77 are non-graphinc characters.
 ];
 
+/// Maps Unicode characters onto [`Glyph`] instances describing them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct GlyphMapByChar {
     mapping: HashMap<char, Elevated<&'static Glyph>>,
 }
 
+/// Read-only shared instance of [`GlyphMapByChar`].
 static GLYPH_MAP_BY_CHAR: OnceLock<GlyphMapByChar> = OnceLock::new();
 
 impl Default for GlyphMapByChar {
@@ -1330,10 +1349,23 @@ impl GlyphMapByChar {
     }
 }
 
+/// Return a reference to the shared instance of [`GlyphMapByChar`].
 pub(crate) fn glyph_map() -> &'static GlyphMapByChar {
     GLYPH_MAP_BY_CHAR.get_or_init(GlyphMapByChar::default)
 }
 
+/// Additional mappings of Unicode input to prevent user confusion.
+///
+/// We use the centre dot ("·", U+00B7) as a decimal point, but also
+/// accept "." U+002E, because the latter is likely to be a common
+/// choice.
+///
+/// We also provide ":" as a synonym for "h" in setting the hold bit
+/// in order to accept source code from earlier papers which used the
+/// older convention, such as H. Philip Peterson's "[Some Examples of
+/// TX-2
+/// Programming](http://www.bitsavers.org/pdf/mit/tx-2/6M-5780_Some_Examples_of_TX-2_Programming_Jul1958.pdf)"
+/// (Lincoln Lab memo 6M-5780, 23 July 1958).
 fn canonicalise_char(ch: char) -> char {
     match ch {
         // We don't convert U+A7F2 (ꟲ) to U+1D9C because the former is
@@ -1350,7 +1382,9 @@ fn canonicalise_char(ch: char) -> char {
     }
 }
 
+/// Convert a Unicode character into its `@...@` synonym.
 pub(crate) fn name_from_glyph(mut ch: char) -> Option<&'static str> {
+    // TODO: do we need both this and glyph_from_name?
     ch = canonicalise_char(ch);
     ALL_GLYPHS
         .iter()
@@ -1358,6 +1392,9 @@ pub(crate) fn name_from_glyph(mut ch: char) -> Option<&'static str> {
         .map(|g| g.name)
 }
 
+/// Convert a Unicode string into [`Elevated<&'static Glyph>`].
+///
+/// Return `None` if the name of the glyph is not recognised.
 pub(crate) fn glyph_from_name(name: &str) -> Option<Elevated<&'static Glyph>> {
     let (script, glyph_base_name) = if let Some(suffix) = name.strip_prefix("sub_") {
         (Script::Sub, suffix)
@@ -1372,6 +1409,8 @@ pub(crate) fn glyph_from_name(name: &str) -> Option<Elevated<&'static Glyph>> {
         .map(|g| elevate(script, g))
 }
 
+/// Return true if this character is allowed in a symex (symbol name).
+///
 /// Specified in Users Handbook section 6-2.3 item 6.
 pub(crate) fn is_allowed_in_symex(g: GlyphShape) -> bool {
     match g {

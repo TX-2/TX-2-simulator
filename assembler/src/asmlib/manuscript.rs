@@ -1,3 +1,9 @@
+//! The immediate output of the parsing process.
+//!
+//! In the description of the M4 assembler, the "manuscript" is the
+//! user's input, and the interpretation of editing meta-commands in
+//! the manuscript turns it into a "directive".  This assembler doesn'
+//! implement M4's editing commands, however.
 use std::collections::BTreeMap;
 
 use tracing::{Level, event};
@@ -18,9 +24,9 @@ use super::ast::HoldBit;
 #[cfg(test)]
 use super::ast::InstructionFragment;
 use super::ast::InstructionSequence;
+use super::ast::LocalSymbolTableBuildFailure;
 use super::ast::OnUnboundMacroParameter;
 use super::ast::Origin;
-use super::ast::SymbolTableBuildFailure;
 use super::ast::SymbolUse;
 use super::ast::Tag;
 use super::ast::TaggedProgramInstruction;
@@ -99,7 +105,7 @@ impl SourceFile {
 
     pub(crate) fn build_local_symbol_tables(
         &mut self,
-    ) -> Result<(), OneOrMore<SymbolTableBuildFailure>> {
+    ) -> Result<(), OneOrMore<LocalSymbolTableBuildFailure>> {
         let mut errors = Vec::default();
         for (block_identifier, block) in self.blocks.iter_mut().enumerate().map(offset_to_block_id)
         {
@@ -217,11 +223,11 @@ impl SourceFile {
 fn build_local_symbol_table<'a, I>(
     block_identifier: BlockIdentifier,
     instructions: I,
-) -> Result<ExplicitSymbolTable, OneOrMore<SymbolTableBuildFailure>>
+) -> Result<ExplicitSymbolTable, OneOrMore<LocalSymbolTableBuildFailure>>
 where
     I: Iterator<Item = &'a TaggedProgramInstruction>,
 {
-    let mut errors: Vec<SymbolTableBuildFailure> = Default::default();
+    let mut errors: Vec<LocalSymbolTableBuildFailure> = Default::default();
     let mut local_symbols = ExplicitSymbolTable::default();
     for (offset, instruction) in block_items_with_offset(instructions) {
         for r in instruction
@@ -231,11 +237,11 @@ where
             match r {
                 Ok((symbol_name, _span, definition)) => {
                     if let Err(e) = local_symbols.define(symbol_name.clone(), definition) {
-                        errors.push(SymbolTableBuildFailure::BadDefinition(e));
+                        errors.push(LocalSymbolTableBuildFailure::BadDefinition(e));
                     }
                 }
                 Err(e) => {
-                    errors.push(SymbolTableBuildFailure::InconsistentUsage(e));
+                    errors.push(LocalSymbolTableBuildFailure::InconsistentUsage(e));
                 }
             }
         }
@@ -331,7 +337,7 @@ fn test_build_local_symbol_table_detects_tag_conflict() {
 
     assert_eq!(
         build_local_symbol_table(BlockIdentifier::from(0), seq.iter()),
-        Err(OneOrMore::new(SymbolTableBuildFailure::BadDefinition(
+        Err(OneOrMore::new(LocalSymbolTableBuildFailure::BadDefinition(
             BadSymbolDefinition {
                 symbol_name: SymbolName::from("T"),
                 span: span(5..6),
@@ -382,16 +388,18 @@ impl ManuscriptBlock {
     fn build_local_symbol_tables(
         &mut self,
         block_identifier: BlockIdentifier,
-    ) -> Result<(), OneOrMore<SymbolTableBuildFailure>> {
-        let mut errors: Vec<SymbolTableBuildFailure> = Vec::new();
+    ) -> Result<(), OneOrMore<LocalSymbolTableBuildFailure>> {
+        let mut errors: Vec<LocalSymbolTableBuildFailure> = Vec::new();
         for seq in &mut self.sequences {
             if let Some(local_symbols) = seq.local_symbols.as_mut() {
                 match build_local_symbol_table(block_identifier, seq.instructions.iter()) {
                     Ok(more_symbols) => match local_symbols.merge(more_symbols) {
                         Ok(()) => (),
                         Err(e) => {
-                            errors
-                                .extend(e.into_iter().map(SymbolTableBuildFailure::BadDefinition));
+                            errors.extend(
+                                e.into_iter()
+                                    .map(LocalSymbolTableBuildFailure::BadDefinition),
+                            );
                         }
                     },
                     Err(e) => {

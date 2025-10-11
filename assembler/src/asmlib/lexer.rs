@@ -1,3 +1,11 @@
+//! Turn text input into a sequence of tokens.
+//!
+//! We perform two levels of lexing:
+//!
+//! - [`lower`]: handles comments, annotations, spaces and newlines.
+//!   Generates a sequence of [`lower::Lexeme`] instances.
+//! - [`Lexer`]: pulls text from the lower-level lexer and recognizes tokens.
+//!   Generates a sequence of [`Token`] instances.
 use std::{
     fmt::{Display, Write},
     ops::Range,

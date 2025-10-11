@@ -1,3 +1,4 @@
+//! Emit assembly language listing, with a symbol table.
 use std::fmt::Display;
 
 use super::memorymap::{RcWordKind, RcWordSource};

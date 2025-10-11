@@ -1,3 +1,8 @@
+//! Turn a sequence of input tokens into a data structure representing
+//! it.
+//!
+//! This data structure isn't a tree, because the logical
+//! structure of a TX-2 assembly-language program isn't tree-like.
 use std::{
     collections::BTreeMap,
     collections::BTreeSet,
