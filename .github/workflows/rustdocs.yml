@@ -16,6 +16,11 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
+    env:
+      # See
+      # https://doc.rust-lang.org/beta/rustdoc/unstable-features.html#--index-page-provide-a-top-level-landing-page-for-docs
+      # for documentation on rustdoc's --enable-index-page flag.
+      RUSTDOCFLAGS: "-Z unstable-options --index-page"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -30,10 +35,8 @@ jobs:
       - name: Clean docs folder
         run: cargo clean --doc
       - name: Build docs
-        # See
-        # https://doc.rust-lang.org/beta/rustdoc/unstable-features.html#--index-page-provide-a-top-level-landing-page-for-docs
-        # for documentation on rustdoc's --enable-index-page flag.
-        run: cargo +nightly doc --document-private-items --no-deps -Z unstable-options --enable-index-page
+        # See also RUSTDOCFLAGS above.
+        run: cargo +nightly doc --document-private-items --no-deps
       - name: Remove lock file
         run: rm target/doc/.lock
       - name: Upload artifact
