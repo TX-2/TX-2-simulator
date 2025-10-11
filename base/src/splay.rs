@@ -1,3 +1,15 @@
+//! Splay/unsplay 36-bit words.
+//!
+//! Splayed mode (sometimes called "Assembly Mode") is described in:
+//!
+//! - The documentation for the Photoelectric Tape Reader (sequence 52)
+//!   in chapter 5 of the Users Handbook.
+//! - The documentation for the paper tape punch (sequence 63) in
+//!   chapter 5 of the Users Handbook, and in the tape diagram
+//!   immediately below that.
+//! - Note 15 accompanying the Instruction Execuition table on page
+//!   3-74 of the Users Handbook.
+//! - Section 4-3.7 ("TSD - TRANSFER DATA") of the Users Handbook.
 use std::ops::Shl;
 
 #[cfg(test)]
