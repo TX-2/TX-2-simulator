@@ -1,4 +1,4 @@
-/// Generate bug-report URLs.
+//! Generate bug-report URLs.
 use url::{ParseError, Url};
 
 // We have a version override for idna_adapter in the Cargo.toml file,

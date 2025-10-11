@@ -100,9 +100,9 @@ impl ControlUnit {
         } else {
             // This opcode is either IOS (00) or AOP (01).
             if b7 {
-                // AOP isn't implemented because we have not found any
-                // information about what its opcodes are, or what
-                // they do.
+                // It's AOP.  AOP isn't implemented because we have
+                // not found any information about what its opcodes
+                // are, or what they do.
                 let trailing_digit: char = if b7 { '1' } else { '0' };
                 Err(self.alarm_unit.always_fire(Alarm {
                     sequence: self.regs.k,
@@ -284,7 +284,7 @@ impl ControlUnit {
                 // Non-INOUT sequences just cycle the target location;
                 // see section 4-1 (page 4-3) of the Users Handbook;
                 // also pages 4-2 and 4-9).
-                match mem.cycle_word(ctx, &target) {
+                match mem.cycle_full_word_for_tsd(ctx, &target) {
                     Ok(extra_bits) => Ok(TransferOutcome::Success {
                         metabit_was_set: extra_bits.meta,
                         output: None,

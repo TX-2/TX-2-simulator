@@ -1,3 +1,5 @@
+//! A collection of orderable values which the caller can efficiently
+//! drain in one go.
 use serde::Serialize;
 use std::collections::BTreeSet;
 

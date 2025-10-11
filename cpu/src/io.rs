@@ -34,6 +34,27 @@
 //! 75: Misc output
 //! 76: Not for physical devices.
 //! 77: Not for physical devices.
+//!
+//! # Attached Units
+//!
+//! An "attached" unit is a unit which is actually present in the
+//! emulation (i.e. implemented in the code and the emulator has set
+//! it up).
+//!
+//! # Connected Units
+//!
+//! A "connected" unit is a unit which is attached and which the
+//! program has performed an action which puts it in the "connected"
+//! state as understood byt he TX-2.
+//!
+//! On the "real" TX-2, each unit had a `C` flip-flop (Users Handbook
+//! section 4-2.3) to indicate whether it was connected.  To connect a
+//! unit on the TX-2, it is necessary to execute an `IOSₖ 3XXXX`
+//! instruction (which connects unit _k_ and sets its mode to _XXXX_).
+//!
+//! See section 4-3.5 (THE IOS OPERATION - "INOUT SELECT") of the
+//! Users Handbook.
+//!
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::fmt::{self, Debug, Display, Formatter};
@@ -82,10 +103,13 @@ const IO_MASK_AVAIL: Unsigned36Bit = Unsigned36Bit::MAX.and(0o_000_000_200_000);
 /// TSD instruction or has just been connected.
 const IO_MASK_FLAG: Unsigned36Bit = Unsigned36Bit::MAX.and(0o_000_000_400_000);
 
+/// Indicates an unsuccessful I/O.
 #[derive(Debug)]
 pub enum TransferFailed {
+    /// The unit is connected but the buffer is still busy.
     BufferNotFree,
-    Alarm(Alarm),
+    /// An access to the unit raised an alarm (typically BUGAL).
+    Alarm(Alarm), // TODO: narrow this to only BUGAL to enforce that?
 }
 
 impl Display for TransferFailed {
@@ -102,9 +126,17 @@ impl Display for TransferFailed {
 impl std::error::Error for TransferFailed {}
 
 pub enum UnitType {
+    /// Sequence 0
     StartOver,
+    /// No associated unit; values 0o01..=0o37.
     IndexRegister(SequenceNumber),
+    /// Hardware exists, or might in theory; values 0o40..
     Hardware(SequenceNumber),
+
+    /// A software-only sequence.  Sequences 0o76 and 0o77 are
+    /// reserved for this purpose (Users Handbook, page 4-2).  TSD for
+    /// these sequences should perform the memory-cycle operation only
+    /// (Users Handbook, page 4-3).
     SoftwareOnly(SequenceNumber),
 }
 
@@ -150,6 +182,7 @@ pub struct UnitStatus {
     pub is_input_unit: bool,
 }
 
+/// Status information for a unit which is actually connected.
 #[derive(Debug, Serialize)]
 pub struct ExtendedConnectedUnitStatus {
     pub buffer_available_to_cpu: bool,
@@ -159,16 +192,29 @@ pub struct ExtendedConnectedUnitStatus {
     pub mode: u16,
 }
 
+/// The state of a unit (hardware belonging to a sequence).
 #[derive(Debug)]
 pub struct ExtendedUnitState {
+    /// Indicates that the unit's flag is raised.
     pub flag: bool,
+
+    /// Sequence number value for this unit.
     pub index_value: Signed18Bit,
-    pub connected: bool,
+
+    /// Is the unit connected (in the `IOS` sense)?
+    pub connected: bool, // perhaps redundant with respect to `status.is_none()`.
+
+    /// Is the unit in maintenance?
     pub in_maintenance: bool,
+
+    /// Name of the unit (not a feature of the real TX-2)
     pub name: String,
+
+    /// A human-readable description of the state of the unit (not a feature of the real TX-2).
     pub text_info: String,
-    /// status is None for units which are attached but not currently
-    /// connected.
+
+    /// `status` is None for units which are attached but not
+    /// currently connected.
     pub status: Option<ExtendedConnectedUnitStatus>,
 }
 
@@ -219,18 +265,28 @@ fn make_report_word_for_invalid_unit(unit: Unsigned6Bit, current_flag: bool) -> 
 }
 
 pub trait Unit {
+    /// Query the status of the unit.
     fn poll(&mut self, ctx: &Context) -> UnitStatus;
+
     /// Provide a text summary of the state of the device.
     fn text_info(&self, ctx: &Context) -> String;
+
+    /// Connect the unit.
     fn connect(&mut self, ctx: &Context, mode: Unsigned12Bit);
+
+    /// Disconnect the unit.
     fn disconnect(&mut self, ctx: &Context);
+
+    /// Query the `TransferMode` of the unit.
     fn transfer_mode(&self) -> TransferMode;
+
     /// Handle a TSD on an input channel.
     fn read(
         &mut self,
         ctx: &Context,
         diagnostics: &CurrentInstructionDiagnostics,
     ) -> Result<MaskedWord, TransferFailed>;
+
     /// Handle a TSD on an output channel.
     fn write(
         &mut self,
@@ -238,7 +294,11 @@ pub trait Unit {
         source: Unsigned36Bit,
         diagnostics: &CurrentInstructionDiagnostics,
     ) -> Result<Option<OutputEvent>, TransferFailed>;
+
+    /// Query the name of the unit.
     fn name(&self) -> String;
+
+    /// Announce an input event for a unit.
     fn on_input_event(
         &mut self,
         ctx: &Context,
@@ -246,6 +306,8 @@ pub trait Unit {
     ) -> Result<InputFlagRaised, InputEventError>;
 }
 
+/// A unit which is known to the emulator (whether or not it is in
+/// "connected" mode).
 pub struct AttachedUnit {
     inner: RefCell<Box<dyn Unit>>,
 
@@ -265,6 +327,9 @@ impl AttachedUnit {
         (!self.is_input_unit) && (!self.connected)
     }
 
+    /// Call function `f` on a unit, which must already be connected.
+    ///
+    /// If the unit is not connected, calling this method is a bug.
     fn call_inner<A, F, T>(
         &self,
         what: &str,
@@ -297,6 +362,9 @@ impl AttachedUnit {
         }
     }
 
+    /// Call function `f` on a unit, which must already be connected.
+    ///
+    /// If the unit is not connected, calling this method is a bug.
     fn call_mut_inner<A, F, T>(
         &self,
         what: &str,
@@ -329,20 +397,23 @@ impl AttachedUnit {
         }
     }
 
+    /// Query the status of an attached (but perhaps not connected) unit.
     pub fn poll<A: Alarmer>(&self, ctx: &Context, _alarmer: &mut A) -> Result<UnitStatus, Alarm> {
         Ok(self.inner.borrow_mut().poll(ctx))
     }
 
+    /// Fetch a human-readable description of a unit (which may not be
+    /// connected).
     fn text_info(&self, ctx: &Context) -> String {
-        // It is OK to call text_info on an attached but not connected unit.
         self.inner.borrow().text_info(ctx)
     }
 
+    /// Connect an attached (and perhaps already connected) unit.
     pub fn connect(&self, ctx: &Context, mode: Unsigned12Bit) {
-        // It's permissible to call connect() on an attached but not connected unit.
         self.inner.borrow_mut().connect(ctx, mode);
     }
 
+    /// Disconnect an attached unit, leaving it attached but not connected.
     pub fn disconnect<A: Alarmer>(&self, ctx: &Context, _alarmer: &mut A) -> Result<(), Alarm> {
         if !self.connected {
             // It's permissible to disconnect an attached but not
@@ -361,6 +432,7 @@ impl AttachedUnit {
         Ok(())
     }
 
+    /// Query the `TransferMode` of a connected unit.
     pub fn transfer_mode<A: Alarmer>(
         &self,
         alarmer: &mut A,
@@ -371,6 +443,7 @@ impl AttachedUnit {
         })
     }
 
+    /// Perform a TSD for a connected input unit.
     pub fn read<A: Alarmer>(
         &self,
         ctx: &Context,
@@ -386,6 +459,7 @@ impl AttachedUnit {
         }
     }
 
+    /// Perform a TSD for a connected output unit.
     pub fn write(
         &mut self,
         ctx: &Context,
@@ -395,6 +469,7 @@ impl AttachedUnit {
         self.inner.borrow_mut().write(ctx, source, diagnostics)
     }
 
+    /// Announce an input event for a connected unit.
     pub fn on_input_event(
         &self,
         ctx: &Context,
@@ -403,6 +478,7 @@ impl AttachedUnit {
         self.inner.borrow_mut().on_input_event(ctx, event)
     }
 
+    /// Query the name of an attached (but possibly not connected) unit.
     pub fn name(&self) -> String {
         self.inner.borrow().name()
     }
@@ -428,6 +504,7 @@ pub struct DeviceManager {
     changes: ChangeIndex<Unsigned6Bit>,
 }
 
+/// Indicates whether or not a unit's input flag is raised.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InputFlagRaised {
     No,

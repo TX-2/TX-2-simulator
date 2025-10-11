@@ -1,3 +1,4 @@
+//! Input and output events.
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 
@@ -6,12 +7,14 @@ use base::charset::DescribedChar;
 
 use super::alarm::Alarm;
 
+/// An input event.
 #[derive(Debug)]
 pub enum InputEvent {
     PetrMountPaperTape { data: Vec<u8> },
     LwKeyboardInput { data: Vec<Unsigned6Bit> },
 }
 
+/// A failed input event.
 #[derive(Debug)]
 pub enum InputEventError {
     /// `BufferUnavailable` means that an input event has occurred on
@@ -55,8 +58,10 @@ impl Display for InputEventError {
 
 impl Error for InputEventError {}
 
+/// An output event.
 #[derive(Debug, PartialEq, Eq)]
 pub enum OutputEvent {
+    /// A code has arrived at a Lincoln Writer.
     LincolnWriterPrint {
         unit: Unsigned6Bit,
         ch: DescribedChar,

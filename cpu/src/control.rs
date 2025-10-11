@@ -265,6 +265,11 @@ fn test_sequence_flags_current_flag_state() {
     assert_eq!(flags.drain_flag_changes(), vec![u6!(0o52)]);
 }
 
+/// Registers from various elements of the TX-2.
+///
+/// This includes both programmer-accessible registers (Index
+/// registers for example) and non-programmer accessible registers
+/// (such as the N register).
 #[derive(Debug)]
 pub struct ControlRegisters {
     pub diagnostic_only: CurrentInstructionDiagnostics,
@@ -280,11 +285,12 @@ pub struct ControlRegisters {
     /// Contents of the simulaterd Q register.
     pub q: Address,
 
-    /// The k register (User guide 4-3.1) holds the current sequence
-    /// number (User guide 5-24).  k is `Option<SequenceNumber>` in
-    /// order to allow the (emulated) control unit to recognise a
-    /// CODABO button as indicating a need to change sequence from the
-    /// control unit's initial state to sequence 0.
+    /// The k register (User Guide section 4-3.1) holds the current
+    /// sequence number (User Guide section 5-24).  k is
+    /// `Option<SequenceNumber>` in order to allow the (emulated)
+    /// control unit to recognise a CODABO button as indicating a need
+    /// to change sequence from the control unit's initial state to
+    /// sequence 0.
     ///
     /// This likely doesn't reflect the actual operation of the TX-2
     /// very well, and better understanding of the real operation of
@@ -815,6 +821,8 @@ impl ControlUnit {
             None => Unsigned6Bit::ZERO,
             Some(n) => n,
         };
+        // Update the E register as specified in section 4-3.1 of the
+        // Users Handbook.
         mem.set_e_register(join_halves(
             join_quarters(
                 Unsigned9Bit::from(previous_sequence),
@@ -1239,7 +1247,7 @@ impl ControlUnit {
                 Opcode::Jnx => control.op_jnx(ctx, mem),
                 Opcode::Skm => control.op_skm(ctx, mem),
                 Opcode::Spg => control.op_spg(ctx, mem),
-                Opcode::Opr => control.op_opr(ctx, mem, devices),
+                Opcode::Opr => control.op_opr(ctx, mem, devices), // Usually IOS.
                 Opcode::Tsd => control.op_tsd(ctx, devices, prev_program_counter, mem),
                 Opcode::Sed => control.op_sed(ctx, mem),
                 Opcode::Exx => Err(Alarm {

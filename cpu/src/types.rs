@@ -1,9 +1,11 @@
+//! Simple types used in several places in the crate.
 use std::fmt::Debug;
 
 use serde::Serialize;
 
 use base::prelude::*;
 
+/// Signals that a flag has changed (and why).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum FlagChange {
     Raise(&'static str),
@@ -14,6 +16,7 @@ pub enum FlagChange {
 /// width: 6, value: u13!(0o77) }`
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MaskedWord {
+    // TODO: code and doc comment seem to be in disagreement, fix this.
     pub bits: Unsigned36Bit,
     pub mask: Unsigned36Bit,
 }

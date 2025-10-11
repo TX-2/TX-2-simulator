@@ -1,3 +1,4 @@
+//! TX-2 alarms.
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use std::time::Duration;

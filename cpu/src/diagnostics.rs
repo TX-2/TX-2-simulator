@@ -1,7 +1,7 @@
-/// Diagnostic information for log messages and alarms.
-///
-/// The real TX-2 did not have any accompanying message to go along
-/// with alarms, but the emulator does.
+//! Diagnostic information for log messages and alarms.
+//!
+//! The real TX-2 did not have any accompanying message to go along
+//! with alarms, but the emulator does.
 use std::fmt::{Display, Formatter};
 
 use base::instruction::Instruction;

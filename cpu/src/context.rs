@@ -16,6 +16,7 @@
 //! give them very clear names.
 use core::time::Duration;
 
+/// State shared between the emulator and the UI.
 #[derive(Debug)]
 pub struct Context {
     pub simulated_time: Duration,

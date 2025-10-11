@@ -201,7 +201,14 @@ pub(crate) trait MemoryMapped {
     ) -> Result<Option<bool>, MemoryOpFailure>;
 
     /// Cycle a memory location one place to the left (as in TSD).
-    fn cycle_word(&mut self, ctx: &Context, addr: &Address) -> Result<ExtraBits, MemoryOpFailure>;
+    ///
+    /// This behaviour is described on page 4-9 of the [TX-2 Users
+    /// Handbook](https://tx-2.github.io/documentation#UH).
+    fn cycle_full_word_for_tsd(
+        &mut self,
+        ctx: &Context,
+        addr: &Address,
+    ) -> Result<ExtraBits, MemoryOpFailure>;
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -714,7 +721,15 @@ impl MemoryMapped for MemoryUnit {
         Ok(())
     }
 
-    fn cycle_word(&mut self, ctx: &Context, addr: &Address) -> Result<ExtraBits, MemoryOpFailure> {
+    /// Cycle the memory word for `TSD`.
+    ///
+    /// This behaviour is described on page 4-9 of the [TX-2 Users
+    /// Handbook](https://tx-2.github.io/documentation#UH).
+    fn cycle_full_word_for_tsd(
+        &mut self,
+        ctx: &Context,
+        addr: &Address,
+    ) -> Result<ExtraBits, MemoryOpFailure> {
         match self.write_access(ctx, addr) {
             Ok(Some(mut target)) => {
                 let extra_bits = target.extra_bits();
