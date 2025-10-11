@@ -1,3 +1,7 @@
+//! Helper functions for parsing symex names.
+//!
+//! See section 6-2.3 "RULES FOR SYMEX FORMATION".
+//!
 use base::charset::Script;
 use chumsky::Parser;
 use chumsky::input::ValueInput;
@@ -9,6 +13,13 @@ use super::super::symbol::SymbolName;
 use super::helpers::{self};
 use super::{ExtraWithoutContext, Tok, opcode_code};
 
+/// Squeze spaces from a string to make a canonical symex name.
+///
+/// The caller must ensure that the passed-in string is indeed a
+/// single symex name.  Meaning that the input `"TYPE A"` is valid but
+/// `"A TYPE"` and `"ADD Y"` are not, since neither the AE register
+/// name `"A"`nor the opcode `"ADD"` can be the first syllavble of a
+/// symex name containing a space.
 fn canonical_symbol_name(s: &str) -> SymbolName {
     // TODO: avoid copy where possible.
     SymbolName {
@@ -19,8 +30,10 @@ fn canonical_symbol_name(s: &str) -> SymbolName {
     }
 }
 
+/// Decide whether the passed in identifier is a reserved identifier
+/// (i.e. an AE element name or an opcode name).
 fn is_reserved_identifier(ident: &str) -> bool {
-    helpers::is_register_name(ident) || opcode_code(ident).is_some()
+    helpers::is_arithmetic_element_register_name(ident) || opcode_code(ident).is_some()
 }
 
 // Compound chars are not supported at the moment, see docs/assembler/index.md.
@@ -99,9 +112,14 @@ where
     })
 }
 
+/// Distinguishes a single-syllable from a multi-syllable symex.
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub(super) enum SymexSyllableRule {
+    /// A single syllable symex (and so this includes reserved
+    /// identifiers such as "A", "B", "ADD", "TLY").
     OneOnly,
+    /// A multi syllable symex (which might include a reserved
+    /// identifier, but not as the first syllable).
     Multiple,
 }
 
@@ -130,6 +148,9 @@ where
     }
 }
 
+/// Parse a symex having the specified script, according to `rule`.
+///
+/// If the input doesn't have the expected script, the parser fails.
 pub(super) fn parse_symex<'a, I>(
     rule: SymexSyllableRule,
     script_required: Script,

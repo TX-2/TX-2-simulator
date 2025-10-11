@@ -40,9 +40,19 @@ pub(crate) const DOT_STR: &str = "·";
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub(crate) struct NumericLiteral {
-    /// The digits comprising the literal. We don't know whether the
-    /// base is decimal or octal yet.
+    /// The digits comprising the literal.
     digits: String,
+
+    /// Indicates that the literal has a trailing dot.
+    ///
+    /// A trailing dot indicates that the literal has a non-default
+    /// base (i.e. if the default is decimal, "." signals octal and if
+    /// the default is otal, "." signals decimal).
+    ///
+    /// We don't know whether the base is decimal or octal within the
+    /// lexer, because the state information that tracks the current
+    /// default base belongs to the parser (as the parser has to
+    /// interpret the meta commands which switch the default).
     has_trailing_dot: bool,
 }
 
@@ -78,8 +88,13 @@ impl NumericLiteral {
     }
 }
 
+/// Represents an item in the input we didn't recognise of which we
+/// don't support.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub(crate) enum ErrorTokenKind {
+    /// Use of a tab character causes an error diagnostic; we don't
+    /// support tabs in the same way as M4 does, since the `☛☛T` meta
+    /// command is not implemented.
     Tab,
     UnrecognisedGlyph(Unrecognised),
 }
@@ -292,6 +307,7 @@ impl Display for Token {
     }
 }
 
+/// Convert a string into a sequence of [`Elevated<&Glyph>`].
 #[derive(Debug, Clone)]
 struct GlyphRecognizer<'a> {
     it: CharIndices<'a>,
@@ -782,6 +798,8 @@ fn merge_tokens(current: (Token, Span), incoming: (Token, Span)) -> TokenMergeRe
     }
 }
 
+/// Tokenize a small part of the input, unifying the Unicode and
+/// `@...@` representations.
 #[derive(Debug, Clone)]
 struct GlyphTokenizer<'a> {
     current: Option<(Token, Span)>,
@@ -796,7 +814,7 @@ impl<'a> GlyphTokenizer<'a> {
         }
     }
 
-    pub(crate) fn get_next_spanned_token(&mut self) -> Option<(Token, Span)> {
+    fn get_next_spanned_token(&mut self) -> Option<(Token, Span)> {
         loop {
             let maybe_spanned_new_token: Option<(Token, Span)> = match self.inner.next() {
                 None => None,
@@ -946,6 +964,14 @@ fn test_glyph_tokenizer_question_mark() {
     );
 }
 
+/// Tokenize the body of a source code file.
+///
+/// This is the lexer interface intended for use by the parser.
+///
+/// We use [`lower::LowerLexer`] to handle comments, line continuation
+/// and nesting of RC-blocks, and we use [`GlyphTokenizer`] to unify
+/// the several equivalent representations of some symbols (e.g. `₂`
+/// and `@sub_2@`).
 #[derive(Debug, Clone)]
 pub(crate) struct Lexer<'a> {
     lower: lower::LowerLexer<'a>,

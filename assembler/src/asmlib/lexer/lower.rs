@@ -1,3 +1,5 @@
+//! A "partial" lexer which determines whether we're inside an
+//! RC-block or a comment.
 use std::ops::Range;
 
 use logos::Logos;
@@ -53,13 +55,17 @@ pub(super) enum InnerToken {
     Spaces,
 }
 
-/// State keeps track of whether we are in an RC-block or in a
-/// comment (or both).  Since RC-blocks next, we have to use a
-/// count in order to determine whether a '}' means we're no
-/// longer in an RC-block.
+/// Keep track of whether we are in an RC-block, in a comment, or
+/// both.
+///
+/// RC-blocks nest, so we have to use a count in order to determine
+/// whether a '}' means we're no longer in an RC-block.
 #[derive(Debug, Default, Clone, Copy)]
 struct State {
+    /// Are we in a comment?
     in_comment: bool,
+
+    /// Count of open braces.
     lbrace_count: usize,
 }
 

@@ -1,3 +1,4 @@
+//! Convenience functions for the parser.
 use std::fmt::{Display, Write};
 use std::num::IntErrorKind;
 
@@ -5,6 +6,7 @@ use base::prelude::*;
 
 use super::super::{ast::LiteralValue, manuscript::PunchCommand, state::NumeralMode};
 
+/// The sign of a number.
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub(crate) enum Sign {
     Plus,
@@ -20,6 +22,7 @@ impl Display for Sign {
     }
 }
 
+/// Convert a string to an `Unsigned36Bit` in base `radix`.
 pub(super) fn make_u36(s: &str, radix: u32) -> Result<Unsigned36Bit, StringConversionFailed> {
     match u64::from_str_radix(s, radix) {
         Ok(n) => n.try_into().map_err(StringConversionFailed::Range),
@@ -61,6 +64,24 @@ fn test_make_u36() {
     assert_eq!(Ok(u36!(19)), make_u36("19", 10));
 }
 
+/// Convert a string to an `Unsigned36Bit`.
+///
+/// # Combining `state` and `hasdot`
+///
+/// | `state`                | `hasdot` | Conversion Base |
+/// | ---------------------- | -------- | --------------- |
+/// | `NumeralMode::Octal`   | `false`  |  Octal          |
+/// | `NumeralMode::Decimal` | `false`  |  Decimal        |
+/// | `NumeralMode::Octal`   | `true`   |  Decimal        |
+/// | `NumeralMode::Decimal` | `true`   |  Octal          |
+///
+/// # Arguments
+///
+/// - `digits` - the octal or decimal digits
+/// - `hasdot` - if true, the input has a trailing dot (not in `digits`).
+/// - `state` - indicates whether the default mode is octal or decimal.
+///
+/// TODO: consider just having the caller call `make_u36()` directly.
 pub(crate) fn make_num(
     digits: &str,
     hasdot: bool,
@@ -93,9 +114,11 @@ pub(super) fn punch_address(a: Option<LiteralValue>) -> Result<PunchCommand, Str
     }
 }
 
+/// Return the default value of the hold bit for the indicated opcode.
+///
 /// Some instructions are assembled with the hold bit automatically
-/// set.  These are JPX, JNX, LDE, ITE.  See Users Handbook, section
-/// 4-3.2 on page 4-5.
+/// set.  These are `JPX`, `JNX`, `LDE`, `ITE`.  See Users Handbook,
+/// section 4-3.2 on page 4-5.
 pub(super) fn opcode_auto_hold_bit(opcode: Unsigned6Bit) -> u64 {
     if matches!(u8::from(opcode), 0o06 | 0o07 | 0o20 | 0o40) {
         1 << 35
@@ -104,6 +127,7 @@ pub(super) fn opcode_auto_hold_bit(opcode: Unsigned6Bit) -> u64 {
     }
 }
 
-pub(super) fn is_register_name(name: &str) -> bool {
+/// Determine whether `name` is the name of a Arithmetic Element register.
+pub(super) fn is_arithmetic_element_register_name(name: &str) -> bool {
     matches!(name, "A" | "B" | "C" | "D" | "E")
 }
