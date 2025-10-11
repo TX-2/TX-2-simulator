@@ -51,6 +51,8 @@ fn run_scan_test(input_relative_path: &str) {
     }
 }
 
+// This test does things that miri does not support.
+#[cfg_attr(miri, ignore)]
 #[test]
 fn scan_echo() {
     run_scan_test("examples/hello.tx2as");
