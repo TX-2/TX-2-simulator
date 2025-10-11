@@ -19,8 +19,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Set up Rust (nightly)
+        # Use nightly in order to allow --enable-index-page below.
+        uses: dtolnay/rust-toolchain@nightly
       - name: Configure cache
         uses: Swatinem/rust-cache@v2
       - name: Setup pages
@@ -29,9 +30,10 @@ jobs:
       - name: Clean docs folder
         run: cargo clean --doc
       - name: Build docs
-        run: cargo doc --document-private-items --no-deps
-      - name: Add redirect (change this later as we have multiple crates)
-        run: echo '<meta http-equiv="refresh" content="0;url=cpu/index.html">' > target/doc/index.html
+        # See
+        # https://doc.rust-lang.org/beta/rustdoc/unstable-features.html#--index-page-provide-a-top-level-landing-page-for-docs
+        # for documentation on rustdoc's --enable-index-page flag.
+        run: cargo +nightly doc --document-private-items --no-deps -Z unstable-options --enable-index-page
       - name: Remove lock file
         run: rm target/doc/.lock
       - name: Upload artifact
