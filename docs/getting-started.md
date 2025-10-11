@@ -19,6 +19,15 @@ The TX-2 emulator repository includes several components:
 - A TX-2 emulator which runs locally in your web browser
 - A more limited command-line emulator
 
+## Browsing the code
+
+- See the parent directory in the repository for the source code
+  itself.
+- We also generate
+  [rustdoc](https://doc.rust-lang.org/rustdoc/what-is-rustdoc.html)
+  documentation from the source and serve it at
+  https://tx-2.github.io/TX-2-simulator/.
+
 ## Build Tools
 
 The TX-2 emulator and its associcated tools are written in Rust.  The

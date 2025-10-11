@@ -21,6 +21,15 @@ You can also check out a copy of the source code, and build and run
 the emulator yourself; to get started with using the emulator, please
 read [Getting Started](docs/getting-started.md).
 
+## Browsing the code
+
+- The git repository (https://github.com/TX-2/TX-2-simulator)
+  contains the source code itself.
+- We also generate
+  [rustdoc](https://doc.rust-lang.org/rustdoc/what-is-rustdoc.html)
+  documentation from the source and serve it at
+  https://tx-2.github.io/TX-2-simulator/.
+
 ## For More Information
 
 There is [more documentation about the emulator and its tools](docs),
