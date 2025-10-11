@@ -20,7 +20,7 @@ jobs:
       # See
       # https://doc.rust-lang.org/beta/rustdoc/unstable-features.html#--index-page-provide-a-top-level-landing-page-for-docs
       # for documentation on rustdoc's --enable-index-page flag.
-      RUSTDOCFLAGS: "-Z unstable-options --index-page"
+      RUSTDOCFLAGS: "-Z unstable-options --enable-index-page"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
