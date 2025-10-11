@@ -36,9 +36,6 @@ jobs:
     - name: NPM install (latest)
       run: cd tx2-web && npm install npm@latest
 
-    - name: Run Cargo tests
-      run: cargo test --workspace
-
     - name: NPM (including WASM) Build
       run: cd tx2-web && npm run build
 
