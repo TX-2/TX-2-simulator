@@ -114,5 +114,11 @@ fn assembler_golden_output_test(
 #[test]
 fn golden_output_assembling_hello_program() {
     assembler_golden_output_test("examples/hello.tx2as", "../examples/hello.tape")
-        .expect("actual and golden outputs should have been identical");
+        .expect("actual and golden outputs should have been identical for 'hello'");
+}
+
+#[test]
+fn golden_output_assembling_echo_program() {
+    assembler_golden_output_test("examples/echo.tx2as", "../examples/echo.tape")
+        .expect("actual and golden outputs should have been identical for 'echo'");
 }

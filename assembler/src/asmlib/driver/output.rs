@@ -141,6 +141,20 @@ fn create_begin_block(
     program_start: Option<Address>,
     empty_program: bool,
 ) -> Result<Vec<Unsigned36Bit>, AssemblerFailure> {
+    // Page 6-23 (dated October 1961) of the Users Handbook states
+    // that this instruction goes into register 26 (and that 27
+    // contains a JPQ or JPD instruction).  But on the immediately
+    // following page (6-24, same date) it says "The special block for
+    // register 27...".
+    //
+    // Page 5-26 (dated November 1963) gives a listing of the standard
+    // reader leader which shows the IOS instruction at location 27:
+    //
+    // 26    ¹⁵BPQ₅₄ 0
+    // 27     ¹IOS₅₂ 20000
+    //
+    // So, one explanation for the apparent inconsistency is that
+    // changes were made between October 1961 and November 1963.
     let disconnect_tape = SymbolicInstruction {
         // 027: ¹IOS₅₂ 20000     ** Disconnect PETR, load report word into E.
         held: false,
@@ -216,7 +230,28 @@ pub fn write_user_program<W: Write>(
     // with the beginnng of the tape file) so we don't need to
     // write it.
     write_data(writer, output_file_name, &reader_leader())?;
-    for chunk in binary.chunks() {
+
+    // Write the special block for register 27.
+    //
+    // We used to write this block after the final block of the user's
+    // program, so that we could signal that this special block was
+    // the final one.  But this is not correct, because the Users
+    // Handbook states on page 6-24 (in the description of the PUNCH
+    // meta command):
+    //
+    // Note also: The special block for register 27 comes before the
+    // program on the tape.  Program material that is to go in
+    // register 27 therefore supercedes this special block created by
+    // M4.
+    write_data(
+        writer,
+        output_file_name,
+        &create_begin_block(binary.entry_point(), binary.is_empty())?,
+    )?;
+
+    // Write the blocks of the user program.
+    let mut iter = binary.chunks().into_iter().peekable();
+    while let Some(chunk) = iter.next() {
         if chunk.is_empty() {
             event!(
                 Level::ERROR,
@@ -225,21 +260,10 @@ pub fn write_user_program<W: Write>(
             );
             continue;
         }
-        let block = create_tape_block(chunk.address, &chunk.words, false)?;
+        let last: bool = iter.peek().is_none();
+        let block = create_tape_block(chunk.address, &chunk.words, last)?;
         write_data(writer, output_file_name, &block)?;
     }
-
-    // After the rest of the program is punched, we write the special
-    // block for register 27.  This has to be last, becaause the
-    // standard reader leader uses the "next" field of the header to
-    // determine which is the last block.  When the "next" field
-    // points at 0o27 instead of 0o3, that means this is the final
-    // block.  So we have to emit this one last.
-    write_data(
-        writer,
-        output_file_name,
-        &create_begin_block(binary.entry_point(), binary.is_empty())?,
-    )?;
 
     writer.flush().map_err(|e| {
         AssemblerFailure::Io(IoFailed {
