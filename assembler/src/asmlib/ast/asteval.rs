@@ -346,10 +346,23 @@ impl Evaluate for CommaDelimitedFragment {
     }
 }
 
-/// The Users Handbook implies that instruction fragments are added
-/// together, and I am not sure whether they mean this literally (as
-/// in, addition) or figuratively (as in a logica-or operation).  This
-/// function exists to be a single place to encode this assumption.
+/// Combine the fragments of an instruction into a final `Unsigned36bit` value.
+///
+/// Section 6-2.7 of the [Users Handbook](https://tx-2.github.io/documentation#UH) says:
+///
+/// > The 36 bit address syllable is united with (inclusive OR) with the others
+/// > (configuration, operation, index).  Extra syllables of the latter group
+/// > are also united into the word.  The one bit syllables are set last,
+/// > "not hold" being the last one.
+///
+/// So, the operation is definitely an OR-operation.
+///
+/// The Users Handbook says in section 6-2.3 "RULES FOR SYMEX FORMATION" Rule 5,
+///
+/// > "A TYPE" is equivalent to "377604 + TYPE"
+///
+/// While this seems to contradict section 6-2.7, I think we should
+/// assume section 6-2.7 takes precedence.
 fn combine_fragment_values(left: Unsigned36Bit, right: Unsigned36Bit) -> Unsigned36Bit {
     left | right
 }
