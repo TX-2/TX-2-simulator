@@ -48,6 +48,7 @@ jobs:
       with:
         name: tx2-web-dist
         path: tx2-web/dist
+        retention-days: 8
         if-no-files-found: error
 
   deploy:
