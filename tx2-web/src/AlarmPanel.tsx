@@ -16,7 +16,7 @@ export interface AlarmControlProps {
 
 
 type MaskedCellProps = {
-  children: JSX.Element,
+  children: React.JSX.Element,
 }
 
 function MaskedCell(props: MaskedCellProps) {
@@ -26,11 +26,11 @@ function MaskedCell(props: MaskedCellProps) {
   </td>);
 }
 
-function ActiveCell({children}: {children: JSX.Element | string}) {
+function ActiveCell({children}: {children: React.JSX.Element | string}) {
   return <td className={styles['alarm-panel__active']}>{children}</td>;
 }
 
-function MessageCell({children}: {children: JSX.Element | string}) {
+function MessageCell({children}: {children: React.JSX.Element | string}) {
   return <td className={styles['alarm-panel__message']}>{children}</td>;
 }
 
@@ -114,7 +114,7 @@ function make_control(
   alarmStatus: AlarmStatus,
   maskedChangeCallback: (name: string, masked: boolean) => void,
   registerStatusCallback: (name: string, f: AlarmStatusCallback | null) => void,
-): JSX.Element {
+): React.JSX.Element {
         return (<AlarmControl className={styles['alarm-panel__name']}
                 key={name}
                 name={name}
@@ -133,7 +133,7 @@ export default class AlarmPanel extends Component<AlarmPanelProps> {
   }
 
   render() {
-    const alarmControls: JSX.Element[] = this.props.alarmStatuses.map((status) =>
+    const alarmControls: React.JSX.Element[] = this.props.alarmStatuses.map((status) =>
       make_control(status.name, status, this.props.maskedChangeCallback, this.props.registerStatusCallback));
     return (
       <table className={styles['alarm-panel']} aria-label="Alarm Status">
