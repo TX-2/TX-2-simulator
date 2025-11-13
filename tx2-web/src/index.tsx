@@ -1,8 +1,8 @@
 import { App } from './App';
+import { createRoot } from "react-dom/client";
 import { init } from '../build/tx2_web';
 import Modal from 'react-modal';
 import React from "react";
-import ReactDOM from "react-dom";
 import { Tx2Controller } from './controller/tx2'
 
 const has = <K extends string>(
@@ -43,6 +43,8 @@ import("../build/tx2_web")
     Modal.setAppElement('body')
     init(get_log_level(window.location.hash));
     const tx2: Tx2Controller = new Tx2Controller();
-    ReactDOM.render(<App tx2Controller={tx2} />, document.getElementById("root"));
+    const container = document.getElementById("app");
+    const root = createRoot(container!); // createRoot(container!) if you use TypeScript
+    root.render(<App tx2Controller={tx2} />);
   })
   .catch(handleError);
