@@ -68,7 +68,7 @@ function Box(props: GridItemProps) {
   return (<Grid.Item
     row={props.row}
     column={props.column}
-    className={styles['gridbox']}
+    className={styles.gridbox}
   >{props.children}</Grid.Item>
   );
 }
@@ -109,7 +109,7 @@ export const MainGrid = (props: MainGridProps) => (
         />
       </Box>
       <Box column="1" row="3">
-        <div className={styles['main-grid-flexbox']}>
+        <div className={styles.main_grid_flexbox}>
           <details className="alarm-details">
             <summary>Alarms</summary>
             <AlarmPanel
@@ -124,7 +124,7 @@ export const MainGrid = (props: MainGridProps) => (
           </details>
         </div>
       </Box>
-      <Box column="1" row="4" className={styles['lw__box']}>
+      <Box column="1" row="4" className={styles.lw__box}>
         <LincolnWriter
           inputUnit={0o65}
           outputUnit={0o66}

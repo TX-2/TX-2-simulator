@@ -59,10 +59,10 @@ const TapeLoadModal: FunctionComponent<TapeLoadModalProps> = ({ modalIsOpen, clo
       <p>You can press one of the buttons which load a canned example,
         or use the &quot;Choose file&quot; button to upload your own program and run it.</p></div>
     <form>
-      <div className={styles['tape-load-modal__buttons']}>
-        <input className={styles['tape-load-modal__buttons']} type="button" onClick={handleLoadHello} value="Load sample &lsquo;hello&rsquo;" />
-        <input className={styles['tape-load-modal__buttons']} type="button" onClick={handleLoadEcho} value="Load sample &lsquo;echo&rsquo;" />
-        <input className={styles['tape-load-modal__buttons']} type="file" id="tape_load_file" accept=".tape,application/binary" onChange={handleChange} />
+      <div className={styles.tape_load_modal__buttons}>
+        <input className={styles.tape_load_modal__buttons} type="button" onClick={handleLoadHello} value="Load sample &lsquo;hello&rsquo;" />
+        <input className={styles.tape_load_modal__buttons} type="button" onClick={handleLoadEcho} value="Load sample &lsquo;echo&rsquo;" />
+        <input className={styles.tape_load_modal__buttons} type="file" id="tape_load_file" accept=".tape,application/binary" onChange={handleChange} />
       </div>
     </form>
   </Modal>;

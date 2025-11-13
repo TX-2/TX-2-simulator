@@ -53,19 +53,19 @@ interface IoUnitHeaderProps {
 function IoUnitHeader({value}: IoUnitHeaderProps) {
   return (<th
     scope="row"
-    className={styles['io-panel']}
+    className={styles.io_panel}
   >{value.toString(8).padStart(2, '0')}</th>
   );
 }
 
 function IoCell({children}: {children: React.JSX.Element | string}) {
-  return <td className={styles['io-panel']}>{children}</td>;
+  return <td className={styles.io_panel}>{children}</td>;
 }
 
 function IoColHeader({children}: {children: React.JSX.Element | string}) {
   return <th
     scope="col"
-    className={styles['io-panel']}>
+    className={styles.io_panel}>
     {children}
   </th>;
 }
@@ -111,7 +111,7 @@ export class IoUnitStatusRow extends Component<IoUnitProps, IoUnitProps> {
 }
 
 function IoPanelTable({children}: {children: React.JSX.Element | React.JSX.Element[] | string}) {
-  return (<table className={styles['io-panel']}>{children}</table>);
+  return (<table className={styles.io_panel}>{children}</table>);
 }
 
 export interface IoUnitStatusPanelProps {

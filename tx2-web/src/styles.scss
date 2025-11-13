@@ -15,7 +15,7 @@ details {
     margin-right: 0.5em;
 }
 
-.status-panel {
+.status_panel {
     font-family: Sans-Serif;
     margin: 0.5em;
     border: 1px solid black;
@@ -34,28 +34,8 @@ details {
     }
 }
 
-.io-panel {
-    @extend .status-panel;
-}
-
-.alarm-panel {
-    @extend .status-panel;
-}
-.alarm-panel__active {
-    @extend .alarm-panel;
-    text-align: center;
-}
-.alarm-panel__masked {
-    @extend .alarm-panel;
-    text-align: center;
-}
-.alarm-panel__message {
-    @extend .alarm-panel;
-    width: 20em;
-}
-.alarm-panel__name {
-    @extend .alarm-panel;
-    text-align: right;
+.io_panel {
+    @extend .status_panel;
 }
 
 .lw__box {
@@ -122,14 +102,14 @@ details {
 
 .lw__cursor  {
   background-color: black;
-  animation-name: lw__cursor-animation;
+  animation-name: lw__cursor_animation;
   animation-duration: 0.75s;
   animation-iteration-count: infinite;
   animation-timing-function: linear;
   animation-direction: alternate;
 }
 
-@keyframes lw__cursor-animation {
+@keyframes lw__cursor_animation {
     0%   {opacity:20%; }
     40%  {opacity:20%; }
     41%  {opacity:100%; }
@@ -142,7 +122,7 @@ details {
   padding: 0px;
 }
 
-.tape-load-modal__buttons {
+.tape_load_modal__buttons {
     margin: 0.5ex;
 
     div {
@@ -164,7 +144,7 @@ details {
     }
 }
 
-.main-grid-flexbox {
+.main_grid_flexbox {
     display: flex;
     flex-direction: row;
 }

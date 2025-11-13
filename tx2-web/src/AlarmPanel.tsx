@@ -1,7 +1,7 @@
 import { AlarmControlState, AlarmStatus, AlarmStatusCallback } from './controller/alarms'
 import React, { Component } from 'react';
 import Checkbox from './checkbox';
-import styles from './styles.scss'
+import styles from './alarm-panel.scss'
 
 export interface AlarmControlProps {
   name: string;
@@ -21,17 +21,17 @@ type MaskedCellProps = {
 
 function MaskedCell(props: MaskedCellProps) {
   return (<td
-    className={styles['alarm-panel__masked']}>
+    className={styles.masked}>
     {props.children}
   </td>);
 }
 
 function ActiveCell({children}: {children: React.JSX.Element | string}) {
-  return <td className={styles['alarm-panel__active']}>{children}</td>;
+  return <td>{children}</td>;
 }
 
 function MessageCell({children}: {children: React.JSX.Element | string}) {
-  return <td className={styles['alarm-panel__message']}>{children}</td>;
+  return <td className={styles.message}>{children}</td>;
 }
 
 class AlarmControl extends Component<AlarmControlProps, AlarmControlState> {
@@ -94,7 +94,7 @@ class AlarmControl extends Component<AlarmControlProps, AlarmControlState> {
   render() {
     return (
       <tr>
-        <th scope="row" className={styles['alarm-panel__name']}>{this.props.name}</th>
+        <th scope="row" className={styles.name}>{this.props.name}</th>
         <MaskedCell>{this.masked()}</MaskedCell>
         <ActiveCell>{this.yesno(this.state.active)}</ActiveCell>
         <MessageCell>{this.state.message}</MessageCell>
@@ -115,7 +115,7 @@ function make_control(
   maskedChangeCallback: (name: string, masked: boolean) => void,
   registerStatusCallback: (name: string, f: AlarmStatusCallback | null) => void,
 ): React.JSX.Element {
-        return (<AlarmControl className={styles['alarm-panel__name']}
+        return (<AlarmControl className={styles.name}
                 key={name}
                 name={name}
                 maskable={alarmStatus.maskable}
@@ -136,13 +136,13 @@ export default class AlarmPanel extends Component<AlarmPanelProps> {
     const alarmControls: React.JSX.Element[] = this.props.alarmStatuses.map((status) =>
       make_control(status.name, status, this.props.maskedChangeCallback, this.props.registerStatusCallback));
     return (
-      <table className={styles['alarm-panel']} aria-label="Alarm Status">
+      <table className={styles.alarm_panel} aria-label="Alarm Status">
         <thead>
           <tr>
-            <th className={styles['alarm-panel__name']} scope="col">Alarm</th>
-            <th className={styles['alarm-panel__masked']} scope="col">Masked</th>
-            <th className={styles['alarm-panel__active']} scope="col">Active</th>
-            <th className={styles['alarm-panel__message']} scope="col">Message</th>
+            <th className={styles.name} scope="col">Alarm</th>
+            <th className={styles.masked} scope="col">Masked</th>
+            <th scope="col">Active</th>
+            <th className={styles.message} scope="col">Message</th>
           </tr>
         </thead>
         <tbody>

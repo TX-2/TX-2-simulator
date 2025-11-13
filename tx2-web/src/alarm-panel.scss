@@ -1,0 +1,26 @@
+.alarm_panel {
+    font-family: Sans-Serif;
+    margin: 0.5em;
+    border-collapse: collapse;
+}
+
+table {
+    float: left;
+    table-layout: fixed;
+}
+
+th, td {
+    border: 1px solid black;
+    text-align: center;
+}
+
+.name {
+    text-align: left;
+}
+.masked {
+    text-align: center;
+}
+.message {
+    text-align: left;
+    width: 20em;
+}

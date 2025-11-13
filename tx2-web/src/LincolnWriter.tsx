@@ -17,21 +17,21 @@ export class LincolnWriter extends React.Component<LincolnWriterProps, LincolnWr
   keyboardId = this.prefix + "-keyboard"
 
   render(): React.ReactElement {
-    return (<div className={styles['lw']}>
-      <div className={styles['lw__output_container']}>
-        <div className={styles['lw__paper']}>
-          <span className={styles['lw__output']} id={this.historyId}></span>
-          <span  className={styles['lw__output']} id={this.currentId}></span>
-          <span className={styles['lw__cursor']}>&nbsp;</span>
+    return (<div className={styles.lw}>
+      <div className={styles.lw__output_container}>
+        <div className={styles.lw__paper}>
+          <span className={styles.lw__output} id={this.historyId}></span>
+          <span  className={styles.lw__output} id={this.currentId}></span>
+          <span className={styles.lw__cursor}>&nbsp;</span>
         </div>
       </div>
     <details>
       <summary>Keyboard</summary>
       <Keyboard
         tx2Controller={this.props.tx2Controller}
-        className={styles['lw__input__keyboard']}
-        keysClass={styles['lw__input__keyboard_keys']}
-        hdClass={styles['lw__input__keyboard_hits']}
+        className={styles.lw__input__keyboard}
+        keysClass={styles.lw__input__keyboard_keys}
+        hdClass={styles.lw__input__keyboard_hits}
         unit={this.props.inputUnit}
       />
       </details>
