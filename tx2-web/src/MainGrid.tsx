@@ -23,13 +23,14 @@ const Buttons = ({ changeRunCallback, tx2Controller, isClockRunning, loadTape, l
   const [modalIsOpen, setIsOpen] = React.useState(false);
   const [isRunning, setIsRunning] = React.useState(isClockRunning);
 
-  function openModal() {
-    setIsOpen(true);
-  }
 
-  function closeModal() {
+  const openModal = React.useCallback<React.MouseEventHandler<HTMLButtonElement>>((event) => {
+    setIsOpen(true);
+  }, [setIsOpen]);
+
+  const closeModal = React.useCallback(() => {
     setIsOpen(false);
-  }
+  }, [setIsOpen]);
 
   React.useEffect(() => {
     tx2Controller.setRunChangeCallback(setIsRunning);
@@ -38,7 +39,7 @@ const Buttons = ({ changeRunCallback, tx2Controller, isClockRunning, loadTape, l
     }
   });
 
-  function handleChangeRun(e: React.ChangeEvent<HTMLInputElement>) {
+  const handleChangeRun = (e: React.ChangeEvent<HTMLInputElement>) => {
     const run = !!e.target.checked;
     changeRunCallback(run);
   }
@@ -47,7 +48,7 @@ const Buttons = ({ changeRunCallback, tx2Controller, isClockRunning, loadTape, l
     <div>
       <button id="tapeLoadBtn" onClick={openModal}>Mount Paper Tape</button>
       <button id="codaboTSRBtn" onClick={tx2Controller.codabo.bind(tx2Controller)}>CODABO (TSR)</button>
-      <Checkbox label="Run" handleChange={handleChangeRun.bind(this)} isChecked={isRunning} />
+      <Checkbox label="Run" handleChange={handleChangeRun} isChecked={isRunning} />
       <TapeLoadModal
         modalIsOpen={modalIsOpen}
         closeModal={closeModal} loadTape={loadTape} loadSample={loadSample}/>
