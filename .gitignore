@@ -1,5 +1,4 @@
 /target
-Cargo.lock
 *~
 /*.tape
 /.dir-locals.el

@@ -1,0 +1,9 @@
+# See `git help attributes` for documentation about this
+# file in general.
+#
+# The diff=false setting (spelled "-diff") tells git to treat
+# the file as binary by default, i.e. not show diffs.
+#
+# the linguist-generated atribute tells GitHub that this is a generated
+# file, so it is hidden by default.
+Cargo.lock -diff linguist-generated
