@@ -61,16 +61,10 @@ fn update_checksum(sum: Signed18Bit, word: Unsigned36Bit) -> Signed18Bit {
     )
 }
 
-/// Create a block of data ready to be punched to tape such that the
-/// standard reader leader can load it.
+/// Create (and return) a block of data ready to be punched to tape
+/// such that the standard reader leader can load it.
 ///
 /// See ../readerleader.rs for documentation on the format of a block.
-///
-/// For the last block, the jump address is 0o26, which is the
-/// location within the reader leader which arranges to start the
-/// user's program.  For other blocks it is 3 (that is, we jump back
-/// to the start of the reader leader in order to load the next
-/// block).
 fn create_tape_block(
     address: Address,
     code: &[Unsigned36Bit],
@@ -134,9 +128,10 @@ fn create_tape_block(
     Ok(block)
 }
 
-/// Assemble a single instruction to go into register 0o27,
-/// immediately after the reader leader.  This instruction calls the
-/// user's program.
+/// Assemble a pair of instructions to go into registers 0o27 and
+/// 0o28, immediately after the reader leader.  This instruction calls
+/// the user's program (which begins at the address specified by the
+/// PUNCH meta command).
 fn create_begin_block(
     program_start: Option<Address>,
     empty_program: bool,
