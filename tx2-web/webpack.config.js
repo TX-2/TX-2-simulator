@@ -79,6 +79,7 @@ module.exports = {
         crateDirectory: path.resolve(__dirname, "."),
         watchDirectories: [
           "../base/src",
+          "../base/src/charset",
           "../base/src/collections",
           "../base/src/instruction",
           "../base/src/onescomplement",
