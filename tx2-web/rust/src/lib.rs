@@ -9,6 +9,15 @@ mod lw;
 mod samples;
 mod utils;
 
+// wasm_bindgen_test must be in the Cargo.toml [dev-dependencies] for
+// `wasm-pack test` to work, but the dependency is otherwise unused,
+// and so it triggers a compiler warning (as we have set
+// deny(unused_crate_dependencies) above).  This `use
+// wasm_bindgen_test as _` prevents the error which would otherwise
+// result.
+#[cfg(test)]
+use wasm_bindgen_test as _;
+
 use cpu::*;
 
 use float_next_after::NextAfter;

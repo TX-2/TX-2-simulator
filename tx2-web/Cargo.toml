@@ -35,3 +35,6 @@ base = {path = "../base" }
 console_error_panic_hook = { version = "0.1.7", optional = true }
 
 web-sys = { version = "0.3.81", features = [ 'Document', 'Element', 'HtmlElement', 'Node', 'Window', 'HtmlCanvasElement', 'CanvasRenderingContext2d', 'TextMetrics'] } # License: MIT or Apache-2.0
+
+[dev-dependencies]
+wasm-bindgen-test = "0.2"
