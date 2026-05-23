@@ -26,7 +26,7 @@ rust_checks() {
     here="$(pwd)"
     for subdir in "${here}" "${here}/tx2-web"
     do
-        run_rust_checks_in "${subdir}" || break
+        run_rust_checks_in "${subdir}" || return $?
     done
 }
 
