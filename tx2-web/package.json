@@ -4,12 +4,16 @@
   "description": "A web-based simulator for the TX-2 computer.",
   "main": "src/index.tsx",
   "scripts": {
-    "build:wasm": "wasm-pack build --out-dir build",
-    "build:webpack-once": "npx webpack",
-    "build:webpack-with-repeat": "npm run build:webpack-once || npm run build:webpack-once",
-    "build": "npm run build:wasm && npm run build:webpack-with-repeat",
-    "dev": "webpack server",
-    "lint": "eslint --cache ."
+      "//": [
+          "You can pass additional cargo arguments to 'npm build' after a double-dash, like this:",
+          "npm build -- --locked --verbose"
+      ],
+      "build": "sh -c 'npm run build:wasm -- $@ && npm run build:webpack-with-repeat' fnord",
+      "build:wasm": "sh -c 'wasm-pack build --out-dir build $@' fnord",
+      "build:webpack-once": "npx webpack",
+      "build:webpack-with-repeat": "npm run build:webpack-once || npm run build:webpack-once",
+      "dev": "webpack server",
+      "lint": "eslint --cache ."
   },
   "keywords": [],
   "author": "James Youngman <youngman@google.com>",

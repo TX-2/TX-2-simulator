@@ -12,17 +12,17 @@ rust_checks() {
     # We use --no-deps for clippy and when generating documentation
     # because we don't want our CI pipeline to fail just because we
     # depend on a crate with faulty documentation.
-    cargo fmt --all --check &&
-        cargo test --workspace &&
-        cargo clippy --workspace --no-deps -- -D warnings &&
-        cargo doc --workspace --no-deps
+    cargo --locked fmt --all --check &&
+        cargo --locked test --workspace &&
+        cargo --locked clippy --workspace --no-deps -- -D warnings &&
+        cargo --locked doc --workspace --no-deps
 }
 
 npm_checks() {
     (
         cd tx2-web &&
             npm run lint &&
-            npm run build
+            npm run build -- --locked
     )
 }
 
