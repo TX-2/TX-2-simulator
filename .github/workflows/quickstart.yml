@@ -42,14 +42,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo fmt --all --check
-      - run: cargo clippy --locked --workspace -- -D warnings
-      - name: Install npm dependencies
+
+      - name: Rust format (fmt) checks
+        run: cargo fmt --all --check
+
+      - name: Rust lint checks (clippy)
+        run: cargo clippy --locked --workspace -- -D warnings
+
+      - name: Install the npm package manager
         run: cd tx2-web && npm install npm@latest
+
+      - name: Install (npm packages) for web dependencies
         run: cd tx2-web && npm install
-      - name: Build TypeScript code
+
+      - name: Build the TypeScript code
         # We build the code in order to generate type definitions
         # so that eslint can see them.
         run: cd tx2-web && npm run build -- --locked
-      - name: Run eslint
+
+      - name: Run eslint to check the TypeScript code.
         run: cd tx2-web && npm run lint:ts
