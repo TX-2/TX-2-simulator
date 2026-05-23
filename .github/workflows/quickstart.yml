@@ -49,6 +49,26 @@ jobs:
       - name: Rust lint checks (clippy)
         run: cargo clippy --locked --workspace -- -D warnings
 
+  typescript_linting:
+    name: Format and Lint Checks (TypeScript code)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # We install the Rust toolchain because we need
+      # wasm-pack in order to build the TypeScript code.
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+            target: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install wasm-pack
+        # Use workspace target directory for cargo install's build,
+        # so that the build of wasm-pack will be cached by rust-cache action.
+        run: CARGO_TARGET_DIR=`pwd`/target cargo install wasm-pack
+
       - name: Install the npm package manager
         run: cd tx2-web && npm install npm@latest
 
