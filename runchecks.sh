@@ -8,20 +8,35 @@ then
     exit 1
 fi
 
+run_rust_checks_in() {
+    (
+        echo "Running Rust checks in ${1}..."
+        # We use --no-deps for clippy and when generating
+        # documentation because we don't want our CI pipeline to fail
+        # just because we depend on a crate with faulty documentation.
+        cd "$1" &&
+            cargo --locked fmt --all --check &&
+            cargo --locked test --workspace &&
+            cargo --locked clippy --workspace --no-deps -- -D warnings &&
+            cargo --locked doc --workspace --no-deps
+    )
+}
+
 rust_checks() {
-    # We use --no-deps for clippy and when generating documentation
-    # because we don't want our CI pipeline to fail just because we
-    # depend on a crate with faulty documentation.
-    cargo --locked fmt --all --check &&
-        cargo --locked test --workspace &&
-        cargo --locked clippy --workspace --no-deps -- -D warnings &&
-        cargo --locked doc --workspace --no-deps
+    here="$(pwd)"
+    for subdir in "${here}" "${here}/tx2-web"
+    do
+        run_rust_checks_in "${subdir}" || break
+    done
 }
 
 npm_checks() {
     (
+        # Here we only run 'lint:ts' instead of 'lint' because
+        # rust_checks performs the lint checks equivalent to lint:rust
+        # (and with more convenient command line option passing).
         cd tx2-web &&
-            npm run lint &&
+            npm run lint:ts &&
             npm run build -- --locked
     )
 }
