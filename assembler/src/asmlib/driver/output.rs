@@ -64,7 +64,7 @@ fn update_checksum(sum: Signed18Bit, word: Unsigned36Bit) -> Signed18Bit {
 /// Create a block of data ready to be punched to tape such that the
 /// standard reader leader can load it.
 ///
-/// See reaaderleader.rs for documentation on the format of a block.
+/// See ../readerleader.rs for documentation on the format of a block.
 ///
 /// For the last block, the jump address is 0o26, which is the
 /// location within the reader leader which arranges to start the
