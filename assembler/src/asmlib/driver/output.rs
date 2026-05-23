@@ -212,7 +212,7 @@ fn create_begin_block(
 /// - The program is larger than the TX-2's physical
 ///   memory
 /// - A block's origin and length mean that it would
-///   extend past the end of ther TX-2's physical
+///   extend past the end of the TX-2's physical
 ///   memory.
 /// - Failure to write the output file.
 pub fn write_user_program<W: Write>(
