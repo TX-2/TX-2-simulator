@@ -19,9 +19,9 @@ interface ButtonsProps {
   loadSample: (name: string) => void,
 }
 
-const Buttons = ({ changeRunCallback, tx2Controller, isClockRunning, loadTape, loadSample }: ButtonsProps) => {
+const Buttons = (props: ButtonsProps) => {
   const [modalIsOpen, setIsOpen] = React.useState(false);
-  const [isRunning, setIsRunning] = React.useState(isClockRunning);
+  const [isRunning, setIsRunning] = React.useState(props.isClockRunning);
 
 
   const openModal = React.useCallback<React.MouseEventHandler<HTMLButtonElement>>((_event) => {
@@ -33,25 +33,31 @@ const Buttons = ({ changeRunCallback, tx2Controller, isClockRunning, loadTape, l
   }, [setIsOpen]);
 
   React.useEffect(() => {
-    tx2Controller.setRunChangeCallback(setIsRunning);
+    props.tx2Controller.setRunChangeCallback(setIsRunning);
     return function cleanup() {
-      tx2Controller.unsetRunChangeCallback()
+      props.tx2Controller.unsetRunChangeCallback()
     }
   });
 
   const handleChangeRun = (e: React.ChangeEvent<HTMLInputElement>) => {
     const run = !!e.target.checked;
-    changeRunCallback(run);
+    props.changeRunCallback(run);
+  }
+
+  const handleCodabo = () => {
+    props.tx2Controller.codabo.bind(props.tx2Controller)();
   }
 
   return (
     <div>
       <button id="tapeLoadBtn" onClick={openModal}>Mount Paper Tape</button>
-      <button id="codaboTSRBtn" onClick={tx2Controller.codabo.bind(tx2Controller)}>CODABO (TSR)</button>
+      <button
+        id="codaboTSRBtn"
+        onClick={handleCodabo}>CODABO (TSR)</button>
       <Checkbox label="Run" handleChange={handleChangeRun} isChecked={isRunning} />
       <TapeLoadModal
         modalIsOpen={modalIsOpen}
-        closeModal={closeModal} loadTape={loadTape} loadSample={loadSample}/>
+        closeModal={closeModal} loadTape={props.loadTape} loadSample={props.loadSample}/>
     </div>
   );
 };
