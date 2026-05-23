@@ -6,6 +6,7 @@ license = "MIT"
 # This is an open source project but not really intended to be
 # published on crates.io.  So we don't want to do that accidentally.
 publish = false
+repository = "https://github.com/TX-2/TX-2-simulator.git"
 
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

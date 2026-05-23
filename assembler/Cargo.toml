@@ -3,6 +3,7 @@ name = "assembler"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
+repository = "https://github.com/TX-2/TX-2-simulator.git"
 
 [dependencies]
 base = {path = "../base" }

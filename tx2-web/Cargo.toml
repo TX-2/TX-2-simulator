@@ -6,6 +6,7 @@ authors = ["James Youngman <youngman@google.com>"]
 edition = "2024"
 license-file = "../LICENSE-MIT"
 publish = false
+repository = "https://github.com/TX-2/TX-2-simulator.git"
 
 [lib]
 path = "rust/src/lib.rs"
