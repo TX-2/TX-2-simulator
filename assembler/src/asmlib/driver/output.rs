@@ -125,7 +125,7 @@ fn create_tape_block(
     for w in &block {
         checksum = update_checksum(checksum, *w);
     }
-    let next: Unsigned18Bit = { if last { 0o27_u8 } else { 0o3_u8 }.into() };
+    let next: Unsigned18Bit = { if last { 0o27_u8 } else { 0o3_u8 } }.into();
     checksum = update_checksum_by_halfword(checksum, next.reinterpret_as_signed());
     let balance = Signed18Bit::ZERO.wrapping_sub(checksum);
     checksum = update_checksum_by_halfword(checksum, balance);
@@ -250,7 +250,7 @@ pub fn write_user_program<W: Write>(
     )?;
 
     // Write the blocks of the user program.
-    let mut iter = binary.chunks().into_iter().peekable();
+    let mut iter = binary.chunks().iter().peekable();
     while let Some(chunk) = iter.next() {
         if chunk.is_empty() {
             event!(
