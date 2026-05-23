@@ -44,4 +44,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo fmt --all --check
       - run: cargo clippy --locked --workspace -- -D warnings
-      - run: cd tx2-web && npm run lint:ts
+      - name: Install npm dependencies
+        run: cd tx2-web && npm install
+      - name: Run eslint
+        run: cd tx2-web && npm run lint:ts
