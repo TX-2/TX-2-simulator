@@ -38,7 +38,6 @@
     "@wasm-tool/wasm-pack-plugin": "^1.6.0",
     "autoprefixer": "^10.4.0",
     "css-loader": "^6.7.1",
-    "css-module-typescript-loader": "^0.0.4",
     "css-modules-typescript-loader": "^4.0.1",
     "csstype": "^3.1.0",
     "eslint": "^8.57.1",
