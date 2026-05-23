@@ -24,7 +24,7 @@ const Buttons = ({ changeRunCallback, tx2Controller, isClockRunning, loadTape, l
   const [isRunning, setIsRunning] = React.useState(isClockRunning);
 
 
-  const openModal = React.useCallback<React.MouseEventHandler<HTMLButtonElement>>((event) => {
+  const openModal = React.useCallback<React.MouseEventHandler<HTMLButtonElement>>((_event) => {
     setIsOpen(true);
   }, [setIsOpen]);
 
