@@ -260,8 +260,8 @@ impl Display for Token {
                 write!(f, "{}", elevate(*script, numeric_literal.to_string()))
             }
             Token::BitPosition(script, quarter, bit) => {
-                let q_string = elevate(*script, quarter.to_string());
-                let bit_string = elevate(*script, bit.to_string());
+                let q_string = elevate(*script, quarter.clone());
+                let bit_string = elevate(*script, bit.clone());
                 let dotname = match script {
                     Script::Normal => "@dot@",
                     Script::Sub => "@sub_dot@",
