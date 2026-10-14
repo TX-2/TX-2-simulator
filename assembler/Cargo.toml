@@ -19,9 +19,6 @@ chumsky = { version="=1.0.0-alpha.8", features = ["extension"] }
 
 logos = { version = "0.15" }
 
-# tempfile has an "MIT or Apache-2.0" copyright license
-tempfile = "3"
-
 # tracing has an MIT copyright license.
 # https://github.com/tokio-rs/tracing/blob/master/LICENSE
 tracing = "0.1"
@@ -31,6 +28,10 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 backtrace-on-stack-overflow = "0.3.0"
+
+[dev-dependencies]
+# tempfile has an "MIT or Apache-2.0" copyright license
+tempfile = "3"
 
 [lib]
 name = "assembler"
