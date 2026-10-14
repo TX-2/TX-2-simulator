@@ -29,7 +29,7 @@ jobs:
     name: Check, Build and Test (Rust stable)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo check --locked --workspace --all-features
       - run: cargo build --locked --workspace --all-features
@@ -40,7 +40,7 @@ jobs:
     name: Format and Lint Checks (Rust stable)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Rust format (fmt) checks
@@ -53,7 +53,7 @@ jobs:
     name: Format and Lint Checks (TypeScript code)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # We install the Rust toolchain because we need
       # wasm-pack in order to build the TypeScript code.
