@@ -26,7 +26,6 @@ use std::fmt::Write;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::time::Duration;
 
-use base::prelude::*;
 use std::cmp;
 
 use conv::*;

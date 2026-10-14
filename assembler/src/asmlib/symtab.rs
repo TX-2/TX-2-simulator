@@ -398,14 +398,14 @@ impl Display for BadSymbolDefinition {
                 write!(
                     f,
                     "{0} is defined more than once, but this is not allowed for tags (tag defitions are {1} and {2})",
-                    &self.symbol_name, td1, td2
+                    self.symbol_name, td1, td2
                 )
             }
             _ => {
                 write!(
                     f,
                     "it is not allowed to override the symbol definition of {0} as {1} with a new definition {2}",
-                    &self.symbol_name, &self.existing, &self.proposed
+                    self.symbol_name, self.existing, self.proposed
                 )
             }
         }

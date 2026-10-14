@@ -95,7 +95,7 @@ impl Display for ListingWithBody<'_, '_> {
             body: &Source,
             line: &ListingLine,
         ) -> std::fmt::Result {
-            writeln!(f, "{}", &ListingLineWithBody { line, body })
+            writeln!(f, "{}", ListingLineWithBody { line, body })
         }
 
         writeln!(f, "Symbol Table:")?;

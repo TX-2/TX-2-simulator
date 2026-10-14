@@ -651,7 +651,7 @@ where
                             inp.span_since(&before),
                             format!(
                                 "expected macro name {} to be followed a terminator {} but got {}",
-                                &macro_def.name, expected, got
+                                macro_def.name, expected, got
                             ),
                         ));
                     }
@@ -660,7 +660,7 @@ where
                         inp.span_since(&before),
                         format!(
                             "expected macro name {} to be followed a terminator {}",
-                            &macro_def.name, expected
+                            macro_def.name, expected
                         ),
                     ));
                 }
@@ -691,7 +691,7 @@ where
                         span,
                         format!(
                             "in invocation of macro {}, expected macro terminator {} before parameter {} but got {}",
-                            &macro_def.name, &param_def.preceding_terminator, &param_def.name, &got
+                            macro_def.name, param_def.preceding_terminator, param_def.name, got
                         ),
                     ));
                 }
@@ -701,7 +701,7 @@ where
                     span,
                     format!(
                         "in invocation of macro {}, expected macro terminator {} before parameter {}",
-                        &macro_def.name, &param_def.preceding_terminator, &param_def.name
+                        macro_def.name, param_def.preceding_terminator, param_def.name
                     ),
                 ));
             }

@@ -106,7 +106,7 @@ fn disassemble_word(loc: Unsigned18Bit, w: Unsigned36Bit, is_origin: bool) {
     let raw = Instruction::from(w);
     match SymbolicInstruction::try_from(&raw) {
         Ok(symbolic) => {
-            print!("{:<20}", &symbolic.to_string());
+            print!("{:<20}", symbolic.to_string());
         }
         Err(_) => {
             print!("{:<20}", "");

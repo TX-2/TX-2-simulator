@@ -60,7 +60,7 @@ impl BitSelector {
 
 impl Display for BitSelector {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}.{}", &self.quarter, &self.bitpos)
+        write!(f, "{}.{}", self.quarter, self.bitpos)
     }
 }
 

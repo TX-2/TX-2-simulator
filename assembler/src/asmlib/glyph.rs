@@ -105,7 +105,7 @@ impl AsStr for String {
 impl<T: AsStr> Display for Elevated<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self.script {
-            Script::Normal => write!(f, "{}", &self.inner.as_str()),
+            Script::Normal => write!(f, "{}", self.inner.as_str()),
             Script::Super => {
                 for ch in self.inner.as_str().chars() {
                     match superscript_char(ch) {

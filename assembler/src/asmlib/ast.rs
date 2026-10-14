@@ -761,7 +761,7 @@ impl RegisterContaining {
                 for tag in &tpibox.tags {
                     eprintln!(
                         "assigning RC-word at address {address} serves as defnition of tag {}",
-                        &tag.name
+                        tag.name
                     );
                     implicit_symtab.remove(&tag.name);
                     let new_tag_definition = TagDefinition::Resolved {

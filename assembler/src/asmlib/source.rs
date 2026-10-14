@@ -118,6 +118,6 @@ impl<T> WithLocation<T> {
 
 impl<T: Display> Display for WithLocation<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}", &self.location, &self.inner)
+        write!(f, "{}: {}", self.location, self.inner)
     }
 }

@@ -399,7 +399,7 @@ fn assemble_pass2<'s>(
                 if !ctx.index_register_assigner.is_empty() {
                     return Err(AssemblerFailure::InternalError(format!(
                         "While determining the addresses of {0}, we assigned an index register.  Block origins should not depend on index registers",
-                        &block_position.block_identifier
+                        block_position.block_identifier
                     )));
                 }
 
