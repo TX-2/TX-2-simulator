@@ -1,6 +1,7 @@
 //! The TX-2 can "mask" some alarms, and whether or not this is
 //! happening is controlled by the `AlarmUnit`.
 use std::collections::{BTreeMap, BTreeSet};
+use std::str::FromStr;
 
 use serde::Serialize;
 use tracing::{Level, event};
@@ -73,7 +74,7 @@ impl AlarmUnit {
     }
 
     pub fn get_status_of_alarm(&self, name: &str) -> Option<AlarmStatus> {
-        AlarmKind::try_from(name)
+        AlarmKind::from_str(name)
             .map(|k| self.status_for_alarm_kind(&k))
             .ok()
     }

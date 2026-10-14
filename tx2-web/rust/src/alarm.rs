@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::str::FromStr;
 
 use wasm_bindgen::prelude::*;
 
@@ -40,7 +41,7 @@ pub fn drain_alarm_changes(tx2: &mut Tx2) -> Result<JsValue, String> {
 
 #[wasm_bindgen]
 pub fn set_alarm_masked(tx2: &mut Tx2, alarm_name: &str, masked: bool) -> Result<(), String> {
-    match AlarmKind::try_from(alarm_name) {
+    match AlarmKind::from_str(alarm_name) {
         Ok(kind) => tx2
             .set_alarm_masked(kind, masked)
             .map_err(|e| e.to_string()),

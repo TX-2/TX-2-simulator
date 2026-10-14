@@ -1,6 +1,7 @@
 //! TX-2 alarms.
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
+use std::str::FromStr;
 use std::time::Duration;
 
 use serde::Serialize;
@@ -111,9 +112,10 @@ impl Display for UnknownAlarmName {
 
 impl Error for UnknownAlarmName {}
 
-impl TryFrom<&str> for AlarmKind {
-    type Error = UnknownAlarmName;
-    fn try_from(s: &str) -> Result<AlarmKind, UnknownAlarmName> {
+impl FromStr for AlarmKind {
+    type Err = UnknownAlarmName;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "PSAL" => Ok(AlarmKind::PSAL),
             "OCSAL" => Ok(AlarmKind::OCSAL),
@@ -132,7 +134,7 @@ impl TryFrom<&str> for AlarmKind {
 fn test_alarm_kind_round_trip() {
     for orig_kind in AlarmKind::all_alarm_kinds() {
         let name = orig_kind.to_string();
-        match AlarmKind::try_from(name.as_str()) {
+        match AlarmKind::from_str(name.as_str()) {
             Ok(k) => {
                 assert_eq!(k, orig_kind);
             }
@@ -141,7 +143,7 @@ fn test_alarm_kind_round_trip() {
             }
         }
     }
-    assert!(AlarmKind::try_from("this is not an alarm name").is_err());
+    assert!(AlarmKind::from_str("this is not an alarm name").is_err());
 }
 
 /// Indicates what the emulator was doing when a bug was discovered.
