@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
 
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@stable
@@ -41,7 +41,7 @@ jobs:
 
     # Save wasm build so that we can optionally deploy it without rebuilding
     - name: Save wasm dist artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: tx2-web-dist
         path: tx2-web/dist
