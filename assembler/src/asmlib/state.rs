@@ -60,9 +60,8 @@ where
     pub(crate) fn insert(&mut self, k: K, v: V) {
         if self.items.insert(k.clone(), v).is_some() {
             panic!("cannot insert duplicate entry for {k:?}");
-        } else {
-            self.in_insertion_order.push(k);
         }
+        self.in_insertion_order.push(k);
     }
 
     pub(crate) fn get(&self, k: &K) -> Option<&V> {

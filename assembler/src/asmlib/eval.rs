@@ -198,11 +198,10 @@ fn assign_default_value(
                     unreachable!(
                         "default assignments for address-context symexes should be assigned before evaluation starts"
                     )
-                } else {
-                    unreachable!(
-                        "attempted to assign a default value for a symbol {name} which appears not to be used in any context at all"
-                    )
                 }
+                unreachable!(
+                    "attempted to assign a default value for a symbol {name} which appears not to be used in any context at all"
+                )
             }
             (ConfigUse::IncludesConfig, _) => Ok(Unsigned36Bit::ZERO),
             (ConfigUse::NotConfig, IndexUse::IncludesIndex) => {
