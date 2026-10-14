@@ -9,7 +9,8 @@ publish = false
 repository = "https://github.com/TX-2/TX-2-simulator.git"
 
 [package.metadata.wasm-pack.profile.release]
-wasm-opt = false
+#wasm-opt = false
+wasm-opt = ["-O", "--enable-bulk-memory", "--enable-nontrapping-float-to-int"]
 
 [lib]
 path = "rust/src/lib.rs"
