@@ -29,6 +29,8 @@ installed version (of, for example, webpack or binaryen) and use
 
 ### Problems with wasm-opt
 
+#### wasm-opt binary does not exist
+
 Some versions of `wasm-pack` [have a bug in how they locate the
 `wasm-opt` binary](https://github.com/rustwasm/wasm-pack/issues/1062);
 they can't correctly find a pre-installed binary.  On my system this
@@ -42,3 +44,24 @@ Error: /usr/bin/bin/wasm-opt binary does not exist
 One low-tech workaround for this problem is to move any
 locally-installed `wasm-opt` binary out of the way, so that
 `wasm-pack` uses a downloaded verson.
+
+#### wasm-opt fails with parse errors
+
+Symptom:
+
+```
+[INFO]: Optimizing wasm binaries with `wasm-opt`...
+[parse exception: invalid code after misc prefix: 17 (at 0:476150)]
+Fatal: error parsing wasm (try --debug for more info)
+```
+
+This happened for me with wasm-opt version 116 and rustc 1.99.0.   The
+solution I found was to upgrade wasm-opt from 116 to 120.  I did this
+by uninstalling the `cargo` and Node versions of wasm-opt and using
+the system's version from the Debian `binaryen` package.
+
+```
+cargo uninstall wasm-opt
+npm uninstall wasm-opt
+sudo apt install  binaryen
+```
