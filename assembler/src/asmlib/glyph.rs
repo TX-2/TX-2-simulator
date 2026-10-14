@@ -265,7 +265,7 @@ fn test_glyph_names_do_not_contain_underscore() {
         assert!(
             !g.name.contains('_'),
             "glyph name {} should not contain an underscore",
-            &g.name
+            g.name
         );
     }
 }

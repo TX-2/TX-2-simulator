@@ -58,9 +58,10 @@ where
     V: Eq,
 {
     pub(crate) fn insert(&mut self, k: K, v: V) {
-        if self.items.insert(k.clone(), v).is_some() {
-            panic!("cannot insert duplicate entry for {k:?}");
-        }
+        assert!(
+            self.items.insert(k.clone(), v).is_none(),
+            "cannot insert duplicate entry for {k:?}"
+        );
         self.in_insertion_order.push(k);
     }
 

@@ -489,7 +489,7 @@ fn test_reader_leader() {
             i + 3,
             expected_value,
             leader[i],
-            &SymbolicInstruction::try_from(&Instruction::from(leader[i])),
+            SymbolicInstruction::try_from(&Instruction::from(leader[i])),
         );
     }
 }

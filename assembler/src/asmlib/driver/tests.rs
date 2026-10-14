@@ -195,10 +195,7 @@ fn test_metacommand_dec_changes_default_base() {
         return;
     }
 
-    panic!(
-        "expected two items with value 10 octal and 12 octal, got {:?}",
-        &directive,
-    );
+    panic!("expected two items with value 10 octal and 12 octal, got {directive:?}");
 }
 
 #[test]

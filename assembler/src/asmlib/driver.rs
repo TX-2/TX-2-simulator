@@ -195,7 +195,7 @@ pub(crate) fn assemble_nonempty_valid_input(
                                 index_register_assigner,
                             )
                         } else {
-                            panic!("input should be valid: {:?}", &errors);
+                            panic!("input should be valid: {errors:?}");
                         }
                     }
                 }

@@ -68,7 +68,7 @@ where
             panic!(
                 "{} unexpected parse errors for input '{input}': {:?}",
                 errors.len(),
-                &errors.as_slice()
+                errors.as_slice()
             );
         }
     }
@@ -2277,7 +2277,7 @@ mod comma_tests {
             write!(
                 f,
                 "({0:?},UntaggedProgramInstruction{{span:{1:?},holdbit:{2:?},inst:{3:?}}}{4:?})",
-                &self.0.leading_commas, &span, &self.0.holdbit, &u, &self.0.trailing_commas
+                self.0.leading_commas, span, self.0.holdbit, u, self.0.trailing_commas
             )
         }
     }
