@@ -162,8 +162,8 @@ fn test_metacommand_dec_changes_default_base() {
             },
         ] = instructions.as_slice()
     {
-        assert!(tags1.is_empty());
-        assert!(tags2.is_empty());
+        assert_eq!(tags1.as_slice(), []);
+        assert_eq!(tags2.as_slice(), []);
 
         let first_fragment = first_instruction.fragments.first();
         let second_fragment = second_instruction.fragments.first();
@@ -1172,6 +1172,6 @@ fn test_diagnose_duplicate_tags_in_macro_body() {
 
     // Then the assembly should fail with a message about the
     // duplicate tag.
-    assert!(!errors.is_empty());
+    assert_ne!(errors.as_slice(), []);
     assert!(errors.iter().any(|e| e.to_string().contains(expected_msg)));
 }

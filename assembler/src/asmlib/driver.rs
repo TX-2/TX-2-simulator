@@ -881,7 +881,7 @@ fn test_assemble_pass1() {
             OutputOptions { list: false }
         )
     );
-    assert!(errors.is_empty());
+    assert_eq!(errors.as_slice(), []);
 }
 
 /// Assemble input file, producing a tape image.
