@@ -2136,6 +2136,110 @@ fn test_pipe_construct() {
 }
 
 #[test]
+fn test_pipe_construct_without_address_part_is_accepted() {
+    let input = "INX@sub_beta@@sub_pipe@@sub_alpha@";
+    parse_untagged_program_instruction(input);
+}
+
+#[test]
+fn test_pipe_construct_without_address_part_has_zero_address_part() {
+    let input = "INX@sub_beta@@sub_pipe@@sub_alpha@0";
+
+    let actual = parse_successfully_with(input, manuscript_line(), no_state_setup);
+
+    let rc_word_value = RegisterContaining::Unallocated(Box::new(TaggedProgramInstruction {
+        span: span(23..35),
+        tags: Vec::new(),
+        instruction: UntaggedProgramInstruction {
+            fragments: OneOrMore::with_tail(
+                CommaDelimitedFragment {
+                    span: span(34..35),
+                    leading_commas: None,
+                    holdbit: HoldBit::Unspecified,
+                    fragment: InstructionFragment::Arithmetic(ArithmeticExpression {
+                        first: SignedAtom {
+                            negated: false,
+                            span: span(34..35),
+                            magnitude: Atom::from(LiteralValue::from((
+                                span(34..35),
+                                Script::Normal,
+                                Unsigned36Bit::ZERO,
+                            ))),
+                        },
+                        tail: Vec::new(),
+                    }),
+                    trailing_commas: None,
+                },
+                vec![CommaDelimitedFragment {
+                    span: span(23..34),
+                    leading_commas: None,
+                    holdbit: HoldBit::Unspecified,
+                    fragment: InstructionFragment::Arithmetic(ArithmeticExpression {
+                        first: SignedAtom {
+                            negated: false,
+                            span: span(23..34),
+                            magnitude: Atom::SymbolOrLiteral(SymbolOrLiteral::Symbol(
+                                Script::Sub,
+                                SymbolName::from("α"),
+                                span(23..34),
+                            )),
+                        },
+                        tail: Vec::new(),
+                    }),
+                    trailing_commas: None,
+                }],
+            ),
+        },
+    }));
+
+    let expected = ManuscriptLine::StatementOnly(TaggedProgramInstruction {
+        span: span(0..35),
+        tags: Vec::new(),
+        instruction: UntaggedProgramInstruction {
+            fragments: OneOrMore::with_tail(
+                CommaDelimitedFragment {
+                    span: span(0..3),
+                    leading_commas: None,
+                    holdbit: HoldBit::Unspecified,
+                    fragment: InstructionFragment::Arithmetic(ArithmeticExpression {
+                        first: SignedAtom {
+                            negated: false,
+                            span: span(0..3),
+                            magnitude: Atom::from(LiteralValue::from((
+                                span(0..3),
+                                Script::Normal,
+                                u36!(0o21200000000),
+                            ))),
+                        },
+                        tail: Vec::new(),
+                    }),
+                    trailing_commas: None,
+                },
+                vec![CommaDelimitedFragment {
+                    span: span(3..35),
+                    leading_commas: None,
+                    holdbit: HoldBit::Unspecified,
+                    fragment: InstructionFragment::PipeConstruct {
+                        index: SpannedSymbolOrLiteral {
+                            item: SymbolOrLiteral::Symbol(
+                                Script::Sub,
+                                SymbolName::from("β"),
+                                span(3..13),
+                            ),
+                            span: span(3..13),
+                        },
+                        rc_word_span: span(23..35),
+                        rc_word_value,
+                    },
+                    trailing_commas: None,
+                }],
+            ),
+        },
+    });
+    assert_eq!(actual, expected);
+}
+
+#[test]
 fn test_comments_without_newline_manuscript() {
     assert_eq!(
         parse_successfully_with("** NO NEWLINE AFTER COMMENT", source_file(), no_state_setup),

@@ -387,19 +387,30 @@ where
 /// "ADXₚ|ₜQ" should be equivalent to "ADXₚ{Qₜ}*".  So during
 /// evaluation we will need to generate an RC-word containing Qₜ.
 fn make_pipe_construct(
-    (p, (t, (q, q_span))): (
+    (p, (t, maybe_spanned_q)): (
         SpannedSymbolOrLiteral,
-        (SpannedSymbolOrLiteral, (InstructionFragment, Span)),
+        (SpannedSymbolOrLiteral, Option<(InstructionFragment, Span)>),
     ),
 ) -> InstructionFragment {
     // The variable names here are taken from the example in the
     // documentation comment.
-    let tqspan = span(t.span.start..q_span.end);
+    let tqspan = span(
+        t.span.start..if let Some((_, q_span)) = maybe_spanned_q {
+            q_span.end
+        } else {
+            t.span.end
+        },
+    );
 
-    let rc_word_value: RegisterContaining = RegisterContaining::from(TaggedProgramInstruction {
-        span: tqspan,
-        tags: Vec::new(),
-        instruction: UntaggedProgramInstruction::from(OneOrMore::with_tail(
+    let t: CommaDelimitedFragment = CommaDelimitedFragment {
+        span: t.span,
+        leading_commas: None,
+        holdbit: HoldBit::Unspecified,
+        fragment: InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::from(t.item))),
+        trailing_commas: None,
+    };
+    let qt: UntaggedProgramInstruction = if let Some((q, q_span)) = maybe_spanned_q {
+        UntaggedProgramInstruction::from(OneOrMore::with_tail(
             CommaDelimitedFragment {
                 span: q_span,
                 holdbit: HoldBit::Unspecified,
@@ -407,16 +418,16 @@ fn make_pipe_construct(
                 fragment: q,
                 trailing_commas: None,
             },
-            vec![CommaDelimitedFragment {
-                span: t.span,
-                leading_commas: None,
-                holdbit: HoldBit::Unspecified,
-                fragment: InstructionFragment::Arithmetic(ArithmeticExpression::from(Atom::from(
-                    t.item,
-                ))),
-                trailing_commas: None,
-            }],
-        )),
+            vec![t],
+        ))
+    } else {
+        UntaggedProgramInstruction::from(OneOrMore::new(t))
+    };
+
+    let rc_word_value: RegisterContaining = RegisterContaining::from(TaggedProgramInstruction {
+        span: tqspan,
+        tags: Vec::new(),
+        instruction: qt,
     });
     InstructionFragment::PipeConstruct {
         index: p,
@@ -1094,28 +1105,31 @@ where
         //
         // "ADXₚ|ₜQ" should be equvialent to ADXₚ{Qₜ}*.  So we need to
         // generate an RC-word containing Qₜ.
-
-        let spanned_p_fragment = symbol_or_literal(Script::Sub) // this is p
+        //
+        // The Sketchpad code (file_name=102726903-05-01-acc.pdf, page
+        // 16) contains a line which uses the pipe construct without a
+        // value for Q: "INX ₚ|ₜ" (p is @sub_beta@ and t is
+        // @sub_alpha@).  For this case we assume the value zero.
+        let spanned_rc_word_fragment = symbol_or_literal(Script::Sub) // this is p
             .map_with(|p, extra| SpannedSymbolOrLiteral {
                 item: p,
                 span: extra.span(),
             })
             .boxed();
 
-        let spanned_tq_fragment = symbol_or_literal(Script::Sub) // this is t
+        let q = program_instruction_fragment
+            .clone()
+            .map_with(|q, extra| (q, extra.span()));
+        let tq = symbol_or_literal(Script::Sub) // this is t
             .map_with(|t, extra| SpannedSymbolOrLiteral {
                 item: t,
                 span: extra.span(),
             })
-            .then(
-                program_instruction_fragment // this is Q
-                    .clone()
-                    .map_with(|q, extra| (q, extra.span())),
-            )
+            .then(q.or_not())
             .boxed();
-        let pipe_construct = spanned_p_fragment
+        let pipe_construct = spanned_rc_word_fragment
             .then_ignore(just(Tok::Pipe(Script::Sub)))
-            .then(spanned_tq_fragment)
+            .then(tq)
             .map(make_pipe_construct)
             .labelled("pipe construct");
 
