@@ -1,0 +1,3 @@
+[submodule "sources/Sketchpad"]
+	path = sources/Sketchpad
+	url = git@github.com:TX-2/Sketchpad.git
