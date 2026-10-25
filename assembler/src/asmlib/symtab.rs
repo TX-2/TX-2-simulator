@@ -140,6 +140,10 @@ impl ExplicitSymbolTable {
         self.definitions.contains_key(name)
     }
 
+    pub(crate) fn is_empty(&self) -> bool {
+        self.definitions.is_empty()
+    }
+
     pub(crate) fn define(
         &mut self,
         name: SymbolName,

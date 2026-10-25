@@ -627,8 +627,8 @@ impl Spanned for RegistersContaining {
 /// See section 6-2.6 ("RC WORDS - RC BLOCK").
 ///
 /// Section 6-4.7 ("Use of Macro Instructions") states that macro
-/// expansion may occur inside an RC-word (and expand to more than one
-/// word in the output binary) but this is not yet supported.
+/// expansion may occur inside an RC-word and can expand to more than one
+/// word in the output binary.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum RegisterContaining {
     Unallocated(Box<TaggedProgramInstruction>),

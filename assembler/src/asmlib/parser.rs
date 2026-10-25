@@ -999,25 +999,12 @@ where
         "optional tag definition followed by a (possibly comma-delimited) program instructions",
     );
 
-    // Parse {E} where E is some expression.  Since tags are
-    // allowed inside RC-blocks, we should parse E as a
-    // TaggedProgramInstruction.  But if we try to do that without
-    // using recursive() we will blow the stack, unfortunately.
-    let register_containing = tagged_program_instruction
-        .clone()
-        .delimited_by(
-            just(Tok::LeftBrace(Script::Normal)),
-            just(Tok::RightBrace(Script::Normal)),
-        )
-        .map_with(|tagged_instruction, extra| {
-            Atom::RcRef(
-                extra.span(),
-                RegistersContaining::from_words(OneOrMore::new(RegisterContaining::from(
-                    tagged_instruction,
-                ))),
-            )
-        })
-        .labelled("RC-word");
+    // The contents of an RC-word can contain another RC-word.  A macro
+    // invocation inside an RC-word also needs the arithmetic-expression
+    // parser for its arguments.  Declare this parser before the expression
+    // parser and define it after both dependent parsers exist.
+    let mut register_containing = Recursive::declare();
+    let register_containing_for_expression = register_containing.clone();
 
     let arith_expr = |allow_spaces: bool, script_required: Script| {
         {
@@ -1056,7 +1043,7 @@ where
                             ))
                         },
                     ),
-                    register_containing,
+                    register_containing_for_expression.clone(),
                     parenthesised_arithmetic_expression,
                 ))
                 .boxed();
@@ -1211,6 +1198,68 @@ where
             }
         })
     });
+
+    let nested_macro_arg = choice((
+        arith_expr.clone()(ALLOW_SPACES, Script::Normal)
+            .map_with(|expr, extra| (extra.span(), Script::Normal, expr)),
+        arith_expr.clone()(ALLOW_SPACES, Script::Sub)
+            .map_with(|expr, extra| (extra.span(), Script::Sub, expr)),
+        arith_expr.clone()(ALLOW_SPACES, Script::Super)
+            .map_with(|expr, extra| (extra.span(), Script::Super, expr)),
+    ))
+    .or_not()
+    .map_with(|got, extra| match got {
+        Some((span, script, expr)) => (span, Some((script, expr))),
+        None => (extra.span(), None),
+    })
+    .boxed();
+
+    let nested_macro_invocation = Ext(MacroInvocationParser {
+        expr_parser: nested_macro_arg,
+        defined_macro_name_parser: defined_macro_name().boxed(),
+    });
+
+    let expanded_macro = nested_macro_invocation.try_map_with(|invocation, extra| {
+        let expansion = invocation.substitute_macro_parameters(extra.state().macros());
+        if expansion
+            .local_symbols
+            .as_ref()
+            .is_some_and(|symbols| !symbols.is_empty())
+            || expansion
+                .instructions
+                .iter()
+                .any(|instruction| !instruction.tags.is_empty())
+        {
+            return Err(Rich::custom(
+                extra.span(),
+                "macro expansion inside an RC-word cannot yet contain local symbols",
+            ));
+        }
+        OneOrMore::try_from_iter(
+            expansion
+                .instructions
+                .into_iter()
+                .map(RegisterContaining::from),
+        )
+        .map_err(|_| Rich::custom(extra.span(), "macro expansion inside an RC-word is empty"))
+    });
+
+    // Parse {E} where E is either one instruction or a macro expansion.
+    register_containing.define(
+        choice((
+            expanded_macro,
+            tagged_program_instruction
+                .clone()
+                .map(|instruction| OneOrMore::new(RegisterContaining::from(instruction))),
+        ))
+        .delimited_by(
+            just(Tok::LeftBrace(Script::Normal)),
+            just(Tok::RightBrace(Script::Normal)),
+        )
+        .map_with(|words, extra| Atom::RcRef(extra.span(), RegistersContaining::from_words(words)))
+        .labelled("RC-word")
+        .boxed(),
+    );
 
     // Assginments are called "equalities" in the TX-2 Users Handbook.
     // See section 6-2.2, "SYMEX DEFINITON - TAGS - EQUALITIES -
