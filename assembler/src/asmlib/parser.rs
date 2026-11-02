@@ -39,7 +39,7 @@ use super::lexer::{self};
 use super::manuscript::{
     MacroDefinition, MacroDummyParameters, MacroInvocation, MacroParameter, MacroParameterBindings,
     MacroParameterValue, ManuscriptLine, ManuscriptMetaCommand, ParsedMacroBody,
-    ParsedMacroBodyLine, SourceFile, manuscript_lines_to_source_file,
+    ParsedMacroBodyLine, SourceFile, UnparsedMacroBody, manuscript_lines_to_source_file,
 };
 use super::span::{Span, Spanned, span};
 use super::state::{NumeralMode, State};
@@ -522,14 +522,14 @@ where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
     fn build_macro_definition<'a, 'b>(
-        ((name, args), body): ((SymbolName, MacroDummyParameters), ParsedMacroBody),
+        ((name, params), body): ((SymbolName, MacroDummyParameters), ParsedMacroBody),
         span: Span,
     ) -> MacroDefinition<ParsedMacroBody> {
         MacroDefinition {
             name,
-            params: args,
+            params,
             body,
-            span: span,
+            span,
         }
     }
 
@@ -544,7 +544,9 @@ where
         // We don't parse end-of-line here because all metacommands are supposed
         // to be followed by end-of-line.
         .map_with(
-            |parts: ((SymbolName, MacroDummyParameters), ParsedMacroBody), extra| {
+            |parts: ((SymbolName, MacroDummyParameters), ParsedMacroBody),
+             extra: &mut MapExtra<'a, '_, I, ExtraWithoutContext<'a>>|
+             -> MacroDefinition<ParsedMacroBody> {
                 let span = extra.span();
                 let definition = build_macro_definition(parts, span);
                 extra.state().define_macro(definition.clone());
