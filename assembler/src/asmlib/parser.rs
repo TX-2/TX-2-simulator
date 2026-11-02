@@ -37,9 +37,9 @@ use super::ast::{
 };
 use super::lexer::{self};
 use super::manuscript::{
-    MacroBodyLine, MacroDefinition, MacroDummyParameters, MacroInvocation, MacroParameter,
-    MacroParameterBindings, MacroParameterValue, ManuscriptLine, ManuscriptMetaCommand, SourceFile,
-    manuscript_lines_to_source_file,
+    MacroDefinition, MacroDummyParameters, MacroInvocation, MacroParameter, MacroParameterBindings,
+    MacroParameterValue, ManuscriptLine, ManuscriptMetaCommand, ParsedMacroBody,
+    ParsedMacroBodyLine, SourceFile, manuscript_lines_to_source_file,
 };
 use super::span::{Span, Spanned, span};
 use super::state::{NumeralMode, State};
@@ -517,50 +517,71 @@ where
 /// Macros are described in section 6-4 of the TX-2 User Handbook.
 fn macro_definition<'a, 'b, I>(
     grammar: &Grammar<'a, 'b, I>,
-) -> impl Parser<'a, I, MacroDefinition, ExtraWithoutContext<'a>> + use<'a, 'b, I>
+) -> impl Parser<'a, I, MacroDefinition<ParsedMacroBody>, ExtraWithoutContext<'a>> + use<'a, 'b, I>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
+    fn build_macro_definition<'a, 'b>(
+        ((name, args), body): ((SymbolName, MacroDummyParameters), ParsedMacroBody),
+        span: Span,
+    ) -> MacroDefinition<ParsedMacroBody> {
+        MacroDefinition {
+            name,
+            params: args,
+            body,
+            span: span,
+        }
+    }
+
     named_metacommand(Metacommand::DefineMacro)
         .ignore_then(
             named_symbol(SymexSyllableRule::Multiple, Script::Normal).labelled("macro name"), // the macro's name (# is not allowed)
         )
         .then(macro_definition_dummy_parameters())
         .then_ignore(end_of_line())
-        .then(
-            (macro_body_line(grammar).then_ignore(end_of_line()))
-                .repeated()
-                .collect()
-                .labelled("macro body"),
-        )
+        .then(parsed_macro_body(grammar))
         .then_ignore(named_metacommand(Metacommand::EndMacroDefinition))
         // We don't parse end-of-line here because all metacommands are supposed
         // to be followed by end-of-line.
-        .map_with(|((name, args), body), extra| {
-            let definition = MacroDefinition {
-                name,
-                params: args,
-                body,
-                span: extra.span(),
-            };
-            extra.state().define_macro(definition.clone());
-            definition
-        })
+        .map_with(
+            |parts: ((SymbolName, MacroDummyParameters), ParsedMacroBody), extra| {
+                let span = extra.span();
+                let definition = build_macro_definition(parts, span);
+                extra.state().define_macro(definition.clone());
+                definition
+            },
+        )
+}
+
+fn parsed_macro_body<'a, 'b, I>(
+    grammar: &Grammar<'a, 'b, I>,
+) -> impl Parser<'a, I, ParsedMacroBody, ExtraWithoutContext<'a>> + use<'a, 'b, I>
+where
+    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
+{
+    let parsed_macro_body = (macro_body_line(grammar).then_ignore(end_of_line()))
+        .repeated()
+        .collect::<Vec<ParsedMacroBodyLine>>()
+        .map(ParsedMacroBody::from);
+    parsed_macro_body.labelled("macro body")
 }
 
 fn macro_body_line<'a, 'b, I>(
     grammar: &Grammar<'a, 'b, I>,
-) -> impl Parser<'a, I, MacroBodyLine, ExtraWithoutContext<'a>> + use<'a, 'b, I>
+) -> impl Parser<'a, I, ParsedMacroBodyLine, ExtraWithoutContext<'a>> + use<'a, 'b, I>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
     choice((
-        macro_invocation().map(MacroBodyLine::Expansion),
-        grammar.assignment.clone().map(MacroBodyLine::Equality),
+        macro_invocation().map(ParsedMacroBodyLine::Expansion),
+        grammar
+            .assignment
+            .clone()
+            .map(ParsedMacroBodyLine::Equality),
         grammar
             .tagged_program_instruction
             .clone()
-            .map(MacroBodyLine::Instruction),
+            .map(ParsedMacroBodyLine::Instruction),
     ))
 }
 
@@ -580,7 +601,8 @@ where
     ))
 }
 
-fn defined_macro_name<'src, I>() -> impl Parser<'src, I, MacroDefinition, ExtraWithoutContext<'src>>
+fn defined_macro_name<'src, I>()
+-> impl Parser<'src, I, MacroDefinition<ParsedMacroBody>, ExtraWithoutContext<'src>>
 where
     I: Input<'src, Token = Tok, Span = Span> + ValueInput<'src>,
 {
@@ -588,7 +610,7 @@ where
         name: &SymbolName,
         state: &State,
         span: Span,
-    ) -> Result<MacroDefinition, chumsky::error::Rich<'a, lexer::Token>> {
+    ) -> Result<MacroDefinition<ParsedMacroBody>, chumsky::error::Rich<'a, lexer::Token>> {
         match state.get_macro_definition(name) {
             None => Err(Rich::custom(span, format!("unknown macro {name}"))),
             Some(macro_def) => Ok(macro_def.clone()),
@@ -610,7 +632,8 @@ where
     I: Input<'src, Token = Tok, Span = Span> + ValueInput<'src>,
 {
     expr_parser: Boxed<'src, 'src, I, (Span, ParsedMacroArg), ExtraWithoutContext<'src>>,
-    defined_macro_name_parser: Boxed<'src, 'src, I, MacroDefinition, ExtraWithoutContext<'src>>,
+    defined_macro_name_parser:
+        Boxed<'src, 'src, I, MacroDefinition<ParsedMacroBody>, ExtraWithoutContext<'src>>,
 }
 
 impl<'src, I> Default for MacroInvocationParser<'src, I>
@@ -651,7 +674,8 @@ where
         <Full<Rich<'src, Tok>, State<'src>, ()> as ParserExtra<'src, I>>::Error,
     > {
         let before = inp.cursor();
-        let macro_def: MacroDefinition = inp.parse(&self.defined_macro_name_parser)?;
+        let macro_def: MacroDefinition<ParsedMacroBody> =
+            inp.parse(&self.defined_macro_name_parser)?;
         let param_defs: Vec<MacroParameter> = match macro_def.params {
             MacroDummyParameters::Zero(ref expected) => {
                 if let Some(got) = inp.next_maybe().as_deref() {
@@ -1474,8 +1498,8 @@ where
     }
 
     fn check_consistent<'a>(
-        macro_def_in_source_file: Option<&MacroDefinition>,
-        macro_def_in_state: Option<&MacroDefinition>,
+        macro_def_in_source_file: Option<&MacroDefinition<ParsedMacroBody>>,
+        macro_def_in_state: Option<&MacroDefinition<ParsedMacroBody>>,
     ) -> Result<(), chumsky::error::Rich<'a, lexer::Token>> {
         match (macro_def_in_source_file, macro_def_in_state) {
             (None, None) => {
@@ -1511,9 +1535,10 @@ where
         .try_map_with(|lines: Vec<Option<(Span, ManuscriptLine)>>, extra| {
             // Filter out empty lines.
             let lines: Vec<(Span, ManuscriptLine)> = lines.into_iter().flatten().collect();
-            let source_file: SourceFile = manuscript_lines_to_source_file(lines)?;
-            let state_macros: BTreeMap<SymbolName, MacroDefinition> =
+            let state_macros: BTreeMap<SymbolName, MacroDefinition<ParsedMacroBody>> =
                 extra.state().macros().clone();
+
+            let source_file: SourceFile = manuscript_lines_to_source_file(lines)?;
             let all_names: BTreeSet<&SymbolName> = source_file
                 .macros
                 .keys()

@@ -2851,7 +2851,7 @@ mod macro_tests {
         let expected = MacroDefinition {
             name: SymbolName::from("MYMACRO".to_string()),
             params: MacroDummyParameters::Zero(Token::IdenticalTo(Script::Normal)),
-            body: Vec::new(),
+            body: ParsedMacroBody::default(),
             span: span(0..30),
         };
         assert_eq!(got, expected);
@@ -2877,7 +2877,7 @@ mod macro_tests {
                 span: span(14..16),
                 preceding_terminator: Token::Pipe(Script::Normal),
             }]),
-            body: vec![MacroBodyLine::Instruction(
+            body: vec![ParsedMacroBodyLine::Instruction(
                 TaggedProgramInstruction::single(
                     notags(),
                     HoldBit::Unspecified,
@@ -2891,7 +2891,8 @@ mod macro_tests {
                         )),
                     )),
                 ),
-            )],
+            )]
+            .into(),
             span: span(0..66),
         };
         assert_eq!(got, expected);
@@ -2917,7 +2918,7 @@ mod macro_tests {
                         span: span(14..16),
                         preceding_terminator: Token::Pipe(Script::Normal),
                     }]),
-                    body: vec![MacroBodyLine::Instruction(
+                    body: vec![ParsedMacroBodyLine::Instruction(
                         TaggedProgramInstruction::single(
                             notags(),
                             HoldBit::Unspecified,
@@ -2927,7 +2928,8 @@ mod macro_tests {
                                 Atom::from((span(17..18), Script::Normal, SymbolName::from("Q"))),
                             )),
                         ),
-                    )],
+                    )]
+                    .into(),
                     span: span(0..28),
                 },
             )]
@@ -2946,7 +2948,7 @@ mod macro_tests {
                 span: span(10..12),
                 preceding_terminator: Token::Tilde(Script::Normal),
             }]),
-            body: vec![MacroBodyLine::Instruction(TaggedProgramInstruction {
+            body: vec![ParsedMacroBodyLine::Instruction(TaggedProgramInstruction {
                 span: span(0..24),
                 tags: notags(),
                 instruction: UntaggedProgramInstruction::from(OneOrMore::new(
@@ -2965,7 +2967,8 @@ mod macro_tests {
                         trailing_commas: None,
                     },
                 )),
-            })],
+            })]
+            .into(),
             span: span(20..40),
         };
         let set_up_macro_definition = |state: &mut State| {
@@ -3075,13 +3078,14 @@ mod macro_tests {
                     name: SymbolName::from("MYMACRO"),
                     params: MacroDummyParameters::Zero(Token::IdenticalTo(Script::Normal)),
                     body: vec![
-                        MacroBodyLine::Equality(assignment_of_literal(
+                        ParsedMacroBodyLine::Equality(assignment_of_literal(
                             "X",
                             span(26..31),
                             LiteralValue::from((span(30..31), Script::Normal, u36!(1))),
                         )),
-                        MacroBodyLine::Instruction(the_instruction.clone()),
-                    ],
+                        ParsedMacroBodyLine::Instruction(the_instruction.clone()),
+                    ]
+                    .into(),
                     span: span(0..48),
                 },
             )]

@@ -82,7 +82,7 @@ pub(crate) struct SourceFile {
     /// module documentation).
     pub(crate) blocks: Vec<ManuscriptBlock>,
     pub(crate) global_equalities: Vec<Equality>,
-    pub(crate) macros: BTreeMap<SymbolName, MacroDefinition>,
+    pub(crate) macros: BTreeMap<SymbolName, MacroDefinition<ParsedMacroBody>>,
 }
 
 impl SourceFile {
@@ -462,7 +462,7 @@ pub(crate) enum ManuscriptMetaCommand {
 
     /// A ☛☛PUNCH meta command.
     Punch(PunchCommand),
-    Macro(MacroDefinition),
+    Macro(MacroDefinition<ParsedMacroBody>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -496,35 +496,59 @@ pub(crate) enum MacroDummyParameters {
     Zero(Token),
     OneOrMore(Vec<MacroParameter>),
 }
+
+/// The body of a successfully-parsed macro definition
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(crate) struct ParsedMacroBody {
+    lines: Vec<ParsedMacroBodyLine>,
+}
+
+impl From<Vec<ParsedMacroBodyLine>> for ParsedMacroBody {
+    fn from(lines: Vec<ParsedMacroBodyLine>) -> Self {
+        Self { lines }
+    }
+}
+
+impl ParsedMacroBody {
+    fn instruction_count(&self) -> usize {
+        self.lines.len()
+    }
+
+    fn parsed_body_lines(&self) -> &[ParsedMacroBodyLine] {
+        self.lines.as_slice()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct MacroDefinition {
+pub(crate) struct MacroDefinition<B> {
     pub(crate) name: SymbolName, // composite character macros are not yet supported
     pub(crate) params: MacroDummyParameters,
-    pub(crate) body: Vec<MacroBodyLine>,
+    pub(crate) body: B,
     pub(crate) span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum MacroBodyLine {
+pub(crate) enum ParsedMacroBodyLine {
     Expansion(MacroInvocation),
     Instruction(TaggedProgramInstruction),
     Equality(Equality),
 }
 
-impl MacroDefinition {
+impl MacroDefinition<ParsedMacroBody> {
     fn substitute_macro_parameters(
         &self,
         bindings: &MacroParameterBindings,
-        macros: &BTreeMap<SymbolName, MacroDefinition>,
+        macros: &BTreeMap<SymbolName, MacroDefinition<ParsedMacroBody>>,
     ) -> InstructionSequence {
         let mut local_symbols = ExplicitSymbolTable::default();
-        let mut instructions: Vec<TaggedProgramInstruction> = Vec::with_capacity(self.body.len());
-        for body_line in &self.body {
+        let mut instructions: Vec<TaggedProgramInstruction> =
+            Vec::with_capacity(self.body.instruction_count());
+        for body_line in self.body.parsed_body_lines() {
             match body_line {
-                MacroBodyLine::Expansion(_macro_invocation) => {
+                ParsedMacroBodyLine::Expansion(_macro_invocation) => {
                     unimplemented!("recursive macros are not yet supported")
                 }
-                MacroBodyLine::Instruction(tagged_program_instruction) => {
+                ParsedMacroBodyLine::Instruction(tagged_program_instruction) => {
                     if let Some(tagged_program_instruction) = tagged_program_instruction
                         .substitute_macro_parameters(
                             bindings,
@@ -547,7 +571,7 @@ impl MacroDefinition {
                 }
                 // Equalities and tags which occur inside the body of
                 // a macro are not visible outside it.
-                MacroBodyLine::Equality(Equality {
+                ParsedMacroBodyLine::Equality(Equality {
                     span: _,
                     name,
                     value,
@@ -609,14 +633,14 @@ impl MacroParameterBindings {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct MacroInvocation {
-    pub(crate) macro_def: MacroDefinition,
+    pub(crate) macro_def: MacroDefinition<ParsedMacroBody>,
     pub(crate) param_values: MacroParameterBindings,
 }
 
 impl MacroInvocation {
     pub(super) fn substitute_macro_parameters(
         &self,
-        macros: &BTreeMap<SymbolName, MacroDefinition>,
+        macros: &BTreeMap<SymbolName, MacroDefinition<ParsedMacroBody>>,
     ) -> InstructionSequence {
         self.macro_def
             .substitute_macro_parameters(&self.param_values, macros)
@@ -625,7 +649,7 @@ impl MacroInvocation {
 
 fn expand_macro(
     invocation: &MacroInvocation,
-    macros: &BTreeMap<SymbolName, MacroDefinition>,
+    macros: &BTreeMap<SymbolName, MacroDefinition<ParsedMacroBody>>,
 ) -> InstructionSequence {
     invocation.substitute_macro_parameters(macros)
 }
@@ -662,7 +686,7 @@ pub(crate) fn manuscript_lines_to_source_file<'a>(
 
     let mut blocks: Vec<ManuscriptBlock> = Vec::new();
     let mut equalities: Vec<Equality> = Vec::new();
-    let mut macros: BTreeMap<SymbolName, MacroDefinition> = Default::default();
+    let mut macros: BTreeMap<SymbolName, MacroDefinition<ParsedMacroBody>> = Default::default();
     let mut maybe_punch: Option<PunchCommand> = None;
 
     let mut pending_tags: Vec<Tag> = Vec::new();

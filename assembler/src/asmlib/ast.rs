@@ -32,7 +32,9 @@ use super::eval::{
 };
 use super::glyph;
 use super::listing::{Listing, ListingLine};
-use super::manuscript::{MacroDefinition, MacroParameterBindings, MacroParameterValue};
+use super::manuscript::{
+    MacroDefinition, MacroParameterBindings, MacroParameterValue, ParsedMacroBody,
+};
 use super::memorymap::MemoryMap;
 use super::memorymap::RcAllocator;
 use super::memorymap::RcWordAllocationFailure;
@@ -238,7 +240,7 @@ impl SignedAtom {
         &self,
         param_values: &MacroParameterBindings,
         on_missing: OnUnboundMacroParameter,
-        macros: &BTreeMap<SymbolName, MacroDefinition>,
+        macros: &BTreeMap<SymbolName, MacroDefinition<ParsedMacroBody>>,
     ) -> Option<SignedAtom> {
         self.magnitude
             .substitute_macro_parameters(param_values, on_missing, macros)
@@ -410,7 +412,7 @@ impl ArithmeticExpression {
         &self,
         param_values: &MacroParameterBindings,
         on_missing: OnUnboundMacroParameter,
-        macros: &BTreeMap<SymbolName, MacroDefinition>,
+        macros: &BTreeMap<SymbolName, MacroDefinition<ParsedMacroBody>>,
     ) -> Option<ArithmeticExpression> {
         match self
             .first
@@ -495,7 +497,7 @@ impl ConfigValue {
         &self,
         param_values: &MacroParameterBindings,
         on_missing: OnUnboundMacroParameter,
-        macros: &BTreeMap<SymbolName, MacroDefinition>,
+        macros: &BTreeMap<SymbolName, MacroDefinition<ParsedMacroBody>>,
     ) -> Option<ConfigValue> {
         self.expr
             .substitute_macro_parameters(param_values, on_missing, macros)
@@ -553,7 +555,7 @@ impl RegistersContaining {
         &self,
         param_values: &MacroParameterBindings,
         on_missing: OnUnboundMacroParameter,
-        macros: &BTreeMap<SymbolName, MacroDefinition>,
+        macros: &BTreeMap<SymbolName, MacroDefinition<ParsedMacroBody>>,
     ) -> Option<RegistersContaining> {
         // TODO: this implementation probably requires more thought.
         // At the moment, if the contents of {...} yield any single
@@ -719,7 +721,7 @@ impl RegisterContaining {
         &self,
         param_values: &MacroParameterBindings,
         on_missing: OnUnboundMacroParameter,
-        macros: &BTreeMap<SymbolName, MacroDefinition>,
+        macros: &BTreeMap<SymbolName, MacroDefinition<ParsedMacroBody>>,
     ) -> Option<RegisterContaining> {
         match self {
             RegisterContaining::Unallocated(tagged_program_instruction) => {
@@ -852,7 +854,7 @@ impl Atom {
         &self,
         param_values: &MacroParameterBindings,
         on_missing: OnUnboundMacroParameter,
-        macros: &BTreeMap<SymbolName, MacroDefinition>,
+        macros: &BTreeMap<SymbolName, MacroDefinition<ParsedMacroBody>>,
     ) -> Option<Atom> {
         match self {
             Atom::SymbolOrLiteral(symbol_or_literal) => {
@@ -1208,7 +1210,7 @@ impl InstructionFragment {
         &self,
         param_values: &MacroParameterBindings,
         on_missing: OnUnboundMacroParameter,
-        macros: &BTreeMap<SymbolName, MacroDefinition>,
+        macros: &BTreeMap<SymbolName, MacroDefinition<ParsedMacroBody>>,
     ) -> Option<InstructionFragment> {
         match self {
             InstructionFragment::Arithmetic(arithmetic_expression) => arithmetic_expression
@@ -1502,7 +1504,7 @@ impl CommaDelimitedFragment {
         &self,
         param_values: &MacroParameterBindings,
         on_missing: OnUnboundMacroParameter,
-        macros: &BTreeMap<SymbolName, MacroDefinition>,
+        macros: &BTreeMap<SymbolName, MacroDefinition<ParsedMacroBody>>,
     ) -> Option<CommaDelimitedFragment> {
         self.fragment
             .substitute_macro_parameters(param_values, on_missing, macros)
@@ -1569,7 +1571,7 @@ impl UntaggedProgramInstruction {
         &self,
         param_values: &MacroParameterBindings,
         on_missing: OnUnboundMacroParameter,
-        macros: &BTreeMap<SymbolName, MacroDefinition>,
+        macros: &BTreeMap<SymbolName, MacroDefinition<ParsedMacroBody>>,
     ) -> Option<UntaggedProgramInstruction> {
         let tmp_frags: OneOrMore<Option<CommaDelimitedFragment>> = self
             .fragments
@@ -1639,7 +1641,7 @@ impl EqualityValue {
     pub(super) fn substitute_macro_parameters(
         &self,
         param_values: &MacroParameterBindings,
-        macros: &BTreeMap<SymbolName, MacroDefinition>,
+        macros: &BTreeMap<SymbolName, MacroDefinition<ParsedMacroBody>>,
     ) -> EqualityValue {
         // If we set an equality to the value of an unspecified macro
         // parameter, then that equality is set to zero.  This is
@@ -1789,7 +1791,7 @@ impl TaggedProgramInstruction {
         &self,
         param_values: &MacroParameterBindings,
         on_missing: OnUnboundMacroParameter,
-        macros: &BTreeMap<SymbolName, MacroDefinition>,
+        macros: &BTreeMap<SymbolName, MacroDefinition<ParsedMacroBody>>,
     ) -> Option<TaggedProgramInstruction> {
         self.instruction
             .substitute_macro_parameters(param_values, on_missing, macros)
