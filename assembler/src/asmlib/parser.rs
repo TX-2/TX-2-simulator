@@ -39,7 +39,7 @@ use super::lexer::{self};
 use super::manuscript::{
     MacroDefinition, MacroDummyParameters, MacroInvocation, MacroParameter, MacroParameterBindings,
     MacroParameterValue, ManuscriptLine, ManuscriptMetaCommand, ParsedMacroBody,
-    ParsedMacroBodyLine, SourceFile, UnparsedMacroBody, manuscript_lines_to_source_file,
+    ParsedMacroBodyLine, SourceFile, manuscript_lines_to_source_file,
 };
 use super::span::{Span, Spanned, span};
 use super::state::{NumeralMode, State};
@@ -1620,10 +1620,13 @@ where
         .into_output_errors()
 }
 
-pub(crate) fn parse_source_file(
+pub(crate) fn parse_source_file<F>(
     source_file_body: &str,
-    setup: fn(&mut State),
-) -> (Option<SourceFile>, Vec<Rich<'_, Tok>>) {
+    setup: F,
+) -> (Option<SourceFile>, Vec<Rich<'_, Tok>>)
+where
+    F: FnMut(&mut State),
+{
     let parser = source_file();
     tokenize_and_parse_with(source_file_body, setup, parser)
 }
