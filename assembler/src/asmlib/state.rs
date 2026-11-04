@@ -92,12 +92,21 @@ pub(crate) struct State<'src> {
 }
 
 impl<'src> State<'src> {
-    pub(crate) fn new(body: &'src str, numeral_mode: NumeralMode) -> State<'src> {
+    pub(crate) fn new(body: &'src str, numeral_mode: NumeralMode) -> Self {
         State {
             numeral_mode,
             body,
             macros: Default::default(),
         }
+    }
+
+    pub(crate) fn with_setup<F: FnMut(&mut Self)>(
+        source_file_body: &'src str,
+        mut setup: F,
+    ) -> Self {
+        let mut state = State::new(source_file_body, NumeralMode::default());
+        setup(&mut state);
+        state
     }
 
     pub(crate) fn define_macro(&mut self, definition: MacroDefinition<ParsedMacroBody>) {

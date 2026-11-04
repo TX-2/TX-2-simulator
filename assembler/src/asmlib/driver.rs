@@ -41,7 +41,7 @@ use super::source::{LineAndColumn, WithLocation};
 #[cfg(test)]
 use super::span::span;
 use super::span::{Span, Spanned};
-use super::state::{NumeralMode, State};
+use super::state::NumeralMode;
 use super::symbol::SymbolName;
 use super::symtab::{
     ExplicitSymbolTable, FinalSymbolDefinition, FinalSymbolTable, FinalSymbolType,
@@ -87,24 +87,21 @@ impl OutputOptions {
 }
 
 /// Pass 1 converts the program source into an abstract syntax representation.
-fn assemble_pass1<'a, 'b: 'a>(
-    source_file_body: &'b Source<'a>,
-    errors: &mut Vec<Rich<'a, lexer::Token>>,
-) -> (Option<SourceFile>, OutputOptions) {
-    fn setup(state: &mut State) {
-        // Octal is actually the default numeral mode, we just call
-        // set_numeral_mode here to keep Clippy happy until we
-        // implement ☛☛DECIMAL and ☛☛OCTAL.
-        state.numeral_mode.set_numeral_mode(NumeralMode::Decimal); // appease Clippy
-        state.numeral_mode.set_numeral_mode(NumeralMode::Octal);
-    }
-
+fn assemble_pass1<'src, 'sourceobj>(
+    source_file_body: &'src str,
+) -> (
+    Option<SourceFile>,
+    Vec<Rich<'src, lexer::Token>>,
+    OutputOptions,
+)
+where
+    'src: 'sourceobj,
+{
     let span = span!(Level::ERROR, "assembly pass 1");
     let _enter = span.enter();
     let options = OutputOptions { list: false };
 
-    let (mut sf, mut new_errors) = parse_source_file(source_file_body.as_str(), setup);
-    errors.append(&mut new_errors);
+    let (mut sf, mut errors) = parse_source_file(source_file_body);
 
     if let Some(source_file) = sf.as_mut()
         && let Err(tag_errors) = source_file.build_local_symbol_tables()
@@ -115,7 +112,7 @@ fn assemble_pass1<'a, 'b: 'a>(
                 .map(|tag_err| Rich::custom(tag_err.span(), tag_err.to_string())),
         );
     }
-    (sf, options)
+    (sf, errors, options)
 }
 
 /// Describes the result of running the first (and possibly the
@@ -129,8 +126,7 @@ enum AssemblerPass1Or2Output<'a> {
 
 /// Assemble a non-empty input.
 fn assemble_nonempty_input<'a, 'b: 'a>(input: &'b Source<'a>) -> AssemblerPass1Or2Output<'a> {
-    let mut errors: Vec<Rich<'_, lexer::Token>> = Vec::new();
-    let (maybe_source_file, output_options) = assemble_pass1(input, &mut errors);
+    let (maybe_source_file, errors, output_options) = assemble_pass1(input.as_str());
     match maybe_source_file {
         None => match OneOrMore::try_from_vec(errors) {
             Ok(errors) => AssemblerPass1Or2Output::Pass1Failed(Ok(errors)),
@@ -867,20 +863,17 @@ fn test_assemble_pass1() {
         }],
     };
 
-    let mut errors = Vec::new();
-    let input_source = Source::new(input);
+    let (source_file, errors, options) = assemble_pass1(input);
     assert_eq!(
-        assemble_pass1(&input_source, &mut errors),
-        (
-            Some(SourceFile {
-                punch: Some(PunchCommand(expected_directive_entry_point)),
-                blocks: vec![expected_block],
-                global_equalities: Default::default(), // no equalities
-                macros: Default::default(),
-            }),
-            OutputOptions { list: false }
-        )
+        source_file,
+        Some(SourceFile {
+            punch: Some(PunchCommand(expected_directive_entry_point)),
+            blocks: vec![expected_block],
+            global_equalities: Default::default(), // no equalities
+            macros: Default::default(),
+        })
     );
+    assert_eq!(options, OutputOptions { list: false });
     assert_eq!(errors.as_slice(), []);
 }
 

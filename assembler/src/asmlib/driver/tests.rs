@@ -10,7 +10,6 @@ use super::super::eval::{
 };
 use super::super::manuscript::{ManuscriptBlock, PunchCommand, SourceFile};
 use super::super::memorymap::LocatedBlock;
-use super::super::source::Source;
 use super::super::span::*;
 use super::super::symbol::SymbolName;
 use super::super::symtab::IndexRegisterAssigner;
@@ -76,11 +75,9 @@ fn atom_to_fragment(atom: Atom) -> InstructionFragment {
 fn test_assemble_pass1() {
     // Given a program containing a constant and a PUNCH metacommand
     let input = concat!("14\n", "☛☛PUNCH 26\n");
-    let input_source = Source::new(input);
 
     // When we assemble it
-    let mut errors = Vec::new();
-    let (source_file, _options) = assemble_pass1(&input_source, &mut errors);
+    let (source_file, errors, _options) = assemble_pass1(input);
 
     // Then we should see that it assembles without error, and...
     assert_eq!(errors.as_slice(), &[]);
@@ -1190,10 +1187,8 @@ fn test_diagnose_duplicate_tags_in_macro_body() {
     );
 
     // When I assemble a program using the macro
-    let mut errors = Default::default();
     let expected_msg = "T is defined more than once";
-    let input_source = Source::new(input);
-    let (_source_file, _options) = dbg!(assemble_pass1(&input_source, &mut errors));
+    let (_source_file, errors, _options) = dbg!(assemble_pass1(input));
     dbg!(&errors);
 
     // Then the assembly should fail with a message about the

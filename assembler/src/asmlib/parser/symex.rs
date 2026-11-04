@@ -159,7 +159,7 @@ where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
     choice((
-        parse_multi_syllable_symex(rule, script_required),
+        parse_multi_syllable_symex(rule.clone(), script_required),
         parse_symex_reserved_syllable(script_required),
     ))
     .map(|s| canonical_symbol_name(&s))

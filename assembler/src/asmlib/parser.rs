@@ -6,11 +6,13 @@
 use std::{
     collections::BTreeMap,
     collections::BTreeSet,
+    collections::HashMap,
     fmt::Debug,
     ops::{BitOr, Range, Shl},
 };
 
 pub(crate) mod helpers;
+mod macros;
 mod symex;
 #[cfg(test)]
 mod tests;
@@ -19,8 +21,7 @@ use chumsky::error::Rich;
 use chumsky::extension::v1::Ext;
 use chumsky::extension::v1::ExtParser;
 use chumsky::extra::{Full, ParserExtra};
-use chumsky::input::InputRef;
-use chumsky::input::{Emitter, MapExtra, Stream, ValueInput};
+use chumsky::input::{Emitter, InputRef, MapExtra, Stream, ValueInput};
 
 use chumsky::Boxed;
 use chumsky::Parser;
@@ -102,14 +103,14 @@ fn make_bit_designator_literal(
     }
 }
 
-// I'm not really defining my own type here, this is just for
-// abbreviation purposes.
-type MyEmitter<'a, I> = Emitter<
-    <chumsky::extra::Full<chumsky::error::Rich<'a, lexer::Token>, State<'a>, ()> as ParserExtra<
-        'a,
-        I,
-    >>::Error,
->;
+// Abbreviations for types that would otherwise be cumbersome.
+pub(crate) type MyError<'a, I> = <chumsky::extra::Full<
+    chumsky::error::Rich<'a, lexer::Token>,
+    State<'a>,
+    (),
+> as ParserExtra<'a, I>>::Error;
+type MyEmitter<'a, I> = Emitter<MyError<'a, I>>;
+type MyErrorVec<'src> = Vec<chumsky::error::Rich<'src, lexer::Token>>;
 
 fn warn_bad_bitpos<'src, I>(
     validated: BitDesignatorValidation,
@@ -515,57 +516,43 @@ where
 }
 
 /// Macros are described in section 6-4 of the TX-2 User Handbook.
-fn macro_definition<'a, 'b, I>(
-    grammar: &Grammar<'a, 'b, I>,
-) -> impl Parser<'a, I, MacroDefinition<ParsedMacroBody>, ExtraWithoutContext<'a>> + use<'a, 'b, I>
+fn macro_definition<'src, I>()
+-> impl Parser<'src, I, MacroDefinition<ParsedMacroBody>, ExtraWithoutContext<'src>> + use<'src, I>
 where
-    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
+    I: Input<'src, Token = Tok, Span = Span> + ValueInput<'src>,
 {
-    fn build_macro_definition<'a, 'b>(
-        ((name, params), body): ((SymbolName, MacroDummyParameters), ParsedMacroBody),
-        span: Span,
-    ) -> MacroDefinition<ParsedMacroBody> {
-        MacroDefinition {
-            name,
-            params,
-            body,
-            span,
-        }
-    }
-
+    let g = grammar();
     named_metacommand(Metacommand::DefineMacro)
         .ignore_then(
             named_symbol(SymexSyllableRule::Multiple, Script::Normal).labelled("macro name"), // the macro's name (# is not allowed)
         )
         .then(macro_definition_dummy_parameters())
         .then_ignore(end_of_line())
-        .then(parsed_macro_body(grammar))
+        .then(macro_body(&g))
         .then_ignore(named_metacommand(Metacommand::EndMacroDefinition))
-        // We don't parse end-of-line here because all metacommands are supposed
-        // to be followed by end-of-line.
-        .map_with(
-            |parts: ((SymbolName, MacroDummyParameters), ParsedMacroBody),
-             extra: &mut MapExtra<'a, '_, I, ExtraWithoutContext<'a>>|
-             -> MacroDefinition<ParsedMacroBody> {
-                let span = extra.span();
-                let definition = build_macro_definition(parts, span);
-                extra.state().define_macro(definition.clone());
-                definition
-            },
-        )
+        .try_map(|((name, params), body), span| {
+            Ok(MacroDefinition {
+                name,
+                params,
+                body,
+                span,
+            })
+        })
+    // We don't parse end-of-line here because all metacommands are supposed
+    // to be followed by end-of-line.
 }
 
-fn parsed_macro_body<'a, 'b, I>(
+fn macro_body<'a, 'b, I>(
     grammar: &Grammar<'a, 'b, I>,
 ) -> impl Parser<'a, I, ParsedMacroBody, ExtraWithoutContext<'a>> + use<'a, 'b, I>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
-    let parsed_macro_body = (macro_body_line(grammar).then_ignore(end_of_line()))
+    let parser = (macro_body_line(grammar).then_ignore(end_of_line()))
         .repeated()
         .collect::<Vec<ParsedMacroBodyLine>>()
         .map(ParsedMacroBody::from);
-    parsed_macro_body.labelled("macro body")
+    parser.labelled("macro body")
 }
 
 fn macro_body_line<'a, 'b, I>(
@@ -760,7 +747,9 @@ enum Metacommand {
     EndMacroDefinition,
 }
 
-fn named_metacommand<'a, I>(which: Metacommand) -> impl Parser<'a, I, (), ExtraWithoutContext<'a>>
+fn named_metacommand<'a, I>(
+    which: Metacommand,
+) -> impl Parser<'a, I, (), ExtraWithoutContext<'a>> + use<'a, I>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
@@ -785,9 +774,7 @@ where
         .then_ignore(matching_metacommand_name)
 }
 
-fn metacommand<'a, 'b, I>(
-    grammar: &Grammar<'a, 'b, I>,
-) -> impl Parser<'a, I, ManuscriptMetaCommand, ExtraWithoutContext<'a>> + use<'a, 'b, I>
+fn metacommand<'a, 'b, I>() -> impl Parser<'a, I, ManuscriptMetaCommand, ExtraWithoutContext<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
@@ -824,7 +811,7 @@ where
     choice((
         base_change(),
         punch(),
-        macro_definition(grammar).map(ManuscriptMetaCommand::Macro),
+        macro_definition().map(ManuscriptMetaCommand::Macro),
     ))
     .labelled("metacommand")
 }
@@ -981,20 +968,21 @@ where
     .labelled("instruction hold bit")
 }
 
-struct Grammar<'a, 'b, I>
+pub(crate) struct Grammar<'src, 'parser, I>
 where
-    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
+    I: Input<'src, Token = Tok, Span = Span> + ValueInput<'src>,
 {
-    assignment: Boxed<'a, 'b, I, Equality, ExtraWithoutContext<'a>>,
-    tagged_program_instruction: Boxed<'a, 'b, I, TaggedProgramInstruction, ExtraWithoutContext<'a>>,
+    assignment: Boxed<'src, 'parser, I, Equality, ExtraWithoutContext<'src>>,
+    tagged_program_instruction:
+        Boxed<'src, 'parser, I, TaggedProgramInstruction, ExtraWithoutContext<'src>>,
     normal_arithmetic_expression_allowing_spaces:
-        Boxed<'a, 'b, I, ArithmeticExpression, ExtraWithoutContext<'a>>,
+        Boxed<'src, 'parser, I, ArithmeticExpression, ExtraWithoutContext<'src>>,
     subscript_arithmetic_expression_allowing_spaces:
-        Boxed<'a, 'b, I, ArithmeticExpression, ExtraWithoutContext<'a>>,
+        Boxed<'src, 'parser, I, ArithmeticExpression, ExtraWithoutContext<'src>>,
     superscript_arithmetic_expression_allowing_spaces:
-        Boxed<'a, 'b, I, ArithmeticExpression, ExtraWithoutContext<'a>>,
+        Boxed<'src, 'parser, I, ArithmeticExpression, ExtraWithoutContext<'src>>,
     #[cfg(test)]
-    instruction_fragment: Boxed<'a, 'b, I, InstructionFragment, ExtraWithoutContext<'a>>,
+    instruction_fragment: Boxed<'src, 'parser, I, InstructionFragment, ExtraWithoutContext<'src>>,
 }
 
 fn grammar<'a: 'b, 'b, I>() -> Grammar<'a, 'b, I>
@@ -1015,7 +1003,7 @@ where
                 assert_eq!(t.span.start, span.start);
             }
             TaggedProgramInstruction {
-                span: extra.span(),
+                span,
                 tags,
                 instruction: UntaggedProgramInstruction::from(fragments),
             }
@@ -1199,8 +1187,9 @@ where
             .then(program_instruction_fragment.clone())
             .map_with(
                 |(maybe_hold, fragment): (Option<HoldBit>, InstructionFragment), extra| {
+                    let span = extra.span();
                     FragmentWithHold {
-                        span: extra.span(),
+                        span,
                         holdbit: maybe_hold.unwrap_or(HoldBit::Unspecified),
                         fragment,
                     }
@@ -1338,7 +1327,9 @@ where
     grammar().tagged_program_instruction
 }
 
-fn manuscript_line<'a, I>() -> impl Parser<'a, I, ManuscriptLine, ExtraWithoutContext<'a>>
+fn manuscript_line<'a, 'b, I>(
+    grammar: &Grammar<'a, 'b, I>,
+) -> impl Parser<'a, I, ManuscriptLine, ExtraWithoutContext<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
@@ -1353,13 +1344,12 @@ where
         }
     }
 
-    fn parse_and_execute_metacommand<'a, 'b, I>(
-        grammar: &Grammar<'a, 'b, I>,
-    ) -> impl Parser<'a, I, ManuscriptLine, ExtraWithoutContext<'a>> + use<'a, 'b, I>
+    fn parse_and_execute_metacommand<'a, I>()
+    -> impl Parser<'a, I, ManuscriptLine, ExtraWithoutContext<'a>>
     where
         I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
     {
-        metacommand(grammar)
+        metacommand()
             .map_with(|cmd, extra| {
                 execute_metacommand(&mut extra.state().numeral_mode, &cmd);
                 ManuscriptLine::Meta(cmd)
@@ -1376,7 +1366,9 @@ where
         }
     }
 
-    fn line<'a, I>() -> impl Parser<'a, I, ManuscriptLine, ExtraWithoutContext<'a>>
+    fn line<'a, 'b, I>(
+        grammar: &Grammar<'a, 'b, I>,
+    ) -> impl Parser<'a, I, ManuscriptLine, ExtraWithoutContext<'a>>
     where
         I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
     {
@@ -1419,8 +1411,6 @@ where
                 .labelled("origin specification")
         }
 
-        let grammar = grammar();
-
         let optional_origin_with_statement = origin()
             .or_not()
             .then(grammar.tagged_program_instruction.clone())
@@ -1443,7 +1433,7 @@ where
             equality,
             macro_invocation().map(ManuscriptLine::Macro),
             // Ignore whitespace after the metacommand but not before it.
-            parse_and_execute_metacommand(&grammar),
+            parse_and_execute_metacommand(),
             optional_origin_with_statement,
             // Because we prefer to parse a statement if one exists,
             // the origin_only alternative has to appear after the
@@ -1454,7 +1444,7 @@ where
         ))
     }
 
-    line()
+    line(grammar)
 }
 
 fn end_of_line<'a, I>() -> impl Parser<'a, I, (), ExtraWithoutContext<'a>>
@@ -1470,21 +1460,24 @@ where
         .labelled("comment or end-of-line")
 }
 
-fn terminated_manuscript_line<'a, I>()
--> impl Parser<'a, I, Option<(Span, ManuscriptLine)>, ExtraWithoutContext<'a>>
+fn terminated_manuscript_line<'a, 'b, I>(
+    grammar: &Grammar<'a, 'b, I>,
+) -> impl Parser<'a, I, Option<(Span, ManuscriptLine)>, ExtraWithoutContext<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
     // If we support INSERT, DELETE, REPLACE, we will need to
     // separate the processing of the metacommands and the
     // generation of the assembled code.
-    manuscript_line()
+    manuscript_line(grammar)
         .or_not()
         .map_with(|maybe_line, extra| maybe_line.map(|line| (extra.span(), line)))
         .then_ignore(end_of_line())
 }
 
-pub(crate) fn source_file<'a, I>() -> impl Parser<'a, I, SourceFile, ExtraWithoutContext<'a>>
+pub(crate) fn source_file<'a, 'b, I>(
+    grammar: &Grammar<'a, 'b, I>,
+) -> impl Parser<'a, I, SourceFile, ExtraWithoutContext<'a>>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
@@ -1531,7 +1524,7 @@ where
         }
     }
 
-    terminated_manuscript_line()
+    terminated_manuscript_line(grammar)
         .repeated()
         .collect()
         .try_map_with(|lines: Vec<Option<(Span, ManuscriptLine)>>, extra| {
@@ -1541,6 +1534,7 @@ where
                 extra.state().macros().clone();
 
             let source_file: SourceFile = manuscript_lines_to_source_file(lines)?;
+
             let all_names: BTreeSet<&SymbolName> = source_file
                 .macros
                 .keys()
@@ -1564,22 +1558,13 @@ type Mig<I, O> = chumsky::input::MappedInput<
 >;
 pub(crate) type Mi = Mig<(Tok, SimpleSpan), (Tok, SimpleSpan)>;
 
-pub(crate) fn tokenize_and_parse_with<'a, P, T, F>(
-    input: &'a str,
-    mut setup: F,
-    parser: P,
-) -> (Option<T>, Vec<Rich<'a, Tok>>)
-where
-    F: FnMut(&mut State),
-    P: Parser<'a, Mi, T, ExtraWithoutContext<'a>>,
-{
-    let mut state = State::new(input, NumeralMode::default());
-    setup(&mut state);
-
-    // These conversions are adapted from the Logos example in the
-    // Chumsky documentation.
+fn tokenize(input: &str, span_offset: usize) -> Vec<(Tok, SimpleSpan)> {
     let scanner = lexer::Lexer::new(input).spanned();
-    let tokens: Vec<(Tok, SimpleSpan)> = scanner
+    scanner
+        .map(|(token, tokspan): (Tok, Range<usize>)| {
+            let adjusted_span = (tokspan.start + span_offset)..(tokspan.end + span_offset);
+            (token, adjusted_span)
+        })
         .map(|item: (Tok, Range<usize>)| -> (Tok, Span) {
             match item {
                 (Tok::Tab, span) => {
@@ -1609,26 +1594,195 @@ where
                 }
             }
         })
-        .collect();
+        .collect()
+}
+
+pub(crate) fn tokenize_and_parse_with<'a, P, T>(
+    input: &'a str,
+    span_offset: usize,
+    state: &mut State<'a>,
+    parser: P,
+) -> (Option<T>, Vec<Rich<'a, Tok>>)
+where
+    P: Parser<'a, Mi, T, ExtraWithoutContext<'a>>,
+{
+    let tokens = tokenize(input, span_offset);
     let end_span: SimpleSpan = SimpleSpan::new(
         0,
         tokens.iter().map(|(_, span)| span.end).max().unwrap_or(0),
     );
     let token_stream: Mi = Stream::from_iter(tokens).map(end_span, |unchanged| unchanged);
     parser
-        .parse_with_state(token_stream, &mut state)
+        .parse_with_state(token_stream, state)
         .into_output_errors()
 }
 
-pub(crate) fn parse_source_file<F>(
-    source_file_body: &str,
-    setup: F,
-) -> (Option<SourceFile>, Vec<Rich<'_, Tok>>)
+fn set_initial_numeral_mode(state: &mut State) {
+    state.numeral_mode.set_numeral_mode(NumeralMode::Octal);
+}
+
+pub(crate) fn parse_source_file<'src>(
+    source_file_body: &'src str,
+) -> (Option<SourceFile>, Vec<Rich<'src, Tok>>) {
+    let mut state = State::with_setup(source_file_body, set_initial_numeral_mode);
+    set_initial_numeral_mode(&mut state);
+
+    let mut errors: Vec<Rich<'src, lexer::Token>> =
+        match parse_unparsed_macro_definitions_only(source_file_body, &mut state) {
+            Ok(errs) => errs,
+            Err(errs) => {
+                return (None, errs);
+            }
+        };
+
+    let g = grammar();
+    let parser = source_file(&g);
+    let (maybe_source_file, new_errors) =
+        tokenize_and_parse_with(source_file_body, 0, &mut state, parser);
+    errors.extend(new_errors);
+    (maybe_source_file, errors)
+}
+
+fn parse_single_macro_definition<'source, 'state, P>(
+    macro_definition_parser: &P,
+    whole_source: &'source str,
+    macro_definition_span: SimpleSpan,
+    state: &'state mut State<'source>,
+) -> (
+    Option<MacroDefinition<ParsedMacroBody>>,
+    Vec<MyError<'source, Mi>>,
+)
 where
-    F: FnMut(&mut State),
+    P: Parser<'source, Mi, MacroDefinition<ParsedMacroBody>, ExtraWithoutContext<'source>>,
 {
-    let parser = source_file();
-    tokenize_and_parse_with(source_file_body, setup, parser)
+    let macro_def_span_begin: usize = macro_definition_span.start;
+    let macro_def_span_end: usize = macro_definition_span.end;
+    let macro_definition_source_fragment = &whole_source[macro_def_span_begin..macro_def_span_end];
+
+    let spanned_tokens = tokenize(
+        macro_definition_source_fragment,
+        macro_definition_span.start,
+    );
+    let end_span: SimpleSpan = spanned_tokens
+        .iter()
+        .map(|(_, span)| span.end)
+        .max()
+        .map_or_else(
+            || SimpleSpan::new(macro_definition_span.end, macro_definition_span.end),
+            |end| SimpleSpan::new(end, end),
+        );
+    let token_stream: Mi = Stream::from_iter(spanned_tokens).map(end_span, |unchanged| unchanged);
+    macro_definition_parser
+        .parse_with_state(token_stream, state)
+        .into_output_errors()
+}
+
+fn parse_unparsed_macro_definitions<'src, 'state>(
+    source_file_body: &'src str,
+    mut macros: Vec<SimpleSpan>,
+    state: &'state mut State<'src>,
+) -> Result<MyErrorVec<'src>, MyErrorVec<'src>>
+where
+    'src: 'state,
+{
+    fn convert_errors<T>(input: HashMap<SimpleSpan, Vec<T>>) -> Vec<T> {
+        let mut tmp: Vec<(SimpleSpan, Vec<T>)> = input.into_iter().collect();
+        tmp.sort_by_key(|(span, _)| span.start);
+        tmp.into_iter().flat_map(|(_span, errs)| errs).collect()
+    }
+
+    let macro_count: usize = macros.len();
+    let full_definition_parser = macro_definition();
+    let mut per_definition_errors: HashMap<SimpleSpan, MyErrorVec<'src>> = HashMap::new();
+
+    // `macros` contains the spans of all the macro definitions in the
+    // input.  Programs are not required to define a macro before
+    // calling it, so we may not be able, yet, to parse the body of
+    // the first macro definition.  Instead, we try to parse them one
+    // by one, and when we find one that we can parse, we accept it.
+    //
+    // If we cannot parse a macro, we continue, trying to parse the
+    // remaining macro definitions.  We loop until either all
+    // definitions were parsed or we cannot parse any of the remaining
+    // macro definitions.
+    let mut iteration_number: usize = 0;
+    while !macros.is_empty() {
+        assert!(
+            iteration_number < macro_count,
+            "algorithm is not making progress; this is iteration {iteration_number} but there were only {macro_count} macros to parse"
+        );
+        iteration_number += 1;
+
+        let mut still_todo: Vec<SimpleSpan> = Vec::with_capacity(macros.len());
+        let mut any_success = false;
+        // Try to parse each of the macro definitions we have not yet
+        // been able to parse (or have not yet attempted to parse).
+        for macro_def_span in macros.drain(0..) {
+            let (maybe_parsed, errors): (Option<MacroDefinition<ParsedMacroBody>>, MyErrorVec) =
+                parse_single_macro_definition(
+                    &full_definition_parser,
+                    source_file_body,
+                    macro_def_span,
+                    state,
+                );
+            per_definition_errors.insert(macro_def_span, errors);
+            if let Some(macro_def) = maybe_parsed {
+                // We parsed this one; record the fact that we made
+                // progress in this iteration and record the
+                // definition itself.
+                any_success = true;
+                // We record the macro definition in `state` so that
+                // later invocations of `full_definition_parser` can
+                // use the known macro definitions in its attempt to
+                // parse this macro definition.
+                state.define_macro(macro_def);
+            } else {
+                // Not successful this time; try again in the next
+                // iteration if there is one.
+                still_todo.push(macro_def_span);
+            }
+        }
+        if any_success {
+            // We made progress, so there will be another iteration.
+            macros.extend(still_todo);
+        } else {
+            // We can no longer make progress.  There are macro
+            // definitions that we cannot parse.
+            return Err(convert_errors(per_definition_errors));
+        }
+    }
+    // We have parsed all the macro definitions.  But we may still
+    // have diagnostics, so return those.
+    Ok(convert_errors(per_definition_errors))
+}
+
+/// Extract macrs defined in `source_file_body` and record them in
+/// `state`.  Return Ok if all macro definitions can be parsed, Err if
+/// at least one cannot.  In both the success and failure case, return
+/// any diagnostics the parsers produced.
+pub(crate) fn parse_unparsed_macro_definitions_only<'src, 'state>(
+    source_file_body: &'src str,
+    state: &'state mut State<'src>,
+) -> Result<MyErrorVec<'src>, MyErrorVec<'src>>
+where
+    'src: 'state,
+{
+    let span_extraction_parser = macros::unparsed_macro_definitions_parser();
+    match tokenize_and_parse_with(source_file_body, 0, state, span_extraction_parser) {
+        (None, errors) => Err(errors),
+        (Some(macros), mut errors) => {
+            match parse_unparsed_macro_definitions(source_file_body, macros, state) {
+                Ok(mut new_errors) => {
+                    errors.extend(new_errors.drain(0..));
+                    Ok(errors)
+                }
+                Err(mut new_errors) => {
+                    errors.extend(new_errors.drain(0..));
+                    Err(errors)
+                }
+            }
+        }
+    }
 }
 
 // Local Variables:

@@ -514,7 +514,7 @@ impl ParsedMacroBody {
         self.lines.len()
     }
 
-    fn parsed_body_lines(&self) -> &[ParsedMacroBodyLine] {
+    pub(crate) fn parsed_body_lines(&self) -> &[ParsedMacroBodyLine] {
         self.lines.as_slice()
     }
 }

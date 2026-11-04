@@ -45,7 +45,8 @@ where
     O: Debug,
     F: FnMut(&mut State),
 {
-    let (output, errors) = tokenize_and_parse_with(input, state_setup, parser);
+    let mut state = State::with_setup(input, state_setup);
+    let (output, errors) = tokenize_and_parse_with(input, 0, &mut state, parser);
     if errors.is_empty() {
         Ok(output.expect("a successful parse should return an output"))
     } else {
@@ -70,6 +71,19 @@ where
                 errors.len(),
                 errors.as_slice()
             );
+        }
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn parse_source_file_successfully(input: &str) -> SourceFile {
+    match parse_source_file(input) {
+        (None, errors) => {
+            panic!("parse_source_file_successfully: parsing failed: {errors:?}");
+        }
+        (Some(sf), errors) => {
+            assert_eq!(errors, vec![]);
+            sf
         }
     }
 }
@@ -482,6 +496,18 @@ fn test_parse_multi_syllable_symex() {
 }
 
 #[test]
+fn test_parse_single_multi_syllable_symex() {
+    // Here we deliberately do not use .repeated().
+    let parser = parse_multi_syllable_symex(SymexSyllableRule::Multiple, Script::Normal);
+
+    let symex1 = parse_successfully_with("Q", &parser, no_state_setup);
+    assert_eq!(symex1, "Q");
+
+    let symex2 = parse_successfully_with("Q ** comment", &parser, no_state_setup);
+    assert_eq!(symex2, "Q");
+}
+
+#[test]
 fn test_parse_single_syllable_symex() {
     struct Case(&'static str, &'static [&'static str]);
 
@@ -507,7 +533,7 @@ fn test_parse_single_syllable_symex() {
 #[test]
 fn test_empty_manuscript() {
     assert_eq!(
-        parse_successfully_with("", source_file(), no_state_setup),
+        parse_source_file_successfully(""),
         SourceFile {
             blocks: Vec::new(),
             global_equalities: Default::default(), // no equalities
@@ -520,7 +546,7 @@ fn test_empty_manuscript() {
 #[test]
 fn test_blank_lines_manuscript() {
     assert_eq!(
-        parse_successfully_with("\n\n", source_file(), no_state_setup),
+        parse_source_file_successfully("\n\n"),
         SourceFile {
             blocks: Default::default(),
             global_equalities: Default::default(), // no equalities
@@ -533,19 +559,15 @@ fn test_blank_lines_manuscript() {
 #[test]
 fn test_comments_only_manuscript() {
     assert_eq!(
-        parse_successfully_with(
-            concat!(
-                "** THIS PROGRAM CONTAINS ONLY BLANK LINES\n",
-                "\n",
-                "** AND SOME LINES CONTAINING ONLY SPACES\n",
-                "    \n",
-                "    \n",
-                "** AND SOME COMMENTS.\n",
-                "    ** SOME COMMENTS ARE PRECEDED BY BLANKS\n",
-            ),
-            source_file(),
-            no_state_setup
-        ),
+        parse_source_file_successfully(concat!(
+            "** THIS PROGRAM CONTAINS ONLY BLANK LINES\n",
+            "\n",
+            "** AND SOME LINES CONTAINING ONLY SPACES\n",
+            "    \n",
+            "    \n",
+            "** AND SOME COMMENTS.\n",
+            "    ** SOME COMMENTS ARE PRECEDED BY BLANKS\n",
+        ),),
         SourceFile {
             blocks: Default::default(),
             global_equalities: Default::default(), // no equalities
@@ -557,8 +579,9 @@ fn test_comments_only_manuscript() {
 
 #[test]
 fn test_manuscript_line_with_bare_literal() {
+    let g = grammar();
     assert_eq!(
-        parse_successfully_with("1", manuscript_line(), no_state_setup),
+        parse_successfully_with("1", manuscript_line(&g), no_state_setup),
         ManuscriptLine::StatementOnly(TaggedProgramInstruction::single(
             notags(),
             HoldBit::Unspecified,
@@ -572,7 +595,7 @@ fn test_manuscript_line_with_bare_literal() {
 #[test]
 fn test_manuscript_with_bare_literal() {
     assert_eq!(
-        parse_successfully_with("1\n", source_file(), no_state_setup),
+        parse_source_file_successfully("1\n"),
         SourceFile {
             punch: None,
             blocks: vec![ManuscriptBlock {
@@ -600,6 +623,7 @@ fn test_manuscript_with_bare_literal() {
 
 #[test]
 fn test_terminated_manuscript_line_with_bare_literal() {
+    let g = grammar();
     let expected_line = ManuscriptLine::StatementOnly(TaggedProgramInstruction::single(
         notags(),
         HoldBit::Unspecified,
@@ -609,15 +633,15 @@ fn test_terminated_manuscript_line_with_bare_literal() {
     ));
 
     assert_eq!(
-        parse_successfully_with("1", manuscript_line(), no_state_setup),
+        parse_successfully_with("1", manuscript_line(&g), no_state_setup),
         expected_line
     );
     assert_eq!(
-        parse_successfully_with("1\n", terminated_manuscript_line(), no_state_setup),
+        parse_successfully_with("1\n", terminated_manuscript_line(&g), no_state_setup),
         Some((span(0..1), expected_line))
     );
     assert_eq!(
-        parse_successfully_with("\n", terminated_manuscript_line(), no_state_setup),
+        parse_successfully_with("\n", terminated_manuscript_line(&g), no_state_setup),
         None
     );
 }
@@ -625,11 +649,7 @@ fn test_terminated_manuscript_line_with_bare_literal() {
 #[test]
 fn test_manuscript_without_tag() {
     assert_eq!(
-        parse_successfully_with(
-            "673 ** This is a comment\n71\n",
-            source_file(),
-            no_state_setup
-        ),
+        parse_source_file_successfully("673 ** This is a comment\n71\n"),
         SourceFile {
             blocks: vec![ManuscriptBlock {
                 origin: None,
@@ -673,11 +693,7 @@ fn test_manuscript_without_tag() {
 #[test]
 fn test_comment_in_rc_block() {
     assert_eq!(
-        parse_successfully_with(
-            "{1 ** ONE} ** EXTERNAL COMMENT\n",
-            source_file(),
-            no_state_setup
-        ),
+        parse_source_file_successfully("{1 ** ONE} ** EXTERNAL COMMENT\n",),
         SourceFile {
             blocks: vec![ManuscriptBlock {
                 origin: None,
@@ -752,11 +768,7 @@ fn test_symbol_name_two_syllables() {
 #[test]
 fn test_manuscript_with_single_syllable_tag() {
     assert_eq!(
-        parse_successfully_with(
-            "START4 -> 205 ** comment here\n",
-            source_file(),
-            no_state_setup
-        ),
+        parse_source_file_successfully("START4 -> 205 ** comment here\n",),
         SourceFile {
             blocks: vec![ManuscriptBlock {
                 origin: None,
@@ -790,7 +802,7 @@ fn test_manuscript_with_single_syllable_tag() {
 #[test]
 fn test_manuscript_with_multiple_tags() {
     assert_eq!(
-        parse_successfully_with("START4 -> START5 -> 205\n", source_file(), no_state_setup),
+        parse_source_file_successfully("START4 -> START5 -> 205\n"),
         SourceFile {
             blocks: vec![ManuscriptBlock {
                 origin: None,
@@ -832,11 +844,7 @@ fn test_manuscript_with_multiple_tags() {
 #[test]
 fn test_manuscript_with_origin() {
     assert_eq!(
-        parse_successfully_with(
-            "100 | 202 ** literal value\n",
-            source_file(),
-            no_state_setup
-        ),
+        parse_source_file_successfully("100 | 202 ** literal value\n",),
         SourceFile {
             punch: None,
             blocks: vec![ManuscriptBlock {
@@ -967,11 +975,7 @@ fn test_infix_minus_interpreted_as_subtraction() {
 #[test]
 fn test_manuscript_with_multi_syllable_tag() {
     assert_eq!(
-        parse_successfully_with(
-            "CODE HERE->205 ** Also a comment\n",
-            source_file(),
-            no_state_setup
-        ),
+        parse_source_file_successfully("CODE HERE->205 ** Also a comment\n",),
         SourceFile {
             punch: None,
             blocks: vec![ManuscriptBlock {
@@ -1008,9 +1012,10 @@ fn atom_to_fragment(atom: Atom) -> InstructionFragment {
 
 #[test]
 fn test_manuscript_line_with_real_arrow_tag() {
+    let g = grammar();
     const INPUT: &str = "HERE→207"; // real Unicode rightward arrow (U+2192).
     assert_eq!(
-        parse_successfully_with(INPUT, manuscript_line(), no_state_setup),
+        parse_successfully_with(INPUT, manuscript_line(&g), no_state_setup),
         ManuscriptLine::StatementOnly(TaggedProgramInstruction::single(
             vec![Tag {
                 name: SymbolName {
@@ -1030,7 +1035,7 @@ fn test_manuscript_line_with_real_arrow_tag() {
 fn test_manuscript_with_real_arrow_tag() {
     const INPUT: &str = "HERE→207\n"; // real Unicode rightward arrow (U+2192).
     assert_eq!(
-        parse_successfully_with(INPUT, source_file(), no_state_setup),
+        parse_source_file_successfully(INPUT),
         SourceFile {
             punch: None,
             blocks: vec![ManuscriptBlock {
@@ -1170,21 +1175,17 @@ fn test_assignment_subscript() {
 #[test]
 fn test_assignment_lines() {
     assert_eq!(
-        parse_successfully_with(
-            concat!(
-                "FOO=2\n",
-                // The trailing space on the next line is there to ensure we don't
-                // have a regression in end_of_line (which previously didn't permit
-                // trailing spaces).
-                "    BAR = 1 \n", // leading and trailing spaces are allowed.
-                // we also want to make sure we can parse a comment
-                // preceded by a space, and regular instructions
-                // following an assignment.
-                "6 ** WE PUT A NON-ASSIGNMENT HERE TO CHECK WE CAN PARSE REGULAR INSTRUCTIONS\n"
-            ),
-            source_file(),
-            no_state_setup
-        ),
+        parse_source_file_successfully(concat!(
+            "FOO=2\n",
+            // The trailing space on the next line is there to ensure we don't
+            // have a regression in end_of_line (which previously didn't permit
+            // trailing spaces).
+            "    BAR = 1 \n", // leading and trailing spaces are allowed.
+            // we also want to make sure we can parse a comment
+            // preceded by a space, and regular instructions
+            // following an assignment.
+            "6 ** WE PUT A NON-ASSIGNMENT HERE TO CHECK WE CAN PARSE REGULAR INSTRUCTIONS\n"
+        ),),
         SourceFile {
             punch: None,
             blocks: vec![ManuscriptBlock {
@@ -1224,7 +1225,7 @@ fn test_assignment_lines() {
 #[test]
 fn test_assignment_origin() {
     const INPUT: &str = concat!("FOO=1000\n", "1000|4\n",);
-    let tree = parse_successfully_with(INPUT, source_file(), no_state_setup);
+    let tree = parse_source_file_successfully(INPUT);
     assert_eq!(
         tree,
         SourceFile {
@@ -1255,7 +1256,7 @@ fn test_assignment_origin() {
 #[test]
 fn test_symbolic_origin() {
     const INPUT: &str = "BEGIN|2\n";
-    let tree = parse_successfully_with(INPUT, source_file(), no_state_setup);
+    let tree = parse_source_file_successfully(INPUT);
     assert_eq!(
         tree,
         SourceFile {
@@ -1285,36 +1286,32 @@ fn test_symbolic_origin() {
 
 #[test]
 fn test_metacommand_decimal() {
-    let g = grammar();
     assert_eq!(
-        parse_successfully_with("☛☛DECIMAL", metacommand(&g), no_state_setup),
+        parse_successfully_with("☛☛DECIMAL", metacommand(), no_state_setup),
         ManuscriptMetaCommand::BaseChange(NumeralMode::Decimal)
     );
 }
 
 #[test]
 fn test_metacommand_dec() {
-    let g = grammar();
     assert_eq!(
-        parse_successfully_with("☛☛DEC", metacommand(&g), no_state_setup),
+        parse_successfully_with("☛☛DEC", metacommand(), no_state_setup),
         ManuscriptMetaCommand::BaseChange(NumeralMode::Decimal)
     );
 }
 
 #[test]
 fn test_metacommand_oct() {
-    let g = grammar();
     assert_eq!(
-        parse_successfully_with("☛☛OCT", metacommand(&g), no_state_setup),
+        parse_successfully_with("☛☛OCT", metacommand(), no_state_setup),
         ManuscriptMetaCommand::BaseChange(NumeralMode::Octal)
     );
 }
 
 #[test]
 fn test_metacommand_octal() {
-    let g = grammar();
     assert_eq!(
-        parse_successfully_with("☛☛OCTAL", metacommand(&g), no_state_setup),
+        parse_successfully_with("☛☛OCTAL", metacommand(), no_state_setup),
         ManuscriptMetaCommand::BaseChange(NumeralMode::Octal)
     );
 }
@@ -1584,6 +1581,50 @@ fn test_parenthesised_expression() {
             ))))
         )))
     );
+}
+
+#[test]
+fn test_macro_body_accepts_two_lines() {
+    let g = grammar();
+    parse_successfully_with("SOMETHING\nWORLD\n", macro_body(&g), no_state_setup);
+}
+
+#[test]
+fn test_macro_body_accepts_empty_macro_body() {
+    let input = "";
+    let g = grammar();
+    let result = parse_with(input, macro_body(&g), no_state_setup);
+    assert!(
+        result.is_ok(),
+        "expected input '{input}' to be accepted but got {result:?}"
+    );
+}
+
+#[cfg(test)]
+fn check_macro_body_symex_span(input: &str, span_expected: SimpleSpan) {
+    dbg!(input, &span_expected);
+    let g = grammar();
+    let parsed_body = parse_successfully_with(input, macro_body(&g), no_state_setup);
+    let lines = parsed_body.parsed_body_lines();
+    dbg!(&lines);
+    match &lines[0] {
+        ParsedMacroBodyLine::Instruction(TaggedProgramInstruction { span: the_span, .. }) => {
+            assert_eq!(the_span, &span_expected, "incorrect span");
+        }
+        other => {
+            panic!("expected first line to be an instruction, got {other:?}");
+        }
+    }
+}
+
+#[test]
+fn test_macro_body_generates_symexes_whose_span_does_not_include_newline() {
+    check_macro_body_symex_span("R\n", span(0..1));
+}
+
+#[test]
+fn test_macro_body_generates_symexes_whose_span_does_not_include_comments() {
+    check_macro_body_symex_span("W ** this is a comment\n", span(0..1));
 }
 
 #[test]
@@ -2143,9 +2184,10 @@ fn test_pipe_construct_without_address_part_is_accepted() {
 
 #[test]
 fn test_pipe_construct_without_address_part_has_zero_address_part() {
+    let g = grammar();
     let input = "INX@sub_beta@@sub_pipe@@sub_alpha@0";
 
-    let actual = parse_successfully_with(input, manuscript_line(), no_state_setup);
+    let actual = parse_successfully_with(input, manuscript_line(&g), no_state_setup);
 
     let rc_word_value = RegisterContaining::Unallocated(Box::new(TaggedProgramInstruction {
         span: span(23..35),
@@ -2242,7 +2284,7 @@ fn test_pipe_construct_without_address_part_has_zero_address_part() {
 #[test]
 fn test_comments_without_newline_manuscript() {
     assert_eq!(
-        parse_successfully_with("** NO NEWLINE AFTER COMMENT", source_file(), no_state_setup),
+        parse_source_file_successfully("** NO NEWLINE AFTER COMMENT",),
         SourceFile {
             blocks: Default::default(),
             global_equalities: Default::default(), // no equalities
@@ -2835,19 +2877,16 @@ mod macro_tests {
     };
     use super::super::*;
     use super::{
-        assignment_of_literal, atom_to_fragment, no_state_setup, notags, parse_successfully_with,
-        span,
+        assignment_of_literal, atom_to_fragment, no_state_setup, notags,
+        parse_source_file_successfully, parse_successfully_with, span,
     };
 
     #[test]
     fn test_macro_definition_with_empty_body() {
         // TBD: where in a macro definition are comments allowed?
-        let g = grammar();
-        let got = parse_successfully_with(
-            concat!("☛☛DEF MYMACRO≡\n", "☛☛EMD"), // deliberately no terminating newline, see comment in macro_definition().
-            macro_definition(&g),
-            no_state_setup,
-        );
+        let input = concat!("☛☛DEF MYMACRO≡\n", "☛☛EMD"); // deliberately no terminating newline, see comment in macro_definition().
+        dbg!(&input[21..]);
+        let got = parse_successfully_with(input, macro_definition(), no_state_setup);
         let expected = MacroDefinition {
             name: SymbolName::from("MYMACRO".to_string()),
             params: MacroDummyParameters::Zero(Token::IdenticalTo(Script::Normal)),
@@ -2859,17 +2898,15 @@ mod macro_tests {
 
     #[test]
     fn test_macro_definition_with_trivial_body() {
-        let g = grammar();
-        let got = parse_successfully_with(
-            concat!(
-                "☛☛DEF JUST|Q\n",
-                // This macro definition has a one-line body.
-                "Q ** This is the only line in the body.\n",
-                "☛☛EMD" // deliberately no terminating newline, see comment in macro_definition().
-            ),
-            macro_definition(&g),
-            no_state_setup,
+        let input = concat!(
+            "☛☛DEF JUST|Q\n",
+            // This macro definition has a one-line body.
+            "Q ** This is the only line in the body.\n",
+            "☛☛EMD" // deliberately no terminating newline, see comment in macro_definition().
         );
+        dbg!(&input[0..57]);
+        dbg!(&input[0..66]);
+        let got = parse_successfully_with(input, macro_definition(), no_state_setup);
         let expected = MacroDefinition {
             name: SymbolName::from("JUST".to_string()),
             params: MacroDummyParameters::OneOrMore(vec![MacroParameter {
@@ -2900,8 +2937,7 @@ mod macro_tests {
 
     #[test]
     fn test_macro_definition_as_entire_source_file() {
-        let got =
-            parse_successfully_with("☛☛DEF JUST|Q\nQ\n☛☛EMD\n", source_file(), no_state_setup);
+        let got = parse_source_file_successfully("☛☛DEF JUST|Q\nQ\n☛☛EMD\n");
         let expected = SourceFile {
             blocks: Default::default(),            // empty
             global_equalities: Default::default(), // no equalities
@@ -3001,23 +3037,19 @@ mod macro_tests {
 
     #[test]
     fn test_parse_macro_invocation_with_equality() {
-        let got = parse_successfully_with(
-            concat!(
-                "☛☛DEF MYMACRO≡\n",
-                "     X = 1\n",
-                // Although this tag ends up in the program twice,
-                // this is valid since each the tags in the two macro
-                // expansions are separate.
-                " T-> 2\n",
-                "☛☛EMD",
-                "\n",
-                // We expand the macro twice.
-                "MYMACRO≡\n",
-                "MYMACRO≡\n",
-            ),
-            source_file(),
-            no_state_setup,
-        );
+        let got = parse_source_file_successfully(concat!(
+            "☛☛DEF MYMACRO≡\n",
+            "     X = 1\n",
+            // Although this tag ends up in the program twice,
+            // this is valid since each the tags in the two macro
+            // expansions are separate.
+            " T-> 2\n",
+            "☛☛EMD",
+            "\n",
+            // We expand the macro twice.
+            "MYMACRO≡\n",
+            "MYMACRO≡\n",
+        ));
 
         let symtab: ExplicitSymbolTable = {
             let mut st = ExplicitSymbolTable::default();
@@ -3095,5 +3127,33 @@ mod macro_tests {
         };
 
         assert_eq!(got, expected,);
+    }
+
+    #[test]
+    fn test_parse_macro_used_before_defined() {
+        // In this test we do not actually invoke OUTER because
+        // recursive macros are not yet supported.
+        parse_source_file_successfully(concat!(
+            "☛☛DEF INNER≡P\n",
+            "     P+2\n",
+            "☛☛EMD\n",
+            "☛☛DEF OUTER≡P\n",
+            "     INNER≡(P+1)\n",
+            "☛☛EMD\n",
+        ));
+    }
+
+    #[test]
+    fn test_parse_macro_defined_before_used() {
+        // In this test we do not actually invoke OUTER because
+        // recursive macros are not yet supported.
+        parse_source_file_successfully(concat!(
+            "☛☛DEF OUTER≡P\n",
+            "     INNER≡(P+1)\n",
+            "☛☛EMD\n",
+            "☛☛DEF INNER≡P\n",
+            "     P+2\n",
+            "☛☛EMD\n",
+        ));
     }
 }
