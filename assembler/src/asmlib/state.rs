@@ -9,7 +9,7 @@ use std::fmt::Debug;
 
 use chumsky::{inspector::Inspector, prelude::Input};
 
-use super::manuscript::{MacroDefinition, ParsedMacroBody};
+use super::manuscript::MacroDefinition;
 use super::symbol::SymbolName;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -88,7 +88,7 @@ where
 pub(crate) struct State<'src> {
     pub(super) numeral_mode: NumeralMode,
     pub(super) body: &'src str,
-    pub(super) macros: TruncatableMap<SymbolName, MacroDefinition<ParsedMacroBody>>,
+    pub(super) macros: TruncatableMap<SymbolName, MacroDefinition>,
 }
 
 impl<'src> State<'src> {
@@ -109,19 +109,16 @@ impl<'src> State<'src> {
         state
     }
 
-    pub(crate) fn define_macro(&mut self, definition: MacroDefinition<ParsedMacroBody>) {
+    pub(crate) fn define_macro(&mut self, definition: MacroDefinition) {
         // TODO: provide a diagnostic when a macro is redefined.
         self.macros.insert(definition.name.clone(), definition);
     }
 
-    pub(crate) fn get_macro_definition(
-        &self,
-        name: &SymbolName,
-    ) -> Option<&MacroDefinition<ParsedMacroBody>> {
+    pub(crate) fn get_macro_definition(&self, name: &SymbolName) -> Option<&MacroDefinition> {
         self.macros.get(name)
     }
 
-    pub(crate) fn macros(&self) -> &BTreeMap<SymbolName, MacroDefinition<ParsedMacroBody>> {
+    pub(crate) fn macros(&self) -> &BTreeMap<SymbolName, MacroDefinition> {
         self.macros.map_ref()
     }
 }

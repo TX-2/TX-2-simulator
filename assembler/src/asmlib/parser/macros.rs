@@ -15,13 +15,13 @@ use super::{
     super::{
         ast::ArithmeticExpression,
         manuscript::{
-            MacroDefinition, MacroDummyParameters, MacroInvocation, MacroParameter,
-            MacroParameterBindings, MacroParameterValue, ParsedMacroBodyLine,
+            MacroBodyLine, MacroDefinition, MacroDummyParameters, MacroInvocation, MacroParameter,
+            MacroParameterBindings, MacroParameterValue,
         },
         state::State,
         symbol::SymbolName,
     },
-    ExtraWithoutContext, Grammar, Metacommand, Mi, MyError, MyErrorVec, ParsedMacroBody, Span,
+    ExtraWithoutContext, Grammar, MacroBody, Metacommand, Mi, MyError, MyErrorVec, Span,
     arithmetic_expression_in_any_script_allowing_spaces, end_of_line, grammar, lexer,
     named_metacommand, named_symbol,
     symex::{self, SymexSyllableRule},
@@ -224,7 +224,7 @@ where
         // Try to parse each of the macro definitions we have not yet
         // been able to parse (or have not yet attempted to parse).
         for macro_def_span in macros.drain(0..) {
-            let (maybe_parsed, errors): (Option<MacroDefinition<ParsedMacroBody>>, MyErrorVec) =
+            let (maybe_parsed, errors): (Option<MacroDefinition>, MyErrorVec) =
                 parse_single_macro_definition(
                     &full_definition_parser,
                     source_file_body,
@@ -325,7 +325,7 @@ where
 
 /// Macros are described in section 6-4 of the TX-2 User Handbook.
 pub(super) fn macro_definition<'src, I>()
--> impl Parser<'src, I, MacroDefinition<ParsedMacroBody>, ExtraWithoutContext<'src>> + use<'src, I>
+-> impl Parser<'src, I, MacroDefinition, ExtraWithoutContext<'src>> + use<'src, I>
 where
     I: Input<'src, Token = Tok, Span = Span> + ValueInput<'src>,
 {
@@ -355,12 +355,9 @@ fn parse_single_macro_definition<'source, 'state, P>(
     whole_source: &'source str,
     macro_definition_span: SimpleSpan,
     state: &'state mut State<'source>,
-) -> (
-    Option<MacroDefinition<ParsedMacroBody>>,
-    Vec<MyError<'source, Mi>>,
-)
+) -> (Option<MacroDefinition>, Vec<MyError<'source, Mi>>)
 where
-    P: Parser<'source, Mi, MacroDefinition<ParsedMacroBody>, ExtraWithoutContext<'source>>,
+    P: Parser<'source, Mi, MacroDefinition, ExtraWithoutContext<'source>>,
 {
     let macro_def_span_begin: usize = macro_definition_span.start;
     let macro_def_span_end: usize = macro_definition_span.end;
@@ -432,33 +429,30 @@ where
 
 fn macro_body<'a, 'b, I>(
     grammar: &Grammar<'a, 'b, I>,
-) -> impl Parser<'a, I, ParsedMacroBody, ExtraWithoutContext<'a>> + use<'a, 'b, I>
+) -> impl Parser<'a, I, MacroBody, ExtraWithoutContext<'a>> + use<'a, 'b, I>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
     let parser = (macro_body_line(grammar).then_ignore(end_of_line()))
         .repeated()
-        .collect::<Vec<ParsedMacroBodyLine>>()
-        .map(ParsedMacroBody::from);
+        .collect::<Vec<MacroBodyLine>>()
+        .map(MacroBody::from);
     parser.labelled("macro body")
 }
 
 fn macro_body_line<'a, 'b, I>(
     grammar: &Grammar<'a, 'b, I>,
-) -> impl Parser<'a, I, ParsedMacroBodyLine, ExtraWithoutContext<'a>> + use<'a, 'b, I>
+) -> impl Parser<'a, I, MacroBodyLine, ExtraWithoutContext<'a>> + use<'a, 'b, I>
 where
     I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
 {
     choice((
-        macro_invocation().map(ParsedMacroBodyLine::Expansion),
-        grammar
-            .assignment
-            .clone()
-            .map(ParsedMacroBodyLine::Equality),
+        macro_invocation().map(MacroBodyLine::Expansion),
+        grammar.assignment.clone().map(MacroBodyLine::Equality),
         grammar
             .tagged_program_instruction
             .clone()
-            .map(ParsedMacroBodyLine::Instruction),
+            .map(MacroBodyLine::Instruction),
     ))
 }
 
@@ -478,8 +472,7 @@ where
     I: Input<'src, Token = Tok, Span = Span> + ValueInput<'src>,
 {
     expr_parser: Boxed<'src, 'src, I, (Span, ParsedMacroArg), ExtraWithoutContext<'src>>,
-    defined_macro_name_parser:
-        Boxed<'src, 'src, I, MacroDefinition<ParsedMacroBody>, ExtraWithoutContext<'src>>,
+    defined_macro_name_parser: Boxed<'src, 'src, I, MacroDefinition, ExtraWithoutContext<'src>>,
 }
 
 impl<'src, I> MacroInvocationParser<'src, I>
@@ -488,13 +481,7 @@ where
 {
     pub(super) fn new(
         expr_parser: Boxed<'src, 'src, I, (Span, ParsedMacroArg), ExtraWithoutContext<'src>>,
-        defined_macro_name_parser: Boxed<
-            'src,
-            'src,
-            I,
-            MacroDefinition<ParsedMacroBody>,
-            ExtraWithoutContext<'src>,
-        >,
+        defined_macro_name_parser: Boxed<'src, 'src, I, MacroDefinition, ExtraWithoutContext<'src>>,
     ) -> Self {
         Self {
             expr_parser,
@@ -534,8 +521,7 @@ where
         <Full<Rich<'src, Tok>, State<'src>, ()> as ParserExtra<'src, I>>::Error,
     > {
         let before = inp.cursor();
-        let macro_def: MacroDefinition<ParsedMacroBody> =
-            inp.parse(&self.defined_macro_name_parser)?;
+        let macro_def: MacroDefinition = inp.parse(&self.defined_macro_name_parser)?;
         let param_defs: Vec<MacroParameter> = match macro_def.params {
             MacroDummyParameters::Zero(ref expected) => {
                 if let Some(got) = inp.next_maybe().as_deref() {
@@ -609,7 +595,7 @@ where
 }
 
 pub(super) fn defined_macro_name<'src, I>()
--> impl Parser<'src, I, MacroDefinition<ParsedMacroBody>, ExtraWithoutContext<'src>>
+-> impl Parser<'src, I, MacroDefinition, ExtraWithoutContext<'src>>
 where
     I: Input<'src, Token = Tok, Span = Span> + ValueInput<'src>,
 {
@@ -617,7 +603,7 @@ where
         name: &SymbolName,
         state: &State,
         span: Span,
-    ) -> Result<MacroDefinition<ParsedMacroBody>, chumsky::error::Rich<'a, Tok>> {
+    ) -> Result<MacroDefinition, chumsky::error::Rich<'a, Tok>> {
         match state.get_macro_definition(name) {
             None => Err(Rich::custom(span, format!("unknown macro {name}"))),
             Some(macro_def) => Ok(macro_def.clone()),
@@ -647,9 +633,9 @@ mod tests {
                     SymbolOrLiteral, Tag, TaggedProgramInstruction, UntaggedProgramInstruction,
                 },
                 manuscript::{
-                    MacroDefinition, MacroDummyParameters, MacroInvocation, MacroParameter,
-                    MacroParameterBindings, MacroParameterValue, ManuscriptBlock, ParsedMacroBody,
-                    ParsedMacroBodyLine, SourceFile,
+                    MacroBody, MacroBodyLine, MacroDefinition, MacroDummyParameters,
+                    MacroInvocation, MacroParameter, MacroParameterBindings, MacroParameterValue,
+                    ManuscriptBlock, SourceFile,
                 },
                 state::State,
                 symbol::SymbolName,
@@ -691,9 +677,7 @@ mod tests {
         let lines = parsed_body.parsed_body_lines();
         dbg!(&lines);
         match &lines[0] {
-            ParsedMacroBodyLine::Instruction(TaggedProgramInstruction {
-                span: the_span, ..
-            }) => {
+            MacroBodyLine::Instruction(TaggedProgramInstruction { span: the_span, .. }) => {
                 assert_eq!(the_span, &span_expected, "incorrect span");
             }
             other => {
@@ -932,7 +916,7 @@ mod tests {
         let expected = MacroDefinition {
             name: SymbolName::from("MYMACRO".to_string()),
             params: MacroDummyParameters::Zero(Token::IdenticalTo(Script::Normal)),
-            body: ParsedMacroBody::default(),
+            body: MacroBody::default(),
             span: span(0..30),
         };
         assert_eq!(got, expected);
@@ -956,7 +940,7 @@ mod tests {
                 span: span(14..16),
                 preceding_terminator: Token::Pipe(Script::Normal),
             }]),
-            body: vec![ParsedMacroBodyLine::Instruction(
+            body: vec![MacroBodyLine::Instruction(
                 TaggedProgramInstruction::single(
                     notags(),
                     HoldBit::Unspecified,
@@ -996,7 +980,7 @@ mod tests {
                         span: span(14..16),
                         preceding_terminator: Token::Pipe(Script::Normal),
                     }]),
-                    body: vec![ParsedMacroBodyLine::Instruction(
+                    body: vec![MacroBodyLine::Instruction(
                         TaggedProgramInstruction::single(
                             notags(),
                             HoldBit::Unspecified,
@@ -1026,7 +1010,7 @@ mod tests {
                 span: span(10..12),
                 preceding_terminator: Token::Tilde(Script::Normal),
             }]),
-            body: vec![ParsedMacroBodyLine::Instruction(TaggedProgramInstruction {
+            body: vec![MacroBodyLine::Instruction(TaggedProgramInstruction {
                 span: span(0..24),
                 tags: notags(),
                 instruction: UntaggedProgramInstruction::from(OneOrMore::new(
@@ -1152,12 +1136,12 @@ mod tests {
                     name: SymbolName::from("MYMACRO"),
                     params: MacroDummyParameters::Zero(Token::IdenticalTo(Script::Normal)),
                     body: vec![
-                        ParsedMacroBodyLine::Equality(assignment_of_literal(
+                        MacroBodyLine::Equality(assignment_of_literal(
                             "X",
                             span(26..31),
                             LiteralValue::from((span(30..31), Script::Normal, u36!(1))),
                         )),
-                        ParsedMacroBodyLine::Instruction(the_instruction.clone()),
+                        MacroBodyLine::Instruction(the_instruction.clone()),
                     ]
                     .into(),
                     span: span(0..48),

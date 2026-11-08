@@ -37,7 +37,7 @@ use super::ast::{
 };
 use super::lexer::{self};
 use super::manuscript::{
-    MacroDefinition, ManuscriptLine, ManuscriptMetaCommand, ParsedMacroBody, SourceFile,
+    MacroBody, MacroDefinition, ManuscriptLine, ManuscriptMetaCommand, SourceFile,
     manuscript_lines_to_source_file,
 };
 use super::span::{Span, Spanned, span};
@@ -1207,8 +1207,8 @@ where
     }
 
     fn check_consistent<'a>(
-        macro_def_in_source_file: Option<&MacroDefinition<ParsedMacroBody>>,
-        macro_def_in_state: Option<&MacroDefinition<ParsedMacroBody>>,
+        macro_def_in_source_file: Option<&MacroDefinition>,
+        macro_def_in_state: Option<&MacroDefinition>,
     ) -> Result<(), chumsky::error::Rich<'a, lexer::Token>> {
         match (macro_def_in_source_file, macro_def_in_state) {
             (None, None) => {
@@ -1244,7 +1244,7 @@ where
         .try_map_with(|lines: Vec<Option<(Span, ManuscriptLine)>>, extra| {
             // Filter out empty lines.
             let lines: Vec<(Span, ManuscriptLine)> = lines.into_iter().flatten().collect();
-            let state_macros: BTreeMap<SymbolName, MacroDefinition<ParsedMacroBody>> =
+            let state_macros: BTreeMap<SymbolName, MacroDefinition> =
                 extra.state().macros().clone();
 
             let source_file: SourceFile = manuscript_lines_to_source_file(lines)?;
