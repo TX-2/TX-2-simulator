@@ -14,7 +14,6 @@ use super::super::ast::{
 use super::super::{
     eval::ScopeIdentifier,
     eval::{Evaluate, EvaluationContext, HereValue, make_empty_rc_block_for_test},
-    lexer::Token,
     manuscript::{ManuscriptBlock, ManuscriptMetaCommand, SourceFile},
     memorymap::MemoryMap,
     parser::symex::{parse_multi_syllable_symex, parse_symex},
@@ -30,7 +29,7 @@ use super::Span;
 type ParseErrors<'a> = Vec<Rich<'a, Tok>>;
 
 #[cfg(test)]
-fn notags() -> Vec<Tag> {
+pub(super) fn notags() -> Vec<Tag> {
     Vec::new()
 }
 
@@ -89,7 +88,7 @@ pub(crate) fn parse_source_file_successfully(input: &str) -> SourceFile {
 }
 
 #[cfg(test)]
-fn no_state_setup(_: &mut State) {}
+pub(super) fn no_state_setup(_: &mut State) {}
 
 #[cfg(test)]
 fn set_decimal_mode(state: &mut State) {
@@ -97,7 +96,7 @@ fn set_decimal_mode(state: &mut State) {
 }
 
 #[cfg(test)]
-fn span(range: Range<usize>) -> Span {
+pub(super) fn span(range: Range<usize>) -> Span {
     Span::from(range)
 }
 
@@ -1006,7 +1005,7 @@ fn test_manuscript_with_multi_syllable_tag() {
     );
 }
 
-fn atom_to_fragment(atom: Atom) -> InstructionFragment {
+pub(super) fn atom_to_fragment(atom: Atom) -> InstructionFragment {
     InstructionFragment::Arithmetic(ArithmeticExpression::from(atom))
 }
 
@@ -1067,7 +1066,11 @@ fn test_manuscript_with_real_arrow_tag() {
 }
 
 #[cfg(test)]
-fn assignment_of_literal(name: &str, assignment_span: Span, literal: LiteralValue) -> Equality {
+pub(super) fn assignment_of_literal(
+    name: &str,
+    assignment_span: Span,
+    literal: LiteralValue,
+) -> Equality {
     Equality {
         span: assignment_span,
         name: SymbolName::from(name),
@@ -1580,261 +1583,6 @@ fn test_parenthesised_expression() {
                 (span(1..2), Script::Normal, u36!(1))
             ))))
         )))
-    );
-}
-
-#[test]
-fn test_macro_body_accepts_two_lines() {
-    let g = grammar();
-    parse_successfully_with("SOMETHING\nWORLD\n", macro_body(&g), no_state_setup);
-}
-
-#[test]
-fn test_macro_body_accepts_empty_macro_body() {
-    let input = "";
-    let g = grammar();
-    let result = parse_with(input, macro_body(&g), no_state_setup);
-    assert!(
-        result.is_ok(),
-        "expected input '{input}' to be accepted but got {result:?}"
-    );
-}
-
-#[cfg(test)]
-fn check_macro_body_symex_span(input: &str, span_expected: SimpleSpan) {
-    dbg!(input, &span_expected);
-    let g = grammar();
-    let parsed_body = parse_successfully_with(input, macro_body(&g), no_state_setup);
-    let lines = parsed_body.parsed_body_lines();
-    dbg!(&lines);
-    match &lines[0] {
-        ParsedMacroBodyLine::Instruction(TaggedProgramInstruction { span: the_span, .. }) => {
-            assert_eq!(the_span, &span_expected, "incorrect span");
-        }
-        other => {
-            panic!("expected first line to be an instruction, got {other:?}");
-        }
-    }
-}
-
-#[test]
-fn test_macro_body_generates_symexes_whose_span_does_not_include_newline() {
-    check_macro_body_symex_span("R\n", span(0..1));
-}
-
-#[test]
-fn test_macro_body_generates_symexes_whose_span_does_not_include_comments() {
-    check_macro_body_symex_span("W ** this is a comment\n", span(0..1));
-}
-
-#[test]
-fn test_macro_arg() {
-    assert_eq!(
-        parse_successfully_with(
-            "@hand@A01",
-            macro_definition_dummy_parameter(),
-            no_state_setup
-        ),
-        MacroParameter {
-            name: SymbolName::from("A01".to_string()),
-            span: span(0..9),
-            preceding_terminator: Token::Hand(Script::Normal),
-        }
-    );
-
-    assert_eq!(
-        parse_successfully_with(
-            "@comma@A02",
-            macro_definition_dummy_parameter(),
-            no_state_setup
-        ),
-        MacroParameter {
-            name: SymbolName::from("A02".to_string()),
-            span: span(0..10),
-            preceding_terminator: Token::Comma(Script::Normal),
-        }
-    );
-
-    assert_eq!(
-        parse_successfully_with("=A03", macro_definition_dummy_parameter(), no_state_setup),
-        MacroParameter {
-            name: SymbolName::from("A03".to_string()),
-            span: span(0..4),
-            preceding_terminator: Token::Equals(Script::Normal),
-        }
-    );
-
-    assert_eq!(
-        parse_successfully_with(
-            "@arr@A04",
-            macro_definition_dummy_parameter(),
-            no_state_setup
-        ),
-        MacroParameter {
-            name: SymbolName::from("A04".to_string()),
-            span: span(0..8),
-            preceding_terminator: Token::Arrow(Script::Normal),
-        }
-    );
-
-    assert_eq!(
-        // Alternative form for convenience (and consistency with
-        // what we allow for tags).
-        parse_successfully_with("->A04", macro_definition_dummy_parameter(), no_state_setup),
-        MacroParameter {
-            name: SymbolName::from("A04".to_string()),
-            span: span(0..5),
-            preceding_terminator: Token::Arrow(Script::Normal),
-        }
-    );
-
-    assert_eq!(
-        parse_successfully_with("|A05", macro_definition_dummy_parameter(), no_state_setup),
-        MacroParameter {
-            name: SymbolName::from("A05".to_string()),
-            span: span(0..4),
-            preceding_terminator: Token::Pipe(Script::Normal),
-        }
-    );
-
-    assert_eq!(
-        parse_successfully_with("⊃A06", macro_definition_dummy_parameter(), no_state_setup),
-        MacroParameter {
-            name: SymbolName::from("A06".to_string()),
-            span: span(0..6),
-            preceding_terminator: Token::ProperSuperset(Script::Normal),
-        }
-    );
-
-    assert_eq!(
-        parse_successfully_with("≡A07", macro_definition_dummy_parameter(), no_state_setup),
-        MacroParameter {
-            name: SymbolName::from("A07".to_string()),
-            span: span(0..6),
-            preceding_terminator: Token::IdenticalTo(Script::Normal),
-        }
-    );
-
-    assert_eq!(
-        parse_successfully_with(
-            "@hamb@A07",
-            macro_definition_dummy_parameter(),
-            no_state_setup
-        ),
-        MacroParameter {
-            name: SymbolName::from("A07".to_string()),
-            span: span(0..9),
-            preceding_terminator: Token::IdenticalTo(Script::Normal),
-        }
-    );
-
-    assert_eq!(
-        parse_successfully_with("~A08", macro_definition_dummy_parameter(), no_state_setup),
-        MacroParameter {
-            name: SymbolName::from("A08".to_string()),
-            span: span(0..4),
-            preceding_terminator: Token::Tilde(Script::Normal),
-        }
-    );
-
-    assert_eq!(
-        parse_successfully_with("<A09", macro_definition_dummy_parameter(), no_state_setup),
-        MacroParameter {
-            name: SymbolName::from("A09".to_string()),
-            span: span(0..4),
-            preceding_terminator: Token::LessThan(Script::Normal),
-        }
-    );
-
-    assert_eq!(
-        parse_successfully_with(">A10", macro_definition_dummy_parameter(), no_state_setup),
-        MacroParameter {
-            name: SymbolName::from("A10".to_string()),
-            span: span(0..4),
-            preceding_terminator: Token::GreaterThan(Script::Normal),
-        }
-    );
-
-    assert_eq!(
-        parse_successfully_with("∩A11", macro_definition_dummy_parameter(), no_state_setup),
-        MacroParameter {
-            name: SymbolName::from("A11".to_string()),
-            span: span(0..6),
-            preceding_terminator: Token::Intersection(Script::Normal),
-        }
-    );
-
-    assert_eq!(
-        parse_successfully_with("∪A12", macro_definition_dummy_parameter(), no_state_setup),
-        MacroParameter {
-            name: SymbolName::from("A12".to_string()),
-            span: span(0..6),
-            preceding_terminator: Token::Union(Script::Normal),
-        }
-    );
-
-    assert_eq!(
-        parse_successfully_with("/A13", macro_definition_dummy_parameter(), no_state_setup),
-        MacroParameter {
-            name: SymbolName::from("A13".to_string()),
-            span: span(0..4),
-            preceding_terminator: Token::Solidus(Script::Normal),
-        }
-    );
-
-    assert_eq!(
-        parse_successfully_with("×A14", macro_definition_dummy_parameter(), no_state_setup),
-        MacroParameter {
-            name: SymbolName::from("A14".to_string()),
-            span: span(0..5),
-            preceding_terminator: Token::Times(Script::Normal),
-        }
-    );
-
-    assert_eq!(
-        parse_successfully_with("∨A15", macro_definition_dummy_parameter(), no_state_setup),
-        MacroParameter {
-            name: SymbolName::from("A15".to_string()),
-            span: span(0..6),
-            preceding_terminator: Token::LogicalOr(Script::Normal),
-        }
-    );
-
-    assert_eq!(
-        parse_successfully_with("∧A16", macro_definition_dummy_parameter(), no_state_setup),
-        MacroParameter {
-            name: SymbolName::from("A16".to_string()),
-            span: span(0..6),
-            preceding_terminator: Token::LogicalAnd(Script::Normal),
-        }
-    );
-}
-
-#[test]
-fn test_macro_args() {
-    assert_eq!(
-        parse_successfully_with(
-            "=X@hand@YZ@arr@P",
-            macro_definition_dummy_parameters(),
-            no_state_setup
-        ),
-        MacroDummyParameters::OneOrMore(vec![
-            MacroParameter {
-                name: SymbolName::from("X".to_string()),
-                span: span(0..2),
-                preceding_terminator: Token::Equals(Script::Normal),
-            },
-            MacroParameter {
-                name: SymbolName::from("YZ".to_string()),
-                span: span(2..10),
-                preceding_terminator: Token::Hand(Script::Normal),
-            },
-            MacroParameter {
-                name: SymbolName::from("P".to_string()),
-                span: span(10..16),
-                preceding_terminator: Token::Arrow(Script::Normal),
-            },
-        ])
     );
 }
 
@@ -2863,297 +2611,5 @@ fn test_make_bit_designator_literal() {
             }
         }
         assert_eq!(seen.len(), 4 * 9 + 1);
-    }
-}
-
-mod macro_tests {
-    use super::super::super::ast::InstructionSequence;
-    use super::super::super::ast::{Atom, HoldBit, InstructionFragment, TaggedProgramInstruction};
-    use super::super::super::{
-        lexer::Token,
-        manuscript::ManuscriptBlock,
-        symbol::SymbolName,
-        symtab::{ExplicitDefinition, ExplicitSymbolTable},
-    };
-    use super::super::*;
-    use super::{
-        assignment_of_literal, atom_to_fragment, no_state_setup, notags,
-        parse_source_file_successfully, parse_successfully_with, span,
-    };
-
-    #[test]
-    fn test_macro_definition_with_empty_body() {
-        // TBD: where in a macro definition are comments allowed?
-        let input = concat!("☛☛DEF MYMACRO≡\n", "☛☛EMD"); // deliberately no terminating newline, see comment in macro_definition().
-        dbg!(&input[21..]);
-        let got = parse_successfully_with(input, macro_definition(), no_state_setup);
-        let expected = MacroDefinition {
-            name: SymbolName::from("MYMACRO".to_string()),
-            params: MacroDummyParameters::Zero(Token::IdenticalTo(Script::Normal)),
-            body: ParsedMacroBody::default(),
-            span: span(0..30),
-        };
-        assert_eq!(got, expected);
-    }
-
-    #[test]
-    fn test_macro_definition_with_trivial_body() {
-        let input = concat!(
-            "☛☛DEF JUST|Q\n",
-            // This macro definition has a one-line body.
-            "Q ** This is the only line in the body.\n",
-            "☛☛EMD" // deliberately no terminating newline, see comment in macro_definition().
-        );
-        dbg!(&input[0..57]);
-        dbg!(&input[0..66]);
-        let got = parse_successfully_with(input, macro_definition(), no_state_setup);
-        let expected = MacroDefinition {
-            name: SymbolName::from("JUST".to_string()),
-            params: MacroDummyParameters::OneOrMore(vec![MacroParameter {
-                name: SymbolName::from("Q".to_string()),
-                span: span(14..16),
-                preceding_terminator: Token::Pipe(Script::Normal),
-            }]),
-            body: vec![ParsedMacroBodyLine::Instruction(
-                TaggedProgramInstruction::single(
-                    notags(),
-                    HoldBit::Unspecified,
-                    span(17..18),
-                    span(17..18),
-                    InstructionFragment::Arithmetic(ArithmeticExpression::from(
-                        Atom::SymbolOrLiteral(SymbolOrLiteral::Symbol(
-                            Script::Normal,
-                            SymbolName::from("Q"),
-                            span(17..18),
-                        )),
-                    )),
-                ),
-            )]
-            .into(),
-            span: span(0..66),
-        };
-        assert_eq!(got, expected);
-    }
-
-    #[test]
-    fn test_macro_definition_as_entire_source_file() {
-        let got = parse_source_file_successfully("☛☛DEF JUST|Q\nQ\n☛☛EMD\n");
-        let expected = SourceFile {
-            blocks: Default::default(),            // empty
-            global_equalities: Default::default(), // no equalities
-            macros: [(
-                SymbolName::from("JUST".to_string()),
-                MacroDefinition {
-                    name: SymbolName {
-                        canonical: "JUST".to_string(),
-                    },
-                    params: MacroDummyParameters::OneOrMore(vec![MacroParameter {
-                        name: SymbolName {
-                            canonical: "Q".to_string(),
-                        },
-                        span: span(14..16),
-                        preceding_terminator: Token::Pipe(Script::Normal),
-                    }]),
-                    body: vec![ParsedMacroBodyLine::Instruction(
-                        TaggedProgramInstruction::single(
-                            notags(),
-                            HoldBit::Unspecified,
-                            span(17..18),
-                            span(17..18),
-                            InstructionFragment::Arithmetic(ArithmeticExpression::from(
-                                Atom::from((span(17..18), Script::Normal, SymbolName::from("Q"))),
-                            )),
-                        ),
-                    )]
-                    .into(),
-                    span: span(0..28),
-                },
-            )]
-            .into(),
-            punch: None,
-        };
-        assert_eq!(got, expected);
-    }
-
-    #[test]
-    fn test_parse_macro_invocation() {
-        let macro_definition_foo = MacroDefinition {
-            name: SymbolName::from("FOO"),
-            params: MacroDummyParameters::OneOrMore(vec![MacroParameter {
-                name: SymbolName::from("A1"),
-                span: span(10..12),
-                preceding_terminator: Token::Tilde(Script::Normal),
-            }]),
-            body: vec![ParsedMacroBodyLine::Instruction(TaggedProgramInstruction {
-                span: span(0..24),
-                tags: notags(),
-                instruction: UntaggedProgramInstruction::from(OneOrMore::new(
-                    CommaDelimitedFragment {
-                        leading_commas: None,
-                        holdbit: HoldBit::Unspecified,
-                        span: span(16..20),
-                        fragment: InstructionFragment::Config(ConfigValue {
-                            already_superscript: false,
-                            expr: ArithmeticExpression::from(Atom::from((
-                                span(4..5),
-                                Script::Normal,
-                                SymbolName::from("X"),
-                            ))),
-                        }),
-                        trailing_commas: None,
-                    },
-                )),
-            })]
-            .into(),
-            span: span(20..40),
-        };
-        let set_up_macro_definition = |state: &mut State| {
-            state.define_macro(macro_definition_foo.clone());
-        };
-        let got = parse_successfully_with("FOO~X", macro_invocation(), set_up_macro_definition);
-
-        let mut bindings: MacroParameterBindings = Default::default();
-        bindings.insert(
-            SymbolName::from("A1"),
-            span(4..5),
-            Some(MacroParameterValue::Value(
-                Script::Normal,
-                ArithmeticExpression::from(Atom::from((
-                    span(4..5),
-                    Script::Normal,
-                    SymbolName::from("X"),
-                ))),
-            )),
-        );
-
-        assert_eq!(
-            got,
-            MacroInvocation {
-                macro_def: macro_definition_foo,
-                param_values: bindings,
-            }
-        );
-    }
-
-    #[test]
-    fn test_parse_macro_invocation_with_equality() {
-        let got = parse_source_file_successfully(concat!(
-            "☛☛DEF MYMACRO≡\n",
-            "     X = 1\n",
-            // Although this tag ends up in the program twice,
-            // this is valid since each the tags in the two macro
-            // expansions are separate.
-            " T-> 2\n",
-            "☛☛EMD",
-            "\n",
-            // We expand the macro twice.
-            "MYMACRO≡\n",
-            "MYMACRO≡\n",
-        ));
-
-        let symtab: ExplicitSymbolTable = {
-            let mut st = ExplicitSymbolTable::default();
-            st.define(
-                SymbolName::from("X"),
-                ExplicitDefinition::Equality(EqualityValue::from((
-                    span(30..31),
-                    UntaggedProgramInstruction::from(OneOrMore::new(CommaDelimitedFragment {
-                        leading_commas: None,
-                        holdbit: HoldBit::Unspecified,
-                        span: span(30..31),
-                        fragment: atom_to_fragment(Atom::from(LiteralValue::from((
-                            span(30..31),
-                            Script::Normal,
-                            u36!(1),
-                        )))),
-                        trailing_commas: None,
-                    })),
-                ))),
-            )
-            .expect("assignment should be valid");
-            st
-        };
-
-        let the_instruction = TaggedProgramInstruction::single(
-            vec![Tag {
-                name: SymbolName::from("T"),
-                span: span(33..34),
-            }],
-            HoldBit::Unspecified,
-            span(33..38),
-            span(37..38),
-            InstructionFragment::from((span(37..38), Script::Normal, u36!(2))),
-        );
-
-        let expected = SourceFile {
-            blocks: vec![ManuscriptBlock {
-                origin: None,
-                sequences: vec![
-                    // The first macro expansion
-                    InstructionSequence {
-                        local_symbols: Some(symtab.clone()),
-                        instructions: vec![the_instruction.clone()],
-                    },
-                    // The second macro expansion
-                    InstructionSequence {
-                        local_symbols: Some(symtab.clone()),
-                        instructions: vec![the_instruction.clone()],
-                    },
-                ],
-            }],
-            // There are no global equalities since the only equality
-            // is local to the macro body.
-            global_equalities: Default::default(),
-            macros: [(
-                SymbolName::from("MYMACRO"),
-                MacroDefinition {
-                    name: SymbolName::from("MYMACRO"),
-                    params: MacroDummyParameters::Zero(Token::IdenticalTo(Script::Normal)),
-                    body: vec![
-                        ParsedMacroBodyLine::Equality(assignment_of_literal(
-                            "X",
-                            span(26..31),
-                            LiteralValue::from((span(30..31), Script::Normal, u36!(1))),
-                        )),
-                        ParsedMacroBodyLine::Instruction(the_instruction.clone()),
-                    ]
-                    .into(),
-                    span: span(0..48),
-                },
-            )]
-            .into_iter()
-            .collect(),
-            punch: None,
-        };
-
-        assert_eq!(got, expected,);
-    }
-
-    #[test]
-    fn test_parse_macro_used_before_defined() {
-        // In this test we do not actually invoke OUTER because
-        // recursive macros are not yet supported.
-        parse_source_file_successfully(concat!(
-            "☛☛DEF INNER≡P\n",
-            "     P+2\n",
-            "☛☛EMD\n",
-            "☛☛DEF OUTER≡P\n",
-            "     INNER≡(P+1)\n",
-            "☛☛EMD\n",
-        ));
-    }
-
-    #[test]
-    fn test_parse_macro_defined_before_used() {
-        // In this test we do not actually invoke OUTER because
-        // recursive macros are not yet supported.
-        parse_source_file_successfully(concat!(
-            "☛☛DEF OUTER≡P\n",
-            "     INNER≡(P+1)\n",
-            "☛☛EMD\n",
-            "☛☛DEF INNER≡P\n",
-            "     P+2\n",
-            "☛☛EMD\n",
-        ));
     }
 }

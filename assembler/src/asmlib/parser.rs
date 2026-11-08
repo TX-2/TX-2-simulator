@@ -6,7 +6,6 @@
 use std::{
     collections::BTreeMap,
     collections::BTreeSet,
-    collections::HashMap,
     fmt::Debug,
     ops::{BitOr, Range, Shl},
 };
@@ -14,14 +13,14 @@ use std::{
 pub(crate) mod helpers;
 mod macros;
 mod symex;
+
 #[cfg(test)]
 mod tests;
 
 use chumsky::error::Rich;
 use chumsky::extension::v1::Ext;
-use chumsky::extension::v1::ExtParser;
 use chumsky::extra::{Full, ParserExtra};
-use chumsky::input::{Emitter, InputRef, MapExtra, Stream, ValueInput};
+use chumsky::input::{Emitter, MapExtra, Stream, ValueInput};
 
 use chumsky::Boxed;
 use chumsky::Parser;
@@ -38,9 +37,8 @@ use super::ast::{
 };
 use super::lexer::{self};
 use super::manuscript::{
-    MacroDefinition, MacroDummyParameters, MacroInvocation, MacroParameter, MacroParameterBindings,
-    MacroParameterValue, ManuscriptLine, ManuscriptMetaCommand, ParsedMacroBody,
-    ParsedMacroBodyLine, SourceFile, manuscript_lines_to_source_file,
+    MacroDefinition, ManuscriptLine, ManuscriptMetaCommand, ParsedMacroBody, SourceFile,
+    manuscript_lines_to_source_file,
 };
 use super::span::{Span, Spanned, span};
 use super::state::{NumeralMode, State};
@@ -437,143 +435,6 @@ fn make_pipe_construct(
     }
 }
 
-/// Macro terminators are described in section 6-4.5 of the TX-2 User Handbook.
-fn macro_terminator<'a, I>() -> impl Parser<'a, I, Tok, ExtraWithoutContext<'a>>
-where
-    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
-{
-    // This list of 16 allowed terminators is exhaustive, see section
-    // 6-4.5 of the TX-2 User Handbook.
-    //
-    // ☛ , = →  | ⊃ ≡ ~ < > ∩ ∪ / × ∨ ∧
-    //
-    // The second symbol, in my scanned copy of the Users Handbook
-    // (page 6-31 of the Nov 1963 Users Handbook), looks like either a
-    // comma or a dot/full-stop/period.  Since a dot is valid in a
-    // symex name, and because the symbol seems to be taller than it
-    // is wide, I'm going to assume it is a comma.
-    //
-    // They are actually hard to distinguish in the copy of the Users
-    // Handbook I have.  But, looking at page 011 of Leonard
-    // Kleinrock's listing for his network simulator, the `HP OS`
-    // macro is definitely using as a separator a symbol that lives on
-    // the line.  If you look a little further below on the same
-    // page, the third instruction in the body of the `MV MX` macro
-    // body contains both a dot and a comma.  The dot is definitely
-    // above the line and looks rounder.  So I conclude that the
-    // separator character is a comma.
-    choice((
-        just(Tok::Hand(Script::Normal)),
-        just(Tok::Comma(Script::Normal)),
-        just(Tok::Equals(Script::Normal)),
-        just(Tok::Arrow(Script::Normal)),
-        just(Tok::Pipe(Script::Normal)),
-        just(Tok::ProperSuperset(Script::Normal)),
-        just(Tok::IdenticalTo(Script::Normal)),
-        just(Tok::Tilde(Script::Normal)),
-        just(Tok::LessThan(Script::Normal)),
-        just(Tok::GreaterThan(Script::Normal)),
-        just(Tok::Intersection(Script::Normal)),
-        just(Tok::Union(Script::Normal)),
-        just(Tok::Solidus(Script::Normal)),
-        just(Tok::Times(Script::Normal)),
-        just(Tok::LogicalOr(Script::Normal)),
-        just(Tok::LogicalAnd(Script::Normal)),
-    ))
-    .labelled("macro terminator")
-}
-
-// Exposed for testing.
-fn macro_definition_dummy_parameter<'a, I>()
--> impl Parser<'a, I, MacroParameter, ExtraWithoutContext<'a>>
-where
-    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
-{
-    // The TX-2 Users Handbook section 6-4.4 ("DUMMY PARAMETERS")
-    // doesn't disallow spaces in macro argument names.
-    (macro_terminator().then(named_symbol(SymexSyllableRule::Multiple, Script::Normal))).map_with(
-        |(terminator, symbol), extra| MacroParameter {
-            name: symbol,
-            span: extra.span(),
-            preceding_terminator: terminator,
-        },
-    )
-}
-
-fn macro_definition_dummy_parameters<'a, I>()
--> impl Parser<'a, I, MacroDummyParameters, ExtraWithoutContext<'a>>
-where
-    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
-{
-    choice((
-        macro_definition_dummy_parameter()
-            .repeated()
-            .at_least(1)
-            .collect::<Vec<_>>()
-            .map(MacroDummyParameters::OneOrMore),
-        macro_terminator().map(MacroDummyParameters::Zero),
-    ))
-}
-
-/// Macros are described in section 6-4 of the TX-2 User Handbook.
-fn macro_definition<'src, I>()
--> impl Parser<'src, I, MacroDefinition<ParsedMacroBody>, ExtraWithoutContext<'src>> + use<'src, I>
-where
-    I: Input<'src, Token = Tok, Span = Span> + ValueInput<'src>,
-{
-    let g = grammar();
-    named_metacommand(Metacommand::DefineMacro)
-        .ignore_then(
-            named_symbol(SymexSyllableRule::Multiple, Script::Normal).labelled("macro name"), // the macro's name (# is not allowed)
-        )
-        .then(macro_definition_dummy_parameters())
-        .then_ignore(end_of_line())
-        .then(macro_body(&g))
-        .then_ignore(named_metacommand(Metacommand::EndMacroDefinition))
-        .try_map(|((name, params), body), span| {
-            Ok(MacroDefinition {
-                name,
-                params,
-                body,
-                span,
-            })
-        })
-    // We don't parse end-of-line here because all metacommands are supposed
-    // to be followed by end-of-line.
-}
-
-fn macro_body<'a, 'b, I>(
-    grammar: &Grammar<'a, 'b, I>,
-) -> impl Parser<'a, I, ParsedMacroBody, ExtraWithoutContext<'a>> + use<'a, 'b, I>
-where
-    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
-{
-    let parser = (macro_body_line(grammar).then_ignore(end_of_line()))
-        .repeated()
-        .collect::<Vec<ParsedMacroBodyLine>>()
-        .map(ParsedMacroBody::from);
-    parser.labelled("macro body")
-}
-
-fn macro_body_line<'a, 'b, I>(
-    grammar: &Grammar<'a, 'b, I>,
-) -> impl Parser<'a, I, ParsedMacroBodyLine, ExtraWithoutContext<'a>> + use<'a, 'b, I>
-where
-    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
-{
-    choice((
-        macro_invocation().map(ParsedMacroBodyLine::Expansion),
-        grammar
-            .assignment
-            .clone()
-            .map(ParsedMacroBodyLine::Equality),
-        grammar
-            .tagged_program_instruction
-            .clone()
-            .map(ParsedMacroBodyLine::Instruction),
-    ))
-}
-
 fn arithmetic_expression_in_any_script_allowing_spaces<'a, I>()
 -> impl Parser<'a, I, (Span, Script, ArithmeticExpression), ExtraWithoutContext<'a>>
 where
@@ -588,153 +449,6 @@ where
         g.superscript_arithmetic_expression_allowing_spaces
             .map_with(|expr, extra| (extra.span(), Script::Super, expr)),
     ))
-}
-
-fn defined_macro_name<'src, I>()
--> impl Parser<'src, I, MacroDefinition<ParsedMacroBody>, ExtraWithoutContext<'src>>
-where
-    I: Input<'src, Token = Tok, Span = Span> + ValueInput<'src>,
-{
-    fn mapping<'a>(
-        name: &SymbolName,
-        state: &State,
-        span: Span,
-    ) -> Result<MacroDefinition<ParsedMacroBody>, chumsky::error::Rich<'a, lexer::Token>> {
-        match state.get_macro_definition(name) {
-            None => Err(Rich::custom(span, format!("unknown macro {name}"))),
-            Some(macro_def) => Ok(macro_def.clone()),
-        }
-    }
-
-    symex::parse_symex(SymexSyllableRule::OneOnly, Script::Normal).try_map_with(|name, extra| {
-        let span: Span = extra.span();
-        let state: &State = extra.state();
-        mapping(&name, state, span)
-    })
-}
-
-type ParsedMacroArg = Option<(Script, ArithmeticExpression)>;
-
-#[derive(Clone)]
-struct MacroInvocationParser<'src, I>
-where
-    I: Input<'src, Token = Tok, Span = Span> + ValueInput<'src>,
-{
-    expr_parser: Boxed<'src, 'src, I, (Span, ParsedMacroArg), ExtraWithoutContext<'src>>,
-    defined_macro_name_parser:
-        Boxed<'src, 'src, I, MacroDefinition<ParsedMacroBody>, ExtraWithoutContext<'src>>,
-}
-
-impl<'src, I> Default for MacroInvocationParser<'src, I>
-where
-    I: Input<'src, Token = Tok, Span = Span> + ValueInput<'src>,
-{
-    fn default() -> Self {
-        Self {
-            expr_parser: arithmetic_expression_in_any_script_allowing_spaces()
-                .or_not()
-                .map_with(|got, extra| match got {
-                    Some((span, script, expr)) => (span, Some((script, expr))),
-                    None => (extra.span(), None),
-                })
-                .boxed(),
-            defined_macro_name_parser: defined_macro_name().boxed(),
-        }
-    }
-}
-
-fn macro_invocation<'src, I>() -> impl Parser<'src, I, MacroInvocation, ExtraWithoutContext<'src>>
-where
-    I: Input<'src, Token = Tok, Span = Span> + ValueInput<'src>,
-{
-    Ext(MacroInvocationParser::default())
-}
-
-impl<'src, I> ExtParser<'src, I, MacroInvocation, ExtraWithoutContext<'src>>
-    for MacroInvocationParser<'src, I>
-where
-    I: Input<'src, Token = Tok, Span = Span> + ValueInput<'src>,
-{
-    fn parse(
-        &self,
-        inp: &mut InputRef<'src, '_, I, ExtraWithoutContext<'src>>,
-    ) -> Result<
-        MacroInvocation,
-        <Full<Rich<'src, Tok>, State<'src>, ()> as ParserExtra<'src, I>>::Error,
-    > {
-        let before = inp.cursor();
-        let macro_def: MacroDefinition<ParsedMacroBody> =
-            inp.parse(&self.defined_macro_name_parser)?;
-        let param_defs: Vec<MacroParameter> = match macro_def.params {
-            MacroDummyParameters::Zero(ref expected) => {
-                if let Some(got) = inp.next_maybe().as_deref() {
-                    if got == expected {
-                        Vec::new()
-                    } else {
-                        return Err(Rich::custom(
-                            inp.span_since(&before),
-                            format!(
-                                "expected macro name {} to be followed a terminator {} but got {}",
-                                macro_def.name, expected, got
-                            ),
-                        ));
-                    }
-                } else {
-                    return Err(Rich::custom(
-                        inp.span_since(&before),
-                        format!(
-                            "expected macro name {} to be followed a terminator {}",
-                            macro_def.name, expected
-                        ),
-                    ));
-                }
-            }
-            MacroDummyParameters::OneOrMore(ref params) => params.clone(),
-        };
-        let mut param_values: MacroParameterBindings = Default::default();
-        for param_def in param_defs {
-            let before = inp.cursor();
-            if let Some(got) = inp.next_maybe().as_deref() {
-                let span = inp.span_since(&before);
-                if got == &param_def.preceding_terminator {
-                    match inp.parse(&self.expr_parser)? {
-                        (span, Some((script, expr))) => {
-                            param_values.insert(
-                                param_def.name,
-                                span,
-                                Some(MacroParameterValue::Value(script, expr)),
-                            );
-                        }
-                        (span, None) => {
-                            // Record the fact that this parameter was missing.
-                            param_values.insert(param_def.name, span, None);
-                        }
-                    }
-                } else {
-                    return Err(Rich::custom(
-                        span,
-                        format!(
-                            "in invocation of macro {}, expected macro terminator {} before parameter {} but got {}",
-                            macro_def.name, param_def.preceding_terminator, param_def.name, got
-                        ),
-                    ));
-                }
-            } else {
-                let span = inp.span_since(&before);
-                return Err(Rich::custom(
-                    span,
-                    format!(
-                        "in invocation of macro {}, expected macro terminator {} before parameter {}",
-                        macro_def.name, param_def.preceding_terminator, param_def.name
-                    ),
-                ));
-            }
-        }
-        Ok(MacroInvocation {
-            macro_def,
-            param_values,
-        })
-    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -811,7 +525,7 @@ where
     choice((
         base_change(),
         punch(),
-        macro_definition().map(ManuscriptMetaCommand::Macro),
+        macros::macro_definition().map(ManuscriptMetaCommand::Macro),
     ))
     .labelled("metacommand")
 }
@@ -1229,10 +943,10 @@ where
     })
     .boxed();
 
-    let nested_macro_invocation = Ext(MacroInvocationParser {
-        expr_parser: nested_macro_arg,
-        defined_macro_name_parser: defined_macro_name().boxed(),
-    });
+    let nested_macro_invocation = Ext(macros::MacroInvocationParser::new(
+        nested_macro_arg,
+        macros::defined_macro_name().boxed(),
+    ));
 
     let expanded_macro = nested_macro_invocation.try_map_with(|invocation, extra| {
         let expansion = invocation.substitute_macro_parameters(extra.state().macros());
@@ -1431,7 +1145,7 @@ where
             // accept "FOO=2" as an assignment rather than the instruction
             // fragment "FOO" followed by a syntax error.
             equality,
-            macro_invocation().map(ManuscriptLine::Macro),
+            macros::macro_invocation().map(ManuscriptLine::Macro),
             // Ignore whitespace after the metacommand but not before it.
             parse_and_execute_metacommand(),
             optional_origin_with_statement,
@@ -1628,7 +1342,7 @@ pub(crate) fn parse_source_file<'src>(
     set_initial_numeral_mode(&mut state);
 
     let mut errors: Vec<Rich<'src, lexer::Token>> =
-        match parse_unparsed_macro_definitions_only(source_file_body, &mut state) {
+        match macros::parse_unparsed_macro_definitions_only(source_file_body, &mut state) {
             Ok(errs) => errs,
             Err(errs) => {
                 return (None, errs);
@@ -1641,148 +1355,6 @@ pub(crate) fn parse_source_file<'src>(
         tokenize_and_parse_with(source_file_body, 0, &mut state, parser);
     errors.extend(new_errors);
     (maybe_source_file, errors)
-}
-
-fn parse_single_macro_definition<'source, 'state, P>(
-    macro_definition_parser: &P,
-    whole_source: &'source str,
-    macro_definition_span: SimpleSpan,
-    state: &'state mut State<'source>,
-) -> (
-    Option<MacroDefinition<ParsedMacroBody>>,
-    Vec<MyError<'source, Mi>>,
-)
-where
-    P: Parser<'source, Mi, MacroDefinition<ParsedMacroBody>, ExtraWithoutContext<'source>>,
-{
-    let macro_def_span_begin: usize = macro_definition_span.start;
-    let macro_def_span_end: usize = macro_definition_span.end;
-    let macro_definition_source_fragment = &whole_source[macro_def_span_begin..macro_def_span_end];
-
-    let spanned_tokens = tokenize(
-        macro_definition_source_fragment,
-        macro_definition_span.start,
-    );
-    let end_span: SimpleSpan = spanned_tokens
-        .iter()
-        .map(|(_, span)| span.end)
-        .max()
-        .map_or_else(
-            || SimpleSpan::new(macro_definition_span.end, macro_definition_span.end),
-            |end| SimpleSpan::new(end, end),
-        );
-    let token_stream: Mi = Stream::from_iter(spanned_tokens).map(end_span, |unchanged| unchanged);
-    macro_definition_parser
-        .parse_with_state(token_stream, state)
-        .into_output_errors()
-}
-
-fn parse_unparsed_macro_definitions<'src, 'state>(
-    source_file_body: &'src str,
-    mut macros: Vec<SimpleSpan>,
-    state: &'state mut State<'src>,
-) -> Result<MyErrorVec<'src>, MyErrorVec<'src>>
-where
-    'src: 'state,
-{
-    fn convert_errors<T>(input: HashMap<SimpleSpan, Vec<T>>) -> Vec<T> {
-        let mut tmp: Vec<(SimpleSpan, Vec<T>)> = input.into_iter().collect();
-        tmp.sort_by_key(|(span, _)| span.start);
-        tmp.into_iter().flat_map(|(_span, errs)| errs).collect()
-    }
-
-    let macro_count: usize = macros.len();
-    let full_definition_parser = macro_definition();
-    let mut per_definition_errors: HashMap<SimpleSpan, MyErrorVec<'src>> = HashMap::new();
-
-    // `macros` contains the spans of all the macro definitions in the
-    // input.  Programs are not required to define a macro before
-    // calling it, so we may not be able, yet, to parse the body of
-    // the first macro definition.  Instead, we try to parse them one
-    // by one, and when we find one that we can parse, we accept it.
-    //
-    // If we cannot parse a macro, we continue, trying to parse the
-    // remaining macro definitions.  We loop until either all
-    // definitions were parsed or we cannot parse any of the remaining
-    // macro definitions.
-    let mut iteration_number: usize = 0;
-    while !macros.is_empty() {
-        assert!(
-            iteration_number < macro_count,
-            "algorithm is not making progress; this is iteration {iteration_number} but there were only {macro_count} macros to parse"
-        );
-        iteration_number += 1;
-
-        let mut still_todo: Vec<SimpleSpan> = Vec::with_capacity(macros.len());
-        let mut any_success = false;
-        // Try to parse each of the macro definitions we have not yet
-        // been able to parse (or have not yet attempted to parse).
-        for macro_def_span in macros.drain(0..) {
-            let (maybe_parsed, errors): (Option<MacroDefinition<ParsedMacroBody>>, MyErrorVec) =
-                parse_single_macro_definition(
-                    &full_definition_parser,
-                    source_file_body,
-                    macro_def_span,
-                    state,
-                );
-            per_definition_errors.insert(macro_def_span, errors);
-            if let Some(macro_def) = maybe_parsed {
-                // We parsed this one; record the fact that we made
-                // progress in this iteration and record the
-                // definition itself.
-                any_success = true;
-                // We record the macro definition in `state` so that
-                // later invocations of `full_definition_parser` can
-                // use the known macro definitions in its attempt to
-                // parse this macro definition.
-                state.define_macro(macro_def);
-            } else {
-                // Not successful this time; try again in the next
-                // iteration if there is one.
-                still_todo.push(macro_def_span);
-            }
-        }
-        if any_success {
-            // We made progress, so there will be another iteration.
-            macros.extend(still_todo);
-        } else {
-            // We can no longer make progress.  There are macro
-            // definitions that we cannot parse.
-            return Err(convert_errors(per_definition_errors));
-        }
-    }
-    // We have parsed all the macro definitions.  But we may still
-    // have diagnostics, so return those.
-    Ok(convert_errors(per_definition_errors))
-}
-
-/// Extract macrs defined in `source_file_body` and record them in
-/// `state`.  Return Ok if all macro definitions can be parsed, Err if
-/// at least one cannot.  In both the success and failure case, return
-/// any diagnostics the parsers produced.
-pub(crate) fn parse_unparsed_macro_definitions_only<'src, 'state>(
-    source_file_body: &'src str,
-    state: &'state mut State<'src>,
-) -> Result<MyErrorVec<'src>, MyErrorVec<'src>>
-where
-    'src: 'state,
-{
-    let span_extraction_parser = macros::unparsed_macro_definitions_parser();
-    match tokenize_and_parse_with(source_file_body, 0, state, span_extraction_parser) {
-        (None, errors) => Err(errors),
-        (Some(macros), mut errors) => {
-            match parse_unparsed_macro_definitions(source_file_body, macros, state) {
-                Ok(mut new_errors) => {
-                    errors.extend(new_errors.drain(0..));
-                    Ok(errors)
-                }
-                Err(mut new_errors) => {
-                    errors.extend(new_errors.drain(0..));
-                    Err(errors)
-                }
-            }
-        }
-    }
 }
 
 // Local Variables:
