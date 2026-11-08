@@ -40,7 +40,7 @@ use super::span::Span;
 use super::span::Spanned;
 #[cfg(test)]
 use super::span::span;
-use super::state::NumeralMode;
+use super::state::{MacroLookup, MacroTable, NumeralMode};
 use super::symbol::InconsistentSymbolUse;
 use super::symbol::SymbolContext;
 use super::symbol::SymbolName;
@@ -82,7 +82,7 @@ pub(crate) struct SourceFile {
     /// module documentation).
     pub(crate) blocks: Vec<ManuscriptBlock>,
     pub(crate) global_equalities: Vec<Equality>,
-    pub(crate) macros: BTreeMap<SymbolName, MacroDefinition>,
+    pub(crate) macros: MacroTable,
 }
 
 impl SourceFile {
@@ -535,10 +535,10 @@ pub(crate) enum MacroBodyLine {
 }
 
 impl MacroDefinition {
-    fn substitute_macro_parameters(
+    fn substitute_macro_parameters<M: MacroLookup>(
         &self,
         bindings: &MacroParameterBindings,
-        macros: &BTreeMap<SymbolName, MacroDefinition>,
+        macros: &M,
     ) -> InstructionSequence {
         let mut local_symbols = ExplicitSymbolTable::default();
         let mut instructions: Vec<TaggedProgramInstruction> =
@@ -638,19 +638,16 @@ pub(crate) struct MacroInvocation {
 }
 
 impl MacroInvocation {
-    pub(super) fn substitute_macro_parameters(
+    pub(super) fn substitute_macro_parameters<M: MacroLookup>(
         &self,
-        macros: &BTreeMap<SymbolName, MacroDefinition>,
+        macros: &M,
     ) -> InstructionSequence {
         self.macro_def
             .substitute_macro_parameters(&self.param_values, macros)
     }
 }
 
-fn expand_macro(
-    invocation: &MacroInvocation,
-    macros: &BTreeMap<SymbolName, MacroDefinition>,
-) -> InstructionSequence {
+fn expand_macro<M: MacroLookup>(invocation: &MacroInvocation, macros: &M) -> InstructionSequence {
     invocation.substitute_macro_parameters(macros)
 }
 
@@ -686,7 +683,7 @@ pub(crate) fn manuscript_lines_to_source_file<'a>(
 
     let mut blocks: Vec<ManuscriptBlock> = Vec::new();
     let mut equalities: Vec<Equality> = Vec::new();
-    let mut macros: BTreeMap<SymbolName, MacroDefinition> = Default::default();
+    let mut macros: MacroTable = Default::default();
     let mut maybe_punch: Option<PunchCommand> = None;
 
     let mut pending_tags: Vec<Tag> = Vec::new();
@@ -732,9 +729,7 @@ pub(crate) fn manuscript_lines_to_source_file<'a>(
                 // now.
             }
             ManuscriptLine::Meta(ManuscriptMetaCommand::Macro(macro_def)) => {
-                if let Some(previous) = macros.insert(macro_def.name.clone(), macro_def) {
-                    event!(Level::INFO, "Redefinition of macro {}", &previous.name);
-                }
+                macros.define_macro(macro_def);
             }
 
             ManuscriptLine::OriginOnly(origin) => {

@@ -4,8 +4,6 @@
 //! This data structure isn't a tree, because the logical
 //! structure of a TX-2 assembly-language program isn't tree-like.
 use std::{
-    collections::BTreeMap,
-    collections::BTreeSet,
     fmt::Debug,
     ops::{BitOr, Range, Shl},
 };
@@ -41,7 +39,7 @@ use super::manuscript::{
     manuscript_lines_to_source_file,
 };
 use super::span::{Span, Spanned, span};
-use super::state::{NumeralMode, State};
+use super::state::{MacroLookup, NumeralMode, State};
 use super::symbol::SymbolName;
 use base::charset::Script;
 use base::prelude::*;
@@ -1244,20 +1242,18 @@ where
         .try_map_with(|lines: Vec<Option<(Span, ManuscriptLine)>>, extra| {
             // Filter out empty lines.
             let lines: Vec<(Span, ManuscriptLine)> = lines.into_iter().flatten().collect();
-            let state_macros: BTreeMap<SymbolName, MacroDefinition> =
-                extra.state().macros().clone();
+            let state_macros = extra.state().macros();
 
             let source_file: SourceFile = manuscript_lines_to_source_file(lines)?;
 
-            let all_names: BTreeSet<&SymbolName> = source_file
+            for name in source_file
                 .macros
-                .keys()
-                .chain(state_macros.keys())
-                .collect();
-            for name in all_names {
+                .all_names()
+                .union(&state_macros.all_names())
+            {
                 check_consistent(
-                    source_file.macros.get(name),
-                    extra.state().macros().get(name),
+                    source_file.macros.lookup_macro(name),
+                    state_macros.lookup_macro(name),
                 )?;
             }
             Ok(source_file)

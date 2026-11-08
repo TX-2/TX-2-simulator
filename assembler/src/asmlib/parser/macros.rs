@@ -995,7 +995,8 @@ mod tests {
                     span: span(0..28),
                 },
             )]
-            .into(),
+            .into_iter()
+            .collect(),
             punch: None,
         };
         assert_eq!(got, expected);

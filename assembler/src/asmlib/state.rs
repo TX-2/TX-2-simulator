@@ -5,6 +5,7 @@
 //! - Current numeric base (octal or decimal)
 //! - Currently-known macro definitions
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::fmt::Debug;
 
 use chumsky::{inspector::Inspector, prelude::Input};
@@ -37,50 +38,62 @@ fn test_numeral_mode_default() {
     assert_eq!(NumeralMode::default(), NumeralMode::Octal);
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct TruncatableMap<K: Eq, V: Eq> {
-    in_insertion_order: Vec<K>,
-    items: BTreeMap<K, V>,
+pub(crate) trait MacroLookup {
+    fn lookup_macro(&self, name: &SymbolName) -> Option<&MacroDefinition>;
+    fn all_names(&self) -> BTreeSet<&SymbolName>;
 }
 
-impl<K: Eq, V: Eq> Default for TruncatableMap<K, V> {
-    fn default() -> Self {
-        TruncatableMap {
-            in_insertion_order: Default::default(),
-            items: BTreeMap::new(),
-        }
-    }
+#[derive(Debug, PartialEq, Eq, Default, Clone)]
+pub(crate) struct MacroTable {
+    macros: BTreeMap<SymbolName, Vec<MacroDefinition>>,
 }
 
-impl<K, V> TruncatableMap<K, V>
-where
-    K: Clone + Eq + Ord + Debug,
-    V: Eq,
-{
-    pub(crate) fn insert(&mut self, k: K, v: V) {
-        assert!(
-            self.items.insert(k.clone(), v).is_none(),
-            "cannot insert duplicate entry for {k:?}"
-        );
-        self.in_insertion_order.push(k);
+impl MacroTable {
+    pub(crate) fn define_macro(&mut self, definition: MacroDefinition) {
+        // TODO: provide a diagnostic when a macro is redefined.
+        self.macros
+            .entry(definition.name.clone())
+            .or_default()
+            .push(definition);
     }
 
-    pub(crate) fn get(&self, k: &K) -> Option<&V> {
-        self.items.get(k)
-    }
-
-    pub(crate) fn len(&self) -> usize {
-        self.in_insertion_order.len()
-    }
-
-    pub(crate) fn truncate(&mut self, newlen: usize) {
-        for k in self.in_insertion_order.drain(newlen..) {
-            self.items.remove(&k);
+    fn forget_after(&mut self, pos: usize) {
+        for values in self.macros.values_mut() {
+            values.retain(|macro_definition| macro_definition.span.end <= pos);
         }
     }
 
-    pub(crate) fn map_ref(&self) -> &BTreeMap<K, V> {
-        &self.items
+    fn latest(&self) -> usize {
+        self.macros
+            .values()
+            .flat_map(|macro_definitions| macro_definitions.iter())
+            .map(|macro_definition| macro_definition.span.end)
+            .max()
+            .unwrap_or(0)
+    }
+}
+
+impl MacroLookup for MacroTable {
+    fn lookup_macro(&self, name: &SymbolName) -> Option<&MacroDefinition> {
+        match self.macros.get(name) {
+            None => None,
+            Some(values) => values.last(),
+        }
+    }
+
+    fn all_names(&self) -> BTreeSet<&SymbolName> {
+        self.macros.keys().collect()
+    }
+}
+
+impl FromIterator<(SymbolName, MacroDefinition)> for MacroTable {
+    fn from_iter<T: IntoIterator<Item = (SymbolName, MacroDefinition)>>(macros: T) -> Self {
+        Self {
+            macros: macros
+                .into_iter()
+                .map(|(name, definition)| (name, vec![definition]))
+                .collect(),
+        }
     }
 }
 
@@ -88,7 +101,7 @@ where
 pub(crate) struct State<'src> {
     pub(super) numeral_mode: NumeralMode,
     pub(super) body: &'src str,
-    pub(super) macros: TruncatableMap<SymbolName, MacroDefinition>,
+    pub(super) macros: MacroTable,
 }
 
 impl<'src> State<'src> {
@@ -110,16 +123,15 @@ impl<'src> State<'src> {
     }
 
     pub(crate) fn define_macro(&mut self, definition: MacroDefinition) {
-        // TODO: provide a diagnostic when a macro is redefined.
-        self.macros.insert(definition.name.clone(), definition);
+        self.macros.define_macro(definition);
     }
 
     pub(crate) fn get_macro_definition(&self, name: &SymbolName) -> Option<&MacroDefinition> {
-        self.macros.get(name)
+        self.macros.lookup_macro(name)
     }
 
-    pub(crate) fn macros(&self) -> &BTreeMap<SymbolName, MacroDefinition> {
-        self.macros.map_ref()
+    pub(crate) fn macros(&self) -> &impl MacroLookup {
+        &self.macros
     }
 }
 
@@ -133,13 +145,14 @@ impl<'src, I: Input<'src>> Inspector<'src, I> for State<'src> {
         &self,
         _cursor: &chumsky::input::Cursor<'src, 'parse, I>,
     ) -> Self::Checkpoint {
-        self.macros.len()
+        self.macros.latest()
     }
 
     fn on_rewind<'parse>(
         &mut self,
         marker: &chumsky::input::Checkpoint<'src, 'parse, I, Self::Checkpoint>,
     ) {
-        self.macros.truncate(*marker.inspector());
+        let pos: usize = *marker.inspector();
+        self.macros.forget_after(pos);
     }
 }
