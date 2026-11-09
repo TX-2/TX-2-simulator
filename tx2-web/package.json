@@ -15,7 +15,7 @@
     "dev": "webpack server",
     "lint": "npm run lint:ts && npm run lint:rust",
     "lint:ts": "eslint --cache .",
-    "lint:rust": "cargo clippy --no-deps --locked"
+    "lint:rust": "cargo clippy --no-deps --frozen --quiet"
   },
   "keywords": [],
   "author": "James Youngman <youngman@google.com>",
