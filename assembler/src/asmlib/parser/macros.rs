@@ -158,19 +158,11 @@ where
 {
     fn parse(&self, inp: &mut InputRef<'src, '_, I, E>) -> Result<Vec<SimpleSpan>, E::Error> {
         let mut macros = Vec::new();
-        loop {
-            match advance_to_meta("DEF", inp)? {
-                Some(before) => match advance_to_meta("EMD", inp)? {
-                    Some(_) => {
-                        macros.push(inp.span_since(&before));
-                    }
-                    None => {
-                        break;
-                    }
-                },
-                None => {
-                    break;
-                }
+        while let Some(before) = advance_to_meta("DEF", inp)? {
+            let found_end_of_definition = advance_to_meta("EMD", inp)?.is_some();
+            macros.push(inp.span_since(&before));
+            if !found_end_of_definition {
+                break;
             }
         }
         Ok(macros)
