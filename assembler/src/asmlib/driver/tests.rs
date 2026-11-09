@@ -751,6 +751,17 @@ fn macro_expansion_inside_rc_word() {
 }
 
 #[test]
+fn bare_macro_expansion_inside_rc_word() {
+    let input = concat!("☛☛DEF INNER\n", "4\n", "5\n", "☛☛EMD\n", "100|{INNER}\n",);
+
+    let program = assemble_source(input, Default::default()).expect("program is valid");
+
+    assert_eq!(program.chunks.len(), 2);
+    assert_eq!(program.chunks[0].words, vec![u36!(0o101)]);
+    assert_eq!(program.chunks[1].words, vec![u36!(0o4), u36!(0o5)]);
+}
+
+#[test]
 fn omitted_pipe_address_is_zero() {
     let omitted = assemble_source("100|REX@sub_1@@sub_pipe@@sub_2@\n", Default::default())
         .expect("omitted address is valid");

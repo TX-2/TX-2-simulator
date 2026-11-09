@@ -320,6 +320,7 @@ where
             .collect::<Vec<_>>()
             .map(MacroDummyParameters::OneOrMore),
         macro_terminator().map(MacroDummyParameters::Zero),
+        empty().to(MacroDummyParameters::Bare),
     ))
 }
 
@@ -546,6 +547,7 @@ where
                     ));
                 }
             }
+            MacroDummyParameters::Bare => Vec::new(),
             MacroDummyParameters::OneOrMore(ref params) => params.clone(),
         };
         let mut param_values: MacroParameterBindings = Default::default();
