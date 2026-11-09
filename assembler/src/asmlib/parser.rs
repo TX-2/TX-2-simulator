@@ -363,6 +363,7 @@ where
         Tok::Times(got) if got == script_required => Operator::Multiply,
         Tok::LogicalOr(got) if got == script_required => Operator::LogicalOr,
         Tok::LogicalAnd(got) if got == script_required => Operator::LogicalAnd,
+        Tok::LogicalXor(got) if got == script_required => Operator::LogicalXor,
         Tok::Minus(got) if script_required == got => Operator::Subtract,
         Tok::Plus(got) if script_required == got => Operator::Add,
     }

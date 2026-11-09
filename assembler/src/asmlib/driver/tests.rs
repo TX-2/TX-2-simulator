@@ -323,6 +323,13 @@ fn test_logical_and_on_constants() {
 }
 
 #[test]
+fn test_logical_xor_on_constants() {
+    let program =
+        assemble_source("100| 6 @xor@ 3\n", Default::default()).expect("program is valid");
+    assert_eq!(program.chunks[0].words[0], u36!(0o5));
+}
+
+#[test]
 fn test_addition_on_constants() {
     // Given a program which contains the constant 6+2, when we assemble it
     let program1 = assemble_source("100| 6 + 2\n", Default::default()).expect("program is valid");

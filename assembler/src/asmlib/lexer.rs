@@ -183,6 +183,7 @@ pub(crate) enum Token {
     Times(Script),
     LogicalOr(Script),
     LogicalAnd(Script),
+    LogicalXor(Script),
 
     // Any unary "-" is handled in the parser.
     Digits(Script, NumericLiteral),
@@ -256,6 +257,7 @@ impl Display for Token {
             Token::Times(script) => write_elevated(script, "×"),
             Token::LogicalOr(script) => write_elevated(script, "∨"),
             Token::LogicalAnd(script) => write_elevated(script, "∧"),
+            Token::LogicalXor(script) => write_elevated(script, "⊻"),
             Token::Digits(script, numeric_literal) => {
                 write!(f, "{}", elevate(*script, numeric_literal.to_string()))
             }
@@ -580,6 +582,7 @@ fn tokenise_single_glyph(g: Elevated<&'static Glyph>) -> Option<Token> {
         GlyphShape::SupersetOf => Some(Token::ProperSuperset(script)),
         GlyphShape::Beta => make_symex(),
         GlyphShape::And => Some(Token::LogicalAnd(script)),
+        GlyphShape::Xor => Some(Token::LogicalXor(script)),
         GlyphShape::Lambda => make_symex(),
         GlyphShape::Tilde => Some(Token::Tilde(script)),
         GlyphShape::LeftBrace => Some(Token::LeftBrace(script)),

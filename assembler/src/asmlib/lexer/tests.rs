@@ -1175,6 +1175,18 @@ fn test_logical_and() {
 }
 
 #[test]
+fn test_logical_xor() {
+    assert_eq!(
+        scan_tokens_only("@xor@"),
+        Ok(vec![Token::LogicalXor(Script::Normal),])
+    );
+    assert_eq!(
+        scan_tokens_only("⊻"),
+        Ok(vec![Token::LogicalXor(Script::Normal),])
+    );
+}
+
+#[test]
 fn test_plus() {
     assert_eq!(
         scan_tokens_only("+"),

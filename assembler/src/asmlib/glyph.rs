@@ -370,6 +370,7 @@ mod shape {
         SupersetOf,
         Beta,
         And,
+        Xor,
         Lambda,
         Tilde,
         LeftBrace,
@@ -1250,6 +1251,16 @@ const ALL_GLYPHS: &[Glyph] = &[
         shape: GlyphShape::And,
         name: "and",
         normal: Some('∧'), // U+2227, Logical And
+        superscript: None,
+        subscript: None,
+        ..GDEF
+    },
+    // M4 writes XOR as a compound circled logical-OR glyph.  U+22BB is
+    // a readable Unicode and markup substitute for source input.
+    Glyph {
+        shape: GlyphShape::Xor,
+        name: "xor",
+        normal: Some('⊻'), // U+22BB, XOR
         superscript: None,
         subscript: None,
         ..GDEF
