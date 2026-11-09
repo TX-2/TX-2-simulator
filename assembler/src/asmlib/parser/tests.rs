@@ -1011,8 +1011,9 @@ pub(super) fn atom_to_fragment(atom: Atom) -> InstructionFragment {
 
 #[test]
 fn test_manuscript_line_with_real_arrow_tag() {
-    let g = grammar();
     const INPUT: &str = "HERE→207"; // real Unicode rightward arrow (U+2192).
+
+    let g = grammar();
     assert_eq!(
         parse_successfully_with(INPUT, manuscript_line(&g), no_state_setup),
         ManuscriptLine::StatementOnly(TaggedProgramInstruction::single(
@@ -1998,7 +1999,7 @@ fn test_pipe_construct_without_address_part_has_zero_address_part() {
                             magnitude: Atom::from(LiteralValue::from((
                                 span(0..3),
                                 Script::Normal,
-                                u36!(0o21200000000),
+                                u36!(0o021_200_000_000),
                             ))),
                         },
                         tail: Vec::new(),

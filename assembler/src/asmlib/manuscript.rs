@@ -491,7 +491,7 @@ pub(crate) struct MacroParameter {
 ///
 /// If there are no arguments, `MacroDummyParameters::Zero(token)`
 /// indicates that uses of the macro's name are followed by a
-/// terminator.  MacroDummyParameters::Bare indicates the macro name
+/// terminator.  `MacroDummyParameters::Bare` indicates the macro name
 /// only, not followed by the terminator.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum MacroDummyParameters {

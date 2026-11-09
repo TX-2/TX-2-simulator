@@ -580,20 +580,20 @@ mod binop_tests {
 
     #[test]
     fn test_all_bit_positions_coverage() {
-        let mut accumulator_or = Unsigned36Bit::ZERO;
-        let mut accumulator_xor = Unsigned36Bit::ZERO;
+        let mut or_accumulator = Unsigned36Bit::ZERO;
+        let mut xor_accumulator = Unsigned36Bit::ZERO;
         for input in ALL_BIT_POSITIONS {
-            accumulator_or = accumulator_or | input;
-            accumulator_xor = accumulator_xor ^ input;
+            or_accumulator = or_accumulator | input;
+            xor_accumulator = xor_accumulator ^ input;
         }
         // Verify that we have used each of the bits of the 36-bit word, just once.
         assert_eq!(
-            accumulator_xor,
+            xor_accumulator,
             Unsigned36Bit::MAX,
             "a bit position occcurs twice in the inputs"
         );
         assert_eq!(
-            accumulator_or,
+            or_accumulator,
             Unsigned36Bit::MAX,
             "a bit position is missing from the test inputs"
         );
