@@ -102,7 +102,23 @@ fn check_golden_match(golden: &OsStr, actual_output: &OsStr) -> Result<(), Strin
 }
 
 fn verify_successful_disassembly(tape_file: &OsStr) -> Result<(), String> {
-    disassemble_file(tape_file).map_err(|e| e.to_string())
+    let mut output: Vec<u8> = Vec::new();
+    let mut errors: Vec<u8> = Vec::new();
+    match disassemble_file(tape_file, &mut output, &mut errors) {
+        Err(e) => Err(format!("disassembly failed: {e}")),
+        Ok(()) if errors.is_empty() => Ok(()),
+        Ok(()) => match str::from_utf8(&errors) {
+            Ok(messages) => Err(format!(
+                "disassembly produced error or warning messages: {messages}"
+            )),
+            Err(e) => {
+                let n = errors.len();
+                Err(format!(
+                    "disassembly produced {n} bytes of error or warning messages, but they were not valid utf8 ({e})"
+                ))
+            }
+        },
+    }
 }
 
 fn assembler_golden_output_test(

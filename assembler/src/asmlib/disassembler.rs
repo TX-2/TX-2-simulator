@@ -10,6 +10,7 @@ use base::prelude::*;
 #[derive(Debug)]
 pub enum DisassemblerFailure {
     ReadFailed(String),
+    OutputFailed(std::io::Error),
     Generic(String),
     ShortFile,
 }
@@ -21,6 +22,9 @@ impl Display for DisassemblerFailure {
                 f.write_str(message)
             }
             DisassemblerFailure::ShortFile => f.write_str("file ended unexpectedly"),
+            DisassemblerFailure::OutputFailed(inner) => {
+                write!(f, "failed to write output: {inner}") // good luck!
+            }
         }
     }
 }
@@ -53,7 +57,7 @@ fn read_splayed_words<R: Read>(
                         "input file length should be a multiple of 6 bytes".to_string(),
                     ));
                 }
-                for byte in buf.into_iter() {
+                for byte in buf {
                     let line: Unsigned6Bit = Unsigned6Bit::try_from(byte & 0o77).unwrap();
                     w = cycle_and_splay(w, line);
                 }
@@ -70,37 +74,65 @@ fn read_splayed_words<R: Read>(
     Ok(result)
 }
 
-fn disassemble_block(mut pos: Unsigned18Bit, block: &[Unsigned36Bit]) {
+fn disassemble_block<W: std::io::Write>(
+    mut pos: Unsigned18Bit,
+    block: &[Unsigned36Bit],
+    output: &mut W,
+) -> Result<(), std::io::Error> {
     let mut is_origin: bool = true;
-    for w in block.iter() {
-        disassemble_word(pos, *w, is_origin);
+    for w in block {
+        disassemble_word(pos, *w, is_origin, output)?;
         is_origin = false;
         pos = pos.wrapping_add(Unsigned18Bit::ONE);
     }
+    Ok(())
 }
 
-fn disassemble_word(loc: Unsigned18Bit, w: Unsigned36Bit, is_origin: bool) {
+fn disassemble_word<W: std::io::Write>(
+    loc: Unsigned18Bit,
+    w: Unsigned36Bit,
+    is_origin: bool,
+    output: &mut W,
+) -> Result<(), std::io::Error> {
     if is_origin {
-        print!("{loc:>06o}|");
+        write!(output, "{loc:>06o}|")?;
     } else {
-        print!("{:7}", "");
+        write!(output, "{:7}", "")?;
     }
     let raw = Instruction::from(w);
     match SymbolicInstruction::try_from(&raw) {
         Ok(symbolic) => {
-            print!("{:<20}", symbolic.to_string());
+            write!(output, "{:<20}", symbolic.to_string())?;
         }
         Err(_) => {
-            print!("{:<20}", "");
+            write!(output, "{:<20}", "")?;
         }
     }
     let (left, right) = split_halves(w);
-    println!("|{left:>06o} {right:>06o}|{loc:>6o}");
+    writeln!(output, "|{left:>06o} {right:>06o}|{loc:>6o}")
 }
 
-fn disassemble_chunk<R: Read>(
+fn report_on_checksum<W: std::io::Write, V: std::io::Write>(
+    checksum: Signed18Bit,
+    output: &mut W,
+    warning_output: &mut V,
+) -> Result<(), std::io::Error> {
+    let unsigned_checksum = checksum.reinterpret_as_unsigned();
+    if unsigned_checksum.is_zero() {
+        write!(output, "** Checksum is valid: {unsigned_checksum:>06o}")
+    } else {
+        write!(
+            warning_output,
+            "** Checksum is not valid: {unsigned_checksum:>06o}, this tape cannot be loaded as-is",
+        )
+    }
+}
+
+fn disassemble_chunk<R: Read, W: std::io::Write, V: std::io::Write>(
     input: &mut R,
     checksum: &mut Signed18Bit,
+    output: &mut W,
+    warning_output: &mut V,
 ) -> Result<bool, DisassemblerFailure> {
     let first = read_splayed_words(input, 1, Some(checksum))?;
     let (chunk_size, origin) = match first.as_slice() {
@@ -119,7 +151,8 @@ fn disassemble_chunk<R: Read>(
                 None => None,
             }
             .expect("overflow in block length");
-            println!("** {len}-word chunk ending at {end}");
+            writeln!(output, "** {len}-word chunk ending at {end}")
+                .map_err(DisassemblerFailure::OutputFailed)?;
             let u_origin = end
                 .checked_sub(len)
                 .and_then(|n| n.checked_add(Unsigned18Bit::ONE))
@@ -136,29 +169,30 @@ fn disassemble_chunk<R: Read>(
         [] => return Err(DisassemblerFailure::ShortFile),
         _ => unreachable!(),
     };
-    disassemble_block(origin, &block);
-    {
-        let unsigned_checksum = checksum.reinterpret_as_unsigned();
-        if unsigned_checksum.is_zero() {
-            println!("** Checksum is valid: {unsigned_checksum:>06o}");
-        } else {
-            println!(
-                "** Checksum is not valid: {unsigned_checksum:>06o}, this tape cannot be loaded as-is",
-            );
-        }
-    }
+    disassemble_block(origin, &block, output)
+        .and_then(|()| report_on_checksum(*checksum, output, warning_output))
+        .map_err(DisassemblerFailure::OutputFailed)?;
+
     if next == u18!(3) {
         Ok(true)
     } else if next == u18!(0o27) {
-        println!("** This is the final block");
+        writeln!(output, "** This is the final block")
+            .map_err(DisassemblerFailure::OutputFailed)?;
         Ok(false)
     } else {
-        eprintln!("warning: block has unexpected next-address {next:o}");
+        writeln!(
+            warning_output,
+            "warning: block has unexpected next-address {next:o}"
+        )
+        .map_err(DisassemblerFailure::OutputFailed)?;
         Ok(false)
     }
 }
 
-fn check_header<R: Read>(input: &mut R) -> Result<(), DisassemblerFailure> {
+fn check_header<R: Read, W: std::io::Write>(
+    input: &mut R,
+    output: &mut W,
+) -> Result<(), DisassemblerFailure> {
     let expected_leader = reader_leader();
     let header = read_splayed_words(input, expected_leader.len(), None)?;
     for (pos, (want, got)) in expected_leader.iter().zip(header.iter()).enumerate() {
@@ -168,23 +202,33 @@ fn check_header<R: Read>(input: &mut R) -> Result<(), DisassemblerFailure> {
             )));
         }
     }
-    println!("** reader leader is valid:");
-    disassemble_block(Unsigned18Bit::from(3_u8), &header);
-    println!("** end of reader leader");
+    write!(output, "** reader leader is valid:")
+        .and_then(|()| disassemble_block(Unsigned18Bit::from(3_u8), &header, output))
+        .and_then(|()| write!(output, "** end of reader leader"))
+        .map_err(DisassemblerFailure::OutputFailed)?;
     Ok(())
 }
 
-/// Disassemble input_file_name and print a source listing to stdout.
-pub fn disassemble_file(input_file_name: &OsStr) -> Result<(), DisassemblerFailure> {
+/// Disassemble `input_file_name` and print a source listing to stdout.
+///
+/// # Errors
+///
+/// Fail if we were unable to open or read the input, to write output,
+/// if the input file is too short or otherwise invalid.
+pub fn disassemble_file<W: std::io::Write, V: std::io::Write>(
+    input_file_name: &OsStr,
+    output: &mut W,
+    warning_output: &mut V,
+) -> Result<(), DisassemblerFailure> {
     let input_file = OpenOptions::new()
         .read(true)
         .open(input_file_name)
         .map_err(|e| DisassemblerFailure::Generic(format!("failed to open input file: {e}")))?;
     let mut reader = BufReader::new(input_file);
-    check_header(&mut reader)?;
+    check_header(&mut reader, output)?;
     let mut checksum: Signed18Bit = Signed18Bit::ZERO;
     loop {
-        match disassemble_chunk(&mut reader, &mut checksum) {
+        match disassemble_chunk(&mut reader, &mut checksum, output, warning_output) {
             Ok(true) => (), // more data
             Ok(false) => {
                 break;

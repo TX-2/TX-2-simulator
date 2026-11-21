@@ -1,8 +1,8 @@
 #![deny(unsafe_code)]
+use std::ffi::OsString;
 
 use clap::ArgAction::Set;
 use clap::Parser;
-use std::ffi::OsString;
 use tracing::{Level, span};
 use tracing_subscriber::prelude::*;
 
@@ -49,7 +49,14 @@ fn disassemble() -> Result<(), DisassemblerFailure> {
 
     let span = span!(Level::ERROR, "disassemble", input=?cli.input);
     let _enter = span.enter();
-    disassemble_file(&cli.input)
+
+    let stderr = std::io::stderr();
+    let mut stderr_handle = stderr.lock();
+
+    let stdout = std::io::stdout();
+    let mut stdout_handle = stdout.lock();
+
+    disassemble_file(&cli.input, &mut stdout_handle, &mut stderr_handle)
 }
 
 fn main() {
