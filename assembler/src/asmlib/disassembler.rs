@@ -157,7 +157,8 @@ fn disassemble_chunk<R: Read, W: std::io::Write, V: std::io::Write>(
                 .checked_sub(len)
                 .and_then(|n| n.checked_add(Unsigned18Bit::ONE))
                 .expect("overflow in origin calculation");
-            (u64::from(len) as usize, u_origin)
+            let chunk_size: usize = usize::from(len);
+            (chunk_size, u_origin)
         }
         [] => return Err(DisassemblerFailure::ShortFile),
         _ => unreachable!(),
