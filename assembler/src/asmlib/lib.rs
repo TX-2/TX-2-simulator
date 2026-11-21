@@ -59,6 +59,7 @@
 mod ast;
 mod collections;
 mod directive;
+mod disassembler;
 mod driver;
 mod eval;
 mod glyph;
@@ -75,6 +76,7 @@ mod symbol;
 mod symtab;
 mod types;
 
+pub use disassembler::{DisassemblerFailure, disassemble_file};
 pub use driver::*;
 pub use readerleader::*;
 pub use types::AssemblerFailure;

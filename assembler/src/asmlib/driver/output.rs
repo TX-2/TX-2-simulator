@@ -195,7 +195,7 @@ fn create_begin_block(
         Instruction::from(&disconnect_tape).bits(),
         Instruction::from(&jump).bits(),
     ];
-    create_tape_block(location, &code, !empty_program)
+    create_tape_block(location, &code, empty_program)
 }
 
 /// Write the user's program as a tape image file.

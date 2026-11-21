@@ -89,6 +89,22 @@ fn fill_output_file_with_garbage(name: &Path) {
     }
 }
 
+fn check_golden_match(golden: &OsStr, actual_output: &OsStr) -> Result<(), String> {
+    match files_are_identical(golden, actual_output) {
+        Ok(()) => Ok(()),
+        Err(e) => Err(format!(
+            "{} and {} are not identical: {}",
+            golden.display(),
+            actual_output.display(),
+            e
+        )),
+    }
+}
+
+fn verify_successful_disassembly(tape_file: &OsStr) -> Result<(), String> {
+    disassemble_file(tape_file).map_err(|e| e.to_string())
+}
+
 fn assembler_golden_output_test(
     input_relative_path: &str,
     golden_output_relative_path: &str,
@@ -98,15 +114,10 @@ fn assembler_golden_output_test(
     let actual_output = get_temp_output_file_name();
     fill_output_file_with_garbage(&actual_output);
     match assemble_file(input.as_os_str(), &actual_output, Default::default()) {
-        Ok(()) => match files_are_identical(golden.as_os_str(), actual_output.as_os_str()) {
-            Ok(()) => Ok(()),
-            Err(e) => Err(format!(
-                "{} and {} are not identical: {}",
-                golden.display(),
-                actual_output.display(),
-                e
-            )),
-        },
+        Ok(()) => {
+            check_golden_match(golden.as_os_str(), actual_output.as_os_str())?;
+            verify_successful_disassembly(actual_output.as_os_str())
+        }
         Err(e) => Err(format!("failed to assemble {input_relative_path}: {e}")),
     }
 }
