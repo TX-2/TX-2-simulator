@@ -119,9 +119,9 @@ fn report_on_checksum<W: std::io::Write, V: std::io::Write>(
 ) -> Result<(), std::io::Error> {
     let unsigned_checksum = checksum.reinterpret_as_unsigned();
     if unsigned_checksum.is_zero() {
-        write!(output, "** Checksum is valid: {unsigned_checksum:>06o}")
+        writeln!(output, "** Checksum is valid: {unsigned_checksum:>06o}")
     } else {
-        write!(
+        writeln!(
             warning_output,
             "** Checksum is not valid: {unsigned_checksum:>06o}, this tape cannot be loaded as-is",
         )
@@ -203,9 +203,9 @@ fn check_header<R: Read, W: std::io::Write>(
             )));
         }
     }
-    write!(output, "** reader leader is valid:")
+    writeln!(output, "** reader leader is valid:")
         .and_then(|()| disassemble_block(Unsigned18Bit::from(3_u8), &header, output))
-        .and_then(|()| write!(output, "** end of reader leader"))
+        .and_then(|()| writeln!(output, "** end of reader leader"))
         .map_err(DisassemblerFailure::OutputFailed)?;
     Ok(())
 }
