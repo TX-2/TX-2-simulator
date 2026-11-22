@@ -22,6 +22,14 @@ struct Cli {
     /// read
     #[clap(action=Set)]
     input: OsString,
+
+    /// When set, emit the tape leader as source code; otherwise, as a
+    /// comment.  If you set this option, you cannot assemble the
+    /// output and get the same tape data as the disassembler's input,
+    /// because the assembler emits the tape reader leader as a
+    /// prefix.
+    #[arg(long, action=Set, default_value_t = false)]
+    disassemble_leader: bool,
 }
 
 fn disassemble() -> Result<(), DisassemblerFailure> {
@@ -56,7 +64,12 @@ fn disassemble() -> Result<(), DisassemblerFailure> {
     let stdout = std::io::stdout();
     let mut stdout_handle = stdout.lock();
 
-    disassemble_file(&cli.input, &mut stdout_handle, &mut stderr_handle)
+    disassemble_file(
+        &cli.input,
+        cli.disassemble_leader,
+        &mut stdout_handle,
+        &mut stderr_handle,
+    )
 }
 
 fn main() {

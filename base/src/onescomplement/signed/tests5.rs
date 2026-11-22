@@ -22,7 +22,7 @@ fn test_i8_round_tripping() {
         }
         prev = Some(q);
         let out = i8::from(q);
-        assert_eq!(i, out, "Round trip failed for {}->{:?}->{}", i, &q, out);
+        assert_eq!(i, out, "Round trip failed for {}->{:?}->{}", i, q, out);
     }
 }
 

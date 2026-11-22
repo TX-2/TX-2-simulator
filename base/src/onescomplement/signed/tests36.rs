@@ -72,12 +72,12 @@ fn test_i16_round_tripping() {
         prev = Some(q);
         match i16::try_from(q) {
             Ok(out) => {
-                assert_eq!(i, out, "Round trip failed for {}->{:?}->{}", i, &q, out);
+                assert_eq!(i, out, "Round trip failed for {}->{:?}->{}", i, q, out);
             }
             Err(e) => {
                 panic!(
                     "Unexpected overflow when round-tripping  {}->{:?}-> [conversion to i8 failed with error {}]",
-                    i, &q, e
+                    i, q, e
                 );
             }
         }

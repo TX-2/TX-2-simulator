@@ -840,7 +840,7 @@ mod tests {
         assert_eq!(
             got, EXPECTED,
             "Mismatch in assembly of {:?}: expected 0o{:012o}, got 0o{:012o}",
-            &sym, EXPECTED, got
+            sym, EXPECTED, got
         );
     }
 }

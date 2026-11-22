@@ -7,6 +7,12 @@ use std::io::{BufReader, Read};
 use crate::reader_leader;
 use base::prelude::*;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OutputKind {
+    DisassembleAsComment,
+    DisassembleAsSource,
+}
+
 #[derive(Debug)]
 pub enum DisassemblerFailure {
     ReadFailed(String),
@@ -77,11 +83,12 @@ fn read_splayed_words<R: Read>(
 fn disassemble_block<W: std::io::Write>(
     mut pos: Unsigned18Bit,
     block: &[Unsigned36Bit],
+    how: OutputKind,
     output: &mut W,
 ) -> Result<(), std::io::Error> {
     let mut is_origin: bool = true;
     for w in block {
-        disassemble_word(pos, *w, is_origin, output)?;
+        disassemble_word(pos, *w, is_origin, how, output)?;
         is_origin = false;
         pos = pos.wrapping_add(Unsigned18Bit::ONE);
     }
@@ -92,8 +99,18 @@ fn disassemble_word<W: std::io::Write>(
     loc: Unsigned18Bit,
     w: Unsigned36Bit,
     is_origin: bool,
+    how: OutputKind,
     output: &mut W,
 ) -> Result<(), std::io::Error> {
+    match how {
+        OutputKind::DisassembleAsComment => {
+            write!(output, "** ")?;
+        }
+        OutputKind::DisassembleAsSource => {
+            // Emit 3 spaces to keep everything  lined up.
+            write!(output, "   ")?;
+        }
+    }
     if is_origin {
         write!(output, "{loc:>06o}|")?;
     } else {
@@ -109,7 +126,7 @@ fn disassemble_word<W: std::io::Write>(
         }
     }
     let (left, right) = split_halves(w);
-    writeln!(output, "|{left:>06o} {right:>06o}|{loc:>6o}")
+    writeln!(output, "** |{left:>06o} {right:>06o}|{loc:>6o}")
 }
 
 fn report_on_checksum<W: std::io::Write, V: std::io::Write>(
@@ -128,12 +145,11 @@ fn report_on_checksum<W: std::io::Write, V: std::io::Write>(
     }
 }
 
-fn disassemble_chunk<R: Read, W: std::io::Write, V: std::io::Write>(
+fn read_chunk<R: Read, W: std::io::Write>(
     input: &mut R,
     checksum: &mut Signed18Bit,
     output: &mut W,
-    warning_output: &mut V,
-) -> Result<bool, DisassemblerFailure> {
+) -> Result<(Unsigned18Bit, Vec<Unsigned36Bit>, Unsigned18Bit), DisassemblerFailure> {
     let first = read_splayed_words(input, 1, Some(checksum))?;
     let (chunk_size, origin) = match first.as_slice() {
         [only] => {
@@ -170,28 +186,46 @@ fn disassemble_chunk<R: Read, W: std::io::Write, V: std::io::Write>(
         [] => return Err(DisassemblerFailure::ShortFile),
         _ => unreachable!(),
     };
-    disassemble_block(origin, &block, output)
-        .and_then(|()| report_on_checksum(*checksum, output, warning_output))
-        .map_err(DisassemblerFailure::OutputFailed)?;
+    Ok((origin, block, next))
+}
 
+fn is_final_block<W: std::io::Write, V: std::io::Write>(
+    next: Unsigned18Bit,
+    output: &mut W,
+    warning_output: &mut V,
+) -> Result<bool, std::io::Error> {
     if next == u18!(3) {
         Ok(true)
     } else if next == u18!(0o27) {
-        writeln!(output, "** This is the final block")
-            .map_err(DisassemblerFailure::OutputFailed)?;
+        writeln!(output, "** This is the final block")?;
         Ok(false)
     } else {
         writeln!(
             warning_output,
             "warning: block has unexpected next-address {next:o}"
-        )
-        .map_err(DisassemblerFailure::OutputFailed)?;
+        )?;
         Ok(false)
     }
 }
 
+fn disassemble_chunk<R: Read, W: std::io::Write, V: std::io::Write>(
+    input: &mut R,
+    checksum: &mut Signed18Bit,
+    how: OutputKind,
+    output: &mut W,
+    warning_output: &mut V,
+) -> Result<bool, DisassemblerFailure> {
+    let (origin, block, next) = read_chunk(input, checksum, output)?;
+
+    disassemble_block(origin, &block, how, output)
+        .and_then(|()| report_on_checksum(*checksum, output, warning_output))
+        .and_then(|()| is_final_block(next, output, warning_output))
+        .map_err(DisassemblerFailure::OutputFailed)
+}
+
 fn check_header<R: Read, W: std::io::Write>(
     input: &mut R,
+    leader_handling: OutputKind,
     output: &mut W,
 ) -> Result<(), DisassemblerFailure> {
     let expected_leader = reader_leader();
@@ -204,10 +238,66 @@ fn check_header<R: Read, W: std::io::Write>(
         }
     }
     writeln!(output, "** reader leader is valid:")
-        .and_then(|()| disassemble_block(Unsigned18Bit::from(3_u8), &header, output))
+        .and_then(|()| {
+            disassemble_block(Unsigned18Bit::from(3_u8), &header, leader_handling, output)
+        })
         .and_then(|()| writeln!(output, "** end of reader leader"))
         .map_err(DisassemblerFailure::OutputFailed)?;
     Ok(())
+}
+
+fn check_start_instruction<R: Read, W: std::io::Write, V: std::io::Write>(
+    input: &mut R,
+    handling: OutputKind,
+    checksum: &mut Signed18Bit,
+    output: &mut W,
+    warning_output: &mut V,
+) -> Result<Option<Unsigned18Bit>, DisassemblerFailure> {
+    let mut program_start_address: Option<Unsigned18Bit> = None;
+
+    let (origin, block, _) = read_chunk(input, checksum, output)?;
+    let mut is_standard: bool = true;
+
+    // The first of these two words should be ¹IOS₅₂ 20000        ** |010452 020000|
+    match block.as_slice() {
+        &[first_word, second_word] if first_word == u36!(0o010_452_020_000) => {
+            // If the program has a start address, the next word would be
+            // ¹⁴JPQ <N> where <N> is the start address.  Otherwise it is
+            // ²⁰JPD 27.
+            let (operation, operand) = split_halves(second_word);
+            if operation == u18!(0o140_500 /* ¹⁴JPQ */) {
+                // There is a start address.
+                program_start_address = Some(operand);
+            }
+        }
+        _ => {
+            writeln!(
+                warning_output,
+                "This program has a non-startard starup jump instruction at {origin:06o}"
+            )
+            .and_then(|()| {
+                writeln!(
+                    output,
+                    "** The boot instructions at register 0o27 have unexpected values:"
+                )
+            })
+            .map_err(DisassemblerFailure::OutputFailed)?;
+            is_standard = false;
+        }
+    }
+
+    if is_standard {
+        writeln!(output, "** Standard startup jump block at {origin:06o}:")
+    } else {
+        writeln!(
+            output,
+            "** Startup jump block at {origin:06o} is non-standard:"
+        )
+    }
+    .and_then(|()| disassemble_block(origin, &block, handling, output))
+    .map_err(DisassemblerFailure::OutputFailed)?;
+
+    Ok(program_start_address)
 }
 
 /// Disassemble `input_file_name` and print a source listing to stdout.
@@ -218,6 +308,7 @@ fn check_header<R: Read, W: std::io::Write>(
 /// if the input file is too short or otherwise invalid.
 pub fn disassemble_file<W: std::io::Write, V: std::io::Write>(
     input_file_name: &OsStr,
+    disassemble_leader: bool,
     output: &mut W,
     warning_output: &mut V,
 ) -> Result<(), DisassemblerFailure> {
@@ -226,10 +317,35 @@ pub fn disassemble_file<W: std::io::Write, V: std::io::Write>(
         .open(input_file_name)
         .map_err(|e| DisassemblerFailure::Generic(format!("failed to open input file: {e}")))?;
     let mut reader = BufReader::new(input_file);
-    check_header(&mut reader, output)?;
+
+    let leader_output: OutputKind = if disassemble_leader {
+        OutputKind::DisassembleAsSource
+    } else {
+        OutputKind::DisassembleAsComment
+    };
+
+    check_header(&mut reader, leader_output, output)?;
     let mut checksum: Signed18Bit = Signed18Bit::ZERO;
+
+    let program_start_address = check_start_instruction(
+        &mut reader,
+        leader_output,
+        &mut checksum,
+        output,
+        warning_output,
+    )?;
+
     loop {
-        match disassemble_chunk(&mut reader, &mut checksum, output, warning_output) {
+        // The first chunk after the reader leader is also emitted by
+        // the assembler (into registers 0o27 and 0o30) and is not
+        // part of the user's source file input.
+        match disassemble_chunk(
+            &mut reader,
+            &mut checksum,
+            OutputKind::DisassembleAsSource,
+            output,
+            warning_output,
+        ) {
             Ok(true) => (), // more data
             Ok(false) => {
                 break;
@@ -239,6 +355,15 @@ pub fn disassemble_file<W: std::io::Write, V: std::io::Write>(
             }
         }
     }
+
+    // Emit a PUNCH metacommand if the program had a start address.
+    if let Some(program_start_address) = program_start_address {
+        writeln!(output, "☛☛PUNCH {program_start_address:o}")
+    } else {
+        writeln!(output, "☛☛PUNCH ** There is no start address")
+    }
+    .map_err(DisassemblerFailure::OutputFailed)?;
+
     // The last block we read claimed it was the last.  Check that
     // there is no more data.
     let mut trailing_junk_count: usize = 0;
