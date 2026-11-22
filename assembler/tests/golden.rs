@@ -101,12 +101,17 @@ fn check_golden_match(golden: &OsStr, actual_output: &OsStr) -> Result<(), Strin
     }
 }
 
-fn verify_successful_disassembly(tape_file: &OsStr) -> Result<(), String> {
+fn disassemble_ensuring_no_diagnostics(tape_file: &OsStr) -> Result<String, String> {
     let mut output: Vec<u8> = Vec::new();
     let mut errors: Vec<u8> = Vec::new();
     match disassemble_file(tape_file, &mut output, &mut errors) {
         Err(e) => Err(format!("disassembly failed: {e}")),
-        Ok(()) if errors.is_empty() => Ok(()),
+        Ok(()) if errors.is_empty() => match str::from_utf8(&output) {
+            Err(e) => Err(format!(
+                "disassembler produced output which was not valid utf8: {e}"
+            )),
+            Ok(output_str) => Ok(output_str.to_string()),
+        },
         Ok(()) => match str::from_utf8(&errors) {
             Ok(messages) => Err(format!(
                 "disassembly produced error or warning messages: {messages}"
@@ -119,6 +124,10 @@ fn verify_successful_disassembly(tape_file: &OsStr) -> Result<(), String> {
             }
         },
     }
+}
+
+fn verify_successful_disassembly(tape_file: &OsStr) -> Result<(), String> {
+    disassemble_ensuring_no_diagnostics(tape_file).map(|_| ())
 }
 
 fn assembler_golden_output_test(
