@@ -17,7 +17,7 @@ clap = { version = "4", features = ["derive"] }
 chumsky = { version="=1.0.0-alpha.8", features = ["extension"] }
 
 
-logos = { version = "0.15" }
+logos = { version = "0.16" }
 
 # tracing has an MIT copyright license.
 # https://github.com/tokio-rs/tracing/blob/master/LICENSE
