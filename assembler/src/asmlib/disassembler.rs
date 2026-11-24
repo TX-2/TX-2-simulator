@@ -119,10 +119,13 @@ fn disassemble_word<W: std::io::Write>(
     let raw = Instruction::from(w);
     match SymbolicInstruction::try_from(&raw) {
         Ok(symbolic) => {
-            write!(output, "{:<20}", symbolic.to_string())?;
+            let symbolic_as_string = symbolic.to_string();
+            write!(output, "{symbolic_as_string:<20}")?;
         }
         Err(_) => {
-            write!(output, "{:<20}", "")?;
+            // Cannot disassemble into a symbolic form, print its
+            // value.
+            let _ = write!(output, "{w:<20o}");
         }
     }
     let (left, right) = split_halves(w);
