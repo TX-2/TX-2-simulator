@@ -1,5 +1,5 @@
 use std::ffi::OsStr;
-use std::fs::{File, OpenOptions};
+use std::fs::{self, File, OpenOptions};
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 
@@ -18,10 +18,11 @@ fn get_test_input_file_name(relative_to_manifest: &str) -> PathBuf {
     }
 }
 
-fn get_temp_output_file_name() -> tempfile::TempPath {
+fn get_temp_file_name(prefix: &str, extension: &str) -> tempfile::TempPath {
+    assert!(extension.starts_with("."));
     tempfile::Builder::new()
-        .prefix("hello_golden_")
-        .suffix(".tape")
+        .prefix(prefix)
+        .suffix(extension)
         .tempfile()
         .expect("should be able to create a temporary file")
         .into_temp_path()
@@ -136,7 +137,7 @@ fn assembler_golden_output_test(
 ) -> Result<(), String> {
     let input = get_test_input_file_name(input_relative_path);
     let golden = get_test_input_file_name(golden_output_relative_path);
-    let actual_output = get_temp_output_file_name();
+    let actual_output = get_temp_file_name("golden", ".tape");
     fill_output_file_with_garbage(&actual_output);
     match assemble_file(input.as_os_str(), &actual_output, Default::default()) {
         Ok(()) => {
@@ -157,4 +158,165 @@ fn golden_output_assembling_hello_program() {
 fn golden_output_assembling_echo_program() {
     assembler_golden_output_test("examples/echo.tx2as", "../examples/echo.tape")
         .expect("actual and golden outputs should have been identical for 'echo'");
+}
+
+/// Verify that we can dissassemble a tape file, and then assemble the
+/// disassembly to generate a second tape file which is identical to
+/// the first tape file.
+fn round_trip_tape_file_test(input_tape_relative_path: &str) -> Result<(), String> {
+    let input_tape = get_test_input_file_name(input_tape_relative_path);
+
+    let disassembly: String = disassemble_ensuring_no_diagnostics(input_tape.as_os_str())?;
+    let temp_input_file_name = get_temp_file_name("disassembled", ".tx2as");
+    let actual_output = get_temp_file_name("round_tripped", ".tape");
+
+    if let Err(e) = std::fs::write(&temp_input_file_name, disassembly) {
+        return Err(e.to_string());
+    }
+
+    let mut listing = String::new();
+    let output_options = OutputOptions {
+        list: ListingDestination::Capture(&mut listing),
+    };
+    let asm_result = assemble_file(
+        temp_input_file_name.as_os_str(),
+        &actual_output,
+        output_options,
+    );
+    eprintln!("Assembly listing:\n{listing}");
+    match asm_result {
+        Ok(()) => {
+            // The contents of `input_tape` and `actual_output` should be identical.
+            files_are_identical(input_tape.as_os_str(), actual_output.as_os_str())
+        }
+        Err(e) => Err(format!(
+            "failed to assemble {} (which is the output of the disassembler): {e}",
+            temp_input_file_name.display()
+        )),
+    }
+}
+
+#[test]
+fn round_trip_hello_tape() {
+    round_trip_tape_file_test("../examples/hello.tape").expect(
+        "should be able to assemble the disassembly of 'hello.tape' and get an identical tape file",
+    );
+}
+
+#[test]
+fn round_trip_echo_tape() {
+    round_trip_tape_file_test("../examples/echo.tape").expect(
+        "should be able to assemble the disassembly of 'echo.tape' and get an identical tape file",
+    );
+}
+
+fn error_message<E: std::error::Error>(e: E) -> String {
+    e.to_string()
+}
+
+/// Verify that we can take some source, write it to source file A1.tx2as,
+/// assemble that to A1.tape, disassemble the tape to A2.tx2as, assemble to
+/// create A2.tape, and then find that A1.tape and A2.tape are identical.
+fn round_trip_source_test(basename: &str, input_body: &str) -> Result<(), String> {
+    let a1_basename = format!("{basename}_1");
+    let a1_source = get_temp_file_name(&a1_basename, ".tx2as");
+    let a1_tape = get_temp_file_name(&a1_basename, ".tape");
+
+    let a2_basename = format!("{basename}_2");
+    let a2_source = get_temp_file_name(&a2_basename, ".tx2as");
+    let a2_tape = get_temp_file_name(&a2_basename, ".tape");
+
+    let mut listing1 = String::new();
+    let output_options1 = OutputOptions {
+        list: ListingDestination::Capture(&mut listing1),
+    };
+
+    // Assemble the initial source, generating a1_tape.
+    eprintln!("first assembly body:\n{input_body}");
+    fs::write(&a1_source, input_body).map_err(error_message)?;
+    if let Err(e) = assemble_file(a1_source.as_os_str(), &a1_tape, output_options1) {
+        return Err(format!(
+            "failed to assemble {} (which contains the source for test {basename}: {e}",
+            a1_source.display()
+        ));
+    }
+
+    eprintln!(
+        "Listing from assembly of {} (used to produce {}):\n{listing1}",
+        a1_source.display(),
+        a1_tape.display(),
+    );
+
+    // Disassemble a1_tape, generating a2_source.
+    match disassemble_ensuring_no_diagnostics(a1_tape.as_os_str()) {
+        Ok(a2_source_body) => {
+            eprintln!(
+                "Disassembly of {} (which we will store in {}):\n{}",
+                a1_tape.display(),
+                a2_source.display(),
+                a2_source_body
+            );
+            fs::write(&a2_source, a2_source_body).map_err(error_message)?;
+        }
+        Err(e) => {
+            return Err(format!(
+                "failed to disassemble a1_tape file {}: {e}",
+                a1_tape.display()
+            ));
+        }
+    }
+
+    let mut listing2 = String::new();
+    let output_options2 = OutputOptions {
+        list: ListingDestination::Capture(&mut listing2),
+    };
+
+    // Assemble a2_source, generating a2_tape.
+    if let Err(e) = assemble_file(a2_source.as_os_str(), &a2_tape, output_options2) {
+        return Err(format!(
+            "failed to assemble {} (which contains the disassembly for test {basename}: {e}",
+            a2_source.display()
+        ));
+    }
+
+    eprintln!(
+        "Listing from assembly of {} (used to produce {}):\n{listing2}",
+        a2_source.display(),
+        a2_tape.display(),
+    );
+
+    // a1_tape and a2_tape should be identical.
+    if let Err(e) = files_are_identical(a1_tape.as_os_str(), a2_tape.as_os_str()) {
+        return Err(format!(
+            "first ({}) and second ({}) tape files are not identical: {e}",
+            a1_tape.display(),
+            a2_tape.display(),
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn test_round_trip_seq() -> Result<(), String> {
+    round_trip_source_test("one", concat!("100| 1\n", "☛☛PUNCH 100\n"))?;
+    round_trip_source_test("two", concat!("100| 1\n2\n", "☛☛PUNCH 100\n"))?;
+    Ok(())
+}
+
+#[test]
+fn test_round_trip_origin() -> Result<(), String> {
+    round_trip_source_test(
+        "begin",
+        concat!(
+            "LWCONNECT   =  30000\n",
+            "\n",
+            "100|\n",
+            "              REX₆₆ OUTPUT\n",
+            "            ²¹IOS₆₆ LWCONNECT\n",
+            "OUTPUT->      REX₁ 777760\n", // was 777760,
+            "\n",
+            "☛☛PUNCH 100\n"
+        ),
+    )?;
+    Ok(())
 }

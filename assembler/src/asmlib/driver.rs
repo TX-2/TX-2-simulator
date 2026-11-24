@@ -6,6 +6,7 @@ mod tests;
 
 use std::collections::BTreeMap;
 use std::ffi::OsStr;
+use std::fmt::Write;
 use std::fs::OpenOptions;
 use std::io::{BufReader, BufWriter, Read};
 use std::path::{Path, PathBuf};
@@ -65,41 +66,63 @@ pub enum DirectiveMetaCommand {
     BaseChange(NumeralMode),
 }
 
-/// Indicates what kind of output the user wants.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct OutputOptions {
-    // TODO: implement arguments of the LIST, PLIST, TYPE
-    // metacommands.
-    pub list: bool,
+#[derive(Debug, Default)]
+pub enum ListingDestination<'a> {
+    #[default]
+    None,
+    Stdout,
+    Capture(&'a mut String),
 }
 
-impl OutputOptions {
-    // Merge two `OutputOptions` instances.  We deliberately consume
-    // both `self` and `other` in order to force the caller to use
-    // only the returned result.
-    #![allow(clippy::needless_pass_by_value)]
-    #[must_use]
-    fn merge(self, other: OutputOptions) -> OutputOptions {
-        OutputOptions {
-            list: self.list || other.list,
+impl ListingDestination<'_> {
+    fn emit(&mut self, the_listing: &ListingWithBody) {
+        match self {
+            ListingDestination::None => (),
+            ListingDestination::Stdout => {
+                print!("{the_listing}");
+            }
+            ListingDestination::Capture(dest) => {
+                let _ = write!(dest, "{the_listing}");
+            }
         }
+    }
+}
+
+impl<'listing> PartialEq for ListingDestination<'listing> {
+    fn eq(&self, other: &ListingDestination<'listing>) -> bool {
+        matches!(
+            (self, other),
+            (ListingDestination::None, ListingDestination::None)
+                | (ListingDestination::Stdout, ListingDestination::Stdout)
+        )
+    }
+}
+
+/// Indicates what kind of output the user wants.
+#[derive(Debug, Default)]
+pub struct OutputOptions<'listing> {
+    // TODO: implement arguments of the LIST, PLIST, TYPE
+    // metacommands.
+    pub list: ListingDestination<'listing>,
+}
+
+impl Eq for OutputOptions<'_> {}
+
+impl<'listing> PartialEq for OutputOptions<'listing> {
+    fn eq(&self, other: &OutputOptions<'listing>) -> bool {
+        self.list == other.list
     }
 }
 
 /// Pass 1 converts the program source into an abstract syntax representation.
 fn assemble_pass1<'src, 'sourceobj>(
     source_file_body: &'src str,
-) -> (
-    Option<SourceFile>,
-    Vec<Rich<'src, lexer::Token>>,
-    OutputOptions,
-)
+) -> (Option<SourceFile>, Vec<Rich<'src, lexer::Token>>)
 where
     'src: 'sourceobj,
 {
     let span = span!(Level::ERROR, "assembly pass 1");
     let _enter = span.enter();
-    let options = OutputOptions { list: false };
 
     let (mut sf, mut errors) = parse_source_file(source_file_body);
 
@@ -112,21 +135,21 @@ where
                 .map(|tag_err| Rich::custom(tag_err.span(), tag_err.to_string())),
         );
     }
-    (sf, errors, options)
+    (sf, errors)
 }
 
 /// Describes the result of running the first (and possibly the
 /// second) pass of the assembler.
 #[derive(Debug, PartialEq, Eq)]
-enum AssemblerPass1Or2Output<'a> {
-    Pass1Failed(Result<OneOrMore<Rich<'a, lexer::Token>>, AssemblerFailure>),
+enum AssemblerPass1Or2Output<'srcbody> {
+    Pass1Failed(Result<OneOrMore<Rich<'srcbody, lexer::Token>>, AssemblerFailure>),
     Pass2Failed(AssemblerFailure),
-    Success(Vec<Rich<'a, lexer::Token>>, OutputOptions, Pass2Output<'a>),
+    Success(Vec<Rich<'srcbody, lexer::Token>>, Pass2Output<'srcbody>),
 }
 
 /// Assemble a non-empty input.
 fn assemble_nonempty_input<'a, 'b: 'a>(input: &'b Source<'a>) -> AssemblerPass1Or2Output<'a> {
-    let (maybe_source_file, errors, output_options) = assemble_pass1(input.as_str());
+    let (maybe_source_file, errors) = assemble_pass1(input.as_str());
     match maybe_source_file {
         None => match OneOrMore::try_from_vec(errors) {
             Ok(errors) => AssemblerPass1Or2Output::Pass1Failed(Ok(errors)),
@@ -138,7 +161,7 @@ fn assemble_nonempty_input<'a, 'b: 'a>(input: &'b Source<'a>) -> AssemblerPass1O
         },
         Some(source_file) => match assemble_pass2(source_file, input) {
             Err(e) => AssemblerPass1Or2Output::Pass2Failed(e),
-            Ok(p2output) => AssemblerPass1Or2Output::Success(errors, output_options, p2output),
+            Ok(p2output) => AssemblerPass1Or2Output::Success(errors, p2output),
         },
     }
 }
@@ -166,7 +189,7 @@ pub(crate) fn assemble_nonempty_valid_input(
         AssemblerPass1Or2Output::Pass2Failed(e) => {
             panic!("pass 2 failed with an error result: {e}");
         }
-        AssemblerPass1Or2Output::Success(errors, _output_options, p2output) => {
+        AssemblerPass1Or2Output::Success(errors, p2output) => {
             if errors.is_empty() {
                 match p2output {
                     Pass2Output {
@@ -774,14 +797,13 @@ pub(crate) fn assemble_source(
         }
         AssemblerPass1Or2Output::Success(
             errors,
-            _output_options,
             Pass2Output {
                 directive: None, ..
             },
         ) if errors.is_empty() => {
             panic!("assembly pass1 generated no errors, a directive should have been returned");
         }
-        AssemblerPass1Or2Output::Success(errors, output_options, p2output) => {
+        AssemblerPass1Or2Output::Success(errors, p2output) => {
             if let Ok(errors) = OneOrMore::try_from_vec(errors) {
                 return Err(AssemblerFailure::BadProgram(fail_with_diagnostics(
                     &source_file_body,
@@ -789,7 +811,6 @@ pub(crate) fn assemble_source(
                 )));
             }
             // No errors.
-            options = options.merge(output_options);
             p2output
         }
     };
@@ -810,15 +831,10 @@ pub(crate) fn assemble_source(
         )?;
 
         listing.set_final_symbols(final_symbols);
-        if options.list {
-            println!(
-                "{0}",
-                ListingWithBody {
-                    listing: &listing,
-                    body: &source_file_body,
-                }
-            );
-        }
+        options.list.emit(&ListingWithBody {
+            listing: &listing,
+            body: &source_file_body,
+        });
         binary
     };
 
@@ -863,7 +879,7 @@ fn test_assemble_pass1() {
         }],
     };
 
-    let (source_file, errors, options) = assemble_pass1(input);
+    let (source_file, errors) = assemble_pass1(input);
     assert_eq!(
         source_file,
         Some(SourceFile {
@@ -873,7 +889,6 @@ fn test_assemble_pass1() {
             macros: Default::default(),
         })
     );
-    assert_eq!(options, OutputOptions { list: false });
     assert_eq!(errors.as_slice(), []);
 }
 
@@ -967,7 +982,7 @@ fn test_duplicate_global_tag() {
                 }
             }
         }
-        AssemblerPass1Or2Output::Success(errors, _output_options, p2output) => {
+        AssemblerPass1Or2Output::Success(errors, p2output) => {
             dbg!(&errors);
             dbg!(&p2output);
             panic!("assembler unexpectedly succeeded with a bad input {input}");

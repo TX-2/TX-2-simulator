@@ -77,7 +77,7 @@ fn test_assemble_pass1() {
     let input = concat!("14\n", "☛☛PUNCH 26\n");
 
     // When we assemble it
-    let (source_file, errors, _options) = assemble_pass1(input);
+    let (source_file, errors) = assemble_pass1(input);
 
     // Then we should see that it assembles without error, and...
     assert_eq!(errors.as_slice(), &[]);
@@ -1206,7 +1206,7 @@ fn test_diagnose_duplicate_tags_in_macro_body() {
 
     // When I assemble a program using the macro
     let expected_msg = "T is defined more than once";
-    let (_source_file, errors, _options) = dbg!(assemble_pass1(input));
+    let (_source_file, errors) = dbg!(assemble_pass1(input));
     dbg!(&errors);
 
     // Then the assembly should fail with a message about the

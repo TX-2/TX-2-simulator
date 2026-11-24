@@ -78,7 +78,13 @@ fn run_asembler() -> Result<(), Fail> {
     let span = span!(Level::ERROR, "assemble", input=?cli.input, output=?cli.output);
     let _enter = span.enter();
     let output_path = PathBuf::from(cli.output);
-    let options: OutputOptions = OutputOptions { list: cli.list };
+    let options: OutputOptions = OutputOptions {
+        list: if cli.list {
+            ListingDestination::Stdout
+        } else {
+            ListingDestination::None
+        },
+    };
     let result = assemble_file(&cli.input, &output_path, options).map_err(Fail::AsmFail);
     if let Err(e) = &result {
         event!(Level::ERROR, "assembly failed: {:?}", e);
