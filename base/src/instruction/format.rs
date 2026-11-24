@@ -79,17 +79,19 @@ impl Display for Opcode {
 ///
 /// Deferred addresses are formatted in square brackets.  TX-2
 /// documentation seems variously to represent deferred addressing
-/// with `[...]` or `*`.  We use `[...]`.
+/// with `[...]` or `*`.  We use `[...]` because Jurij Smakov's
+/// transcription of the Sketchpad code uses [...] for comments.
 impl Octal for OperandAddress {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         let (defer, physical_address) = self.split();
         if defer {
-            f.write_char('[')?;
+            f.write_char('*')?;
         }
+        // Emitting a blank might help things line up but it would
+        // break some current tests.  So we will consider making that
+        // change at a point where we are not also changing other
+        // things.
         write!(f, "{physical_address:o}")?;
-        if defer {
-            f.write_char(']')?;
-        }
         Ok(())
     }
 }
