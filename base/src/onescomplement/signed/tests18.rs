@@ -175,7 +175,7 @@ fn test_u16_round_tripping() {
             Err(e) => {
                 panic!(
                     "Unexpected overflow when round-tripping  {}->{:?}-> [conversion to i8 failed with error {}]",
-                    i, &q, e
+                    i, q, e
                 );
             }
         }

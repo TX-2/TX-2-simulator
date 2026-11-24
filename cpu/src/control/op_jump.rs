@@ -893,7 +893,7 @@ mod tests {
             None => Ok((None, false)),                                     // no skip
             Some(ProgramCounterChange::Jump(_)) => Err(format!(
                 "SED instruction performed an unexpected jump {:?}",
-                &result.program_counter_change
+                result.program_counter_change
             )),
             Some(ProgramCounterChange::SequenceChange(_)) => {
                 Err("SED instruction should not change sequence flags".to_string())
