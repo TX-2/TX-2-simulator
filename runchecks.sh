@@ -9,24 +9,39 @@ then
 fi
 
 run_rust_checks_in() {
-    (
-        echo "Running Rust checks in ${1}..."
+    if (
+        toolchain="${1}"
+        subdir="${2}"
+
+        echo "Running Rust ${toolchain} checks in ${subdir}..."
         # We use --no-deps for clippy and when generating
         # documentation because we don't want our CI pipeline to fail
         # just because we depend on a crate with faulty documentation.
-        cd "$1" &&
-            cargo --locked fmt --all --check &&
-            cargo --locked test --workspace &&
-            cargo --locked clippy --workspace --no-deps -- -D warnings &&
-            cargo --locked doc --workspace --no-deps
+        set -x
+        cd "${subdir}" &&
+            cargo ${toolchain} --locked fmt --all --check &&
+            cargo ${toolchain} --locked check  --workspace --all-targets --all-features  --future-incompat-report &&
+            cargo ${toolchain} --locked test  --workspace --all-targets --all-features  &&
+            cargo ${toolchain} --locked clippy --workspace --all-targets --all-features --no-deps -- -D warnings &&
+            cargo ${toolchain} --locked doc --workspace --no-deps
     )
+    then
+        echo "Rust checks with toolchain ${toolchain} all passed"
+    else
+        rv="$?"
+        echo "Rust checks with toolchain ${toolchain} failed" >&2
+        ( exit ${rv} )
+    fi
 }
 
 rust_checks() {
     here="$(pwd)"
-    for subdir in "${here}" "${here}/tx2-web"
+    for toolchain in '+stable' '+nightly'
     do
-        run_rust_checks_in "${subdir}" || return $?
+        for subdir in "${here}" "${here}/tx2-web"
+        do
+            run_rust_checks_in "${toolchain}" "${subdir}" || return $?
+        done
     done
 }
 
