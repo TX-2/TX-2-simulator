@@ -28,6 +28,18 @@ The TX-2 emulator repository includes several components:
   documentation from the source and serve it at
   https://tx-2.github.io/TX-2-simulator/.
 
+## Checking the Code Out Locally
+
+You can use `git` to check out a copy of the code to browse, build or
+change it.  To do this:
+
+```
+git clone  git@github.com:TX-2/TX-2-simulator.git
+cd TX-2-simulator
+git submodule init
+git submodule update
+```
+
 ## Build Tools
 
 The TX-2 emulator and its associcated tools are written in Rust.  The
@@ -48,14 +60,27 @@ There is no server-side component to the simulator, except that it's
 convenient to download the HTML, the WASM and the Javascript from a
 web server.  The simulator doesn't execute on the server.
 
+#### Installing the NPM Tools and Dependencies
+
+[Install npm](https://docs.npmjs.com/getting-started) if you have not
+done so already.
+
+```
+cd tx2-web
+npm ci
+```
+
+We use `npm ci` instead of `npm install` to ensure that we check out
+the same versions of the dependencies as we specified in the
+checked-in `package.json` file.  You are welcome to use `npm install`
+instead, but you may not get the same results.
+
+
 #### Installing the WASM Toolchain
 
 1. Follow the instructions above to install the Rust
    toolchain.
 1. Install wasm-pack with `cargo install wasm-pack`.
-1. [Install npm](https://docs.npmjs.com/getting-started).
-1. If you already have `npm` installed, make sure it is up-to-date by
-   running `npm install npm@latest -g`
 
 You should not need `cargo-generate`.
 
