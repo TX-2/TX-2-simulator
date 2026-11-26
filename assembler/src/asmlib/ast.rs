@@ -1324,13 +1324,15 @@ impl From<ArithmeticExpression> for InstructionFragment {
 }
 
 /// Represents the origin of a block of program code.
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub(crate) enum Origin {
     /// An origin specified directly as a number.
     Literal(Span, Address),
     /// An origin specified by name (which would refer to e.g. an
     /// equality).
     Symbolic(Span, SymbolName),
+    /// An origin specified by an arithmetic expression.
+    Expression(Span, ArithmeticExpression),
     /// A symbolic origin where the symbol had no definition and
     /// therefore the origin value had to be deduced (hence providing
     /// an implicit definition for the symbol).
@@ -1342,6 +1344,7 @@ impl Display for Origin {
         match self {
             Origin::Literal(_span, addr) => fmt::Display::fmt(&addr, f),
             Origin::Symbolic(_span, sym) => fmt::Display::fmt(&sym, f),
+            Origin::Expression(_span, expr) => fmt::Display::fmt(&expr, f),
             Origin::Deduced(_span, name, addr) => {
                 write!(f, "{name} (deduced to be at address {addr:o})")
             }
@@ -1366,6 +1369,9 @@ impl Origin {
         let mut result = Vec::with_capacity(1);
         match self {
             Origin::Literal(_span, _) => (),
+            Origin::Expression(_, expr) => {
+                result.extend(expr.symbol_uses(block_id, Unsigned18Bit::ZERO));
+            }
             org @ Origin::Deduced(span, name, _) => {
                 // We won't have any deduced origin values at this
                 // time the symbol uses are enumerate, but this case
@@ -1395,9 +1401,10 @@ impl Origin {
 impl Spanned for Origin {
     fn span(&self) -> Span {
         match self {
-            Origin::Deduced(span, _, _) | Origin::Literal(span, _) | Origin::Symbolic(span, _) => {
-                *span
-            }
+            Origin::Deduced(span, _, _)
+            | Origin::Literal(span, _)
+            | Origin::Symbolic(span, _)
+            | Origin::Expression(span, _) => *span,
         }
     }
 }
@@ -1410,6 +1417,7 @@ impl Octal for Origin {
             }
             Origin::Literal(_span, address) => fmt::Octal::fmt(&address, f),
             Origin::Symbolic(_span, name) => fmt::Display::fmt(&name, f),
+            Origin::Expression(_span, expr) => fmt::Display::fmt(&expr, f),
         }
     }
 }

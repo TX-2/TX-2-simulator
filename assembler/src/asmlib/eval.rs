@@ -778,6 +778,9 @@ impl Evaluate for (&Span, &SymbolName, &ExplicitDefinition) {
             ExplicitDefinition::Origin(Origin::Literal(_span, address), _block_id) => {
                 Ok((*address).into())
             }
+            ExplicitDefinition::Origin(Origin::Expression(_span, expr), _block_id) => {
+                expr.evaluate(ctx, scope)
+            }
             ExplicitDefinition::Tag(TagDefinition::Resolved { span: _, address }) => {
                 Ok(address.into())
             }

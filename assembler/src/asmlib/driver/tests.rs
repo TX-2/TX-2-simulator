@@ -772,6 +772,19 @@ fn omitted_pipe_address_is_zero() {
 }
 
 #[test]
+fn symbolic_expression_can_set_an_origin() {
+    let input = concat!("100|\n", "FIRST->1\n", "FIRST+20|\n", "2\n");
+
+    let program = assemble_source(input, Default::default()).expect("program is valid");
+
+    assert_eq!(program.chunks.len(), 2);
+    assert_eq!(program.chunks[0].address, Address::from(u18!(0o100)));
+    assert_eq!(program.chunks[0].words, vec![u36!(1)]);
+    assert_eq!(program.chunks[1].address, Address::from(u18!(0o120)));
+    assert_eq!(program.chunks[1].words, vec![u36!(2)]);
+}
+
+#[test]
 fn tag_definition_in_rc_word() {
     // Tag values in RC-words are not "local" to the RC-word.
     //

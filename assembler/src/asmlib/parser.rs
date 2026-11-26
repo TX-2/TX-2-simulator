@@ -1040,6 +1040,67 @@ where
     grammar().tagged_program_instruction
 }
 
+fn origin<'a, 'b, I>(
+    grammar: &Grammar<'a, 'b, I>,
+) -> impl Parser<'a, I, Origin, ExtraWithoutContext<'a>>
+where
+    I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
+{
+    fn literal_origin<'a, I>() -> impl Parser<'a, I, Origin, ExtraWithoutContext<'a>>
+    where
+        I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
+    {
+        /// An address expression is a literal value or a symex.  That is I
+        /// think it's not required that an arithmetic expression
+        /// (e.g. "5+BAR") be accepted in an origin notation (such as
+        /// "<something>|").
+        fn literal_address_expression<'a, I>() -> impl Parser<'a, I, Origin, ExtraWithoutContext<'a>>
+        where
+            I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
+        {
+            literal(Script::Normal)
+                .then_ignore(just(Tok::Pipe(Script::Normal)))
+                .try_map(|lit, span| match Address::try_from(lit.value()) {
+                    Ok(addr) => Ok(Origin::Literal(span, addr)),
+                    Err(e) => Err(Rich::custom(span, format!("not a valid address: {e}"))),
+                })
+                .labelled("literal address expression")
+        }
+
+        fn symbolic_address_expression<'a, I>()
+        -> impl Parser<'a, I, Origin, ExtraWithoutContext<'a>>
+        where
+            I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
+        {
+            named_symbol(SymexSyllableRule::Multiple, Script::Normal)
+                .then_ignore(just(Tok::Pipe(Script::Normal)))
+                .map_with(|name, extra| Origin::Symbolic(extra.span(), name))
+                .labelled("symbolic address expression")
+        }
+
+        // An origin specification is an expression followed by a
+        // (normal-case) pipe symbol.
+        choice((literal_address_expression(), symbolic_address_expression()))
+            .labelled("origin specification")
+    }
+
+    // 'a is the lifetime of the source body.
+    fn expression_origin<'a, 'b, I>(
+        grammar: &Grammar<'a, 'b, I>,
+    ) -> impl Parser<'a, I, Origin, ExtraWithoutContext<'a>>
+    where
+        I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
+    {
+        grammar
+            .normal_arithmetic_expression_allowing_spaces
+            .clone()
+            .then_ignore(just(Tok::Pipe(Script::Normal)))
+            .map_with(|expr, extra| Origin::Expression(extra.span(), expr))
+    }
+
+    choice((literal_origin(), expression_origin(grammar))).labelled("origin specification")
+}
+
 fn manuscript_line<'a, 'b, I>(
     grammar: &Grammar<'a, 'b, I>,
 ) -> impl Parser<'a, I, ManuscriptLine, ExtraWithoutContext<'a>>
@@ -1085,53 +1146,15 @@ where
     where
         I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
     {
-        fn origin<'a, I>() -> impl Parser<'a, I, Origin, ExtraWithoutContext<'a>>
-        where
-            I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
-        {
-            /// An address expression is a literal value or a symex.  That is I
-            /// think it's not required that an arithmetic expression
-            /// (e.g. "5+BAR") be accepted in an origin notation (such as
-            /// "<something>|").
-            fn literal_address_expression<'a, I>()
-            -> impl Parser<'a, I, Origin, ExtraWithoutContext<'a>>
-            where
-                I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
-            {
-                literal(Script::Normal)
-                    .then_ignore(just(Tok::Pipe(Script::Normal)))
-                    .try_map(|lit, span| match Address::try_from(lit.value()) {
-                        Ok(addr) => Ok(Origin::Literal(span, addr)),
-                        Err(e) => Err(Rich::custom(span, format!("not a valid address: {e}"))),
-                    })
-                    .labelled("literal address expression")
-            }
-
-            fn symbolic_address_expression<'a, I>()
-            -> impl Parser<'a, I, Origin, ExtraWithoutContext<'a>>
-            where
-                I: Input<'a, Token = Tok, Span = Span> + ValueInput<'a>,
-            {
-                named_symbol(SymexSyllableRule::Multiple, Script::Normal)
-                    .then_ignore(just(Tok::Pipe(Script::Normal)))
-                    .map_with(|name, extra| Origin::Symbolic(extra.span(), name))
-                    .labelled("symbolic address expression")
-            }
-
-            // An origin specification is an expression followed by a
-            // (normal-case) pipe symbol.
-            choice((literal_address_expression(), symbolic_address_expression()))
-                .labelled("origin specification")
-        }
-
-        let optional_origin_with_statement = origin()
+        let optional_origin_with_statement = origin(grammar)
             .or_not()
             .then(grammar.tagged_program_instruction.clone())
             .map(build_code_line)
             .labelled("statement with origin");
 
         // TODO: also allowed: "T1->T2->ORIGIN|"
-        let origin_only = origin().map(ManuscriptLine::OriginOnly);
+        let origin_only = origin(grammar).map(ManuscriptLine::OriginOnly);
+
         let tags_only = tag_definition()
             .repeated()
             .at_least(1)

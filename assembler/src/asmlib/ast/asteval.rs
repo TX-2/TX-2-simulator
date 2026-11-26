@@ -263,6 +263,7 @@ impl Evaluate for Origin {
             Origin::Symbolic(span, symbol_name) => {
                 evaluate_elevated_symbol(symbol_name, Script::Normal, *span, ctx, scope)
             }
+            Origin::Expression(_span, expr) => expr.evaluate(ctx, scope),
         }
     }
 }
