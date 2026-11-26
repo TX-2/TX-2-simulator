@@ -1874,8 +1874,12 @@ fn test_pipe_construct() {
     let input = "@sub_alpha@@sub_pipe@@sub_beta@DISPTBL";
     let got = parse_single_instruction_fragment(input);
     let expected = InstructionFragment::PipeConstruct {
-        index: SpannedSymbolOrLiteral {
-            item: SymbolOrLiteral::Symbol(Script::Sub, SymbolName::from("α"), span(0..11)),
+        index: SpannedArithmeticExpression {
+            item: ArithmeticExpression::from(Atom::SymbolOrLiteral(SymbolOrLiteral::Symbol(
+                Script::Sub,
+                SymbolName::from("α"),
+                span(0..11),
+            ))),
             span: span(0..11),
         },
         rc_word_span: span(21..38),
@@ -2011,12 +2015,14 @@ fn test_pipe_construct_without_address_part_has_zero_address_part() {
                     leading_commas: None,
                     holdbit: HoldBit::Unspecified,
                     fragment: InstructionFragment::PipeConstruct {
-                        index: SpannedSymbolOrLiteral {
-                            item: SymbolOrLiteral::Symbol(
-                                Script::Sub,
-                                SymbolName::from("β"),
-                                span(3..13),
-                            ),
+                        index: SpannedArithmeticExpression {
+                            item: ArithmeticExpression::from(Atom::SymbolOrLiteral(
+                                SymbolOrLiteral::Symbol(
+                                    Script::Sub,
+                                    SymbolName::from("β"),
+                                    span(3..13),
+                                ),
+                            )),
                             span: span(3..13),
                         },
                         rc_word_span: span(23..35),

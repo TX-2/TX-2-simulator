@@ -458,7 +458,7 @@ where
     Ext(MacroInvocationParser::default())
 }
 
-type ParsedMacroArg = Option<(Script, ArithmeticExpression)>;
+type ParsedMacroArg = Option<MacroParameterValue>;
 
 fn macro_terminator_operator(token: &Tok, script: Script) -> Option<Operator> {
     match token {
@@ -495,7 +495,6 @@ fn split_macro_argument(
     result
 }
 
-#[derive(Clone)]
 pub(super) struct MacroInvocationParser<'src, I>
 where
     I: Input<'src, Token = Tok, Span = Span> + ValueInput<'src>,
@@ -528,7 +527,9 @@ where
             expr_parser: arithmetic_expression_in_any_script_allowing_spaces()
                 .or_not()
                 .map_with(|got, extra| match got {
-                    Some((span, script, expr)) => (span, Some((script, expr))),
+                    Some((span, script, expr)) => {
+                        (span, Some(MacroParameterValue::Value(script, expr)))
+                    }
                     None => (extra.span(), None),
                 })
                 .boxed(),
@@ -584,7 +585,10 @@ where
             let param_def = &param_defs[param_index];
             let before = inp.cursor();
             if let Some(got) = inp.peek_maybe().as_deref() {
-                if got == &Tok::Newline || got == &Tok::RightBrace(Script::Normal) {
+                if got == &Tok::Newline
+                    || got == &Tok::RightBrace(Script::Normal)
+                    || got == &Tok::RightParen(Script::Normal)
+                {
                     param_values.insert(param_def.name.clone(), inp.span_since(&before), None);
                     param_index += 1;
                     continue;
@@ -607,8 +611,32 @@ where
 
                 let span = inp.span_since(&before);
                 if got == param_def.preceding_terminator {
-                    match inp.parse(&self.expr_parser)? {
-                        (_, Some((script, expr))) => {
+                    let parsed_arg =
+                        if inp.peek_maybe().as_deref() == Some(&Tok::LeftParen(Script::Normal)) {
+                            let checkpoint = inp.save();
+                            let nested_start = inp.cursor();
+                            inp.next_maybe();
+                            match self.parse(inp) {
+                                Ok(invocation)
+                                    if inp.peek_maybe().as_deref()
+                                        == Some(&Tok::RightParen(Script::Normal)) =>
+                                {
+                                    inp.next_maybe();
+                                    (
+                                        inp.span_since(&nested_start),
+                                        Some(MacroParameterValue::Expansion(Box::new(invocation))),
+                                    )
+                                }
+                                Ok(_) | Err(_) => {
+                                    inp.rewind(checkpoint);
+                                    inp.parse(&self.expr_parser)?
+                                }
+                            }
+                        } else {
+                            inp.parse(&self.expr_parser)?
+                        };
+                    match parsed_arg {
+                        (_, Some(MacroParameterValue::Value(script, expr))) => {
                             let argument_values =
                                 split_macro_argument(script, expr, &param_defs[param_index + 1..]);
                             for argument in argument_values {
@@ -620,6 +648,10 @@ where
                                 );
                                 param_index += 1;
                             }
+                        }
+                        (span, Some(expansion @ MacroParameterValue::Expansion(_))) => {
+                            param_values.insert(param_def.name.clone(), span, Some(expansion));
+                            param_index += 1;
                         }
                         (span, None) => {
                             // Record the fact that this parameter was missing.
@@ -1156,6 +1188,54 @@ mod tests {
         assert_eq!(supplied_value("B"), "DESIGNATED");
         assert_eq!(supplied_value("C"), "22");
         assert_eq!(supplied_value("D"), "PAGE1");
+    }
+
+    #[test]
+    fn test_macro_parameter_in_pipe_index() {
+        let got = parse_source_file_successfully(concat!(
+            "☛☛DEF INDEX|P\n",
+            "REX@sub_P@@sub_pipe@@sub_2@0\n",
+            "☛☛EMD\n",
+            "INDEX|@sub_1@\n",
+        ));
+
+        assert_eq!(got.blocks.len(), 1);
+        assert_eq!(got.blocks[0].sequences.len(), 1);
+        assert_eq!(got.blocks[0].sequences[0].instructions.len(), 1);
+    }
+
+    #[test]
+    fn test_nested_macro_as_parameter() {
+        let got = parse_source_file_successfully(concat!(
+            "☛☛DEF INNER|P\n",
+            "P\n",
+            "☛☛EMD\n",
+            "☛☛DEF SUBR☛A\n",
+            "A\n",
+            "☛☛EMD\n",
+            "SUBR☛(INNER|4)\n",
+        ));
+
+        assert_eq!(got.blocks.len(), 1);
+        assert_eq!(got.blocks[0].sequences.len(), 1);
+        assert_eq!(got.blocks[0].sequences[0].instructions.len(), 1);
+    }
+
+    #[test]
+    fn test_nested_sketchpad_macro_as_parameter() {
+        let got = parse_source_file_successfully(concat!(
+            "☛☛DEF LGORR☛N×XR=XR2→SUBR→LEXIT\n",
+            "0\n",
+            "☛☛EMD\n",
+            "☛☛DEF SUBR☛A\n",
+            "A\n",
+            "☛☛EMD\n",
+            "SUBR☛(LGORR☛PICBLKS×α=S→CONSOUTSUB)\n",
+        ));
+
+        assert_eq!(got.blocks.len(), 1);
+        assert_eq!(got.blocks[0].sequences.len(), 1);
+        assert_eq!(got.blocks[0].sequences[0].instructions.len(), 1);
     }
 
     #[test]

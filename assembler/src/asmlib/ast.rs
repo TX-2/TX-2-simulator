@@ -1001,22 +1001,6 @@ pub(crate) enum SymbolOrLiteral {
 }
 
 impl SymbolOrLiteral {
-    fn symbol_uses(
-        &self,
-    ) -> impl Iterator<Item = Result<(SymbolName, Span, SymbolUse), InconsistentSymbolUse>> + use<>
-    {
-        let mut result = Vec::with_capacity(1);
-        match self {
-            SymbolOrLiteral::Here(_, _) | SymbolOrLiteral::Literal(_) => (),
-            SymbolOrLiteral::Symbol(script, name, span) => {
-                let context: SymbolContext = (script, *span).into();
-                let sym_use: SymbolUse = SymbolUse::Reference(context);
-                result.push(Ok((name.clone(), *span, sym_use)));
-            }
-        }
-        result.into_iter()
-    }
-
     fn substitute_macro_parameters(
         &self,
         param_values: &MacroParameterBindings,
@@ -1033,6 +1017,9 @@ impl SymbolOrLiteral {
                         // macro invocation specified it, so
                         // substitute it.
                         SymbolSubstitution::Hit(*span, *script, arithmetic_expression.clone())
+                    }
+                    Some((_, Some(MacroParameterValue::Expansion(_)))) => {
+                        unreachable!("macro expansions require a standalone parameter line")
                     }
                     Some((span, None)) => {
                         // symbol_name was a parameter name, but the
@@ -1108,27 +1095,10 @@ pub(crate) struct SpannedSymbolOrLiteral {
     pub(crate) span: Span,
 }
 
-impl SpannedSymbolOrLiteral {
-    fn substitute_macro_parameters(
-        &self,
-        param_values: &MacroParameterBindings,
-        on_missing: OnUnboundMacroParameter,
-    ) -> SymbolSubstitution<SpannedSymbolOrLiteral> {
-        match self
-            .item
-            .substitute_macro_parameters(param_values, on_missing)
-        {
-            SymbolSubstitution::AsIs(item) => SymbolSubstitution::AsIs(SpannedSymbolOrLiteral {
-                item,
-                span: self.span,
-            }),
-            SymbolSubstitution::Hit(span, script, arithmetic_expression) => {
-                SymbolSubstitution::Hit(span, script, arithmetic_expression)
-            }
-            SymbolSubstitution::Omit => SymbolSubstitution::Omit,
-            SymbolSubstitution::Zero(span) => SymbolSubstitution::Zero(span),
-        }
-    }
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub(crate) struct SpannedArithmeticExpression {
+    pub(crate) item: ArithmeticExpression,
+    pub(crate) span: Span,
 }
 
 /// Part of a TX-2 instruction.
@@ -1153,7 +1123,7 @@ pub(crate) enum InstructionFragment {
     Config(ConfigValue),
     /// Described in section 6-2.8 "SPECIAL SYMBOLS" of the Users Handbook.
     PipeConstruct {
-        index: SpannedSymbolOrLiteral,
+        index: SpannedArithmeticExpression,
         rc_word_span: Span,
         rc_word_value: RegisterContaining,
     },
@@ -1209,7 +1179,7 @@ impl InstructionFragment {
                 rc_word_span: _,
                 rc_word_value,
             } => {
-                for r in index.item.symbol_uses() {
+                for r in index.item.symbol_uses(block_id, block_offset) {
                     match r {
                         Ok((name, span, mut symbol_use)) => {
                             if let SymbolUse::Reference(context) = &mut symbol_use {
@@ -1254,22 +1224,21 @@ impl InstructionFragment {
                 index,
                 rc_word_span,
                 rc_word_value,
-            } => match index.substitute_macro_parameters(param_values, on_missing) {
-                SymbolSubstitution::AsIs(index) => rc_word_value
-                    .substitute_macro_parameters(param_values, on_missing, macros)
-                    .map(|rc_word_value| InstructionFragment::PipeConstruct {
-                        index,
-                        rc_word_span: *rc_word_span,
-                        rc_word_value,
-                    }),
-                SymbolSubstitution::Hit(_span, _script, _arithmetic_expression) => {
-                    todo!(
-                        "macro parameter expansion is not yet fully supported in the index part of pipe constructs"
-                    )
-                }
-                SymbolSubstitution::Omit => None,
-                SymbolSubstitution::Zero(span) => Some(InstructionFragment::Null(span)),
-            },
+            } => index
+                .item
+                .substitute_macro_parameters(param_values, on_missing, macros)
+                .and_then(|item| {
+                    rc_word_value
+                        .substitute_macro_parameters(param_values, on_missing, macros)
+                        .map(|rc_word_value| InstructionFragment::PipeConstruct {
+                            index: SpannedArithmeticExpression {
+                                item,
+                                span: index.span,
+                            },
+                            rc_word_span: *rc_word_span,
+                            rc_word_value,
+                        })
+                }),
             InstructionFragment::Null(span) => Some(InstructionFragment::Null(*span)),
         }
     }
@@ -1764,6 +1733,30 @@ pub(crate) struct TaggedProgramInstruction {
 }
 
 impl TaggedProgramInstruction {
+    pub(super) fn standalone_symbol(&self) -> Option<&SymbolName> {
+        if !self.tags.is_empty() || self.instruction.fragments.len() != 1 {
+            return None;
+        }
+        let fragment = self.instruction.fragments.first();
+        if fragment.leading_commas.is_some()
+            || fragment.trailing_commas.is_some()
+            || fragment.holdbit != HoldBit::Unspecified
+        {
+            return None;
+        }
+        match &fragment.fragment {
+            InstructionFragment::Arithmetic(ArithmeticExpression { first, tail })
+                if tail.is_empty() && !first.negated =>
+            {
+                match &first.magnitude {
+                    Atom::SymbolOrLiteral(SymbolOrLiteral::Symbol(_, name, _)) => Some(name),
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
+
     pub(crate) fn symbol_uses(
         &self,
         block_id: BlockIdentifier,

@@ -552,6 +552,19 @@ impl MacroDefinition {
                     unimplemented!("recursive macros are not yet supported")
                 }
                 MacroBodyLine::Instruction(tagged_program_instruction) => {
+                    if let Some(name) = tagged_program_instruction.standalone_symbol()
+                        && let Some((_, Some(MacroParameterValue::Expansion(invocation)))) =
+                            bindings.get(name)
+                    {
+                        let expansion = invocation.substitute_macro_parameters(macros);
+                        if let Some(nested_symbols) = expansion.local_symbols
+                            && let Err(errors) = local_symbols.merge(nested_symbols)
+                        {
+                            panic!("conflicting local symbols in nested macro: {errors:?}");
+                        }
+                        instructions.extend(expansion.instructions);
+                        continue;
+                    }
                     if let Some(tagged_program_instruction) = tagged_program_instruction
                         .substitute_macro_parameters(
                             bindings,
@@ -607,8 +620,7 @@ impl MacroDefinition {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum MacroParameterValue {
     Value(Script, ArithmeticExpression),
-    // TODO: bindings representing sequences of instructions (see for
-    // example the SQ/NSQ example in the Users Handbook).
+    Expansion(Box<MacroInvocation>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]

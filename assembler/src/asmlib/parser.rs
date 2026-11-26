@@ -30,13 +30,14 @@ use crate::collections::OneOrMore;
 use super::ast::{
     ArithmeticExpression, Atom, CommaDelimitedFragment, Commas, CommasOrInstruction, ConfigValue,
     Equality, EqualityValue, FragmentWithHold, HoldBit, InstructionFragment, LiteralValue,
-    Operator, Origin, RegisterContaining, RegistersContaining, SignedAtom, SpannedSymbolOrLiteral,
-    SymbolOrLiteral, Tag, TaggedProgramInstruction, UntaggedProgramInstruction,
+    Operator, Origin, RegisterContaining, RegistersContaining, SignedAtom,
+    SpannedArithmeticExpression, SpannedSymbolOrLiteral, SymbolOrLiteral, Tag,
+    TaggedProgramInstruction, UntaggedProgramInstruction,
 };
 use super::lexer::{self};
 use super::manuscript::{
-    MacroBody, MacroDefinition, ManuscriptLine, ManuscriptMetaCommand, SourceFile,
-    manuscript_lines_to_source_file,
+    MacroBody, MacroDefinition, MacroParameterValue, ManuscriptLine, ManuscriptMetaCommand,
+    SourceFile, manuscript_lines_to_source_file,
 };
 use super::span::{Span, Spanned, span};
 use super::state::{MacroLookup, NumeralMode, State};
@@ -386,7 +387,7 @@ where
 /// evaluation we will need to generate an RC-word containing Qₜ.
 fn make_pipe_construct(
     (p, (t, maybe_spanned_q)): (
-        SpannedSymbolOrLiteral,
+        SpannedArithmeticExpression,
         (SpannedSymbolOrLiteral, Option<(InstructionFragment, Span)>),
     ),
 ) -> InstructionFragment {
@@ -824,12 +825,13 @@ where
         // 16) contains a line which uses the pipe construct without a
         // value for Q: "INX ₚ|ₜ" (p is @sub_beta@ and t is
         // @sub_alpha@).  For this case we assume the value zero.
-        let spanned_rc_word_fragment = symbol_or_literal(Script::Sub) // this is p
-            .map_with(|p, extra| SpannedSymbolOrLiteral {
-                item: p,
-                span: extra.span(),
-            })
-            .boxed();
+        let spanned_rc_word_fragment =
+            symbol_or_literal(Script::Sub) // this is p
+                .map_with(|p, extra| SpannedArithmeticExpression {
+                    item: ArithmeticExpression::from(p),
+                    span: extra.span(),
+                })
+                .boxed();
 
         let q = program_instruction_fragment
             .clone()
@@ -928,16 +930,24 @@ where
     });
 
     let nested_macro_arg = choice((
-        arith_expr.clone()(ALLOW_SPACES, Script::Normal)
-            .map_with(|expr, extra| (extra.span(), Script::Normal, expr)),
+        arith_expr.clone()(ALLOW_SPACES, Script::Normal).map_with(|expr, extra| {
+            (
+                extra.span(),
+                MacroParameterValue::Value(Script::Normal, expr),
+            )
+        }),
         arith_expr.clone()(ALLOW_SPACES, Script::Sub)
-            .map_with(|expr, extra| (extra.span(), Script::Sub, expr)),
-        arith_expr.clone()(ALLOW_SPACES, Script::Super)
-            .map_with(|expr, extra| (extra.span(), Script::Super, expr)),
+            .map_with(|expr, extra| (extra.span(), MacroParameterValue::Value(Script::Sub, expr))),
+        arith_expr.clone()(ALLOW_SPACES, Script::Super).map_with(|expr, extra| {
+            (
+                extra.span(),
+                MacroParameterValue::Value(Script::Super, expr),
+            )
+        }),
     ))
     .or_not()
     .map_with(|got, extra| match got {
-        Some((span, script, expr)) => (span, Some((script, expr))),
+        Some((span, value)) => (span, Some(value)),
         None => (extra.span(), None),
     })
     .boxed();
