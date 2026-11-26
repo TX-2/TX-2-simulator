@@ -56,7 +56,23 @@ npm_checks() {
     )
 }
 
-for check in rust_checks npm_checks
+submodule_checks() {
+    if sm_path=$( git submodule --quiet foreach 'echo $sm_path' )
+    then
+        case "${sm_path}" in
+            sources/Sketchpad) return 0;;
+        esac
+    fi
+    echo "git submodule sources/Sketchpad not found, see docs/getting-started.md" >&2
+    return 1
+}
+
+sketchpad_checks() {
+    make -C sources/Sketchpad check
+}
+
+
+for check in submodule_checks sketchpad_checks rust_checks npm_checks
 do
     if $check
     then
