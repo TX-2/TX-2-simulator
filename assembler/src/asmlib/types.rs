@@ -323,7 +323,7 @@ impl Display for AssemblerFailure {
         match self {
             AssemblerFailure::BadProgram(errors) => {
                 for e in errors.iter() {
-                    write!(f, "error in user program: {e}")?;
+                    writeln!(f, "error: {e}")?;
                 }
                 Ok(())
             }

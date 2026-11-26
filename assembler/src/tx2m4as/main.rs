@@ -85,13 +85,7 @@ fn run_asembler() -> Result<(), Fail> {
             ListingDestination::None
         },
     };
-    let result = assemble_file(&cli.input, &output_path, options).map_err(Fail::AsmFail);
-    if let Err(e) = &result {
-        event!(Level::ERROR, "assembly failed: {:?}", e);
-    } else {
-        event!(Level::INFO, "assembly succeeded");
-    }
-    result
+    assemble_file(&cli.input, &output_path, options).map_err(Fail::AsmFail)
 }
 
 fn main() {
@@ -103,6 +97,7 @@ fn main() {
             std::process::exit(1);
         }
         Ok(()) => {
+            event!(Level::INFO, "assembly succeeded");
             std::process::exit(0);
         }
     }
