@@ -13,11 +13,12 @@ use base::charset::Script;
 
 use super::{
     super::{
-        ast::ArithmeticExpression,
+        ast::{ArithmeticExpression, Operator},
         manuscript::{
             MacroBodyLine, MacroDefinition, MacroDummyParameters, MacroInvocation, MacroParameter,
             MacroParameterBindings, MacroParameterValue,
         },
+        span::Spanned,
         state::State,
         symbol::SymbolName,
     },
@@ -459,6 +460,41 @@ where
 
 type ParsedMacroArg = Option<(Script, ArithmeticExpression)>;
 
+fn macro_terminator_operator(token: &Tok, script: Script) -> Option<Operator> {
+    match token {
+        Tok::Solidus(got) if *got == script => Some(Operator::Divide),
+        Tok::Times(got) if *got == script => Some(Operator::Multiply),
+        Tok::LogicalOr(got) if *got == script => Some(Operator::LogicalOr),
+        Tok::LogicalAnd(got) if *got == script => Some(Operator::LogicalAnd),
+        _ => None,
+    }
+}
+
+fn split_macro_argument(
+    script: Script,
+    expr: ArithmeticExpression,
+    later_params: &[MacroParameter],
+) -> Vec<ArithmeticExpression> {
+    let mut later_params = later_params.iter();
+    let mut next_param = later_params.next();
+    let mut current = ArithmeticExpression::from(expr.first);
+    let mut result = Vec::new();
+
+    for (operator, atom) in expr.tail {
+        if next_param.is_some_and(|param| {
+            macro_terminator_operator(&param.preceding_terminator, script) == Some(operator)
+        }) {
+            result.push(current);
+            current = ArithmeticExpression::from(atom);
+            next_param = later_params.next();
+        } else {
+            current.tail.push((operator, atom));
+        }
+    }
+    result.push(current);
+    result
+}
+
 #[derive(Clone)]
 pub(super) struct MacroInvocationParser<'src, I>
 where
@@ -543,22 +579,52 @@ where
             MacroDummyParameters::OneOrMore(ref params) => params.clone(),
         };
         let mut param_values: MacroParameterBindings = Default::default();
-        for param_def in param_defs {
+        let mut param_index = 0;
+        while param_index < param_defs.len() {
+            let param_def = &param_defs[param_index];
             let before = inp.cursor();
-            if let Some(got) = inp.next_maybe().as_deref() {
+            if let Some(got) = inp.peek_maybe().as_deref() {
+                if got == &Tok::Newline || got == &Tok::RightBrace(Script::Normal) {
+                    param_values.insert(param_def.name.clone(), inp.span_since(&before), None);
+                    param_index += 1;
+                    continue;
+                }
+
+                if got != &param_def.preceding_terminator
+                    && param_defs[param_index + 1..]
+                        .iter()
+                        .any(|later| got == &later.preceding_terminator)
+                {
+                    param_values.insert(param_def.name.clone(), inp.span_since(&before), None);
+                    param_index += 1;
+                    continue;
+                }
+
+                let got = inp
+                    .next_maybe()
+                    .expect("peek_maybe returned a token")
+                    .into_inner();
+
                 let span = inp.span_since(&before);
-                if got == &param_def.preceding_terminator {
+                if got == param_def.preceding_terminator {
                     match inp.parse(&self.expr_parser)? {
-                        (span, Some((script, expr))) => {
-                            param_values.insert(
-                                param_def.name,
-                                span,
-                                Some(MacroParameterValue::Value(script, expr)),
-                            );
+                        (_, Some((script, expr))) => {
+                            let argument_values =
+                                split_macro_argument(script, expr, &param_defs[param_index + 1..]);
+                            for argument in argument_values {
+                                let argument_span = argument.span();
+                                param_values.insert(
+                                    param_defs[param_index].name.clone(),
+                                    argument_span,
+                                    Some(MacroParameterValue::Value(script, argument)),
+                                );
+                                param_index += 1;
+                            }
                         }
                         (span, None) => {
                             // Record the fact that this parameter was missing.
-                            param_values.insert(param_def.name, span, None);
+                            param_values.insert(param_def.name.clone(), span, None);
+                            param_index += 1;
                         }
                     }
                 } else {
@@ -572,13 +638,8 @@ where
                 }
             } else {
                 let span = inp.span_since(&before);
-                return Err(Rich::custom(
-                    span,
-                    format!(
-                        "in invocation of macro {}, expected macro terminator {} before parameter {}",
-                        macro_def.name, param_def.preceding_terminator, param_def.name
-                    ),
-                ));
+                param_values.insert(param_def.name.clone(), span, None);
+                param_index += 1;
             }
         }
         Ok(MacroInvocation {
@@ -1054,6 +1115,47 @@ mod tests {
                 param_values: bindings,
             }
         );
+    }
+
+    #[test]
+    fn test_parse_macro_invocation_with_omitted_leading_parameter() {
+        let parameter = |name: &str, preceding_terminator: Token| MacroParameter {
+            name: SymbolName::from(name),
+            span: span(0..0),
+            preceding_terminator,
+        };
+        let macro_definition_moveb = MacroDefinition {
+            name: SymbolName::from("MOVEB"),
+            params: MacroDummyParameters::OneOrMore(vec![
+                parameter("A", Token::Pipe(Script::Normal)),
+                parameter("B", Token::Times(Script::Normal)),
+                parameter("C", Token::Arrow(Script::Normal)),
+                parameter("D", Token::Times(Script::Normal)),
+            ]),
+            body: MacroBody::from(Vec::new()),
+            span: span(0..0),
+        };
+        let set_up_macro_definition = |state: &mut State| {
+            state.define_macro(macro_definition_moveb.clone());
+        };
+
+        let got = parse_successfully_with(
+            "MOVEB×DESIGNATED→22×PAGE1",
+            macro_invocation(),
+            set_up_macro_definition,
+        );
+
+        assert!(matches!(
+            got.param_values.get(&SymbolName::from("A")),
+            Some((_, None))
+        ));
+        let supplied_value = |name: &str| match got.param_values.get(&SymbolName::from(name)) {
+            Some((_, Some(MacroParameterValue::Value(_, expr)))) => expr.to_string(),
+            _ => panic!("parameter {name} was not supplied"),
+        };
+        assert_eq!(supplied_value("B"), "DESIGNATED");
+        assert_eq!(supplied_value("C"), "22");
+        assert_eq!(supplied_value("D"), "PAGE1");
     }
 
     #[test]
